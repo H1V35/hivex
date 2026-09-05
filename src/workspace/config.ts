@@ -9,22 +9,21 @@ const pattern = z
     (value) => !value.startsWith('/') && !value.includes('\\') && !value.split('/').includes('..'),
     'Document patterns must stay inside the repository',
   );
-const collection = z
-  .object({
-    id: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/),
-    include: z.array(pattern).min(1).max(64),
-    exclude: z.array(pattern).max(64).default([]),
-    default: z.boolean().default(true),
-    kind: z.enum(['documentation', 'evidence', 'legacy', 'mixed']).default('documentation'),
-    aliasPrefix: z
-      .string()
-      .regex(/^[A-Za-z][A-Za-z0-9_-]{0,31}$/)
-      .optional(),
-  })
-  .strict();
-const config = z
-  .object({ version: z.literal(1), collections: z.array(collection).min(1).max(32) })
-  .strict();
+const collection = z.strictObject({
+  id: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/),
+  include: z.array(pattern).min(1).max(64),
+  exclude: z.array(pattern).max(64).default([]),
+  default: z.boolean().default(true),
+  kind: z.enum(['documentation', 'evidence', 'legacy', 'mixed']).default('documentation'),
+  aliasPrefix: z
+    .string()
+    .regex(/^[A-Za-z][A-Za-z0-9_-]{0,31}$/)
+    .optional(),
+});
+const config = z.strictObject({
+  version: z.literal(1),
+  collections: z.array(collection).min(1).max(32),
+});
 export type Collection = z.infer<typeof collection>;
 export type ProjectConfig = z.infer<typeof config>;
 

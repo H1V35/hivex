@@ -1,54 +1,33 @@
-import { z } from 'zod';
 import { HivexError } from '../errors.ts';
-import type { Source, SourceBlock } from '../sources/markdown.ts';
+import { hash, type Source, type SourceBlock } from '../sources/markdown.ts';
 import type { Snapshot } from '../workspace/snapshot.ts';
 
-const cursorSchema = z
-  .object({
-    version: z.literal(1),
-    commit: z.string(),
-    source: z.string(),
-    hash: z.string(),
-    next: z.number().int().nonnegative(),
-  })
-  .strict();
 export const encodedBytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value)) + 1;
 
-type Position = z.infer<typeof cursorSchema>;
+function binding(source: Source, commit: string): string {
+  return hash(`${commit}\0${source.id}\0${source.contentHash}`);
+}
+
 function resume(cursor: string | undefined, source: Source, commit: string): number {
   if (!cursor) return 0;
-  let position: Position;
-  try {
-    const bytes = Buffer.from(cursor, 'base64url');
-    if (bytes.toString('base64url') !== cursor) throw new Error('Noncanonical cursor');
-    const value: unknown = JSON.parse(bytes.toString('utf8'));
-    position = cursorSchema.parse(value);
-  } catch {
-    throw new HivexError('INVALID_CURSOR', 'Continuation cursor is invalid');
-  }
+  const match = /^1\.([a-f0-9]{64})\.([0-9]+)$/.exec(cursor);
+  if (!match) throw new HivexError('INVALID_CURSOR', 'Continuation cursor is invalid');
+  const next = Number(match[2]);
   if (
-    position.commit !== commit ||
-    position.source !== source.id ||
-    position.hash !== source.contentHash ||
-    position.next >= source.blocks.length
+    match[1] !== binding(source, commit) ||
+    !Number.isSafeInteger(next) ||
+    next >= source.blocks.length
   )
     throw new HivexError(
       'CURSOR_MISMATCH',
       'Use the same source and commit as the continuation cursor',
     );
-  return position.next;
+  return next;
 }
 
 export function cursorFor(source: Source, commit: string, next: number) {
   if (next >= source.blocks.length) return null;
-  const position: Position = {
-    version: 1,
-    commit,
-    source: source.id,
-    hash: source.contentHash,
-    next,
-  };
-  return Buffer.from(JSON.stringify(position)).toString('base64url');
+  return `1.${binding(source, commit)}.${next}`;
 }
 
 function page(snapshot: Snapshot, source: Source, blocks: SourceBlock[], next: number) {

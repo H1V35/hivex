@@ -13,6 +13,9 @@ pnpm hivex search "ADR 0006" --collection compi
 pnpm hivex read docs/adr/0006-react-compiler-no-manual-memoization.md --ref <commit-from-search>
 ```
 
+For repeated queries, the pinned runtime can also be invoked directly as
+`./node_modules/.bin/bun hivex/src/cli.ts`, without package-manager startup.
+
 The commands return JSON. Search includes the complete commit ID, configuration hash, source hash,
 collection, declared authority and a bounded preview/location. Use the returned `readCursor` to start
 near the matching heading, or omit it to read from the beginning. Pass the same `--ref` and source ID:
