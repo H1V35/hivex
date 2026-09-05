@@ -17,55 +17,66 @@ function parseInput(args: string[]) {
       },
     });
   } catch (error) {
-    throw new HivexError(
-      'INVALID_ARGUMENT',
-      error instanceof Error ? error.message : 'Invalid command arguments',
-    );
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: error instanceof Error ? error.message : 'Invalid command arguments',
+    });
   }
 }
 
 function commandFor(positionals: string[]) {
   const [command, value] = positionals;
   if (positionals.length !== 2 || !value || (command !== 'search' && command !== 'read'))
-    throw new HivexError(
-      'INVALID_ARGUMENT',
-      'Usage: hivex search <query> | read <source-id> [options]',
-    );
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Usage: hivex search <query> | read <source-id> [options]',
+    });
   if (Buffer.byteLength(value) > 4096 || !value.trim())
-    throw new HivexError(
-      'INVALID_ARGUMENT',
-      'Query or source ID must contain 1 to 4096 UTF-8 bytes',
-    );
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Query or source ID must contain 1 to 4096 UTF-8 bytes',
+    });
   return { command, value };
 }
 
 function parseLimit(
   value: string | undefined,
-  fallback: number,
-  maximum: number,
-  minimum: number,
+  bounds: { fallback: number; maximum: number; minimum: number },
 ): number {
+  const { fallback, maximum, minimum } = bounds;
   if (value === undefined) return fallback;
   if (!/^[0-9]+$/.test(value))
-    throw new HivexError('INVALID_ARGUMENT', 'Limits must be positive decimal integers');
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Limits must be positive decimal integers',
+    });
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < minimum || number > maximum)
-    throw new HivexError('INVALID_ARGUMENT', `Limit must be between ${minimum} and ${maximum}`);
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: `Limit must be between ${minimum} and ${maximum}`,
+    });
   return number;
 }
 
 function validateMode(command: string, values: ReturnType<typeof parseInput>['values']) {
   if (command === 'read' && (values.collection !== undefined || values.limit !== undefined))
-    throw new HivexError('INVALID_ARGUMENT', 'Only search accepts --collection and --limit');
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Only search accepts --collection and --limit',
+    });
   if (command === 'search' && values.cursor !== undefined)
-    throw new HivexError('INVALID_ARGUMENT', 'Only read accepts --cursor');
+    throw new HivexError({ code: 'INVALID_ARGUMENT', message: 'Only read accepts --cursor' });
   if (values.cursor !== undefined && (values.cursor.length === 0 || values.cursor.length > 2048))
-    throw new HivexError(
-      'INVALID_ARGUMENT',
-      'Continuation cursor must contain 1 to 2048 characters',
-    );
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Continuation cursor must contain 1 to 2048 characters',
+    });
   if (values.collection !== undefined && !/^[a-z][a-z0-9-]{0,47}$/.test(values.collection))
-    throw new HivexError('INVALID_ARGUMENT', 'Collection must be a valid declared ID');
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Collection must be a valid declared ID',
+    });
 }
 
 export function argumentsFor(args: string[]) {
@@ -78,8 +89,12 @@ export function argumentsFor(args: string[]) {
     value,
     root: parsed.values.root ?? process.cwd(),
     ref: parsed.values.ref ?? 'HEAD',
-    limit: parseLimit(parsed.values.limit, 8, 20, 1),
-    maxBytes: parseLimit(parsed.values['max-bytes'], defaultBudget, 65_536, 1024),
+    limit: parseLimit(parsed.values.limit, { fallback: 8, maximum: 20, minimum: 1 }),
+    maxBytes: parseLimit(parsed.values['max-bytes'], {
+      fallback: defaultBudget,
+      maximum: 65_536,
+      minimum: 1024,
+    }),
     cursor: parsed.values.cursor,
     collection: parsed.values.collection,
   };

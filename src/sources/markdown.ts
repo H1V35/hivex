@@ -32,14 +32,17 @@ function readMetadata(tree: ReturnType<typeof fromMarkdown>) {
   if (node?.type !== 'yaml') return metadata.parse({});
   const document = parseDocument(node.value, { uniqueKeys: true });
   if (document.errors.length || document.warnings.length)
-    throw new HivexError('INVALID_FRONTMATTER', 'Source frontmatter must be valid plain YAML');
+    throw new HivexError({
+      code: 'INVALID_FRONTMATTER',
+      message: 'Source frontmatter must be valid plain YAML',
+    });
   const value: unknown = document.toJS({ maxAliasCount: 0 });
   const parsed = metadata.safeParse(value);
   if (!parsed.success)
-    throw new HivexError(
-      'INVALID_FRONTMATTER',
-      'Source frontmatter metadata has invalid field types',
-    );
+    throw new HivexError({
+      code: 'INVALID_FRONTMATTER',
+      message: 'Source frontmatter metadata has invalid field types',
+    });
   return parsed.data;
 }
 
@@ -51,7 +54,8 @@ function declaredStatus(status: string | undefined) {
   return match ?? 'unknown';
 }
 
-export function parseSource(path: string, content: string, collection: Collection) {
+export function parseSource(options: { path: string; content: string; collection: Collection }) {
+  const { path, content, collection } = options;
   const tree = fromMarkdown(content, {
     extensions: [gfm(), frontmatter(['yaml'])],
     mdastExtensions: [gfmFromMarkdown(), frontmatterFromMarkdown(['yaml'])],
@@ -62,7 +66,10 @@ export function parseSource(path: string, content: string, collection: Collectio
     const start = node.position?.start.offset;
     const end = node.position?.end.offset;
     if (start === undefined || end === undefined || !node.position)
-      throw new HivexError('INVALID_POSITION', 'Markdown parser did not provide source positions');
+      throw new HivexError({
+        code: 'INVALID_POSITION',
+        message: 'Markdown parser did not provide source positions',
+      });
     return {
       kind: node.type,
       text: content.slice(start, end),

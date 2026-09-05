@@ -25,11 +25,11 @@ function main(args: string[]) {
     };
   const options = argumentsFor(args);
   const { command, value, root, ref } = options;
-  const snapshot = loadSnapshot(
-    root,
-    ref,
-    command === 'read' ? { sourceId: value } : { collection: options.collection },
-  );
+  const snapshot = loadSnapshot({
+    root: root,
+    ref: ref,
+    selection: command === 'read' ? { sourceId: value } : { collection: options.collection },
+  });
   if (command === 'search') return search(snapshot, value, options);
   return read(snapshot, value, options);
 }

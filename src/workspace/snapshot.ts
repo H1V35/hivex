@@ -4,24 +4,28 @@ import { collectionFor, parseConfig } from './config.ts';
 import { blobs, resolveCommit, trackedFiles } from './git.ts';
 
 export type Snapshot = ReturnType<typeof loadSnapshot>;
-export function loadSnapshot(
-  root: string,
-  ref: string,
-  selection: { sourceId?: string; collection?: string } = {},
-) {
+export function loadSnapshot(options: {
+  root: string;
+  ref: string;
+  selection?: { sourceId?: string; collection?: string };
+}) {
+  const { root, ref, selection = {} } = options;
   const commit = resolveCommit(root, ref);
   const files = trackedFiles(root, commit);
   const configFile = files.find((file) => file.path === 'hivex.json');
   if (!configFile || (configFile.mode !== '100644' && configFile.mode !== '100755'))
-    throw new HivexError(
-      'CONFIG_NOT_FOUND',
-      'The selected commit needs a regular tracked hivex.json',
-    );
+    throw new HivexError({
+      code: 'CONFIG_NOT_FOUND',
+      message: 'The selected commit needs a regular tracked hivex.json',
+    });
   const configText = blobs(root, [configFile]).get('hivex.json');
-  if (!configText) throw new HivexError('INVALID_CONFIG', 'hivex.json is empty');
+  if (!configText) throw new HivexError({ code: 'INVALID_CONFIG', message: 'hivex.json is empty' });
   const config = parseConfig(configText);
   if (selection.collection && !config.collections.some((item) => item.id === selection.collection))
-    throw new HivexError('UNKNOWN_COLLECTION', 'Collection is not declared in hivex.json');
+    throw new HivexError({
+      code: 'UNKNOWN_COLLECTION',
+      message: 'Collection is not declared in hivex.json',
+    });
   const declared = files.flatMap((file) => {
     if (!/\.(?:md|markdown|mdown)$/i.test(file.path)) return [];
     const collection = collectionFor(file.path, config.collections);
@@ -42,22 +46,22 @@ export function loadSnapshot(
   );
   for (const file of selected) {
     if (file.mode !== '100644' && file.mode !== '100755')
-      throw new HivexError(
-        'UNSUPPORTED_SOURCE',
-        `Sources must be regular tracked files: ${file.path}`,
-      );
+      throw new HivexError({
+        code: 'UNSUPPORTED_SOURCE',
+        message: `Sources must be regular tracked files: ${file.path}`,
+      });
   }
   if (selected.length > 2048)
-    throw new HivexError(
-      'TOO_MANY_SOURCES',
-      'A snapshot may contain at most 2048 Markdown sources',
-    );
+    throw new HivexError({
+      code: 'TOO_MANY_SOURCES',
+      message: 'A snapshot may contain at most 2048 Markdown sources',
+    });
   const contents = blobs(root, selected);
   const sources = selected.map((file) => {
     const content = contents.get(file.path);
     if (content === undefined)
-      throw new HivexError('MISSING_SOURCE', `Missing source: ${file.path}`);
-    return parseSource(file.path, content, file.collection);
+      throw new HivexError({ code: 'MISSING_SOURCE', message: `Missing source: ${file.path}` });
+    return parseSource({ path: file.path, content: content, collection: file.collection });
   });
   validateReplacements(sources, declared);
   return { commit, configHash: hash(configText), config, sources };
@@ -72,11 +76,11 @@ function validateReplacements(sources: Source[], declared: { path: string; mode:
   for (const source of sources) {
     for (const replacement of source.authority.supersededBy) {
       if (replacement === source.id || !declaredPaths.has(replacement))
-        throw new HivexError(
-          'INVALID_REPLACEMENT',
-          'Declared replacement must be another regular source in the same snapshot',
-          { source: source.id, replacement },
-        );
+        throw new HivexError({
+          code: 'INVALID_REPLACEMENT',
+          message: 'Declared replacement must be another regular source in the same snapshot',
+          details: { source: source.id, replacement },
+        });
     }
   }
 }

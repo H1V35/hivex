@@ -32,13 +32,14 @@ export function parseConfig(text: string): ProjectConfig {
   try {
     value = JSON.parse(text);
   } catch {
-    throw new HivexError('INVALID_CONFIG', 'hivex.json must contain valid JSON');
+    throw new HivexError({ code: 'INVALID_CONFIG', message: 'hivex.json must contain valid JSON' });
   }
   const result = config.safeParse(value);
-  if (!result.success) throw new HivexError('INVALID_CONFIG', result.error.message);
+  if (!result.success)
+    throw new HivexError({ code: 'INVALID_CONFIG', message: result.error.message });
   const ids = result.data.collections.map((item) => item.id);
   if (new Set(ids).size !== ids.length)
-    throw new HivexError('INVALID_CONFIG', 'Collection IDs must be unique');
+    throw new HivexError({ code: 'INVALID_CONFIG', message: 'Collection IDs must be unique' });
   return result.data;
 }
 
@@ -49,6 +50,9 @@ export function collectionFor(path: string, collections: Collection[]): Collecti
       !item.exclude.some((glob) => new Bun.Glob(glob).match(path)),
   );
   if (matches.length > 1)
-    throw new HivexError('AMBIGUOUS_COLLECTION', `Multiple collections include ${path}`);
+    throw new HivexError({
+      code: 'AMBIGUOUS_COLLECTION',
+      message: `Multiple collections include ${path}`,
+    });
   return matches[0];
 }

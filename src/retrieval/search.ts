@@ -116,7 +116,11 @@ export function search(
   });
   for (const match of ranked) {
     const source = byId.get(match.id);
-    if (!source) throw new HivexError('INVALID_INDEX', 'Derived index returned an unknown source');
+    if (!source)
+      throw new HivexError({
+        code: 'INVALID_INDEX',
+        message: 'Derived index returned an unknown source',
+      });
     const item = card(snapshot, source, match, query);
     results.push(item);
     if (encodedBytes(response()) > options.maxBytes) item.preview = null;
@@ -127,11 +131,14 @@ export function search(
     if (results.length === options.limit) break;
   }
   if (ranked.length > 0 && results.length === 0)
-    throw new HivexError(
-      'OUTPUT_BUDGET',
-      'The highest-ranked source metadata does not fit; increase --max-bytes',
-    );
+    throw new HivexError({
+      code: 'OUTPUT_BUDGET',
+      message: 'The highest-ranked source metadata does not fit; increase --max-bytes',
+    });
   if (encodedBytes(response()) > options.maxBytes)
-    throw new HivexError('OUTPUT_BUDGET', 'Response metadata exceeds the output budget');
+    throw new HivexError({
+      code: 'OUTPUT_BUDGET',
+      message: 'Response metadata exceeds the output budget',
+    });
   return response();
 }

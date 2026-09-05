@@ -32,7 +32,10 @@ export function git(root: string, args: string[], input?: string): Buffer {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
   } catch {
-    throw new HivexError('GIT_READ_FAILED', 'Cannot read the requested local Git snapshot');
+    throw new HivexError({
+      code: 'GIT_READ_FAILED',
+      message: 'Cannot read the requested local Git snapshot',
+    });
   }
 }
 
@@ -41,7 +44,10 @@ export function resolveCommit(root: string, ref: string): string {
     .toString('utf8')
     .trim();
   if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit))
-    throw new HivexError('INVALID_REVISION', 'Git did not resolve a complete commit ID');
+    throw new HivexError({
+      code: 'INVALID_REVISION',
+      message: 'Git did not resolve a complete commit ID',
+    });
   return commit;
 }
 
@@ -54,7 +60,7 @@ export function trackedFiles(root: string, commit: string): GitFile[] {
       const tab = record.indexOf('\t');
       const [mode, type, oid] = record.slice(0, tab).split(' ');
       if (tab < 0 || !mode || !oid || (type !== 'blob' && type !== 'commit'))
-        throw new HivexError('INVALID_TREE', 'Unsupported Git tree record');
+        throw new HivexError({ code: 'INVALID_TREE', message: 'Unsupported Git tree record' });
       return { path: record.slice(tab + 1), mode, oid };
     });
 }
@@ -80,10 +86,13 @@ export function blobs(root: string, files: GitFile[]): Map<string, string> {
       length < 0 ||
       length > 2 * 1024 * 1024
     )
-      throw new HivexError('INVALID_BLOB', `Invalid or oversized Markdown blob: ${file.path}`);
+      throw new HivexError({
+        code: 'INVALID_BLOB',
+        message: `Invalid or oversized Markdown blob: ${file.path}`,
+      });
     cursor = newline + 1;
     if (cursor + length >= response.length || response[cursor + length] !== 10)
-      throw new HivexError('INVALID_BLOB', 'Incomplete Git batch response');
+      throw new HivexError({ code: 'INVALID_BLOB', message: 'Incomplete Git batch response' });
     try {
       result.set(
         file.path,
@@ -92,7 +101,10 @@ export function blobs(root: string, files: GitFile[]): Map<string, string> {
         ),
       );
     } catch {
-      throw new HivexError('INVALID_ENCODING', `Source is not UTF-8: ${file.path}`);
+      throw new HivexError({
+        code: 'INVALID_ENCODING',
+        message: `Source is not UTF-8: ${file.path}`,
+      });
     }
     cursor += length + 1;
   }
