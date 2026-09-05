@@ -96,6 +96,15 @@ const page = z.object({
 });
 
 describe('hivex CLI', () => {
+  test.each([
+    ['read', 'docs/cache.md', '--cursor'],
+    ['search', 'cache', '--collection'],
+  ])('rejects an explicitly empty option for %s', (command, value, option) => {
+    withRepository((root) => {
+      const result = invoke(root, [command, value, option, '']);
+      expect(result.status).toBe(1);
+    });
+  });
   test('shows its interface without requiring a configured repository', () => {
     const result = spawnSync(process.execPath, [cli, '--help'], {
       cwd: tmpdir(),

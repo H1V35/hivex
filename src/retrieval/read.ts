@@ -9,7 +9,7 @@ function binding(source: Source, commit: string): string {
 }
 
 function resume(cursor: string | undefined, source: Source, commit: string): number {
-  if (!cursor) return 0;
+  if (cursor === undefined) return 0;
   const match = /^1\.([a-f0-9]{64})\.([0-9]+)$/.exec(cursor);
   if (!match) throw new HivexError('INVALID_CURSOR', 'Continuation cursor is invalid');
   const next = Number(match[2]);

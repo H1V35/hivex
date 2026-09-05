@@ -23,7 +23,7 @@ export type GitFile = { path: string; oid: string; mode: string };
 
 export function git(root: string, args: string[], input?: string): Buffer {
   try {
-    return execFileSync('git', args, {
+    return execFileSync('git', ['--no-lazy-fetch', '--no-replace-objects', ...args], {
       cwd: resolve(root),
       input,
       maxBuffer: MAX_BUFFER,

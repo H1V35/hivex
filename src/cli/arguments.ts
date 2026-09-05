@@ -59,8 +59,13 @@ function validateMode(command: string, values: ReturnType<typeof parseInput>['va
     throw new HivexError('INVALID_ARGUMENT', 'Only search accepts --collection and --limit');
   if (command === 'search' && values.cursor !== undefined)
     throw new HivexError('INVALID_ARGUMENT', 'Only read accepts --cursor');
-  if (values.cursor && values.cursor.length > 2048)
-    throw new HivexError('INVALID_ARGUMENT', 'Continuation cursor is too long');
+  if (values.cursor !== undefined && (values.cursor.length === 0 || values.cursor.length > 2048))
+    throw new HivexError(
+      'INVALID_ARGUMENT',
+      'Continuation cursor must contain 1 to 2048 characters',
+    );
+  if (values.collection !== undefined && !/^[a-z][a-z0-9-]{0,47}$/.test(values.collection))
+    throw new HivexError('INVALID_ARGUMENT', 'Collection must be a valid declared ID');
 }
 
 export function argumentsFor(args: string[]) {
