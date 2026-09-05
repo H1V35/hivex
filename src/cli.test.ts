@@ -96,6 +96,50 @@ const page = z.object({
 });
 
 describe('hivex CLI', () => {
+  test('opens the whole decision for an identifier even when its text only matches an amendment', () => {
+    withRepository((root) => {
+      writeFileSync(
+        join(root, 'docs', '0006-policy.md'),
+        '# Render policy\n\n## Decision\n\nDo not add manual memoization.\n\n## Amendment\n\nADR 0006 permits memoization when the compiler does not cache the value.\n',
+      );
+      writeFileSync(
+        join(root, 'hivex.json'),
+        JSON.stringify({
+          version: 1,
+          collections: [{ id: 'product', include: ['docs/**'], aliasPrefix: 'ADR' }],
+        }),
+      );
+      commitChanges(root);
+      const found = invoke(root, ['search', 'ADR 0006', '--limit', '1']);
+      expect(found.status).toBe(0);
+      const search = z
+        .object({
+          snapshot: z.object({ commit: z.string() }),
+          results: z.array(z.object({ id: z.string(), readCursor: z.string() })).min(1),
+        })
+        .parse(output(found.stdout));
+      const hit = search.results[0];
+      if (!hit) throw new Error('Expected the declared decision');
+      const opened = invoke(root, [
+        'read',
+        hit.id,
+        '--ref',
+        search.snapshot.commit,
+        '--cursor',
+        hit.readCursor,
+      ]);
+      expect(opened.status).toBe(0);
+      expect(output(opened.stdout)).toMatchObject({
+        blocks: expect.arrayContaining([
+          expect.objectContaining({ text: 'Do not add manual memoization.' }),
+          expect.objectContaining({
+            text: 'ADR 0006 permits memoization when the compiler does not cache the value.',
+          }),
+        ]),
+        continuation: null,
+      });
+    });
+  });
   test.each([
     ['read', 'docs/cache.md', '--cursor'],
     ['search', 'cache', '--collection'],

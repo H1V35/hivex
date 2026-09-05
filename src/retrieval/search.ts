@@ -94,7 +94,7 @@ function card(snapshot: Snapshot, source: Source, match: Ranked, query: string) 
     match: { kind: match.kind, bm25: match.score, location: block.location },
     preview: block.preview,
     evidenceCompleteness: 'not-assessed',
-    readCursor: cursorFor(source, snapshot.commit, block.start),
+    readCursor: cursorFor(source, snapshot.commit, match.kind === 'identifier' ? 0 : block.start),
   };
 }
 

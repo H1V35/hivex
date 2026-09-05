@@ -18,7 +18,9 @@ For repeated queries, the pinned runtime can also be invoked directly as
 
 The commands return JSON. Search includes the complete commit ID, configuration hash, source hash,
 collection, declared authority and a bounded preview/location. Use the returned `readCursor` to start
-near the matching heading, or omit it to read from the beginning. Pass the same `--ref` and source ID:
+near the matching heading for a text match. An explicit identifier starts at the beginning so a
+matching amendment does not hide the original decision. Omit the cursor to read any source from
+the beginning. Pass the same `--ref` and source ID:
 
 ```sh
 pnpm hivex read <source-id> --ref <commit-from-search> --cursor <readCursor> --max-bytes 16384
