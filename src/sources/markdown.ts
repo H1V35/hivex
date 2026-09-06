@@ -35,6 +35,7 @@ export type Source = {
   blocks: SourceBlock[];
   headings: { anchor: string; title: string; depth: number; block: number; offset: number }[];
   section: { anchor: string; lineStart: number; lineEnd: number } | null;
+  containedAnchors: string[];
   authority: {
     declaredStatus: string;
     currentness: string;
@@ -83,7 +84,7 @@ export function parseSource(options: {
     mdastExtensions: [gfmFromMarkdown(), frontmatterFromMarkdown(['yaml'])],
   });
   const front = readMetadata(tree);
-  const slugger = new GithubSlugger();
+  const anchors = headingAnchors(tree);
   const headings: Source['headings'] = [];
   const blocks: SourceBlock[] = tree.children.map((node, index) => {
     const start = node.position?.start.offset;
@@ -93,7 +94,7 @@ export function parseSource(options: {
         code: 'INVALID_POSITION',
         message: 'Markdown parser did not provide source positions',
       });
-    const anchor = node.type === 'heading' ? slugger.slug(toString(node)) : null;
+    const anchor = anchors.get(node) ?? null;
     if (node.type === 'heading' && anchor !== null)
       headings.push({
         anchor,
@@ -111,6 +112,7 @@ export function parseSource(options: {
     };
   });
   const heading = tree.children.find((node) => node.type === 'heading');
+  const selectedAnchors = new Set(headings.map((entry) => entry.anchor));
   return {
     id: path,
     path,
@@ -122,6 +124,7 @@ export function parseSource(options: {
     blocks,
     headings,
     section: null,
+    containedAnchors: [...anchors.values()].filter((anchor) => !selectedAnchors.has(anchor)),
     authority: {
       declaredStatus: declaredStatus(front.status),
       currentness: 'not-established',
@@ -130,4 +133,22 @@ export function parseSource(options: {
       supersededBy: front.superseded_by ?? [],
     },
   };
+}
+
+type MarkdownNode = { type: string; children?: MarkdownNode[] };
+
+function headingAnchors(tree: MarkdownNode) {
+  const slugger = new GithubSlugger();
+  const anchors = new Map<MarkdownNode, string>();
+  const pending = [tree];
+  while (pending.length) {
+    const node = pending.pop();
+    if (!node) break;
+    if (node.type === 'heading') anchors.set(node, slugger.slug(toString(node)));
+    for (let index = (node.children?.length ?? 0) - 1; index >= 0; index -= 1) {
+      const child = node.children?.[index];
+      if (child) pending.push(child);
+    }
+  }
+  return anchors;
 }

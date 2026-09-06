@@ -88,9 +88,12 @@ An `include` entry can select an exact heading anchor instead of a whole-file gl
 }
 ```
 
-A section includes its heading and descendants, ending before the next heading of equal or lower
-level. GitHub-style anchors distinguish repeated headings (`policy`, `policy-1`); headings inside
-code blocks do not create sections. Paths are exact repository-relative Markdown paths, without
+Selectors address headings outside lists and block quotes, at any heading level. A section includes
+its heading and descendants, ending before the next such heading of equal or lower level.
+GitHub-style anchors distinguish repeated headings (`policy`, `policy-1`), counting real headings
+inside quotes and lists too; headings inside code blocks do not create sections. Selecting a heading
+inside a quote or list fails with `UNSUPPORTED_SECTION`: declare the whole document instead to keep
+the containing block intact. Paths are exact repository-relative Markdown paths, without
 wildcards or fragments. A missing/excluded path or changed anchor fails explicitly. Whole-document,
 nested or duplicate selections cannot overlap, even across opt-in collections. Multiple globs within
 one collection still form a union. All explicitly selected sections are validated before serving a

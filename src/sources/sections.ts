@@ -6,6 +6,12 @@ export function selectSection(
   document: Source,
   selection: { anchor: string; collection: Collection },
 ): Source {
+  if (document.containedAnchors.includes(selection.anchor))
+    throw new HivexError({
+      code: 'UNSUPPORTED_SECTION',
+      message:
+        'A heading inside a list or quote cannot be selected without splitting its block; declare the whole document instead',
+    });
   const heading = document.headings.find((entry) => entry.anchor === selection.anchor);
   if (!heading)
     throw new HivexError({

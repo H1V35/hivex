@@ -96,6 +96,65 @@ const page = z.object({
 });
 
 describe('hivex CLI', () => {
+  test('keeps a quoted heading and the following condition inside the enclosing section', () => {
+    withRepository((root) => {
+      writeFileSync(
+        join(root, 'docs', 'mixed.md'),
+        '# Context\n\n## Product\n\n> # Quoted\n> Prior evidence.\n\nOnly apply this rule to the stated case.\n\n## Outside\n\nAnother domain.\n',
+      );
+      writeFileSync(
+        join(root, 'hivex.json'),
+        JSON.stringify({
+          version: 1,
+          collections: [{ id: 'product', include: [{ path: 'docs/mixed.md', anchor: 'product' }] }],
+        }),
+      );
+      commitChanges(root);
+      const result = invoke(root, ['read', 'docs/mixed.md#product']);
+      expect(result.status).toBe(0);
+      expect(page.parse(output(result.stdout)).blocks.map((block) => block.text)).toEqual([
+        '## Product',
+        '> # Quoted\n> Prior evidence.',
+        'Only apply this rule to the stated case.',
+      ]);
+    });
+  });
+  test('reserves anchors in quoted headings and refuses to cut a containing block', () => {
+    withRepository((root) => {
+      writeFileSync(
+        join(root, 'docs', 'mixed.md'),
+        '# Context\n\n> ## Policy\n> Quoted rule.\n\n## Policy\n\nCurrent rule.\n',
+      );
+      const configure = (anchor: string) => {
+        writeFileSync(
+          join(root, 'hivex.json'),
+          JSON.stringify({
+            version: 1,
+            collections: [{ id: 'product', include: [{ path: 'docs/mixed.md', anchor }] }],
+          }),
+        );
+        commitChanges(root);
+      };
+      configure('policy-1');
+      const result = invoke(root, ['read', 'docs/mixed.md#policy-1']);
+      expect(result.status).toBe(0);
+      expect(page.parse(output(result.stdout)).blocks.map((block) => block.text)).toEqual([
+        '## Policy',
+        'Current rule.',
+      ]);
+      const full = invoke(root, ['read', 'docs/mixed.md']);
+      expect(full.status).toBe(0);
+      expect(output(full.stdout)).toMatchObject({
+        blocks: expect.arrayContaining([
+          expect.objectContaining({ text: '> ## Policy\n> Quoted rule.', kind: 'blockquote' }),
+        ]),
+      });
+      configure('policy');
+      const unsupported = invoke(root, ['read', 'docs/mixed.md#policy']);
+      expect(unsupported.status).toBe(1);
+      expect(output(unsupported.stderr)).toMatchObject({ error: { code: 'UNSUPPORTED_SECTION' } });
+    });
+  });
   test('paginates a duplicate heading section with cursors bound to its original scope and revision', () => {
     withRepository((root) => {
       const paragraphs = [
