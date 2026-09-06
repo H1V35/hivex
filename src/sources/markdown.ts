@@ -24,7 +24,25 @@ export type SourceBlock = {
   lineEnd: number;
   anchor: string | null;
 };
-export type Source = ReturnType<typeof parseSource>;
+export type Source = {
+  id: string;
+  path: string;
+  title: string;
+  collection: string | null;
+  collectionKind: Collection['kind'] | null;
+  contentHash: string;
+  content: string;
+  blocks: SourceBlock[];
+  headings: { anchor: string; title: string; depth: number; block: number; offset: number }[];
+  section: { anchor: string; lineStart: number; lineEnd: number } | null;
+  authority: {
+    declaredStatus: string;
+    currentness: string;
+    basis: string;
+    scope: 'document';
+    supersededBy: string[];
+  };
+};
 export const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 
 function readMetadata(tree: ReturnType<typeof fromMarkdown>) {
@@ -54,7 +72,11 @@ function declaredStatus(status: string | undefined) {
   return match ?? 'unknown';
 }
 
-export function parseSource(options: { path: string; content: string; collection: Collection }) {
+export function parseSource(options: {
+  path: string;
+  content: string;
+  collection: Collection | null;
+}): Source {
   const { path, content, collection } = options;
   const tree = fromMarkdown(content, {
     extensions: [gfm(), frontmatter(['yaml'])],
@@ -62,7 +84,8 @@ export function parseSource(options: { path: string; content: string; collection
   });
   const front = readMetadata(tree);
   const slugger = new GithubSlugger();
-  const blocks: SourceBlock[] = tree.children.map((node) => {
+  const headings: Source['headings'] = [];
+  const blocks: SourceBlock[] = tree.children.map((node, index) => {
     const start = node.position?.start.offset;
     const end = node.position?.end.offset;
     if (start === undefined || end === undefined || !node.position)
@@ -70,12 +93,21 @@ export function parseSource(options: { path: string; content: string; collection
         code: 'INVALID_POSITION',
         message: 'Markdown parser did not provide source positions',
       });
+    const anchor = node.type === 'heading' ? slugger.slug(toString(node)) : null;
+    if (node.type === 'heading' && anchor !== null)
+      headings.push({
+        anchor,
+        title: toString(node),
+        depth: node.depth,
+        block: index,
+        offset: start,
+      });
     return {
       kind: node.type,
       text: content.slice(start, end),
       lineStart: node.position.start.line,
       lineEnd: node.position.end.line,
-      anchor: node.type === 'heading' ? slugger.slug(toString(node)) : null,
+      anchor,
     };
   });
   const heading = tree.children.find((node) => node.type === 'heading');
@@ -83,14 +115,17 @@ export function parseSource(options: { path: string; content: string; collection
     id: path,
     path,
     title: front.title ?? (heading ? toString(heading) : basename(path)),
-    collection: collection.id,
-    collectionKind: collection.kind,
+    collection: collection?.id ?? null,
+    collectionKind: collection?.kind ?? null,
     contentHash: hash(content),
     content,
     blocks,
+    headings,
+    section: null,
     authority: {
       declaredStatus: declaredStatus(front.status),
       currentness: 'not-established',
+      scope: 'document',
       basis: front.status ? 'frontmatter' : 'unspecified',
       supersededBy: front.superseded_by ?? [],
     },

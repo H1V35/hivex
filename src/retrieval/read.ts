@@ -40,6 +40,7 @@ function page(snapshot: Snapshot, source: Source, blocks: SourceBlock[], next: n
       title: source.title,
       collection: source.collection,
       contentHash: source.contentHash,
+      section: source.section,
       authority: source.authority,
     },
     blocks,

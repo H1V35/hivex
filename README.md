@@ -18,7 +18,7 @@ For repeated queries, the pinned runtime can also be invoked directly as
 
 The commands return JSON. Search includes the complete commit ID, configuration hash, source hash,
 collection, declared authority and a bounded preview/location. Use the returned `readCursor` to start
-near the matching heading for a text match. An explicit identifier starts at the beginning so a
+near the matching heading for a text match. An explicit identifier starts at the beginning of the selected source so a
 matching amendment does not hide the original decision. Omit the cursor to read any source from
 the beginning. Pass the same `--ref` and source ID:
 
@@ -56,34 +56,75 @@ Add and commit `hivex.json` in its Git root:
 ```
 
 Then run `bun /path/to/hivex/src/cli.ts search "your question" --root /path/to/project`.
-Collections must have distinct ownership of each matched path. `aliasPrefix` associates explicit
+Collections must have distinct ownership of each selected passage. `aliasPrefix` associates explicit
 references such as `ADR 0006` with numbered filenames such as `0006-policy.md`; it is configuration,
 not a Compi-specific behavior. Files must be regular tracked UTF-8 Markdown. Symlinks are refused.
-Source bodies are capped at 2 MiB and selected source counts at 2,048; Git subprocesses have bounded
+Document bodies are capped at 2 MiB and selected source counts at 2,048; Git subprocesses have bounded
 time and output and cannot lazily fetch missing objects from a remote.
 
 Optional YAML frontmatter supports `title`, `status` and `superseded_by` (an array of exact source
-paths in the same snapshot). Known declarations are accepted, proposed, superseded and historical;
+document paths in the same snapshot). Known declarations are accepted, proposed, superseded and historical;
 unrecognized or absent status remains unknown. Replacement targets must exist and cannot be the
 source itself. This is declaration validation, **not full precedence or cycle analysis**. Currentness
 remains `not-established`, including for Accepted documents. For mixed ADRs, inspect the decision,
 amendments and exceptions before treating a rule as applicable.
 
+## Sections of mixed documents
+
+An `include` entry can select an exact heading anchor instead of a whole-file glob:
+
+```json
+{
+  "version": 1,
+  "collections": [
+    { "id": "product", "include": [{ "path": "docs/context.md", "anchor": "identity" }] },
+    {
+      "id": "legacy",
+      "include": [{ "path": "docs/context.md", "anchor": "orchestration" }],
+      "kind": "legacy",
+      "default": false
+    }
+  ]
+}
+```
+
+A section includes its heading and descendants, ending before the next heading of equal or lower
+level. GitHub-style anchors distinguish repeated headings (`policy`, `policy-1`); headings inside
+code blocks do not create sections. Paths are exact repository-relative Markdown paths, without
+wildcards or fragments. A missing/excluded path or changed anchor fails explicitly. Whole-document,
+nested or duplicate selections cannot overlap, even across opt-in collections. Multiple globs within
+one collection still form a union. All explicitly selected sections are validated before serving a
+query, including opt-in sections; only active sources enter the search index.
+
+Search returns a source ID such as `docs/context.md#identity`, the original document `path` and
+`contentHash`, and a `section` with its anchor and original line range. Read that ID to paginate only
+the selected section. Use `read docs/context.md` to open the entire document and check surrounding
+conditions, exceptions and amendments. That full read has `section: null` and `collection: null`
+when the document is declared through sections. Its hash matches each section's document hash.
+
+Frontmatter declarations always have `authority.scope: "document"`: selecting a section does not
+establish its individual status or whether it is sufficient evidence. A null continuation means the
+selected source is exhausted, not that the rest of the document has been read. Cursors are bound to
+the selected source and commit; a section cursor cannot resume another section or the entire file.
+Unselected text remains available through the full-document read but is not indexed for search.
+
 ## Documentation scopes in Compi
 
-| Collection    | Purpose                                                      | Default search |
-| ------------- | ------------------------------------------------------------ | -------------- |
-| `compi`       | Product requirements, domain/design decisions and guidelines | Yes            |
-| `engineering` | Shared repository rules and mixed domain/workflow documents  | Yes            |
-| `hivex`       | Hivex's own language, decisions and usage                    | Yes            |
-| `graph`       | Existing decision-graph authority                            | No             |
-| `legacy`      | Existing orchestration and operational procedures            | No             |
-| `evidence`    | Dated research and frozen historical evidence                | No             |
+| Collection    | Purpose                                                           | Default search |
+| ------------- | ----------------------------------------------------------------- | -------------- |
+| `compi`       | Product requirements, glossary sections, decisions and guidelines | Yes            |
+| `engineering` | Shared repository rules and mixed workflow documents              | Yes            |
+| `hivex`       | Hivex's own language, decisions and usage                         | Yes            |
+| `graph`       | Existing decision-graph authority                                 | No             |
+| `legacy`      | Existing orchestration and operational procedures                 | No             |
+| `evidence`    | Dated research and frozen historical evidence                     | No             |
 
 Select an opt-in scope explicitly with `--collection`. Exact source IDs remain readable even when
 excluded from default search. These collections separate retrieval context now; they do not move,
-copy, revoke or delete existing documents. Mixed documents remain marked as such until the content
-and its consumers are separated safely.
+copy, revoke or delete existing documents. The Compi glossary's product sections (including rename history) belong to `compi`; its orchestration
+and routing sections belong to `legacy`. Their authored text and accepted graph identities are
+unchanged. Other mixed documents remain marked as such until their content and consumers can be
+separated safely.
 
 ## Development
 

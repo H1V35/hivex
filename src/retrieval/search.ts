@@ -47,7 +47,7 @@ function identifiers(snapshot: Snapshot, query: string): Ranked[] {
   return snapshot.sources
     .filter((source) => {
       if (query === source.id) return true;
-      const prefix = prefixes.get(source.collection);
+      const prefix = prefixes.get(source.collection ?? '');
       const number = basename(source.path).match(/^(\d{1,6})[-_]/)?.[1];
       if (!prefix || !number) return false;
       return [...query.matchAll(new RegExp(`\\b${prefix}[\\s:_-]*(\\d{1,6})\\b`, 'gi'))].some(
@@ -90,6 +90,7 @@ function card(snapshot: Snapshot, source: Source, match: Ranked, query: string) 
     collection: source.collection,
     collectionKind: source.collectionKind,
     contentHash: source.contentHash,
+    section: source.section,
     authority: source.authority,
     match: { kind: match.kind, bm25: match.score, location: block.location },
     preview: block.preview,

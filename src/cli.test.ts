@@ -96,6 +96,248 @@ const page = z.object({
 });
 
 describe('hivex CLI', () => {
+  test('paginates a duplicate heading section with cursors bound to its original scope and revision', () => {
+    withRepository((root) => {
+      const paragraphs = [
+        'First condition: ' + 'á'.repeat(180),
+        'Second condition: ' + 'é'.repeat(180),
+        'Third condition: ' + 'í'.repeat(180),
+      ];
+      writeFileSync(
+        join(root, 'docs', 'mixed.md'),
+        [
+          '# Context',
+          '## Policy',
+          'Earlier rule.',
+          '## Policy',
+          ...paragraphs,
+          '## Outside',
+          'Outside evidence.',
+        ].join('\n\n') + '\n',
+      );
+      writeFileSync(
+        join(root, 'hivex.json'),
+        JSON.stringify({
+          version: 1,
+          collections: [
+            {
+              id: 'product',
+              include: [
+                { path: 'docs/mixed.md', anchor: 'policy' },
+                { path: 'docs/mixed.md', anchor: 'policy-1' },
+              ],
+            },
+          ],
+        }),
+      );
+      commitChanges(root);
+      const first = invoke(root, ['read', 'docs/mixed.md#policy-1', '--max-bytes', '1500']);
+      expect(first.status).toBe(0);
+      const parsed = page.parse(output(first.stdout));
+      if (!parsed.continuation) throw new Error('Expected another complete page');
+      for (const id of ['docs/mixed.md#policy', 'docs/mixed.md']) {
+        const wrongScope = invoke(root, ['read', id, '--cursor', parsed.continuation]);
+        expect(wrongScope.status).toBe(1);
+        expect(output(wrongScope.stderr)).toMatchObject({ error: { code: 'CURSOR_MISMATCH' } });
+      }
+      writeFileSync(
+        join(root, 'docs', 'mixed.md'),
+        '# Changed context\n\n## Policy\n\nNew rule.\n\n## Policy\n\nNew exception.\n',
+      );
+      commitChanges(root);
+      const wrongRevision = invoke(root, [
+        'read',
+        'docs/mixed.md#policy-1',
+        '--cursor',
+        parsed.continuation,
+      ]);
+      expect(wrongRevision.status).toBe(1);
+      expect(output(wrongRevision.stderr)).toMatchObject({ error: { code: 'CURSOR_MISMATCH' } });
+      const texts = parsed.blocks.map((block) => block.text);
+      let cursor: string | null = parsed.continuation;
+      for (let pages = 0; cursor !== null && pages < 10; pages += 1) {
+        const next = invoke(root, [
+          'read',
+          'docs/mixed.md#policy-1',
+          '--ref',
+          parsed.snapshot.commit,
+          '--cursor',
+          cursor,
+          '--max-bytes',
+          '1500',
+        ]);
+        expect(next.status).toBe(0);
+        expect(Buffer.byteLength(next.stdout)).toBeLessThanOrEqual(1500);
+        const current = page.parse(output(next.stdout));
+        texts.push(...current.blocks.map((block) => block.text));
+        cursor = current.continuation;
+      }
+      expect(cursor).toBeNull();
+      expect(texts).toEqual(['## Policy', ...paragraphs]);
+    });
+  });
+  test.each([
+    ['docs/cache.md', { path: 'docs/cache.md', anchor: 'cache-policy' }],
+    [
+      { path: 'docs/cache.md', anchor: 'cache-policy' },
+      { path: 'docs/cache.md', anchor: 'cache-policy' },
+    ],
+  ])('rejects duplicate or full-document/section ownership', (...include) => {
+    withRepository((root) => {
+      writeFileSync(
+        join(root, 'hivex.json'),
+        JSON.stringify({
+          version: 1,
+          collections: [{ id: 'history', default: false, include }],
+        }),
+      );
+      commitChanges(root);
+      const result = invoke(root, ['search', 'cache']);
+      expect(result.status).toBe(1);
+      expect(output(result.stderr)).toMatchObject({ error: { code: 'AMBIGUOUS_COLLECTION' } });
+    });
+  });
+  test.each([
+    { path: 'docs/missing.md', anchor: 'policy', code: 'SECTION_NOT_FOUND' },
+    { path: 'docs/cache.md', anchor: 'missing', code: 'SECTION_NOT_FOUND' },
+    { path: '../docs/cache.md', anchor: 'policy', code: 'INVALID_CONFIG' },
+    { path: 'docs/*.md', anchor: 'policy', code: 'INVALID_CONFIG' },
+    { path: 'docs/cache.md', anchor: '   ', code: 'INVALID_CONFIG' },
+  ])('rejects a missing or unsafe section selector: $path#$anchor', (selector) => {
+    withRepository((root) => {
+      writeFileSync(
+        join(root, 'hivex.json'),
+        JSON.stringify({
+          version: 1,
+          collections: [
+            {
+              id: 'history',
+              default: false,
+              include: [{ path: selector.path, anchor: selector.anchor }],
+            },
+          ],
+        }),
+      );
+      commitChanges(root);
+      const result = invoke(root, ['search', 'cache']);
+      expect(result.status).toBe(1);
+      expect(output(result.stderr)).toMatchObject({ error: { code: selector.code } });
+    });
+  });
+  test('rejects overlapping sections even when both collections are opt-in', () => {
+    withRepository((root) => {
+      writeFileSync(
+        join(root, 'docs', 'mixed.md'),
+        '# Context\n\n## Domain\n\nIdentity.\n\n### Exceptions\n\nCompany identity.\n',
+      );
+      writeFileSync(
+        join(root, 'hivex.json'),
+        JSON.stringify({
+          version: 1,
+          collections: [
+            { id: 'product', include: ['docs/cache.md'] },
+            { id: 'one', include: [{ path: 'docs/mixed.md', anchor: 'domain' }], default: false },
+            {
+              id: 'two',
+              include: [{ path: 'docs/mixed.md', anchor: 'exceptions' }],
+              default: false,
+            },
+          ],
+        }),
+      );
+      commitChanges(root);
+      const result = invoke(root, ['search', 'cache']);
+      expect(result.status).toBe(1);
+      expect(output(result.stderr)).toMatchObject({ error: { code: 'AMBIGUOUS_COLLECTION' } });
+    });
+  });
+  test('separates a mixed document into scoped sources while keeping the full document readable', () => {
+    withRepository((root) => {
+      writeFileSync(
+        join(root, 'docs', 'context.md'),
+        [
+          '---',
+          'status: accepted',
+          '---',
+          '',
+          '# Context',
+          '',
+          '## Product',
+          '',
+          'A person owns an identity.',
+          '',
+          '### Exception',
+          '',
+          'A company owns its own identity.',
+          '',
+          '```md',
+          '## Fake heading',
+          '```',
+          '',
+          '## Machinery',
+          '',
+          'An arbiter manages a contested round.',
+          '',
+        ].join('\n'),
+      );
+      writeFileSync(
+        join(root, 'hivex.json'),
+        JSON.stringify({
+          version: 1,
+          collections: [
+            { id: 'product', include: [{ path: 'docs/context.md', anchor: 'product' }] },
+            {
+              id: 'legacy',
+              include: [{ path: 'docs/context.md', anchor: 'machinery' }],
+              kind: 'legacy',
+              default: false,
+            },
+          ],
+        }),
+      );
+      commitChanges(root);
+      const found = invoke(root, ['search', 'identity arbiter']);
+      expect(found.status).toBe(0);
+      expect(output(found.stdout)).toMatchObject({
+        results: [
+          {
+            id: 'docs/context.md#product',
+            path: 'docs/context.md',
+            collection: 'product',
+            section: { anchor: 'product', lineStart: 7, lineEnd: 17 },
+            authority: {
+              declaredStatus: 'accepted',
+              currentness: 'not-established',
+              scope: 'document',
+            },
+          },
+        ],
+      });
+      const opened = invoke(root, ['read', 'docs/context.md#product']);
+      expect(opened.status).toBe(0);
+      expect(page.parse(output(opened.stdout)).blocks.map((block) => block.text)).toEqual([
+        '## Product',
+        'A person owns an identity.',
+        '### Exception',
+        'A company owns its own identity.',
+        '```md\n## Fake heading\n```',
+      ]);
+      expect(output(opened.stdout)).toMatchObject({ continuation: null });
+      const full = invoke(root, ['read', 'docs/context.md']);
+      expect(full.status).toBe(0);
+      expect(output(full.stdout)).toMatchObject({
+        source: { id: 'docs/context.md', collection: null, section: null },
+        blocks: expect.arrayContaining([
+          expect.objectContaining({ text: 'An arbiter manages a contested round.' }),
+        ]),
+      });
+      const legacy = invoke(root, ['search', 'arbiter', '--collection', 'legacy']);
+      expect(legacy.status).toBe(0);
+      expect(output(legacy.stdout)).toMatchObject({
+        results: [{ id: 'docs/context.md#machinery' }],
+      });
+    });
+  });
   test('opens the whole decision for an identifier even when its text only matches an amendment', () => {
     withRepository((root) => {
       writeFileSync(

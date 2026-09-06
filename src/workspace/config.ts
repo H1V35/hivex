@@ -11,7 +11,28 @@ const pattern = z
   );
 const collection = z.strictObject({
   id: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/),
-  include: z.array(pattern).min(1).max(64),
+  include: z
+    .array(
+      z.union([
+        pattern,
+        z.strictObject({
+          path: pattern.refine(
+            (value) =>
+              !/[#*?[\]{}!]/u.test(value) &&
+              ![...value].some((char) => char.charCodeAt(0) < 32) &&
+              !value.split('/').some((part) => part === '' || part === '.'),
+            'Section paths must be exact repository paths',
+          ),
+          anchor: z
+            .string()
+            .min(1)
+            .max(256)
+            .regex(/^[^\s#]+$/u),
+        }),
+      ]),
+    )
+    .min(1)
+    .max(64),
   exclude: z.array(pattern).max(64).default([]),
   default: z.boolean().default(true),
   kind: z.enum(['documentation', 'evidence', 'legacy', 'mixed']).default('documentation'),
@@ -43,16 +64,50 @@ export function parseConfig(text: string): ProjectConfig {
   return result.data;
 }
 
-export function collectionFor(path: string, collections: Collection[]): Collection | undefined {
-  const matches = collections.filter(
-    (item) =>
-      item.include.some((glob) => new Bun.Glob(glob).match(path)) &&
-      !item.exclude.some((glob) => new Bun.Glob(glob).match(path)),
-  );
-  if (matches.length > 1)
+export type Selection = { collection: Collection; anchor: string | null };
+
+export function selectionsFor(path: string, collections: Collection[]): Selection[] {
+  const selections = collections.flatMap((collection) => {
+    if (collection.exclude.some((glob) => new Bun.Glob(glob).match(path))) return [];
+    const sections = collection.include.flatMap((include) =>
+      typeof include !== 'string' && include.path === path
+        ? [{ collection, anchor: include.anchor }]
+        : [],
+    );
+    const whole = collection.include.some(
+      (include) => typeof include === 'string' && new Bun.Glob(include).match(path),
+    );
+    const selected: Selection[] = sections;
+    if (whole) selected.push({ collection, anchor: null });
+    return selected;
+  });
+  if (selections.length > 1 && selections.some((item) => item.anchor === null))
     throw new HivexError({
       code: 'AMBIGUOUS_COLLECTION',
-      message: `Multiple collections include ${path}`,
+      message: `Overlapping selections include ${path}`,
     });
-  return matches[0];
+  return selections;
+}
+
+export function validateSectionPaths(
+  config: ProjectConfig,
+  declared: { path: string; selections: Selection[] }[],
+) {
+  const available = new Set(
+    declared.flatMap((file) =>
+      file.selections.map((item) => JSON.stringify([file.path, item.anchor, item.collection.id])),
+    ),
+  );
+  for (const collection of config.collections) {
+    for (const include of collection.include) {
+      if (
+        typeof include !== 'string' &&
+        !available.has(JSON.stringify([include.path, include.anchor, collection.id]))
+      )
+        throw new HivexError({
+          code: 'SECTION_NOT_FOUND',
+          message: `Section path must be a declared Markdown document: ${include.path}`,
+        });
+    }
+  }
 }
