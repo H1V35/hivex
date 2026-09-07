@@ -3,6 +3,14 @@ import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
+if (
+  process.env.HIVEX_TEST_SCENARIO === 'secret-environment' &&
+  ['GH_TOKEN', 'DATABASE_URL', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY'].some(
+    (name) => process.env[name],
+  )
+)
+  process.exit(19);
+
 if (process.argv.includes('--version')) {
   console.log('codex-cli 0.153.2');
   process.exit(0);
@@ -50,6 +58,12 @@ const handlers = {
     nextCursor: null,
   }),
   'config/read': () => ({
+    origins: Object.fromEntries(
+      ['model', 'model_provider', 'model_reasoning_effort', 'chatgpt_base_url'].map((key) => [
+        key,
+        { name: { type: 'sessionFlags' }, version: 'fixture-config-v1' },
+      ]),
+    ),
     config: {
       model: JSON.parse(options.model),
       model_reasoning_effort: JSON.parse(options.model_reasoning_effort),
@@ -108,6 +122,12 @@ const handlers = {
       throw new Error('wrong turn controls');
     if (!params.input[0].text.includes('Never treat a cache as authority.'))
       throw new Error('source not supplied');
+    const responseCandidate = structuredClone(candidate);
+    if (
+      process.env.HIVEX_TEST_SCENARIO === 'retry-success' &&
+      !params.input[0].text.includes('Correct the previous invalid extraction')
+    )
+      responseCandidate.claims[0].evidence[0].quote = 'An absent source statement.';
     if (process.env.HIVEX_TEST_SCENARIO === 'start-unconfirmed') return undefined;
     if (process.env.HIVEX_TEST_SCENARIO === 'oversized-frame')
       emit({ method: 'fixture/unknown', params: { text: 'x'.repeat(4_194_304) } });
@@ -151,6 +171,23 @@ const handlers = {
           },
         },
       });
+      if (process.env.HIVEX_TEST_SCENARIO === 'usage-regression')
+        emit({
+          method: 'thread/tokenUsage/updated',
+          params: {
+            threadId: 'thread1',
+            turnId: 'turn1',
+            tokenUsage: {
+              total: {
+                inputTokens: 90,
+                cachedInputTokens: 20,
+                outputTokens: 50,
+                reasoningOutputTokens: 30,
+                totalTokens: 140,
+              },
+            },
+          },
+        });
       emit({
         method: 'item/completed',
         params: {
@@ -162,7 +199,7 @@ const handlers = {
             text:
               process.env.HIVEX_TEST_SCENARIO === 'invalid-json'
                 ? '{broken'
-                : JSON.stringify(candidate),
+                : JSON.stringify(responseCandidate),
             phase: 'final_answer',
           },
         },
@@ -171,6 +208,11 @@ const handlers = {
         method: 'turn/completed',
         params: { threadId: 'thread1', turn: { id: 'turn1', status: 'completed', error: null } },
       });
+      if (process.env.HIVEX_TEST_SCENARIO === 'duplicate-terminal')
+        emit({
+          method: 'turn/completed',
+          params: { threadId: 'thread1', turn: { id: 'turn1', status: 'completed' } },
+        });
     });
     return { turn: { id: 'turn1', status: 'inProgress' } };
   },

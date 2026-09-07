@@ -79,6 +79,10 @@ const catalogPage = z.looseObject({
   nextCursor: z.string().nullable().optional(),
 });
 const configResponse = z.looseObject({
+  origins: z.record(
+    z.string(),
+    z.object({ name: z.object({ type: z.string() }), version: z.string() }),
+  ),
   config: z.looseObject({
     model: z.literal(knowledgeModel.name),
     model_reasoning_effort: z.literal(knowledgeModel.effort),
@@ -103,7 +107,7 @@ const configResponse = z.looseObject({
 export async function admitProfile(options: { rpc: AppServerConnection; signal: AbortSignal }) {
   const { rpc, signal } = options;
   const account = z.looseObject({ account: z.looseObject({ type: z.literal('chatgpt') }) });
-  account.parse(await rpc.request('account/read', {}, { signal }));
+  const authenticated = account.parse(await rpc.request('account/read', {}, { signal }));
   const cursors = new Set<string>();
   const catalog: z.infer<typeof catalogPage>['data'] = [];
   let cursor: string | undefined;
@@ -124,7 +128,7 @@ export async function admitProfile(options: { rpc: AppServerConnection; signal: 
     )
   )
     throw new Error('Required knowledge model and effort are unavailable');
-  const { config } = configResponse.parse(
+  const { config, origins } = configResponse.parse(
     await rpc.request('config/read', { includeLayers: false }, { signal }),
   );
   const requirements = z
@@ -151,21 +155,43 @@ export async function admitProfile(options: { rpc: AppServerConnection; signal: 
     activeServers.some((name) => !/^[A-Za-z0-9_-]{1,128}$/.test(name))
   )
     throw new Error('Configured MCP names cannot be safely overridden by this native profile');
-  return activeServers;
+  const evidence = {
+    authType: authenticated.account.type,
+    configuredEndpointOrigin: new URL(config.chatgpt_base_url).origin,
+    model: config.model,
+    modelProvider: config.model_provider,
+    effort: config.model_reasoning_effort,
+    configOrigins: ['model', 'model_provider', 'model_reasoning_effort', 'chatgpt_base_url'].map(
+      (key) => ({
+        key,
+        sourceType: origins[key]?.name.type ?? null,
+        version: origins[key]?.version ?? null,
+      }),
+    ),
+  };
+  return { activeServers, evidence };
 }
 
+export type ProfileEvidence = Awaited<ReturnType<typeof admitProfile>>['evidence'];
+
 export function nativeEnvironment() {
-  const overrides = new Set([
-    'OPENAI_API_KEY',
-    'CODEX_API_KEY',
-    'CODEX_ACCESS_TOKEN',
-    'OPENAI_BASE_URL',
-    'OPENAI_API_BASE',
-    'ANTHROPIC_BASE_URL',
-    'ANTHROPIC_AUTH_TOKEN',
-    'ANTHROPIC_API_KEY',
+  const allowed = new Set([
+    'HOME',
+    'CODEX_HOME',
+    'PATH',
+    'LANG',
+    'USER',
+    'LOGNAME',
+    'SHELL',
+    'TMPDIR',
+    'TMP',
+    'TEMP',
+    'CODEX_SANDBOX',
+    'CODEX_SANDBOX_NETWORK_DISABLED',
   ]);
-  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !overrides.has(name)));
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => allowed.has(name) || /^LC_[A-Z_]+$/.test(name)),
+  );
 }
 
 export function requestedPolicyHash() {

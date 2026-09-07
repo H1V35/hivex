@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const cli = join(import.meta.dirname, 'cli.ts');
 const codex = join(import.meta.dirname, '../test/codex-server.mjs');
@@ -44,13 +45,54 @@ function fixture(run: (root: string) => void) {
   }
 }
 
+function invoke(options: {
+  root: string;
+  scenario?: string;
+  args?: string[];
+  timeout?: number;
+  pidPath?: string;
+  binary?: string;
+  env?: Record<string, string>;
+}) {
+  const folder = mkdtempSync(join(tmpdir(), 'hivex-model-fixture-'));
+  const binary = join(folder, 'codex.mjs');
+  writeFileSync(
+    binary,
+    [
+      '#!/usr/bin/env bun',
+      `process.env.HIVEX_TEST_SCENARIO = ${JSON.stringify(options.scenario ?? '')};`,
+      `process.env.HIVEX_TEST_PID_PATH = ${JSON.stringify(options.pidPath ?? '')};`,
+      `await import(${JSON.stringify(pathToFileURL(codex).href)});`,
+    ].join('\n'),
+    { mode: 0o700 },
+  );
+  try {
+    return spawnSync(
+      process.execPath,
+      [
+        cli,
+        'extract',
+        'policy.md',
+        '--root',
+        options.root,
+        '--codex',
+        options.binary ?? binary,
+        ...(options.args ?? []),
+      ],
+      {
+        encoding: 'utf8',
+        timeout: options.timeout ?? 10_000,
+        env: { ...process.env, ...options.env },
+      },
+    );
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+
 test('extracts a source-bound candidate through native Codex without accepting a graph', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', codex],
-      { encoding: 'utf8', timeout: 10_000 },
-    );
+    const result = invoke({ root, timeout: 10_000 });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     const output: unknown = JSON.parse(result.stdout);
@@ -88,15 +130,12 @@ test('extracts a source-bound candidate through native Codex without accepting a
 
 test('rejects invented evidence while retaining usage and the failed attempt', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', codex, '--attempts', '1'],
-      {
-        encoding: 'utf8',
-        timeout: 10_000,
-        env: { ...process.env, HIVEX_TEST_SCENARIO: 'invented-evidence' },
-      },
-    );
+    const result = invoke({
+      root,
+      scenario: 'invented-evidence',
+      args: ['--attempts', '1'],
+      timeout: 10_000,
+    });
     expect(result.status).toBe(1);
     expect(result.stderr).toBe('');
     const output: unknown = JSON.parse(result.stdout);
@@ -113,27 +152,12 @@ test('rejects invented evidence while retaining usage and the failed attempt', (
 
 test('interrupts a hung invocation, accounts for it and exhausts the finite retry limit', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [
-        cli,
-        'extract',
-        'policy.md',
-        '--root',
-        root,
-        '--codex',
-        codex,
-        '--attempts',
-        '2',
-        '--deadline-ms',
-        '100',
-      ],
-      {
-        encoding: 'utf8',
-        timeout: 10_000,
-        env: { ...process.env, HIVEX_TEST_SCENARIO: 'timeout' },
-      },
-    );
+    const result = invoke({
+      root,
+      scenario: 'timeout',
+      args: ['--attempts', '2', '--deadline-ms', '100'],
+      timeout: 10_000,
+    });
     expect(result.status).toBe(1);
     expect(result.stderr).toBe('');
     const output = JSON.parse(result.stdout);
@@ -162,11 +186,7 @@ test('rejects an oversized source before invoking the configured model binary', 
       ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'large'],
       { cwd: root },
     );
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', '/absent/codex'],
-      { encoding: 'utf8', timeout: 10_000 },
-    );
+    const result = invoke({ root, timeout: 10_000, binary: '/absent/codex' });
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(JSON.parse(result.stderr)).toMatchObject({
@@ -184,15 +204,12 @@ test('rejects an oversized source before invoking the configured model binary', 
 
 test('bounds an unconfirmed turn start and reports unknown consumption without retrying it', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', codex, '--deadline-ms', '100'],
-      {
-        encoding: 'utf8',
-        timeout: 2000,
-        env: { ...process.env, HIVEX_TEST_SCENARIO: 'start-unconfirmed' },
-      },
-    );
+    const result = invoke({
+      root,
+      scenario: 'start-unconfirmed',
+      args: ['--deadline-ms', '100'],
+      timeout: 2000,
+    });
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(1);
     expect(result.stderr).toBe('');
@@ -205,15 +222,12 @@ test('bounds an unconfirmed turn start and reports unknown consumption without r
 
 test('refuses an oversized protocol frame even if a valid completion follows', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', codex, '--attempts', '1'],
-      {
-        encoding: 'utf8',
-        timeout: 5000,
-        env: { ...process.env, HIVEX_TEST_SCENARIO: 'oversized-frame' },
-      },
-    );
+    const result = invoke({
+      root,
+      scenario: 'oversized-frame',
+      args: ['--attempts', '1'],
+      timeout: 5000,
+    });
     expect(result.status).toBe(1);
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toMatchObject({
@@ -226,11 +240,7 @@ test('refuses an oversized protocol frame even if a valid completion follows', (
 
 test('cancels an active model turn on SIGINT and preserves its failure report', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', codex],
-      { encoding: 'utf8', timeout: 5000, env: { ...process.env, HIVEX_TEST_SCENARIO: 'cancel' } },
-    );
+    const result = invoke({ root, scenario: 'cancel', timeout: 5000 });
     expect(result.signal).toBeNull();
     expect(result.status).toBe(1);
     expect(result.stderr).toBe('');
@@ -250,15 +260,7 @@ test('cleans up an owned descendant even when the native server exits first', ()
     const observation = mkdtempSync(join(tmpdir(), 'hivex-child-observation-'));
     const path = join(observation, 'pid');
     try {
-      const result = spawnSync(
-        process.execPath,
-        [cli, 'extract', 'policy.md', '--root', root, '--codex', codex],
-        {
-          encoding: 'utf8',
-          timeout: 8000,
-          env: { ...process.env, HIVEX_TEST_SCENARIO: 'descendant', HIVEX_TEST_PID_PATH: path },
-        },
-      );
+      const result = invoke({ root, scenario: 'descendant', timeout: 8000, pidPath: path });
       expect(result.stderr).toBe('');
       expect(result.status).toBe(0);
       const pid = Number(readFileSync(path, 'utf8'));
@@ -278,15 +280,7 @@ test('cleans up an owned descendant even when the native server exits first', ()
 
 test('disables an existing MCP server locally before creating a knowledge thread', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', codex],
-      {
-        encoding: 'utf8',
-        timeout: 5000,
-        env: { ...process.env, HIVEX_TEST_SCENARIO: 'configured-mcp' },
-      },
-    );
+    const result = invoke({ root, scenario: 'configured-mcp', timeout: 5000 });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({ status: 'candidate', accepted: false });
@@ -295,15 +289,7 @@ test('disables an existing MCP server locally before creating a knowledge thread
 
 test('rejects a redirected backend despite the openai logical provider name', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', codex],
-      {
-        encoding: 'utf8',
-        timeout: 5000,
-        env: { ...process.env, HIVEX_TEST_SCENARIO: 'redirected-provider' },
-      },
-    );
+    const result = invoke({ root, scenario: 'redirected-provider', timeout: 5000 });
     expect(result.status).toBe(1);
     expect(result.stderr).toBe('');
     expect(JSON.parse(result.stdout)).toMatchObject({
@@ -316,15 +302,12 @@ test('rejects a redirected backend despite the openai logical provider name', ()
 
 test('retains consumption and applies the finite correction budget to invalid JSON', () => {
   fixture((root) => {
-    const result = spawnSync(
-      process.execPath,
-      [cli, 'extract', 'policy.md', '--root', root, '--codex', codex, '--attempts', '2'],
-      {
-        encoding: 'utf8',
-        timeout: 5000,
-        env: { ...process.env, HIVEX_TEST_SCENARIO: 'invalid-json' },
-      },
-    );
+    const result = invoke({
+      root,
+      scenario: 'invalid-json',
+      args: ['--attempts', '2'],
+      timeout: 5000,
+    });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(1);
     const output = JSON.parse(result.stdout);
@@ -339,3 +322,51 @@ test('retains consumption and applies the finite correction budget to invalid JS
     });
   });
 });
+
+test('keeps unrelated secrets and proxy settings out of every native subprocess', () => {
+  fixture((root) => {
+    const result = invoke({
+      root,
+      scenario: 'secret-environment',
+      env: {
+        GH_TOKEN: 'fixture-token',
+        DATABASE_URL: 'postgresql://fixture.invalid/db',
+        HTTP_PROXY: 'http://fixture.invalid',
+        HTTPS_PROXY: 'http://fixture.invalid',
+        ALL_PROXY: 'http://fixture.invalid',
+      },
+    });
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ status: 'candidate' });
+  });
+});
+
+test('identifies the corrected attempt and prompt that produced the candidate', () => {
+  fixture((root) => {
+    const result = invoke({ root, scenario: 'retry-success', args: ['--attempts', '2'] });
+    expect(result.status).toBe(0);
+    const output = JSON.parse(result.stdout);
+    expect(output.candidateAttempt).toBe(2);
+    expect(output.attempts[0].outcome).toBe('invalid-output');
+    expect(output.attempts[1].outcome).toBe('completed');
+    expect(output.attempts[1].promptHash).not.toBe(output.attempts[0].promptHash);
+    expect(output.contract.basePromptHash).toBe(output.attempts[0].promptHash);
+  });
+});
+
+test.each(['usage-regression', 'duplicate-terminal'])(
+  'rejects inconsistent native evidence: %s',
+  (scenario) => {
+    fixture((root) => {
+      const result = invoke({ root, scenario, args: ['--attempts', '1'] });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toBe('');
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        status: 'failed',
+        accepted: false,
+        candidate: null,
+      });
+    });
+  },
+);

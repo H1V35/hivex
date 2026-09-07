@@ -208,12 +208,17 @@ Missing usage is `null`; reasoning output and cached input are subsets of the re
 counters, not additional tokens to add again.
 
 The JSON response binds claims and within-source relations to the source, commit, configuration,
-prompt and schema hashes. Evidence quotes must match their original line ranges. Model success and
+base prompt, processing policy and schema hashes. `candidateAttempt` identifies the one-based attempt
+that produced a candidate; that attempt records its actual prompt hash, including correction feedback.
+Evidence quotes must match their original line ranges. Model success and
 valid JSON still yield `status: "candidate"` and `accepted: false`. An exhausted or non-retryable
 operation returns `status: "failed"`, preserves attempt evidence and exits with code 1. Input errors
 fail before a model call. Save the response as verification evidence; it is not authored authority.
 
-The processor checks its configured ChatGPT endpoint, account, model/effort and disabled capabilities.
+The processor checks its configured ChatGPT endpoint, account, model/effort and disabled capabilities,
+and records the admitted values and their configuration origins. Native subprocesses receive only
+essential home/path/locale/temp and existing sandbox-marker environment fields; unrelated credentials
+and proxy settings are not inherited.
 It uses an empty temporary workspace, ephemeral threads, no discovered project instructions or agent
 memories, and a read-only policy with model network access disabled. Existing MCP configurations are
 disabled locally before creating a knowledge thread; global settings remain available for other work.

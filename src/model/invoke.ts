@@ -3,9 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { startServer } from './server.ts';
-import { knowledgeTurn } from './profile.ts';
+import { knowledgeTurn, type ProfileEvidence } from './profile.ts';
 import { captureTranscript, type Usage } from './transcript.ts';
 import { startKnowledgeThread } from './thread.ts';
+import { failureDiagnostic, ServerAdmissionFailure } from './failure.ts';
 
 type InvocationOptions = {
   binary: string;
@@ -25,6 +26,8 @@ export type InvocationReport = {
   cleanup?: 'confirmed' | 'failed' | 'not-observed';
   startedAt?: string;
   durationMilliseconds?: number;
+  admission?: ProfileEvidence;
+  diagnostic?: Record<string, unknown>;
 };
 
 class ModelTimeout extends Error {}
@@ -123,6 +126,7 @@ async function runTurn(
     const end = await completedWithin({ ...options, milliseconds: remaining });
     if (end.threadId !== threadId || end.turn.id !== turnId || end.turn.status !== 'completed')
       throw new Error('Model completion was not established');
+    captured.assertValid({ threadId, turnId });
     const final = captured.items.at(-1);
     if (!final || final.threadId !== threadId || final.turnId !== turnId || !final.item.text)
       throw new Error('Structured model output is missing');
@@ -197,14 +201,18 @@ export async function invokeModel(options: InvocationOptions) {
       threadId,
       signal: controller.signal,
     });
-  } catch {
+  } catch (error) {
     if (controller.signal.aborted) initialReport.code = 'MODEL_CANCELLED';
+    initialReport.diagnostic = failureDiagnostic(error);
+    if (error instanceof ServerAdmissionFailure) initialReport.cleanup = error.cleanup;
     resource.result = { value: null, report: initialReport, retry: false };
   } finally {
     try {
       await resource.server?.stop();
       rmSync(workspace, { recursive: true, force: true });
-      resource.result.report.cleanup = resource.server ? 'confirmed' : 'not-observed';
+      resource.result.report.cleanup = resource.server
+        ? 'confirmed'
+        : (resource.result.report.cleanup ?? 'not-observed');
     } catch {
       resource.result = {
         value: null,
@@ -220,10 +228,21 @@ export async function invokeModel(options: InvocationOptions) {
     process.off('SIGINT', cancel);
     process.off('SIGTERM', cancel);
   }
+  const report = resource.result.report;
+  if (report.threadId && report.turnId)
+    report.usage = captured.measured({ threadId: report.threadId, turnId: report.turnId });
+  if (captured.invalid && report.outcome === 'completed') {
+    resource.result = {
+      value: null,
+      retry: false,
+      report: { ...report, outcome: 'failed', code: 'MODEL_PROTOCOL_FAILED' },
+    };
+  }
   return {
     ...resource.result,
     report: {
       ...resource.result.report,
+      admission: resource.server?.admission,
       startedAt,
       durationMilliseconds: Math.round(performance.now() - began),
     },

@@ -47,7 +47,7 @@ export async function extractCommand(args: string[]) {
     contract: {
       nativeVersion,
       requestedPolicyHash: requestedPolicyHash(),
-      promptHash: hash(prompt),
+      basePromptHash: hash(prompt),
       schemaHash: hash(JSON.stringify(extractionSchema)),
     },
   };
@@ -58,10 +58,16 @@ export async function extractCommand(args: string[]) {
     const result = await extractAttempt({ ...options, prompt: prompt + feedback, source });
     attempts.push(result.report);
     if (result.candidate)
-      return { ...envelope, status: 'candidate', attempts, candidate: result.candidate };
+      return {
+        ...envelope,
+        status: 'candidate',
+        attempts,
+        candidateAttempt: attempts.length,
+        candidate: result.candidate,
+      };
     if (!result.retry) break;
   }
-  return { ...envelope, status: 'failed', attempts, candidate: null };
+  return { ...envelope, status: 'failed', attempts, candidateAttempt: null, candidate: null };
 }
 
 function correctionFeedback(attempt: ExtractionAttempt) {
