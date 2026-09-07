@@ -35,6 +35,12 @@ within a maximum of three attempts. An unconfirmed start or interruption is a fa
 that no request occurred. Invalid extraction output can be corrected with explicit feedback;
 an adverse grounded review must not be rerolled to obtain a preferred verdict.
 
+Cleanup confirms termination of the owned process group and reaps the directly spawned server.
+On Linux, an orphan can remain as a zombie until container init reaps it. A bounded process-state
+check may confirm that every remaining group member is terminated (`Z` or `X`); a live, unknown or
+unreadable state cannot confirm cleanup. This does not claim that Hivex has reaped orphan PID entries.
+See the [Linux process-state reference](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html).
+
 Candidate production cannot replace an accepted graph. Rebuild admission additionally requires a
 frozen source cohort and processing contract, provenance, structural checks and semantic evaluation.
 Old Opus payloads cannot be relabelled as Luna results. Changed sources, parsing or extraction inputs
