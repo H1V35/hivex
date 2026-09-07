@@ -37,7 +37,7 @@ jobs:
       - name: Format
         run: bun run --bun format:check
       - name: Test
-        run: bun test ./src ./tooling/dependencies
+        run: bun test ./src ./tooling
       - name: Reproduce the bootstrap checker
         run: |
           bun tooling/build-checker.ts

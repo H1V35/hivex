@@ -865,18 +865,18 @@ function withRelations(run: (root: string) => void) {
 describe('hivex relations', () => {
   test('the project CI entrypoint accepts an empty index and still rejects an invalid header', () => {
     withRelations((root) => {
-      mkdirSync(join(root, 'hivex', 'src'), { recursive: true });
+      mkdirSync(join(root, 'src'), { recursive: true });
       writeFileSync(join(root, '.gitignore'), 'node_modules\n');
       symlinkSync(join(import.meta.dirname, '../node_modules'), join(root, 'node_modules'));
       writeFileSync(
-        join(root, 'hivex', 'src', 'project.test.ts'),
+        join(root, 'src', 'project.test.ts'),
         readFileSync(join(import.meta.dirname, 'project.test.ts')),
       );
-      writeFileSync(join(root, 'hivex', 'src', 'cli.ts'), 'import ' + JSON.stringify(cli) + ';\n');
+      writeFileSync(join(root, 'src', 'cli.ts'), 'import ' + JSON.stringify(cli) + ';\n');
       writeRelationIndex(root, []);
       commitChanges(root);
       const run = () =>
-        spawnSync(process.execPath, ['test', 'hivex/src/project.test.ts'], {
+        spawnSync(process.execPath, ['test', './src/project.test.ts'], {
           cwd: root,
           encoding: 'utf8',
           timeout: 10_000,

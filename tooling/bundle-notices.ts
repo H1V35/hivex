@@ -99,27 +99,33 @@ function stablePath(root: string, value: string): string {
 
 function normalizeMetafile(root: string, source: BundleMetafile): BundleMetafile {
   const inputs = Object.fromEntries(
-    Object.entries(source.inputs).map(([path, input]) => [
-      stablePath(root, path),
-      {
-        ...input,
-        imports: input.imports?.map((item) => ({ ...item, path: stablePath(root, item.path) })),
-      },
-    ]),
+    Object.entries(source.inputs)
+      .sort(([left], [right]) => left.localeCompare(right, 'en'))
+      .map(([path, input]) => [
+        stablePath(root, path),
+        {
+          ...input,
+          imports: input.imports?.map((item) => ({ ...item, path: stablePath(root, item.path) })),
+        },
+      ]),
   );
   const outputs = Object.fromEntries(
-    Object.entries(source.outputs).map(([path, output]) => [
-      stablePath(root, path),
-      {
-        ...output,
-        inputs: Object.fromEntries(
-          Object.entries(output.inputs).map(([input, info]) => [stablePath(root, input), info]),
-        ),
-        imports: output.imports?.map((item) => ({ ...item, path: stablePath(root, item.path) })),
-        entryPoint: output.entryPoint ? stablePath(root, output.entryPoint) : undefined,
-        cssBundle: output.cssBundle ? stablePath(root, output.cssBundle) : undefined,
-      },
-    ]),
+    Object.entries(source.outputs)
+      .sort(([left], [right]) => left.localeCompare(right, 'en'))
+      .map(([path, output]) => [
+        stablePath(root, path),
+        {
+          ...output,
+          inputs: Object.fromEntries(
+            Object.entries(output.inputs)
+              .sort(([left], [right]) => left.localeCompare(right, 'en'))
+              .map(([input, info]) => [stablePath(root, input), info]),
+          ),
+          imports: output.imports?.map((item) => ({ ...item, path: stablePath(root, item.path) })),
+          entryPoint: output.entryPoint ? stablePath(root, output.entryPoint) : undefined,
+          cssBundle: output.cssBundle ? stablePath(root, output.cssBundle) : undefined,
+        },
+      ]),
   );
   return { inputs, outputs };
 }

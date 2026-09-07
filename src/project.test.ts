@@ -3,11 +3,9 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { devNull } from 'node:os';
-import { existsSync } from 'node:fs';
 import { z } from 'zod';
 
-const localRoot = join(import.meta.dirname, '..');
-const root = existsSync(join(localRoot, 'hivex.json')) ? localRoot : join(localRoot, '..');
+const root = join(import.meta.dirname, '..');
 const cli = join(import.meta.dirname, 'cli.ts');
 
 function git(args: string[]) {

@@ -259,7 +259,7 @@ graph rebuild and grounding requirements are recorded in the
 bun run --bun typecheck
 bun run --bun lint
 bun run --bun format:check
-bun test ./src ./tooling/dependencies
+bun test ./src ./tooling
 ```
 
 The integration tests exercise the public CLI against temporary Git repositories. The implementation

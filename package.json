@@ -6,7 +6,7 @@
   "description": "Versioned project knowledge for people and agents.",
   "scripts": {
     "cli": "bun src/cli.ts",
-    "test": "bun test ./src ./tooling/dependencies",
+    "test": "bun test ./src ./tooling",
     "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
     "lint": "eslint src tooling eslint.config.js eslint.base.config.js --ignore-pattern tooling/generated",
     "format:check": "prettier --check .",

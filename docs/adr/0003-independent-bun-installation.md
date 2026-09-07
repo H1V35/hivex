@@ -55,6 +55,12 @@ the source hashes, build lock, Bun version/revision and bundle hash. A matching 
 consistency with that record, not independent trust in an unreviewed checkout. Dependency updates
 must pass the existing trusted bootstrap before a replacement bundle is accepted.
 
+The bundle fixes msgpackr's documented native-acceleration switch to disabled and keeps its optional
+native addon external. It must not contain a construction directory or a bundled native loader.
+This uses the library's JavaScript implementation without changing the publishing-trust verifier.
+Provenance maps have stable key order. Reproduction is checked across distinct physical checkouts;
+rebuilding twice at the same path is insufficient evidence of portability.
+
 ## Consequences
 
 Hivex owns its TypeScript compiler, formatting and lint configuration. The native TypeScript 7
