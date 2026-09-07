@@ -111,6 +111,68 @@ selected source is exhausted, not that the rest of the document has been read. C
 the selected source and commit; a section cursor cannot resume another section or the entire file.
 Unselected text remains available through the full-document read but is not indexed for search.
 
+## Indexed relationships
+
+Inspect replacement and amendment records associated with a source:
+
+```sh
+pnpm hivex relations docs/adr/0088-ui-design-system-ratified.md --limit 4 --max-bytes 8192
+pnpm hivex relations <source-id> --ref <commit-from-response> --cursor <continuation>
+```
+
+Configure the optional input alongside `collections` in the committed `hivex.json`:
+
+```json
+{
+  "relationIndexes": [
+    {
+      "path": "docs/adr/supersession-index.jsonl",
+      "format": "compi-adr-supersession-index"
+    }
+  ]
+}
+```
+
+The supported format is the existing ADR supersession JSONL schema v1. Hivex reads the committed
+projection without invoking its generator or importing legacy orchestration. The format adapter
+works with configured paths; Compi's index is one adoption of it. Search and read do not load these
+indexes, so an invalid derived index does not prevent access to the Markdown sources.
+
+Relations always cover the **whole document**, including when the requested source ID names one
+section. Results include records with replacements, a status other than `live`, an `unresolved`
+type, or a subject reference without an exact selectable location. A `live` status does not hide
+a broken anchor. An omitted record is not proof that its rule is current. `coverage: not-configured`
+means no index was configured; an empty result with `coverage: configured-indexes` only describes
+those indexes. Records retain index order, which is explicitly not a precedence order.
+
+`indexedStatus`, `indexedText` and `indexedHeading` report the generator's interpretation. Text can
+be normalized or synthesized and is not labelled as a verbatim quotation. YAML declarations remain
+separate under the source's authority metadata. Both effective currentness and index freshness are
+`not-established`: this legacy format has no source-cohort hashes, and sharing a Git commit does
+not establish freshness or semantic correctness.
+
+Each record has its index path, hash and original line, plus the affected subject and replacements.
+References preserve the indexed ADR number, path and anchor alongside the current snapshot's
+source hash. A resolved anchor supplies its heading's line range and a `readCursor`; use it with
+`read <path>` and the same commit to open evidence. A `missing-anchor` or `contained-heading`
+reference has no exact selectable location and offers a cursor from the document's beginning.
+Hivex does not silently repair anchors or cut lists/quotes. Reading a referenced heading still does
+not establish all conditions or exceptions; the full document remains available.
+
+Every index's schema, record IDs and referenced document paths are validated before a query returns.
+IDs are unique within each index; the index path distinguishes equal IDs from separate inputs.
+All referenced documents must be declared regular Markdown sources, including opt-in collections.
+Unsafe/missing paths, symlinks, malformed data and duplicate IDs fail explicitly. Anchors are
+resolved for returned references; unresolved anchors remain visible rather than invalidating access
+to the entire index.
+
+The limits are eight index files, 2 MiB per input file, 10,000 total records and 2,048 referenced
+documents. Defaults are eight records and 16,384 output bytes. `--limit` accepts 1–20 records and
+`--max-bytes` accepts 1,024–65,536 bytes, including metadata and continuation. Records and their
+replacement arrays are indivisible: an oversized next record reports its required budget.
+Continuation is bound to the requested source ID, commit, configuration and index hashes. It is
+distinct from the Markdown reading cursor carried by each reference.
+
 ## Documentation scopes in Compi
 
 | Collection    | Purpose                                                           | Default search |
@@ -139,6 +201,8 @@ pnpm --filter hivex test
 
 The integration tests exercise the public CLI against temporary Git repositories. The implementation
 uses mdast/GFM/frontmatter positions, YAML metadata, GitHub-style heading anchors and Bun SQLite FTS5.
+Project smoke tests also query every committed collection and validate the referenced documents in
+each configured non-empty relation index through the CLI.
 Hivex-specific changes run this suite without requiring unrelated app/backend suites; manifest,
 lockfile, workflow and uncertain changes retain the complete CI scope.
 

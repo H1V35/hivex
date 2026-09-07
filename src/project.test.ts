@@ -30,7 +30,10 @@ const commit = git(['rev-parse', '--verify', 'HEAD']).trim();
 const config = git(['show', `${commit}:hivex.json`]);
 const configHash = createHash('sha256').update(config).digest('hex');
 const project = z
-  .object({ collections: z.array(z.object({ id: z.string() })).min(1) })
+  .object({
+    collections: z.array(z.object({ id: z.string() })).min(1),
+    relationIndexes: z.array(z.object({ path: z.string() })).default([]),
+  })
   .parse(JSON.parse(config));
 
 test.each(project.collections)(
@@ -59,6 +62,40 @@ test.each(project.collections)(
     expect(result.status).toBe(0);
     const response: unknown = JSON.parse(result.stdout);
     expect(response).toMatchObject({ snapshot: { commit, configHash } });
+  },
+  20_000,
+);
+
+test.each(project.relationIndexes)(
+  'validates all referenced documents in the committed index through the CLI: $path',
+  ({ path }) => {
+    const contents = git(['show', `${commit}:${path}`]);
+    const entry = z.object({ source: z.object({ path: z.string() }) });
+    const first = contents
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line): unknown => JSON.parse(line))
+      .find((value) => entry.safeParse(value).success);
+    const source = entry.parse(first).source.path;
+    const result = spawnSync(
+      process.execPath,
+      [cli, 'relations', source, '--root', root, '--ref', commit, '--max-bytes', '65536'],
+      { encoding: 'utf8', timeout: 15_000, maxBuffer: 1_048_576 },
+    );
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    const response: unknown = JSON.parse(result.stdout);
+    expect(response).toMatchObject({
+      snapshot: { commit, configHash },
+      indexes: expect.arrayContaining([
+        expect.objectContaining({
+          path,
+          hash: createHash('sha256').update(contents).digest('hex'),
+        }),
+      ]),
+      currentness: 'not-established',
+      freshness: 'not-established',
+    });
   },
   20_000,
 );

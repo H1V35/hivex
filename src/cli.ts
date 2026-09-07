@@ -3,6 +3,7 @@ import { argumentsFor } from './cli/arguments.ts';
 import { loadSnapshot } from './workspace/snapshot.ts';
 import { search } from './retrieval/search.ts';
 import { read } from './retrieval/read.ts';
+import { relations } from './relations/query.ts';
 
 function main(args: string[]) {
   if (args.length === 1 && args[0] === '--help')
@@ -20,6 +21,11 @@ function main(args: string[]) {
           usage:
             'read <source-id> [--root <repo>] [--ref <commit>] [--cursor <continuation>] [--max-bytes 1024..65536]',
         },
+        {
+          name: 'relations',
+          usage:
+            'relations <source-id> [--root <repo>] [--ref <commit>] [--cursor <continuation>] [--limit 1..20] [--max-bytes 1024..65536]',
+        },
       ],
       authority: 'Declarations are exposed; effective currentness is not established.',
     };
@@ -28,9 +34,10 @@ function main(args: string[]) {
   const snapshot = loadSnapshot({
     root: root,
     ref: ref,
-    selection: command === 'read' ? { sourceId: value } : { collection: options.collection },
+    selection: command === 'search' ? { collection: options.collection } : { sourceId: value },
   });
   if (command === 'search') return search(snapshot, value, options);
+  if (command === 'relations') return relations({ ...options, snapshot, id: value });
   return read(snapshot, value, options);
 }
 

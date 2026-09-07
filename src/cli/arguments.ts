@@ -26,10 +26,14 @@ function parseInput(args: string[]) {
 
 function commandFor(positionals: string[]) {
   const [command, value] = positionals;
-  if (positionals.length !== 2 || !value || (command !== 'search' && command !== 'read'))
+  if (
+    positionals.length !== 2 ||
+    !value ||
+    (command !== 'search' && command !== 'read' && command !== 'relations')
+  )
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
-      message: 'Usage: hivex search <query> | read <source-id> [options]',
+      message: 'Usage: hivex search <query> | read <source-id> | relations <source-id> [options]',
     });
   if (Buffer.byteLength(value) > 4096 || !value.trim())
     throw new HivexError({
@@ -60,13 +64,19 @@ function parseLimit(
 }
 
 function validateMode(command: string, values: ReturnType<typeof parseInput>['values']) {
-  if (command === 'read' && (values.collection !== undefined || values.limit !== undefined))
+  if (
+    (command !== 'search' && values.collection !== undefined) ||
+    (command === 'read' && values.limit !== undefined)
+  )
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
-      message: 'Only search accepts --collection and --limit',
+      message: 'Only search accepts --collection; search and relations accept --limit',
     });
   if (command === 'search' && values.cursor !== undefined)
-    throw new HivexError({ code: 'INVALID_ARGUMENT', message: 'Only read accepts --cursor' });
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Read and relations accept --cursor',
+    });
   if (values.cursor !== undefined && (values.cursor.length === 0 || values.cursor.length > 2048))
     throw new HivexError({
       code: 'INVALID_ARGUMENT',

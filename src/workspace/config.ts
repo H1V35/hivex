@@ -9,6 +9,14 @@ const pattern = z
     (value) => !value.startsWith('/') && !value.includes('\\') && !value.split('/').includes('..'),
     'Document patterns must stay inside the repository',
   );
+export const repositoryPath = pattern.refine(
+  (value) =>
+    !/[#*?[\]{}!]/u.test(value) &&
+    ![...value].some((char) => char.charCodeAt(0) < 32) &&
+    !value.split('/').some((part) => part === '' || part === '.'),
+  'Paths must be exact repository paths',
+);
+
 const collection = z.strictObject({
   id: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/),
   include: z
@@ -16,13 +24,7 @@ const collection = z.strictObject({
       z.union([
         pattern,
         z.strictObject({
-          path: pattern.refine(
-            (value) =>
-              !/[#*?[\]{}!]/u.test(value) &&
-              ![...value].some((char) => char.charCodeAt(0) < 32) &&
-              !value.split('/').some((part) => part === '' || part === '.'),
-            'Section paths must be exact repository paths',
-          ),
+          path: repositoryPath,
           anchor: z
             .string()
             .min(1)
@@ -44,6 +46,15 @@ const collection = z.strictObject({
 const config = z.strictObject({
   version: z.literal(1),
   collections: z.array(collection).min(1).max(32),
+  relationIndexes: z
+    .array(
+      z.strictObject({
+        path: repositoryPath,
+        format: z.literal('compi-adr-supersession-index'),
+      }),
+    )
+    .max(8)
+    .default([]),
 });
 export type Collection = z.infer<typeof collection>;
 export type ProjectConfig = z.infer<typeof config>;
@@ -61,6 +72,12 @@ export function parseConfig(text: string): ProjectConfig {
   const ids = result.data.collections.map((item) => item.id);
   if (new Set(ids).size !== ids.length)
     throw new HivexError({ code: 'INVALID_CONFIG', message: 'Collection IDs must be unique' });
+  const paths = result.data.relationIndexes.map((item) => item.path);
+  if (new Set(paths).size !== paths.length)
+    throw new HivexError({
+      code: 'INVALID_CONFIG',
+      message: 'Relation index paths must be unique',
+    });
   return result.data;
 }
 

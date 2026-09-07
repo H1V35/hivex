@@ -88,7 +88,7 @@ export function blobs(root: string, files: GitFile[]): Map<string, string> {
     )
       throw new HivexError({
         code: 'INVALID_BLOB',
-        message: `Invalid or oversized Markdown blob: ${file.path}`,
+        message: `Invalid or oversized Git blob: ${file.path}`,
       });
     cursor = newline + 1;
     if (cursor + length >= response.length || response[cursor + length] !== 10)

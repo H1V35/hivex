@@ -7,6 +7,7 @@
 - **Collection** — an explicitly declared scope for finding related sources. It expresses relevance, not permission or revocation.
 - **Block** — a complete structural fragment of a source, such as a paragraph, list, table or code example.
 - **Authority declaration** — what a source explicitly says about its status or replacement. A declaration alone does not establish which rule applies to a particular case.
+- **Indexed relation** — a derived interpretation connecting an affected rule to a replacement or amendment. Its provenance allows inspection; it can be incomplete or stale and is not itself authority.
 - **Currentness** — whether a rule applies in the relevant context after considering scope, conditions, exceptions and subsequent decisions.
 - **Citation** — the identity and location of evidence within a fixed snapshot.
 - **Continuation** — a position from which reading the same source and snapshot can resume without silently losing content.
