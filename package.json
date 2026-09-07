@@ -1,0 +1,49 @@
+{
+  "name": "hivex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Versioned project knowledge for people and agents.",
+  "scripts": {
+    "cli": "bun src/cli.ts",
+    "test": "bun test ./src ./tooling/dependencies",
+    "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
+    "lint": "eslint src tooling eslint.config.js eslint.base.config.js --ignore-pattern tooling/generated",
+    "format:check": "prettier --check .",
+    "check:dependencies": "bun tooling/generated/check-dependencies.mjs",
+    "install:verified": "bun tooling/install-verified.ts",
+    "build:checker": "bun tooling/build-checker.ts"
+  },
+  "dependencies": {
+    "mdast-util-from-markdown": "2.0.3",
+    "mdast-util-to-string": "4.0.0",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0",
+    "mdast-util-frontmatter": "2.0.1",
+    "micromark-extension-frontmatter": "2.0.0",
+    "yaml": "2.9.0",
+    "github-slugger": "2.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "typescript-native": "npm:typescript@7.0.2",
+    "@types/bun": "1.3.14",
+    "eslint": "10.7.0",
+    "eslint-plugin-sonarjs": "1.0.4",
+    "globals": "16.5.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "8.64.0",
+    "@pnpm/resolving.npm-resolver": "1101.5.0",
+    "@pnpm/logger": "1001.0.1",
+    "@pnpm/worker": "1100.1.9",
+    "semver": "7.8.5",
+    "@types/semver": "7.8.0",
+    "prettier": "3.8.4"
+  },
+  "trustedDependencies": [],
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "bun": "1.4.2"
+  }
+}

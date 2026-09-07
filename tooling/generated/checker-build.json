@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "bunVersion": "1.4.2",
+  "bunRevision": "744846f844374847c902b5e7fd59b4342a51ef99",
+  "bundleSha256": "58045dca02f310cf0b6c13a1750d2be44773914ae8d1c60da4cbec64ed39a476",
+  "buildLockSha256": "f375fb06b0b9f3eb4182c29f725dfba06df496e8e287c6d87a851756ea611fb0",
+  "metafileSha256": "9a49b00ff2d6b2a6542136c6202828f8b1abf55a830c4399a64ef3bd9c38f0c1",
+  "licenseInventorySha256": "ca00a6c8e2087c5edb30877bdeeda1fa434c3a96fcc06ececadafc20164056cd",
+  "licenseNoticesSha256": "096ba92764f301984401ccc084cf40cee6e17680e247cab24aaa97eb91f8239e",
+  "bundleInputCount": 207,
+  "bundlePackageCount": 51,
+  "metadataOnlyPackages": [],
+  "missingDeclarationPackages": [],
+  "sources": {
+    "tooling/check-dependencies.ts": "733f6a3ad04b5fc8378058d3289afa88adef76ccfa2a903018681b5d345b23e8",
+    "tooling/dependencies/config.ts": "8baf06b8f7da05eeb82ad9ebe33394cd953d277deedc2c96fa96df7113889020",
+    "tooling/dependencies/inventory.ts": "18b1ccff1b7a1456af93addb27d5597c2acb383bb3e3ba00c8c3a5981e385ee5",
+    "tooling/dependencies/lock.ts": "49ea4303cf679887ef25bbd9227615cd4755b68c990e3be8fd66e1e62b01eef3",
+    "tooling/dependencies/metadata.ts": "ec9feb57d45af9fa5c2a4b79921bb85aad5752af41845a9732d380f1b793982a",
+    "tooling/dependencies/peers.ts": "a8cbdaf45dcf03278ddc41ea002af0488d8fe2e78ef2aef410b8dfb604c75679",
+    "tooling/dependencies/verify.ts": "bd9eb690d0881f44c085edceff6bb317c0aed32eb55ab6de60f96c6de10ff071"
+  },
+  "builderSources": {
+    "tooling/build-checker.ts": "dbd644a97982bf3a45612455258bc49eca7e5fb22cfd5b17b10bdbb7f4a359a5",
+    "tooling/bundle-notices.ts": "640e6adf0cb9f454a475510efcd97b220edb95bdcaaab72801579c636d966656"
+  }
+}
