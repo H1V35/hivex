@@ -5,7 +5,7 @@
 - [Versioned sources](adr/0001-versioned-project-knowledge.md): the product's authority model.
 - [Native knowledge candidates](adr/0002-native-knowledge-candidates.md): model invocation and
   candidate evidence; rebuilding and grounding remain separate acceptance requirements.
-- [Independent Bun installation](adr/0003-independent-bun-installation.md): dependency admission.
+- [Independent Bun installation](adr/0003-independent-bun-installation.md): runtime and package installation.
 
 The [CLI guide](../README.md) describes current executable interfaces. Historical evidence under
 `evidence/` records a bounded experiment at its cited revision, not a standing quality verdict.

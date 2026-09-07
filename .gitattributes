@@ -1,2 +1,0 @@
-# Preserve the bundler output and verbatim third-party notices byte for byte.
-tooling/generated/** -whitespace
