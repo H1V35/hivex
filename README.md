@@ -5,19 +5,17 @@ complete evidence without a model call, service or private agent memory.
 
 ## Install and use
 
-Use Bun 1.4.2 and a committed checkout. Install with the checked-in bootstrap verifier:
+Use Bun 1.4.2 and a committed checkout:
 
 ```sh
-bun tooling/install-verified.ts
+bun install
 bun src/cli.ts search "versioned sources" --collection hivex
 bun src/cli.ts read docs/adr/0001-versioned-project-knowledge.md --ref <commit-from-search>
 ```
 
-The installer checks locked registry identities, publication age, integrity metadata and publishing
-trust before loading dependency code. It then uses a fresh cache, forced frozen installation and
-explicitly disabled lifecycle scripts, followed by installed identity and peer checks. Ordinary
-incremental `bun install` is not the admission command. See the
-[installation decision](docs/adr/0003-independent-bun-installation.md) for its scope and evidence limits.
+Commit `bun.lock` when dependencies change. Use `bun ci` for a frozen installation in CI or a fresh
+checkout. Bun's native configuration applies the seven-day release age and explicit lifecycle-script
+allowlist. See the [installation decision](docs/adr/0003-independent-bun-installation.md).
 
 The commands return JSON. Search includes the complete commit ID, configuration hash, source hash,
 collection, declared authority and a bounded preview/location. Use the returned `readCursor` to start
@@ -259,7 +257,7 @@ graph rebuild and grounding requirements are recorded in the
 bun run --bun typecheck
 bun run --bun lint
 bun run --bun format:check
-bun test ./src ./tooling
+bun test ./src
 ```
 
 The integration tests exercise the public CLI against temporary Git repositories. The implementation

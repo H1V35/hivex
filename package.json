@@ -6,13 +6,10 @@
   "description": "Versioned project knowledge for people and agents.",
   "scripts": {
     "cli": "bun src/cli.ts",
-    "test": "bun test ./src ./tooling",
+    "test": "bun test ./src",
     "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
-    "lint": "eslint src tooling eslint.config.js eslint.base.config.js --ignore-pattern tooling/generated",
-    "format:check": "prettier --check .",
-    "check:dependencies": "bun tooling/generated/check-dependencies.mjs",
-    "install:verified": "bun tooling/install-verified.ts",
-    "build:checker": "bun tooling/build-checker.ts"
+    "lint": "eslint src tooling eslint.config.js eslint.base.config.js",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "mdast-util-from-markdown": "2.0.3",
@@ -34,11 +31,6 @@
     "globals": "16.5.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.64.0",
-    "@pnpm/resolving.npm-resolver": "1101.5.0",
-    "@pnpm/logger": "1001.0.1",
-    "@pnpm/worker": "1100.1.9",
-    "semver": "7.8.5",
-    "@types/semver": "7.8.0",
     "prettier": "3.8.4"
   },
   "trustedDependencies": [],

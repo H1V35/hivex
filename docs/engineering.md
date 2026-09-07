@@ -27,10 +27,9 @@ secrets, logs and PR checks without GitHub-hosted execution minutes. No speed be
 Actions remains disabled until the runner and its workflows are configured and functionally checked.
 Local verification remains required while that setup is pending.
 
-Bun's normal install and CI commands are the intended dependency workflow. Retire the custom
-installer, verifier, generated bootstrap and their exclusive dependencies/tests. The initial
-[installation admission](adr/0003-independent-bun-installation.md) remains historical evidence;
-its custom verification layer is not a requirement to reproduce in the simplified workflow.
+Use `bun install` for development and `bun ci` for frozen installation. Bun owns dependency
+installation through its native configuration and lockfile; Hivex has no custom installer or
+registry verifier. See the [installation decision](adr/0003-independent-bun-installation.md).
 
 The lint configuration owns executable syntax/complexity constraints: cyclomatic complexity 20,
 cognitive complexity 15, at most four parameters, nesting depth three and no nested/chained
@@ -118,6 +117,5 @@ legacy framework into Hivex under another name. Preserve useful decisions in the
 retain necessary historical evidence in Git or a bounded private archive outside the active worktree.
 Do not rewrite Git history or destroy the accepted Opus graph before its replacement is admitted.
 
-The current custom installer and unfinished ingestion persistence do not yet satisfy every policy
-above. Their retirement or completion is required work, not a guarantee already delivered by this
-document. Release packages must exclude private project evidence and retired runtime material.
+Unfinished ingestion persistence does not yet satisfy every policy above. Its completion is required
+work, not a guarantee already delivered by this document. Release packages must exclude private project evidence and retired runtime material.
