@@ -44,12 +44,13 @@ export function loadRelations(options: { root: string; snapshot: Snapshot }) {
     });
   const declaredPaths = new Set(snapshot.declared.map((file) => file.path));
   const files = [...paths].map((path) => {
+    const file = regularFile(snapshot, path);
     if (!declaredPaths.has(path))
       throw new HivexError({
         code: 'UNDECLARED_RELATION_SOURCE',
         message: `Relation references an undeclared Markdown document: ${path}`,
       });
-    return regularFile(snapshot, path);
+    return file;
   });
   const markdown = blobs(root, files);
   const documents = new Map(
