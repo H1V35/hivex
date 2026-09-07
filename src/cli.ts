@@ -4,13 +4,22 @@ import { loadSnapshot } from './workspace/snapshot.ts';
 import { search } from './retrieval/search.ts';
 import { read } from './retrieval/read.ts';
 import { relations } from './relations/query.ts';
+import { extractCommand } from './ingestion/command.ts';
 
-function main(args: string[]) {
+async function main(args: string[]) {
+  if (args[0] === 'extract') return extractCommand(args.slice(1));
   if (args.length === 1 && args[0] === '--help')
     return {
       application: 'hivex',
       configuration: 'hivex.json',
       commands: [
+        {
+          name: 'extract',
+          usage:
+            'extract <source-id> [--root <repo>] [--ref <commit>] [--codex <binary>] [--attempts 1..3] [--deadline-ms 100..900000]',
+          modelCalls:
+            'Uses the existing Codex ChatGPT subscription and returns an unaccepted candidate.',
+        },
         {
           name: 'search',
           usage:
@@ -42,7 +51,9 @@ function main(args: string[]) {
 }
 
 try {
-  process.stdout.write(JSON.stringify(main(Bun.argv.slice(2))) + '\n');
+  const result = await main(Bun.argv.slice(2));
+  process.stdout.write(JSON.stringify(result) + '\n');
+  if ('status' in result && result.status === 'failed') process.exitCode = 1;
 } catch (error) {
   process.stderr.write(JSON.stringify(diagnostic(error)) + '\n');
   process.exitCode = 1;

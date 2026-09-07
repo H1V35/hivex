@@ -191,6 +191,40 @@ and routing sections belong to `legacy`. Their authored text and accepted graph 
 unchanged. Other mixed documents remain marked as such until their content and consumers can be
 separated safely.
 
+## Extract knowledge candidates
+
+`extract` uses **gpt-5.6-luna/max through the existing Codex ChatGPT subscription**. It requires the
+admitted `codex-cli 0.153.2` on macOS or Linux. This is an explicit model operation:
+
+```sh
+pnpm hivex extract docs/adr/0006-react-compiler-no-manual-memoization.md --ref <commit> --attempts 3 --deadline-ms 600000
+```
+
+The source must be declared in the selected commit's `hivex.json` and contain at most 32,768 UTF-8
+bytes. For a larger document, declare and extract a complete heading section. `--codex` selects the
+native executable; it defaults to `codex` on PATH. The default deadline is 600,000 milliseconds;
+accepted values are 100–900,000. Each invocation, including an interrupted attempt, is recorded.
+Missing usage is `null`; reasoning output and cached input are subsets of the reported output/input
+counters, not additional tokens to add again.
+
+The JSON response binds claims and within-source relations to the source, commit, configuration,
+prompt and schema hashes. Evidence quotes must match their original line ranges. Model success and
+valid JSON still yield `status: "candidate"` and `accepted: false`. An exhausted or non-retryable
+operation returns `status: "failed"`, preserves attempt evidence and exits with code 1. Input errors
+fail before a model call. Save the response as verification evidence; it is not authored authority.
+
+The processor checks its configured ChatGPT endpoint, account, model/effort and disabled capabilities.
+It uses an empty temporary workspace, ephemeral threads, no discovered project instructions or agent
+memories, and a read-only policy with model network access disabled. Existing MCP configurations are
+disabled locally before creating a knowledge thread; global settings remain available for other work.
+The protocol stream is bounded to 4 MiB per frame and 32 MiB overall. A timeout requests interruption;
+unconfirmed cancellation stops the attempt sequence. SIGINT/SIGTERM also cancel active processing.
+
+These controls are admission checks for the trusted native CLI. Version 0.153.2 does not provide a
+filesystem read-root allowlist, so this interface does not claim OS-level read isolation. The remaining
+graph rebuild and grounding requirements are recorded in the
+[native knowledge decision](docs/adr/0002-native-knowledge-candidates.md).
+
 ## Development
 
 ```sh
@@ -206,4 +240,5 @@ each configured relation index through the CLI, including header-only indexes.
 Hivex-specific changes run this suite without requiring unrelated app/backend suites; manifest,
 lockfile, workflow and uncertain changes retain the complete CI scope.
 
-[Domain language](docs/CONTEXT.md) · [Initial decision](docs/adr/0001-versioned-project-knowledge.md)
+[Domain language](docs/CONTEXT.md) · [Initial decision](docs/adr/0001-versioned-project-knowledge.md) ·
+[Native knowledge candidates](docs/adr/0002-native-knowledge-candidates.md)

@@ -10,4 +10,7 @@
 - **Indexed relation** — a derived interpretation connecting an affected rule to a replacement or amendment. Its provenance allows inspection; it can be incomplete or stale and is not itself authority.
 - **Currentness** — whether a rule applies in the relevant context after considering scope, conditions, exceptions and subsequent decisions.
 - **Citation** — the identity and location of evidence within a fixed snapshot.
+- **Claim** — an assertion about a project, including its conditions, exceptions and supporting evidence. A claim can be proposed or incorrect.
+- **Candidate** — a derived interpretation awaiting admission. Producing or structurally validating it does not make it authority.
+- **Grounding** — checking an implementation against applicable documented decisions, using evidence from both the implementation and the documents.
 - **Continuation** — a position from which reading the same source and snapshot can resume without silently losing content.
