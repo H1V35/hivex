@@ -22,10 +22,29 @@ function signalGroup(pid: number, signal: NodeJS.Signals | 0) {
   }
 }
 
-async function groupExited(pid: number) {
+function onlyTerminatedMembersRemain(pid: number) {
+  if (process.platform !== 'linux') return false;
+  const result = spawnSync('/bin/ps', ['-e', '-o', 'pgid=,stat='], {
+    encoding: 'utf8',
+    timeout: 1000,
+    maxBuffer: 1_048_576,
+    env: { ...nativeEnvironment(), LC_ALL: 'C' },
+  });
+  if (result.status !== 0) return false;
+  const rows = result.stdout.trim().split('\n');
+  if (rows.some((row) => !/^\s*\d+\s+\S+\s*$/.test(row))) return false;
+  const members = rows
+    .map((row) => row.trim().split(/\s+/))
+    .filter(([group]) => Number(group) === pid);
+  if (!members.length) return !signalGroup(pid, 0);
+  // Container init may retain orphan zombies; they cannot execute or receive signals.
+  return members.every(([, state]) => state?.startsWith('Z') || state?.startsWith('X'));
+}
+
+async function groupTerminated(pid: number) {
   const deadline = performance.now() + 2000;
   while (signalGroup(pid, 0)) {
-    if (performance.now() >= deadline) return false;
+    if (performance.now() >= deadline) return onlyTerminatedMembersRemain(pid);
     await delay(25);
   }
   return true;
@@ -80,9 +99,9 @@ async function launchServer(options: ServerOptions, disabledServers: string[]) {
     child.stdin.end();
     try {
       await settledWithin(exit.promise, 1000);
-      if (signalGroup(pid, 'SIGTERM') && !(await groupExited(pid))) {
+      if (signalGroup(pid, 'SIGTERM') && !(await groupTerminated(pid))) {
         signalGroup(pid, 'SIGKILL');
-        if (!(await groupExited(pid)))
+        if (!(await groupTerminated(pid)))
           throw new Error('Owned Codex process group survived cleanup');
       }
       if (!(await settledWithin(exit.promise, 1000)))

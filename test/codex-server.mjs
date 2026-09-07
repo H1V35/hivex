@@ -2,6 +2,7 @@
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { once } from 'node:events';
 
 if (
   process.env.HIVEX_TEST_SCENARIO === 'secret-environment' &&
@@ -16,11 +17,23 @@ if (process.argv.includes('--version')) {
   process.exit(0);
 }
 if (process.env.HIVEX_TEST_SCENARIO === 'descendant') {
-  const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
-    stdio: 'ignore',
-  });
-  descendant.unref();
-  writeFileSync(process.env.HIVEX_TEST_PID_PATH, String(descendant.pid));
+  const descendants = await Promise.all(
+    [false, true].map(async (ignoreTerm) => {
+      const program = [
+        ignoreTerm ? "process.on('SIGTERM', () => {});" : '',
+        "console.log('ready');",
+        'setInterval(() => {}, 1000);',
+      ].join('\n');
+      const child = spawn(process.execPath, ['-e', program], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      await once(child.stdout, 'data');
+      child.stdout.destroy();
+      child.unref();
+      return child.pid;
+    }),
+  );
+  writeFileSync(process.env.HIVEX_TEST_PID_PATH, JSON.stringify(descendants));
 }
 
 const options = Object.fromEntries(

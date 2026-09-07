@@ -259,24 +259,52 @@ test('cancels an active model turn on SIGINT and preserves its failure report', 
   });
 });
 
-test('cleans up an owned descendant even when the native server exits first', () => {
+function expectTerminated(pid: number) {
+  if (process.platform !== 'linux') {
+    expect(() => process.kill(pid, 0)).toThrow();
+    return;
+  }
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const state = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0];
+    expect(['Z', 'X']).toContain(state ?? '');
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+  }
+}
+
+function cleanObservedDescendants(path: string) {
+  let pids: number[];
+  try {
+    pids = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return;
+  }
+  for (const pid of pids) {
+    try {
+      if (Number.isSafeInteger(pid) && pid > 1) process.kill(pid, 'SIGKILL');
+    } catch {
+      /* This descendant may already be gone. */
+    }
+  }
+}
+
+test('terminates every owned descendant, including one ignoring SIGTERM, after the server exits', () => {
   fixture((root) => {
     const observation = mkdtempSync(join(tmpdir(), 'hivex-child-observation-'));
     const path = join(observation, 'pid');
     try {
-      const result = invoke({ root, scenario: 'descendant', timeout: 8000, pidPath: path });
+      const result = invoke({ root, scenario: 'descendant', timeout: 10_000, pidPath: path });
       expect(result.stderr).toBe('');
       expect(result.status).toBe(0);
-      const pid = Number(readFileSync(path, 'utf8'));
-      expect(pid).toBeGreaterThan(1);
-      expect(() => process.kill(pid, 0)).toThrow();
-    } finally {
-      try {
-        const pid = Number(readFileSync(path, 'utf8'));
-        if (Number.isSafeInteger(pid) && pid > 1) process.kill(pid, 'SIGKILL');
-      } catch {
-        /* The tested descendant may already be gone. */
+      const pids: number[] = JSON.parse(readFileSync(path, 'utf8'));
+      expect(pids).toHaveLength(2);
+      for (const pid of pids) {
+        expect(pid).toBeGreaterThan(1);
+        expectTerminated(pid);
       }
+    } finally {
+      cleanObservedDescendants(path);
       rmSync(observation, { recursive: true, force: true });
     }
   });
