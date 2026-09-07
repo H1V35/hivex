@@ -55,11 +55,15 @@ function invoke(options: {
   env?: Record<string, string>;
 }) {
   const folder = mkdtempSync(join(tmpdir(), 'hivex-model-fixture-'));
-  const binary = join(folder, 'codex.mjs');
+  const binary = join(folder, 'codex');
+  const entry = join(folder, 'codex.mjs');
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  writeFileSync(binary, `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(entry)} "$@"\n`, {
+    mode: 0o700,
+  });
   writeFileSync(
-    binary,
+    entry,
     [
-      '#!/usr/bin/env bun',
       `process.env.HIVEX_TEST_SCENARIO = ${JSON.stringify(options.scenario ?? '')};`,
       `process.env.HIVEX_TEST_PID_PATH = ${JSON.stringify(options.pidPath ?? '')};`,
       `await import(${JSON.stringify(pathToFileURL(codex).href)});`,
@@ -92,7 +96,7 @@ function invoke(options: {
 
 test('extracts a source-bound candidate through native Codex without accepting a graph', () => {
   fixture((root) => {
-    const result = invoke({ root, timeout: 10_000 });
+    const result = invoke({ root, timeout: 10_000, env: { PATH: '/usr/bin:/bin' } });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     const output: unknown = JSON.parse(result.stdout);
