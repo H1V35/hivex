@@ -17,9 +17,10 @@ directly to main or force-push a shared branch. Apply review findings before acc
 review can be rerun, while an adverse finding must be resolved on its merits. Current explicit owner
 authorization governs whether the agent may merge.
 
-Run the typechecker, lint, formatting and relevant tests before review. Record the exact revision
-and the checks actually completed. A later change invalidates the affected results. Do not claim an
-omitted, interrupted or truncated check passed.
+Choose verification for the affected surfaces. Code changes require typechecking, lint, formatting
+and relevant behavior tests; documentation-only changes need formatting and checks of affected
+references or declared sources. Record the exact revision and the checks actually completed. A later
+change invalidates the affected results. Do not claim an omitted, interrupted or truncated check passed.
 
 The owner selected the official GitHub Actions self-hosted runner on the Mac, retaining GitHub
 secrets, logs and PR checks without GitHub-hosted execution minutes. No speed benchmark is required.
