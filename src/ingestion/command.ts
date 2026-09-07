@@ -1,10 +1,8 @@
 import { HivexError } from '../errors.ts';
-import { hash } from '../sources/markdown.ts';
 import { loadSnapshot } from '../workspace/snapshot.ts';
-import { knowledgeModel, nativeVersion, requestedPolicyHash } from '../model/profile.ts';
-import { extractionInstructions, extractionSchema } from './claims.ts';
 import { extractionArguments } from './arguments.ts';
 import { extractAttempt, type ExtractionAttempt } from './attempt.ts';
+import { maximumSourceBytes, prepareExtraction, processingContract } from './preparation.ts';
 
 export async function extractCommand(args: string[]) {
   const options = extractionArguments(args);
@@ -21,18 +19,14 @@ export async function extractCommand(args: string[]) {
       message: 'Extraction requires a declared source',
     });
   const sourceBytes = Buffer.byteLength(source.content);
-  if (sourceBytes > 32_768)
+  if (sourceBytes > maximumSourceBytes)
     throw new HivexError({
       code: 'EXTRACTION_SOURCE_TOO_LARGE',
       message: 'Extract a declared section containing at most 32768 UTF-8 bytes',
-      details: { sourceBytes, maximumBytes: 32_768 },
+      details: { sourceBytes, maximumBytes: maximumSourceBytes },
     });
-  const prompt = `${extractionInstructions}\n\n${JSON.stringify({
-    source: source.id,
-    firstLine: source.section?.lineStart ?? 1,
-    declaredAuthority: source.authority,
-    markdown: source.content,
-  })}`;
+  const { prompt, basePromptHash } = prepareExtraction(source);
+  const processing = processingContract();
   const envelope = {
     command: 'extract',
     accepted: false,
@@ -43,12 +37,12 @@ export async function extractCommand(args: string[]) {
       contentHash: source.contentHash,
       section: source.section,
     },
-    model: knowledgeModel,
+    model: processing.model,
     contract: {
-      nativeVersion,
-      requestedPolicyHash: requestedPolicyHash(),
-      basePromptHash: hash(prompt),
-      schemaHash: hash(JSON.stringify(extractionSchema)),
+      nativeVersion: processing.nativeVersion,
+      requestedPolicyHash: processing.requestedPolicyHash,
+      basePromptHash,
+      schemaHash: processing.schemaHash,
     },
   };
   const attempts: ExtractionAttempt[] = [];

@@ -5,14 +5,23 @@ import { search } from './retrieval/search.ts';
 import { read } from './retrieval/read.ts';
 import { relations } from './relations/query.ts';
 import { extractCommand } from './ingestion/command.ts';
+import { planCommand } from './ingestion/plan.ts';
 
 async function main(args: string[]) {
+  if (args[0] === 'plan') return planCommand(args.slice(1));
   if (args[0] === 'extract') return extractCommand(args.slice(1));
   if (args.length === 1 && args[0] === '--help')
     return {
       application: 'hivex',
       configuration: 'hivex.json',
       commands: [
+        {
+          name: 'plan',
+          usage:
+            'plan [--root <repo>] [--ref <commit>] [--collection <id>] [--cursor <continuation>] [--limit 1..20] [--max-bytes 1024..65536]',
+          modelCalls:
+            'None. Inventory the declared extraction inputs and their processing contract.',
+        },
         {
           name: 'extract',
           usage:

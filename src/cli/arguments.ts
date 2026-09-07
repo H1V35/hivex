@@ -43,7 +43,7 @@ function commandFor(positionals: string[]) {
   return { command, value };
 }
 
-function parseLimit(
+export function parseLimit(
   value: string | undefined,
   bounds: { fallback: number; maximum: number; minimum: number },
 ): number {

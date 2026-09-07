@@ -6,7 +6,7 @@ with Codex CLI 0.153.2, the existing ChatGPT subscription and gpt-5.6-luna/max.
 `manifest.json` identifies the runner and hashes its source, test peer and configuration.
 The following evidence commit does not change that executable code.
 
-The input is the complete 42-byte `source.md`, committed as `policy.md` in a temporary
+The input is the complete 43-byte `source.md`, committed as `policy.md` in a temporary
 Git repository together with the exact bytes of `source-config.json.txt` as `hivex.json`.
 The local input commit is recorded in each response; the source and configuration
 hashes allow the input to be recreated without that local Git object.

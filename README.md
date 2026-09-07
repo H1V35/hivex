@@ -191,6 +191,37 @@ and routing sections belong to `legacy`. Their authored text and accepted graph 
 unchanged. Other mixed documents remain marked as such until their content and consumers can be
 separated safely.
 
+## Plan extraction inputs
+
+Inspect the complete declared source cohort before making a model call:
+
+```sh
+pnpm hivex plan --collection compi --limit 10 --max-bytes 16384
+pnpm hivex plan --collection compi --ref <commit-from-plan> --cursor <continuation>
+```
+
+`plan` reads committed sources and makes no model call or workspace write. Default selection is the
+same as search; opt-in collections require `--collection`. Each unit retains its document hash,
+selected section, original lines, collection and declared authority. Its prompt hash is computed
+using the same preparation as `extract`. The plan hash binds the entire selected cohort, Git commit,
+configuration and processing contract, independently of pagination. It is not a signature or an
+accepted graph manifest.
+
+The summary covers all selected sources, including units on later pages. It reports source bytes,
+prepared prompt bytes and oversized sources. These are UTF-8 byte counts, not token or billing
+estimates; native harness instructions, response tokens, corrections and runtime costs are additional.
+`extractable` means the declared input fits the current 32,768-byte source limit. It does not certify
+semantic completeness, graph admission or native account availability. Oversized inputs remain in
+the plan as `requires-section`; declare complete sections and compare their plans before extraction.
+Hivex does not silently trim or partition a decision to fit the limit.
+
+Continue until `continuation` is null, checking the same plan hash and contiguous page ranges.
+Changing the source cohort, selection, commit or processing contract invalidates a cursor. You may
+increase the page budget without changing the plan. A complete unit that cannot fit reports its
+required byte budget instead of dropping authority or replacement references. Defaults are 20 units
+and 16,384 output bytes; accepted limits are 1–20 units and 1,024–65,536 bytes, including metadata and
+the trailing newline. This planning interface does not execute or resume a rebuild.
+
 ## Extract knowledge candidates
 
 `extract` uses **gpt-5.6-luna/max through the existing Codex ChatGPT subscription**. It requires the
