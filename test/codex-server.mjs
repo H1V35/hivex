@@ -81,15 +81,16 @@ const handlers = {
         skip_host_skill_discovery: process.argv.includes('skip_host_skill_discovery'),
       },
       memories: { use_memories: false, generate_memories: false },
-      mcp_servers:
-        process.env.HIVEX_TEST_SCENARIO === 'configured-mcp'
-          ? {
-              hivex_extra: {
-                enabled: options['mcp_servers.hivex_extra.enabled'] !== 'false',
-                command: '/must-not-start',
-              },
-            }
-          : {},
+      mcp_servers: ['configured-mcp', 'ignored-mcp'].includes(process.env.HIVEX_TEST_SCENARIO)
+        ? {
+            hivex_extra: {
+              enabled:
+                process.env.HIVEX_TEST_SCENARIO === 'ignored-mcp' ||
+                options['mcp_servers.hivex_extra.enabled'] !== 'false',
+              command: '/must-not-start',
+            },
+          }
+        : {},
     },
   }),
   'thread/start': (params) => {

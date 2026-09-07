@@ -370,3 +370,17 @@ test.each(['usage-regression', 'duplicate-terminal'])(
     });
   },
 );
+
+test('reports confirmed cleanup when configuration refuses MCP isolation', () => {
+  fixture((root) => {
+    const result = invoke({ root, scenario: 'ignored-mcp' });
+    expect(result.status).toBe(1);
+    const output = JSON.parse(result.stdout);
+    expect(output.attempts).toHaveLength(1);
+    expect(output.attempts[0]).toMatchObject({
+      code: 'MODEL_ADMISSION_FAILED',
+      cleanup: 'confirmed',
+      usage: null,
+    });
+  });
+});

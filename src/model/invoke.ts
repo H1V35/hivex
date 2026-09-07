@@ -26,8 +26,9 @@ export type InvocationReport = {
   cleanup?: 'confirmed' | 'failed' | 'not-observed';
   startedAt?: string;
   durationMilliseconds?: number;
-  admission?: ProfileEvidence;
+  admission?: ProfileEvidence & { launchPolicyHash: string };
   diagnostic?: Record<string, unknown>;
+  nativeProcessId?: number;
 };
 
 class ModelTimeout extends Error {}
@@ -204,7 +205,10 @@ export async function invokeModel(options: InvocationOptions) {
   } catch (error) {
     if (controller.signal.aborted) initialReport.code = 'MODEL_CANCELLED';
     initialReport.diagnostic = failureDiagnostic(error);
-    if (error instanceof ServerAdmissionFailure) initialReport.cleanup = error.cleanup;
+    if (error instanceof ServerAdmissionFailure) {
+      initialReport.cleanup = error.cleanup;
+      initialReport.nativeProcessId = error.processId;
+    }
     resource.result = { value: null, report: initialReport, retry: false };
   } finally {
     try {
@@ -243,6 +247,7 @@ export async function invokeModel(options: InvocationOptions) {
     report: {
       ...resource.result.report,
       admission: resource.server?.admission,
+      nativeProcessId: resource.server?.pid ?? resource.result.report.nativeProcessId,
       startedAt,
       durationMilliseconds: Math.round(performance.now() - began),
     },

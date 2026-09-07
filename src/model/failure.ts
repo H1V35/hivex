@@ -3,9 +3,11 @@ import { AppServerRpcError } from './connection.ts';
 
 export class ServerAdmissionFailure extends Error {
   readonly cleanup: 'confirmed' | 'failed';
-  constructor(options: { cause: unknown; cleanup: 'confirmed' | 'failed' }) {
+  readonly processId: number;
+  constructor(options: { cause: unknown; cleanup: 'confirmed' | 'failed'; processId: number }) {
     super('Native server admission failed', { cause: options.cause });
     this.cleanup = options.cleanup;
+    this.processId = options.processId;
   }
 }
 

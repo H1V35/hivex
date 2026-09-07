@@ -4,6 +4,21 @@ import { AppServerConnection } from './connection.ts';
 
 export const knowledgeModel = { name: 'gpt-5.6-luna', effort: 'max', provider: 'openai' } as const;
 export const nativeVersion = 'codex-cli 0.153.2';
+const environmentKeys = [
+  'HOME',
+  'CODEX_HOME',
+  'PATH',
+  'LANG',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'CODEX_SANDBOX',
+  'CODEX_SANDBOX_NETWORK_DISABLED',
+];
+const localeKey = /^LC_[A-Z_]+$/;
 export const knowledgeThread = {
   model: knowledgeModel.name,
   modelProvider: knowledgeModel.provider,
@@ -175,31 +190,19 @@ export async function admitProfile(options: { rpc: AppServerConnection; signal: 
 export type ProfileEvidence = Awaited<ReturnType<typeof admitProfile>>['evidence'];
 
 export function nativeEnvironment() {
-  const allowed = new Set([
-    'HOME',
-    'CODEX_HOME',
-    'PATH',
-    'LANG',
-    'USER',
-    'LOGNAME',
-    'SHELL',
-    'TMPDIR',
-    'TMP',
-    'TEMP',
-    'CODEX_SANDBOX',
-    'CODEX_SANDBOX_NETWORK_DISABLED',
-  ]);
+  const allowed = new Set(environmentKeys);
   return Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => allowed.has(name) || /^LC_[A-Z_]+$/.test(name)),
+    Object.entries(process.env).filter(([name]) => allowed.has(name) || localeKey.test(name)),
   );
 }
 
-export function requestedPolicyHash() {
+export function requestedPolicyHash(disabledServers: string[] = []) {
   return createHash('sha256')
     .update(
       JSON.stringify({
         nativeVersion,
-        launchArguments: launchArguments([]),
+        environment: { keys: environmentKeys, localeKey: localeKey.source },
+        launchArguments: launchArguments(disabledServers),
         thread: knowledgeThread,
         turn: knowledgeTurn,
       }),

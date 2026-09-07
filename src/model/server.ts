@@ -2,7 +2,13 @@ import { spawn, spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { AppServerConnection } from './connection.ts';
 import { ServerAdmissionFailure } from './failure.ts';
-import { admitProfile, launchArguments, nativeEnvironment, nativeVersion } from './profile.ts';
+import {
+  admitProfile,
+  launchArguments,
+  nativeEnvironment,
+  nativeVersion,
+  requestedPolicyHash,
+} from './profile.ts';
 
 function signalGroup(pid: number, signal: NodeJS.Signals | 0) {
   try {
@@ -96,24 +102,42 @@ async function launchServer(options: ServerOptions, disabledServers: string[]) {
     );
     rpc.notify('initialized');
     const profile = await admitProfile({ rpc, signal: options.signal });
-    return { rpc, stop, activeServers: profile.activeServers, admission: profile.evidence };
+    return {
+      rpc,
+      stop,
+      pid,
+      activeServers: profile.activeServers,
+      admission: { ...profile.evidence, launchPolicyHash: requestedPolicyHash(disabledServers) },
+    };
   } catch (error) {
     try {
       await stop();
     } catch {
-      throw new ServerAdmissionFailure({ cause: error, cleanup: 'failed' });
+      throw new ServerAdmissionFailure({ cause: error, cleanup: 'failed', processId: pid });
     }
-    throw new ServerAdmissionFailure({ cause: error, cleanup: 'confirmed' });
+    throw new ServerAdmissionFailure({ cause: error, cleanup: 'confirmed', processId: pid });
   }
 }
 
 export async function startServer(options: ServerOptions) {
   const initial = await launchServer(options, []);
   if (!initial.activeServers.length) return initial;
-  await initial.stop();
+  await stopForAdmission(initial);
   options.signal.throwIfAborted();
   const isolated = await launchServer(options, initial.activeServers);
   if (!isolated.activeServers.length) return isolated;
-  await isolated.stop();
-  throw new Error('MCP configuration changed or did not honor process-local overrides');
+  await stopForAdmission(isolated);
+  throw new ServerAdmissionFailure({
+    cause: new Error('MCP configuration changed or did not honor process-local overrides'),
+    cleanup: 'confirmed',
+    processId: isolated.pid,
+  });
+}
+
+async function stopForAdmission(server: Awaited<ReturnType<typeof launchServer>>) {
+  try {
+    await server.stop();
+  } catch (error) {
+    throw new ServerAdmissionFailure({ cause: error, cleanup: 'failed', processId: server.pid });
+  }
 }
