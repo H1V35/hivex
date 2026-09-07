@@ -5,13 +5,16 @@ complete evidence without a model call, service or private agent memory.
 
 ## Install and use
 
-Use Bun 1.4.2 and a committed checkout:
+Use Bun 1.4.2, Git 2.45 or newer, and a committed checkout:
 
 ```sh
 bun install
 bun src/cli.ts search "versioned sources" --collection hivex
 bun src/cli.ts read docs/adr/0001-versioned-project-knowledge.md --ref <commit-from-search>
 ```
+
+Git 2.45 introduced the no-lazy-fetch control used to keep source reads local, including in
+partial clones. See the [Git 2.45 reference](https://git-scm.com/docs/git/2.45.0).
 
 Commit `bun.lock` when dependencies change. Use `bun ci` for a frozen installation in CI or a fresh
 checkout. Bun's native configuration applies the seven-day release age and explicit lifecycle-script
