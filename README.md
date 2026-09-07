@@ -202,7 +202,7 @@ pnpm --filter hivex test
 The integration tests exercise the public CLI against temporary Git repositories. The implementation
 uses mdast/GFM/frontmatter positions, YAML metadata, GitHub-style heading anchors and Bun SQLite FTS5.
 Project smoke tests also query every committed collection and validate the referenced documents in
-each configured non-empty relation index through the CLI.
+each configured relation index through the CLI, including header-only indexes.
 Hivex-specific changes run this suite without requiring unrelated app/backend suites; manifest,
 lockfile, workflow and uncertain changes retain the complete CI scope.
 

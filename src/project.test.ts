@@ -31,7 +31,15 @@ const config = git(['show', `${commit}:hivex.json`]);
 const configHash = createHash('sha256').update(config).digest('hex');
 const project = z
   .object({
-    collections: z.array(z.object({ id: z.string() })).min(1),
+    collections: z
+      .array(
+        z.object({
+          id: z.string(),
+          include: z.array(z.union([z.string(), z.object({ path: z.string() })])),
+          exclude: z.array(z.string()).default([]),
+        }),
+      )
+      .min(1),
     relationIndexes: z.array(z.object({ path: z.string() })).default([]),
   })
   .parse(JSON.parse(config));
@@ -70,13 +78,7 @@ test.each(project.relationIndexes)(
   'validates all referenced documents in the committed index through the CLI: $path',
   ({ path }) => {
     const contents = git(['show', `${commit}:${path}`]);
-    const entry = z.object({ source: z.object({ path: z.string() }) });
-    const first = contents
-      .split('\n')
-      .filter((line) => line.trim())
-      .map((line): unknown => JSON.parse(line))
-      .find((value) => entry.safeParse(value).success);
-    const source = entry.parse(first).source.path;
+    const source = fixtureSource();
     const result = spawnSync(
       process.execPath,
       [cli, 'relations', source, '--root', root, '--ref', commit, '--max-bytes', '65536'],
@@ -99,3 +101,19 @@ test.each(project.relationIndexes)(
   },
   20_000,
 );
+
+function fixtureSource() {
+  const paths = git(['ls-tree', '-rz', '--name-only', commit]).split('\0');
+  const source = paths.find(
+    (path) =>
+      /\.(?:md|markdown|mdown)$/i.test(path) &&
+      project.collections.some(
+        (collection) =>
+          collection.include.some((include) =>
+            typeof include === 'string' ? new Bun.Glob(include).match(path) : include.path === path,
+          ) && !collection.exclude.some((exclude) => new Bun.Glob(exclude).match(path)),
+      ),
+  );
+  if (!source) throw new Error('The project smoke fixture needs a declared Markdown source');
+  return source;
+}

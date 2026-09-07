@@ -113,7 +113,7 @@ export function relations(options: {
         throw new HivexError({
           code: 'RELATION_EXCEEDS_BUDGET',
           message: 'The next complete indexed record does not fit; increase --max-bytes',
-          details: { requiredBytes, maximumBytes: 65_536, id: candidate.id },
+          details: { requiredBytes, maximumBytes: 65_536, line: candidate.indexEntry.line },
         });
       break;
     }

@@ -79,10 +79,13 @@ export function loadSnapshot(options: {
       message: 'A snapshot may contain at most 2048 selected sources',
     });
   validateReplacements(sources, declared);
-  return { commit, configHash: hash(configText), config, sources, files };
+  return { commit, configHash: hash(configText), config, sources, files, declared };
 }
 
-function validateReplacements(sources: Source[], declared: { path: string; mode: string }[]) {
+export function validateReplacements(
+  sources: Source[],
+  declared: { path: string; mode: string }[],
+) {
   const declaredPaths = new Set(
     declared
       .filter((file) => file.mode === '100644' || file.mode === '100755')

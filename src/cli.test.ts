@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -863,6 +863,107 @@ function withRelations(run: (root: string) => void) {
 }
 
 describe('hivex relations', () => {
+  test('the project CI entrypoint accepts an empty index and still rejects an invalid header', () => {
+    withRelations((root) => {
+      mkdirSync(join(root, 'hivex', 'src'), { recursive: true });
+      writeFileSync(join(root, '.gitignore'), 'node_modules\n');
+      symlinkSync(join(import.meta.dirname, '../../node_modules'), join(root, 'node_modules'));
+      writeFileSync(
+        join(root, 'hivex', 'src', 'project.test.ts'),
+        readFileSync(join(import.meta.dirname, 'project.test.ts')),
+      );
+      writeFileSync(join(root, 'hivex', 'src', 'cli.ts'), 'import ' + JSON.stringify(cli) + ';\n');
+      writeRelationIndex(root, []);
+      commitChanges(root);
+      const run = () =>
+        spawnSync(process.execPath, ['test', 'hivex/src/project.test.ts'], {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 10_000,
+          maxBuffer: 1_048_576,
+        });
+      const valid = run();
+      expect(valid.status).toBe(0);
+      writeFileSync(
+        join(root, 'docs', 'relations.jsonl'),
+        JSON.stringify({
+          type: 'schema',
+          schemaVersion: 2,
+          format: 'compi-adr-supersession-index',
+          statuses: ['live', 'superseded', 'partially-amended', 'unresolved'],
+        }) + '\n',
+      );
+      commitChanges(root);
+      const invalid = run();
+      expect(invalid.status).toBe(1);
+      expect(invalid.stderr).toContain('INVALID_RELATION_INDEX');
+    });
+  }, 30_000);
+  test('retains the required byte budget when an oversized record has a long identifier', () => {
+    withRelations((root) => {
+      writeRelationIndex(root, [{ ...relationRule, id: 'x'.repeat(2000) }]);
+      commitChanges(root);
+      const result = invoke(root, ['relations', 'docs/cache.md', '--max-bytes', '1024']);
+      expect(result.status).toBe(1);
+      const error = z
+        .object({
+          error: z.object({
+            code: z.literal('RELATION_EXCEEDS_BUDGET'),
+            details: z.object({
+              requiredBytes: z.number(),
+              maximumBytes: z.number(),
+              line: z.number(),
+            }),
+          }),
+        })
+        .parse(output(result.stderr));
+      expect(error.error.details.requiredBytes).toBeGreaterThan(1024);
+      expect(error.error.details.line).toBe(2);
+      expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(1024);
+    });
+  });
+  test('rejects a reference whose document read would fail and accepts declared replacements outside the index', () => {
+    withRelations((root) => {
+      writeFileSync(
+        join(root, 'docs', 'revised.md'),
+        '---\nsuperseded_by: [docs/final.md]\n---\n\n# Replacement\n\n## Conditional reuse\n\nA later condition applies.\n',
+      );
+      commitChanges(root);
+      const invalid = invoke(root, ['relations', 'docs/cache.md']);
+      expect(invalid.status).toBe(1);
+      expect(output(invalid.stderr)).toMatchObject({ error: { code: 'INVALID_REPLACEMENT' } });
+      writeFileSync(
+        join(root, 'docs', 'final.md'),
+        '# Final policy\n\nThe declared replacement is outside the index.\n',
+      );
+      commitChanges(root);
+      const valid = invoke(root, ['relations', 'docs/cache.md']);
+      expect(valid.status).toBe(0);
+      const schema = z.object({
+        snapshot: z.object({ commit: z.string() }),
+        records: z.array(
+          z.object({
+            supersededBy: z.array(z.object({ path: z.string(), readCursor: z.string() })),
+          }),
+        ),
+      });
+      const parsed = schema.parse(output(valid.stdout));
+      const target = parsed.records[0]?.supersededBy[0];
+      if (!target) throw new Error('Expected a readable replacement reference');
+      const read = invoke(root, [
+        'read',
+        target.path,
+        '--ref',
+        parsed.snapshot.commit,
+        '--cursor',
+        target.readCursor,
+      ]);
+      expect(read.status).toBe(0);
+      expect(output(read.stdout)).toMatchObject({
+        source: { authority: { supersededBy: ['docs/final.md'] } },
+      });
+    });
+  });
   test('keeps equal IDs from distinct indexes separate by their provenance', () => {
     withRelations((root) => {
       writeFileSync(
@@ -1093,7 +1194,7 @@ describe('hivex relations', () => {
       expect(result.status).toBe(1);
       expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(1024);
       expect(output(result.stderr)).toMatchObject({
-        error: { code: 'RELATION_EXCEEDS_BUDGET', details: { id: '0001:decision:1' } },
+        error: { code: 'RELATION_EXCEEDS_BUDGET', details: { line: 2 } },
       });
     });
   });

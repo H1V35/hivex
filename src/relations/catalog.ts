@@ -1,8 +1,7 @@
 import { HivexError } from '../errors.ts';
 import { parseSource, type Source } from '../sources/markdown.ts';
-import { selectionsFor } from '../workspace/config.ts';
 import { blobs } from '../workspace/git.ts';
-import type { Snapshot } from '../workspace/snapshot.ts';
+import { validateReplacements, type Snapshot } from '../workspace/snapshot.ts';
 import { cursorFor } from '../retrieval/read.ts';
 import { MAX_RELATION_RECORDS, parseIndex, type IndexedReference } from './index.ts';
 
@@ -43,11 +42,9 @@ export function loadRelations(options: { root: string; snapshot: Snapshot }) {
       code: 'TOO_MANY_SOURCES',
       message: 'Relation indexes may reference at most 2048 Markdown documents',
     });
+  const declaredPaths = new Set(snapshot.declared.map((file) => file.path));
   const files = [...paths].map((path) => {
-    if (
-      !/\.(?:md|markdown|mdown)$/i.test(path) ||
-      !selectionsFor(path, snapshot.config.collections).length
-    )
+    if (!declaredPaths.has(path))
       throw new HivexError({
         code: 'UNDECLARED_RELATION_SOURCE',
         message: `Relation references an undeclared Markdown document: ${path}`,
@@ -61,6 +58,7 @@ export function loadRelations(options: { root: string; snapshot: Snapshot }) {
       parseSource({ path: file.path, content: markdown.get(file.path) ?? '', collection: null }),
     ]),
   );
+  validateReplacements([...documents.values()], snapshot.declared);
   return { indexes, documents };
 }
 
@@ -78,9 +76,11 @@ export function resolveReference(options: {
     });
   const heading = document.headings.find((entry) => entry.anchor === reference.anchor);
   const block = heading && document.blocks[heading.block];
-  let resolution = 'missing-anchor';
-  if (document.containedAnchors.includes(reference.anchor)) resolution = 'contained-heading';
-  if (heading) resolution = 'resolved';
+  const resolution = (() => {
+    if (heading) return 'resolved';
+    if (document.containedAnchors.includes(reference.anchor)) return 'contained-heading';
+    return 'missing-anchor';
+  })();
   return {
     path: reference.path,
     anchor: reference.anchor,
