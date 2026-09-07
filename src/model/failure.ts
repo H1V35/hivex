@@ -1,13 +1,21 @@
 import { z } from 'zod';
 import { AppServerRpcError } from './connection.ts';
+import type { ProfileEvidence } from './profile.ts';
 
 export class ServerAdmissionFailure extends Error {
   readonly cleanup: 'confirmed' | 'failed';
   readonly processId: number;
-  constructor(options: { cause: unknown; cleanup: 'confirmed' | 'failed'; processId: number }) {
+  readonly admission: (ProfileEvidence & { launchPolicyHash: string }) | undefined;
+  constructor(options: {
+    cause: unknown;
+    cleanup: 'confirmed' | 'failed';
+    processId: number;
+    admission?: ProfileEvidence & { launchPolicyHash: string };
+  }) {
     super('Native server admission failed', { cause: options.cause });
     this.cleanup = options.cleanup;
     this.processId = options.processId;
+    this.admission = options.admission;
   }
 }
 

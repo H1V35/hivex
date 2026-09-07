@@ -382,5 +382,24 @@ test('reports confirmed cleanup when configuration refuses MCP isolation', () =>
       cleanup: 'confirmed',
       usage: null,
     });
+    expect(output.attempts[0].admission.launchPolicyHash).not.toBe(
+      output.contract.requestedPolicyHash,
+    );
+  });
+});
+
+test('retains the stopped server evidence when cancellation interrupts MCP isolation', () => {
+  fixture((root) => {
+    const result = invoke({ root, scenario: 'abort-isolation' });
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(1);
+    const output = JSON.parse(result.stdout);
+    expect(output.attempts[0]).toMatchObject({
+      code: 'MODEL_CANCELLED',
+      cleanup: 'confirmed',
+      usage: null,
+    });
+    expect(output.attempts[0].nativeProcessId).toBeGreaterThan(1);
+    expect(output.attempts[0].admission.launchPolicyHash).toBe(output.contract.requestedPolicyHash);
   });
 });

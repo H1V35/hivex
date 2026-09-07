@@ -123,7 +123,13 @@ export async function startServer(options: ServerOptions) {
   const initial = await launchServer(options, []);
   if (!initial.activeServers.length) return initial;
   await stopForAdmission(initial);
-  options.signal.throwIfAborted();
+  if (options.signal.aborted)
+    throw new ServerAdmissionFailure({
+      cause: options.signal.reason,
+      cleanup: 'confirmed',
+      processId: initial.pid,
+      admission: initial.admission,
+    });
   const isolated = await launchServer(options, initial.activeServers);
   if (!isolated.activeServers.length) return isolated;
   await stopForAdmission(isolated);
@@ -131,6 +137,7 @@ export async function startServer(options: ServerOptions) {
     cause: new Error('MCP configuration changed or did not honor process-local overrides'),
     cleanup: 'confirmed',
     processId: isolated.pid,
+    admission: isolated.admission,
   });
 }
 
@@ -138,6 +145,11 @@ async function stopForAdmission(server: Awaited<ReturnType<typeof launchServer>>
   try {
     await server.stop();
   } catch (error) {
-    throw new ServerAdmissionFailure({ cause: error, cleanup: 'failed', processId: server.pid });
+    throw new ServerAdmissionFailure({
+      cause: error,
+      cleanup: 'failed',
+      processId: server.pid,
+      admission: server.admission,
+    });
   }
 }

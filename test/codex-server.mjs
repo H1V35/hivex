@@ -81,7 +81,9 @@ const handlers = {
         skip_host_skill_discovery: process.argv.includes('skip_host_skill_discovery'),
       },
       memories: { use_memories: false, generate_memories: false },
-      mcp_servers: ['configured-mcp', 'ignored-mcp'].includes(process.env.HIVEX_TEST_SCENARIO)
+      mcp_servers: ['configured-mcp', 'ignored-mcp', 'abort-isolation'].includes(
+        process.env.HIVEX_TEST_SCENARIO,
+      )
         ? {
             hivex_extra: {
               enabled:
@@ -240,3 +242,4 @@ for await (const line of createInterface({ input: process.stdin })) {
     emit({ id: frame.id, error: { code: -32602, message: 'invalid fixture request' } });
   }
 }
+if (process.env.HIVEX_TEST_SCENARIO === 'abort-isolation') process.kill(process.ppid, 'SIGINT');

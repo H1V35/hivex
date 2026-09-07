@@ -208,6 +208,7 @@ export async function invokeModel(options: InvocationOptions) {
     if (error instanceof ServerAdmissionFailure) {
       initialReport.cleanup = error.cleanup;
       initialReport.nativeProcessId = error.processId;
+      initialReport.admission = error.admission;
     }
     resource.result = { value: null, report: initialReport, retry: false };
   } finally {
@@ -246,7 +247,7 @@ export async function invokeModel(options: InvocationOptions) {
     ...resource.result,
     report: {
       ...resource.result.report,
-      admission: resource.server?.admission,
+      admission: resource.server?.admission ?? resource.result.report.admission,
       nativeProcessId: resource.server?.pid ?? resource.result.report.nativeProcessId,
       startedAt,
       durationMilliseconds: Math.round(performance.now() - began),
