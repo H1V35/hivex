@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "purpose": "Synthetic native invocation and interruption evidence, not semantic graph admission",
+  "runner": {
+    "repository": "https://github.com/H1V35/compi",
+    "commit": "e84b265afafcf87e35f5975373782ebc1f1ac6a7",
+    "files": {
+      "hivex/package.json": "6758fe67e38d02a3ecfc4c6b4ae91adb7fa02786ca15b8271f0a8a766afdb92e",
+      "hivex/src/cli.test.ts": "df71989b8327156f7726bd5d8f6e75ee1df05020418ed09f787784f03f65f592",
+      "hivex/src/cli.ts": "41525b1b50cce8b0e84b14e41ff197c9f4b4d0fe3be93b93af6ef47bdc0cee6b",
+      "hivex/src/cli/arguments.ts": "481b670c6479381a94fe78ab55c92f3608deecc51a23af7d23ade48a0a999d1c",
+      "hivex/src/cli/diagnostic.ts": "5d59965288b319ebfc7631325d694383bd08bcd6d5a5bd7029bb0a2bffba0632",
+      "hivex/src/errors.ts": "334f558e8edb1794b40f8382edbe40a1839b899f4df1c7322540169c1fbdd094",
+      "hivex/src/extract.test.ts": "19c099391e657d1c89297d0637e688052db94ecf17cb08313b596c417341c788",
+      "hivex/src/ingestion/arguments.ts": "1775df79d29c75ffc705fa9056771ebbe4cfcadeda3b8e1a7201cfa14cc637c6",
+      "hivex/src/ingestion/attempt.ts": "7f47952ecce84eb3d957ff3055ba92571e43adb06cf00b9abe2ad9e0278319ef",
+      "hivex/src/ingestion/claims.ts": "cea2f4e08fba138dcc49d3e47d047cce46871213c91bbc19b125a20e8f01a3e6",
+      "hivex/src/ingestion/command.ts": "61ce65a9a5a39617f165c5f579212495c2dc285487dcca482f65223f8bc709dd",
+      "hivex/src/ingestion/evidence.ts": "936effd913966c9aa22d10ae3b3fc6bc90c183efb0137f13075991cd5e44aba4",
+      "hivex/src/model/connection.ts": "9bb621b2d6bfb895e60caff4e5744a5152898abde52e0aeca8500c253d5024b1",
+      "hivex/src/model/failure.ts": "39b6cf492421fb7a41a91dfb4e372a89196b8ad68612dbfcbc81fe68d673591f",
+      "hivex/src/model/invoke.ts": "2ea2048263bf85ebd6e1468112f247840d475c08fde0545da619cb093713610e",
+      "hivex/src/model/profile.ts": "449c412b648978039ade25e357ebb811e7499b25e1d9336aece1e50ee996255c",
+      "hivex/src/model/server.ts": "35815d655d5520f48e91c43bfe0fce2c5b9c2857b2d615bdd96dbc1ac0ed0970",
+      "hivex/src/model/thread.ts": "a46e435f2883b437ccb42118b170a93a67db56eed325aa63baf083e46a1eec3a",
+      "hivex/src/model/transcript.ts": "3a6d39e6d7675ff16e5586ce39eaf409061107aa78ea4789bd4cd8cdb1227b71",
+      "hivex/src/project.test.ts": "90ef103b25cee22c3f58409554b96714ab4c59b377c98624a32dfd82b0c8b0f2",
+      "hivex/src/relations/catalog.ts": "bfd7d873814e802697b4f9a77df8f13cc1e4a260a4dd59ddd6acebd70a1d0c04",
+      "hivex/src/relations/index.ts": "d6c9f1b7dd6f0e4be50810cc62fd178eeeab1f4bda7bbbc808420cd06dc3bcb5",
+      "hivex/src/relations/query.ts": "8b3fed22b8cc99efdaa08ad43e7247de256c1f0d9dcf3f42a91c9ac4ba9e8bf5",
+      "hivex/src/retrieval/read.ts": "dc2c0f45229cd88535781ab903ce72dc80803a5343029e677c055304d3d5168d",
+      "hivex/src/retrieval/search.ts": "ea7181d8dc53bd8eebff63bfc9e033b30185ab589711ed89e534fba422cbb4c2",
+      "hivex/src/sources/markdown.ts": "4b8c1b13410fd56c2b7beffe4a22b3b39f76246f7b81bdc0f19c4b74832cb1b3",
+      "hivex/src/sources/sections.ts": "7c95de21bd9234d0309bf67f2ebbbb9290ca40f6d2b5cb2febf226b8bd4a3e33",
+      "hivex/src/workspace/config.ts": "4dbe5d1129634ece7233cd36dff7f22cf64230309c5b95722b644c7c6dcfffa0",
+      "hivex/src/workspace/git.ts": "f43c5a894b8f3227de7fc49d3b58ff14a10081e157b2d9b9310e3c21795d90de",
+      "hivex/src/workspace/snapshot.ts": "8f9645075e368498f0ec3fda190a72144cbfd7248b354ae823d518f1b4b2504f",
+      "hivex/test/codex-server.mjs": "7c897b48cb9b71ef7d7568794637877eba718a494c81b573cad2594035baaba2",
+      "hivex/tsconfig.json": "ba5b5105e7856771a8588f057face9f483b684853ecbefea2b3d9f4211b2ed5a"
+    }
+  },
+  "inputs": {
+    "source.md": "05cb71b7bfdd3070b902ab081d4954749696cae83f431375f0f548db96020441",
+    "source-config.json.txt": "efcebfbb134e591ab2e9fb25fe61d7b42741338d7ef8ba910d095b7f3a18e2a1"
+  },
+  "observations": [
+    {
+      "file": "completed.json",
+      "expectedExitCode": 0,
+      "deadlineMilliseconds": 180000
+    },
+    {
+      "file": "interrupted.json",
+      "expectedExitCode": 1,
+      "deadlineMilliseconds": 5000
+    }
+  ]
+}
