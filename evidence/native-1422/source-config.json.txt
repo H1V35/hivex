@@ -1,0 +1,1 @@
+{"version": 1, "collections": [{"id": "project", "include": ["policy.md"]}]}

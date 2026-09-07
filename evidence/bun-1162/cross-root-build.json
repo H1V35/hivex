@@ -1,0 +1,31 @@
+{
+  "bunVersion": "1.4.2",
+  "distinctPhysicalCheckouts": true,
+  "artifacts": [
+    {
+      "file": "check-dependencies.mjs",
+      "equal": true,
+      "sha256": "f72fe29204abc2c3418894f0fb532a46222f1fe41cfb171e0d77d42c4efc3bc8"
+    },
+    {
+      "file": "checker-build.json",
+      "equal": true,
+      "sha256": "7c7a60e563b33bf2e21b1ba084fc1d24386bfa9cc5121f266af90f8ae846e473"
+    },
+    {
+      "file": "checker-licenses.json",
+      "equal": true,
+      "sha256": "22860c2f9b7da22f0e0f72d0680ff194dc372083afea70a3c252075def305371"
+    },
+    {
+      "file": "checker-metafile.json",
+      "equal": true,
+      "sha256": "974864e6530c4f6fc459744e3c3c8bb8e900d2b80421fa8c9b2d29cbf59f54b3"
+    },
+    {
+      "file": "checker-notices.txt",
+      "equal": true,
+      "sha256": "49251a1ed7c45c77e23888e9a7d0d06e126413a9347c412c961d5ab03d6e3934"
+    }
+  ]
+}

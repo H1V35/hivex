@@ -1,0 +1,75 @@
+{
+  "command": "extract",
+  "accepted": false,
+  "snapshot": {
+    "commit": "53548db01c5cd99ac84608b32758a79e14952981",
+    "configHash": "efcebfbb134e591ab2e9fb25fe61d7b42741338d7ef8ba910d095b7f3a18e2a1"
+  },
+  "source": {
+    "id": "policy.md",
+    "path": "policy.md",
+    "contentHash": "05cb71b7bfdd3070b902ab081d4954749696cae83f431375f0f548db96020441",
+    "section": null
+  },
+  "model": {
+    "name": "gpt-5.6-luna",
+    "effort": "max",
+    "provider": "openai"
+  },
+  "contract": {
+    "nativeVersion": "codex-cli 0.153.2",
+    "requestedPolicyHash": "daea94944db6612375b0e3281b16d62188258478da2eb6a95843cfb930ec52d3",
+    "basePromptHash": "7899dc5aba3c066dc90194ba44155ef909c6e49abf61e264235abbda0aefedd9",
+    "schemaHash": "4c548c0f60fae9853525f7ecc825300760b5668f89e627a09964c67ae4fc3c19"
+  },
+  "status": "failed",
+  "attempts": [
+    {
+      "outcome": "timeout",
+      "threadId": "01a07b65-aa35-7592-ba60-7ce5019c4ec3",
+      "turnId": "01a07b65-c621-7720-8549-7a4474dfd5f0",
+      "code": "MODEL_TIMEOUT",
+      "interruption": "confirmed",
+      "turnAccepted": "confirmed",
+      "deadlineMilliseconds": 5000,
+      "usage": null,
+      "cleanup": "confirmed",
+      "admission": {
+        "authType": "chatgpt",
+        "configuredEndpointOrigin": "https://chatgpt.com",
+        "model": "gpt-5.6-luna",
+        "modelProvider": "openai",
+        "effort": "max",
+        "configOrigins": [
+          {
+            "key": "model",
+            "sourceType": "sessionFlags",
+            "version": "sha256:dbad892bbfbec3cfe282396129609251992cb528fc59bafe6c61021f82d76157"
+          },
+          {
+            "key": "model_provider",
+            "sourceType": "sessionFlags",
+            "version": "sha256:dbad892bbfbec3cfe282396129609251992cb528fc59bafe6c61021f82d76157"
+          },
+          {
+            "key": "model_reasoning_effort",
+            "sourceType": "sessionFlags",
+            "version": "sha256:dbad892bbfbec3cfe282396129609251992cb528fc59bafe6c61021f82d76157"
+          },
+          {
+            "key": "chatgpt_base_url",
+            "sourceType": "sessionFlags",
+            "version": "sha256:dbad892bbfbec3cfe282396129609251992cb528fc59bafe6c61021f82d76157"
+          }
+        ],
+        "launchPolicyHash": "daea94944db6612375b0e3281b16d62188258478da2eb6a95843cfb930ec52d3"
+      },
+      "nativeProcessId": 36161,
+      "startedAt": "2026-09-07T10:24:15.011Z",
+      "durationMilliseconds": 13588,
+      "promptHash": "7899dc5aba3c066dc90194ba44155ef909c6e49abf61e264235abbda0aefedd9"
+    }
+  ],
+  "candidateAttempt": null,
+  "candidate": null
+}

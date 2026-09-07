@@ -1,0 +1,164 @@
+[
+  {
+    "name": "@pnpm/logger",
+    "version": "1001.0.1",
+    "publishedAt": "2025-10-09T16:02:18.945Z",
+    "publisher": "pnpmuser",
+    "maintainers": [
+      "pnpmuser",
+      "zkochan"
+    ],
+    "repository": {
+      "url": "https://github.com/pnpm/pnpm/blob/main/packages/logger",
+      "type": "git"
+    },
+    "dependencies": {
+      "bole": "^5.0.17",
+      "split2": "^4.2.0"
+    },
+    "installScripts": {},
+    "integrity": "sha512-gdwlAMXC4Wc0s7Dmg/4wNybMEd/4lSd9LsXQxeg/piWY0PPXjgz1IXJWnVScx6dZRaaodWP3c1ornrw8mZdFZw=="
+  },
+  {
+    "name": "@pnpm/resolving.npm-resolver",
+    "version": "1101.5.0",
+    "publishedAt": "2026-06-05T06:38:56.511Z",
+    "publisher": "pnpmuser",
+    "maintainers": [
+      "pnpmuser",
+      "zkochan"
+    ],
+    "repository": {
+      "url": "https://github.com/pnpm/pnpm/tree/main/resolving/npm-resolver",
+      "type": "git"
+    },
+    "dependencies": {
+      "ssri": "13.0.1",
+      "ramda": "npm:@pnpm/ramda@0.28.1",
+      "semver": "^7.8.1",
+      "p-limit": "^7.3.0",
+      "lru-cache": "^11.5.0",
+      "p-memoize": "8.0.0",
+      "path-temp": "^3.0.0",
+      "@pnpm/error": "1100.0.0",
+      "@pnpm/types": "1101.3.0",
+      "semver-utils": "^1.1.4",
+      "@zkochan/retry": "^0.2.0",
+      "normalize-path": "^3.0.0",
+      "@pnpm/constants": "1100.0.0",
+      "encode-registry": "^3.0.1",
+      "@pnpm/store.cafs": "1100.1.8",
+      "rename-overwrite": "^7.0.1",
+      "@pnpm/crypto.hash": "1100.0.1",
+      "@pnpm/store.index": "1100.1.0",
+      "@pnpm/core-loggers": "1100.1.3",
+      "@pnpm/fetching.types": "1100.0.1",
+      "@pnpm/fs.graceful-fs": "1100.1.0",
+      "parse-npm-tarball-url": "^5.0.0",
+      "version-selector-type": "^3.0.0",
+      "@pnpm/config.version-policy": "1100.1.3",
+      "@pnpm/workspace.spec-parser": "1100.0.0",
+      "@pnpm/resolving.resolver-base": "1100.4.0",
+      "@pnpm/resolving.registry.types": "1100.1.1",
+      "@pnpm/workspace.range-resolver": "1100.0.1",
+      "@pnpm/resolving.jsr-specifier-parser": "1100.0.0",
+      "@pnpm/config.pick-registry-for-package": "1100.0.7",
+      "@pnpm/resolving.registry.pkg-metadata-filter": "1100.0.7"
+    },
+    "installScripts": {},
+    "integrity": "sha512-ZaM5ApvmgtUscxPr2HIENRZWztIJEUvP+6j5IHXJQdq6ALXxmVeRWBXWOpR3pwymdxptfNiGW/8qo0i5hkEl+w=="
+  },
+  {
+    "name": "@pnpm/worker",
+    "version": "1100.1.9",
+    "publishedAt": "2026-06-05T06:38:11.612Z",
+    "publisher": "pnpmuser",
+    "maintainers": [
+      "pnpmuser",
+      "zkochan"
+    ],
+    "repository": {
+      "url": "https://github.com/pnpm/pnpm/tree/main/worker",
+      "type": "git"
+    },
+    "dependencies": {
+      "semver": "^7.8.1",
+      "p-limit": "^7.3.0",
+      "is-windows": "^1.0.2",
+      "@pnpm/error": "1100.0.0",
+      "@pnpm/store.cafs": "1100.1.8",
+      "@pnpm/store.index": "1100.1.0",
+      "@pnpm/fs.graceful-fs": "1100.1.0",
+      "@pnpm/crypto.integrity": "1100.0.0",
+      "@pnpm/fs.hard-link-dir": "1100.0.1",
+      "@pnpm/store.cafs-types": "1100.0.1",
+      "@rushstack/worker-pool": "0.7.7",
+      "@pnpm/fs.symlink-dependency": "1100.0.7",
+      "@pnpm/store.create-cafs-store": "1100.0.11",
+      "@pnpm/building.pkg-requires-build": "1100.0.6"
+    },
+    "installScripts": {},
+    "integrity": "sha512-71OxcN6jTVDoNvMzLhbkuQa8TphQ8WK63LN80JAsKZXHDgGNf31PRbNa4h6oXvoC7bE8AMqbdCE9Ug+T06VsZg=="
+  },
+  {
+    "name": "@types/semver",
+    "version": "7.8.0",
+    "publishedAt": "2026-08-02T08:01:52.124Z",
+    "publisher": "types",
+    "maintainers": [
+      "types"
+    ],
+    "repository": {
+      "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "type": "git",
+      "directory": "types/semver"
+    },
+    "dependencies": {},
+    "installScripts": {},
+    "integrity": "sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ=="
+  },
+  {
+    "name": "prettier",
+    "version": "3.8.4",
+    "publishedAt": "2026-06-09T11:30:06.784Z",
+    "publisher": "GitHub Actions",
+    "maintainers": [
+      "jlongster",
+      "lydell",
+      "thorn0",
+      "vjeux",
+      "fisker",
+      "suchipi",
+      "duailibe",
+      "ikatyang",
+      "azz",
+      "sosukesuzuki",
+      "prettier-bot"
+    ],
+    "repository": {
+      "url": "git+https://github.com/prettier/prettier.git",
+      "type": "git"
+    },
+    "dependencies": {},
+    "installScripts": {},
+    "integrity": "sha512-N2MylSdi48+5N/6S5j+maeHbUSIzzZ5uOcX5Hm4QpV8Dkb1HFjfAKTKX6yNPJQD9AhcT3ifHNB66tWTTJDi11Q=="
+  },
+  {
+    "name": "semver",
+    "version": "7.8.5",
+    "publishedAt": "2026-06-19T18:32:48.972Z",
+    "publisher": "GitHub Actions",
+    "maintainers": [
+      "saquibkhan",
+      "npm-cli-ops",
+      "reggi"
+    ],
+    "repository": {
+      "url": "git+https://github.com/npm/node-semver.git",
+      "type": "git"
+    },
+    "dependencies": {},
+    "installScripts": {},
+    "integrity": "sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA=="
+  }
+]

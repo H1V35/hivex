@@ -1,0 +1,69 @@
+import { diagnostic } from './cli/diagnostic.ts';
+import { argumentsFor } from './cli/arguments.ts';
+import { loadSnapshot } from './workspace/snapshot.ts';
+import { search } from './retrieval/search.ts';
+import { read } from './retrieval/read.ts';
+import { relations } from './relations/query.ts';
+import { extractCommand } from './ingestion/command.ts';
+import { planCommand } from './ingestion/plan.ts';
+
+async function main(args: string[]) {
+  if (args[0] === 'plan') return planCommand(args.slice(1));
+  if (args[0] === 'extract') return extractCommand(args.slice(1));
+  if (args.length === 1 && args[0] === '--help')
+    return {
+      application: 'hivex',
+      configuration: 'hivex.json',
+      commands: [
+        {
+          name: 'plan',
+          usage:
+            'plan [--root <repo>] [--ref <commit>] [--collection <id>] [--cursor <continuation>] [--limit 1..20] [--max-bytes 1024..65536]',
+          modelCalls:
+            'None. Inventory the declared extraction inputs and their processing contract.',
+        },
+        {
+          name: 'extract',
+          usage:
+            'extract <source-id> [--root <repo>] [--ref <commit>] [--codex <binary>] [--attempts 1..3] [--deadline-ms 100..900000]',
+          modelCalls:
+            'Uses the existing Codex ChatGPT subscription and returns an unaccepted candidate.',
+        },
+        {
+          name: 'search',
+          usage:
+            'search <query> [--root <repo>] [--ref <revision>] [--collection <id>] [--limit 1..20] [--max-bytes 1024..65536]',
+        },
+        {
+          name: 'read',
+          usage:
+            'read <source-id> [--root <repo>] [--ref <commit>] [--cursor <continuation>] [--max-bytes 1024..65536]',
+        },
+        {
+          name: 'relations',
+          usage:
+            'relations <source-id> [--root <repo>] [--ref <commit>] [--cursor <continuation>] [--limit 1..20] [--max-bytes 1024..65536]',
+        },
+      ],
+      authority: 'Declarations are exposed; effective currentness is not established.',
+    };
+  const options = argumentsFor(args);
+  const { command, value, root, ref } = options;
+  const snapshot = loadSnapshot({
+    root: root,
+    ref: ref,
+    selection: command === 'search' ? { collection: options.collection } : { sourceId: value },
+  });
+  if (command === 'search') return search(snapshot, value, options);
+  if (command === 'relations') return relations({ ...options, snapshot, id: value });
+  return read(snapshot, value, options);
+}
+
+try {
+  const result = await main(Bun.argv.slice(2));
+  process.stdout.write(JSON.stringify(result) + '\n');
+  if ('status' in result && result.status === 'failed') process.exitCode = 1;
+} catch (error) {
+  process.stderr.write(JSON.stringify(diagnostic(error)) + '\n');
+  process.exitCode = 1;
+}
