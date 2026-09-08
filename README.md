@@ -460,3 +460,9 @@ in `comparison`; invalid output returns `comparison: null` while retaining the i
 This command makes no graph changes and writes no per-comparison artifacts. It always returns
 `accepted: false`: a successful pair comparison is not graph-wide coverage, admission or code
 grounding. See the [comparison decision](docs/adr/0007-evidence-bound-source-comparisons.md).
+
+The [native comparison evaluation](evidence/source-comparison-1426.json) records the expected results
+for four synthetic pairs: a partial exception, an explicit contradiction, disjoint compatible
+conditions and missing context. One preceding native admission timeout is preserved separately;
+only that transport failure was retried. The completed comparisons reported 35,625 tokens. This is
+a small agent-authored experiment, not human gold or validation of the real documentation graph.
