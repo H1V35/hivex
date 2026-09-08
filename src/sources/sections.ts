@@ -30,6 +30,11 @@ export function selectSection(
     collectionKind: selection.collection.kind,
     content: document.content.slice(heading.offset, next?.offset),
     blocks,
+    references: document.references.filter(
+      (reference) =>
+        reference.evidence.lineStart >= (blocks[0]?.lineStart ?? 1) &&
+        reference.evidence.lineEnd <= (blocks.at(-1)?.lineEnd ?? 1),
+    ),
     section: {
       anchor: selection.anchor,
       lineStart: blocks[0]?.lineStart ?? 1,

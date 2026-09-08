@@ -11,11 +11,13 @@ import { graphCommand } from './graph/command.ts';
 import { sourceReviewCommand } from './graph/source-review.ts';
 import { reviewCohortCommand } from './graph/review-cohort.ts';
 import { comparisonCommand } from './graph/comparison.ts';
+import { comparisonPlanCommand } from './graph/comparison-plan.ts';
 
-async function main(args: string[]) {
-  if (args[0] === 'graph' && args[1] === 'compare') return comparisonCommand(args.slice(2));
-  if (args[0] === 'graph' && args[1] === 'review') {
-    const reviewArgs = args.slice(2);
+function dispatchGraph(args: string[]) {
+  if (args[0] === 'compare-plan') return comparisonPlanCommand(args.slice(1));
+  if (args[0] === 'compare') return comparisonCommand(args.slice(1));
+  if (args[0] === 'review') {
+    const reviewArgs = args.slice(1);
     if (
       reviewArgs.some((arg) =>
         ['--all', '--show', '--export', '--discard'].includes(arg.split('=')[0] ?? ''),
@@ -24,7 +26,11 @@ async function main(args: string[]) {
       return reviewCohortCommand(reviewArgs);
     return sourceReviewCommand(reviewArgs);
   }
-  if (args[0] === 'graph') return graphCommand(args.slice(1));
+  return graphCommand(args);
+}
+
+async function main(args: string[]) {
+  if (args[0] === 'graph') return dispatchGraph(args.slice(1));
   if (args[0] === 'ingest') return ingestCommand(args.slice(1));
   if (args[0] === 'plan') return planCommand(args.slice(1));
   if (args[0] === 'extract') return extractCommand(args.slice(1));
@@ -50,6 +56,8 @@ async function main(args: string[]) {
             'graph review --discard <exact-plan-hash> [--store <file>] [--root <repo>]',
           comparison:
             'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
+          comparisonPlan:
+            'graph compare-plan --input <file> [--root <repo>] [--against <commit>] [--max-bytes 1024..8388608]',
           modelCalls:
             'Review and compare use native Luna/max; --prepare and deterministic graph operations make no model calls. Candidates remain unaccepted.',
         },

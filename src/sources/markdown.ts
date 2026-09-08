@@ -10,6 +10,7 @@ import { frontmatter } from 'micromark-extension-frontmatter';
 import { parseDocument } from 'yaml';
 import { z } from 'zod';
 import { HivexError } from '../errors.ts';
+import { normalizeIdentifier } from 'micromark-util-normalize-identifier';
 import type { Collection } from '../workspace/config.ts';
 
 const metadata = z.looseObject({
@@ -36,6 +37,11 @@ export type Source = {
   headings: { anchor: string; title: string; depth: number; block: number; offset: number }[];
   section: { anchor: string; lineStart: number; lineEnd: number } | null;
   containedAnchors: string[];
+  references: {
+    url: string;
+    evidence: { quote: string; lineStart: number; lineEnd: number };
+    definition?: { quote: string; lineStart: number; lineEnd: number };
+  }[];
   authority: {
     declaredStatus: string;
     currentness: string;
@@ -125,6 +131,7 @@ export function parseSource(options: {
     headings,
     section: null,
     containedAnchors: [...anchors.values()].filter((anchor) => !selectedAnchors.has(anchor)),
+    references: documentReferences(tree, content),
     authority: {
       declaredStatus: declaredStatus(front.status),
       currentness: 'not-established',
@@ -135,20 +142,90 @@ export function parseSource(options: {
   };
 }
 
-type MarkdownNode = { type: string; children?: MarkdownNode[] };
+type MarkdownNode = {
+  type: string;
+  children?: MarkdownNode[];
+  url?: string;
+  identifier?: string;
+  position?: { start: { line: number; offset?: number }; end: { line: number; offset?: number } };
+};
 
-function headingAnchors(tree: MarkdownNode) {
-  const slugger = new GithubSlugger();
-  const anchors = new Map<MarkdownNode, string>();
+function* descendants(tree: MarkdownNode): Generator<MarkdownNode> {
   const pending = [tree];
   while (pending.length) {
     const node = pending.pop();
     if (!node) break;
-    if (node.type === 'heading') anchors.set(node, slugger.slug(toString(node)));
-    for (let index = (node.children?.length ?? 0) - 1; index >= 0; index -= 1) {
+    yield node;
+    for (let index = (node.children?.length ?? 0) - 1; index >= 0; index--) {
       const child = node.children?.[index];
       if (child) pending.push(child);
     }
+  }
+}
+
+function quotation(node: MarkdownNode, content: string) {
+  const start = node.position?.start.offset;
+  const end = node.position?.end.offset;
+  if (start === undefined || end === undefined || !node.position)
+    throw new HivexError({
+      code: 'INVALID_POSITION',
+      message: 'A Markdown reference lacks original source positions',
+    });
+  return {
+    quote: content.slice(start, end),
+    lineStart: node.position.start.line,
+    lineEnd: node.position.end.line,
+  };
+}
+
+function linkDefinitions(tree: MarkdownNode) {
+  const definitions = new Map<string, MarkdownNode>();
+  for (const node of descendants(tree)) {
+    if (node.type !== 'definition' || node.identifier === undefined) continue;
+    const key = normalizeIdentifier(node.identifier);
+    if (!definitions.has(key)) definitions.set(key, node);
+    if (definitions.size > 10000)
+      throw new HivexError({
+        code: 'SOURCE_REFERENCE_LIMIT',
+        message: 'A document may contain at most 10000 link definitions',
+      });
+  }
+  return definitions;
+}
+
+function documentReferences(tree: MarkdownNode, content: string): Source['references'] {
+  const definitions = linkDefinitions(tree);
+  const references: Source['references'] = [];
+  const append = (reference: Source['references'][number]) => {
+    if (references.length >= 10000)
+      throw new HivexError({
+        code: 'SOURCE_REFERENCE_LIMIT',
+        message: 'A document may contain at most 10000 Markdown links',
+      });
+    references.push(reference);
+  };
+  for (const node of descendants(tree)) {
+    if (node.type === 'link' && node.url !== undefined) {
+      append({ url: node.url, evidence: quotation(node, content) });
+      continue;
+    }
+    if (node.type !== 'linkReference' || node.identifier === undefined) continue;
+    const definition = definitions.get(normalizeIdentifier(node.identifier));
+    if (definition?.url === undefined) continue;
+    append({
+      url: definition.url,
+      evidence: quotation(node, content),
+      definition: quotation(definition, content),
+    });
+  }
+  return references;
+}
+
+function headingAnchors(tree: MarkdownNode) {
+  const slugger = new GithubSlugger();
+  const anchors = new Map<MarkdownNode, string>();
+  for (const node of descendants(tree)) {
+    if (node.type === 'heading') anchors.set(node, slugger.slug(toString(node)));
   }
   return anchors;
 }

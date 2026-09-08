@@ -39,3 +39,27 @@ This operation covers the selected pair only and always returns `accepted: false
 establish graph-wide relationship coverage, effective authority, admission or code grounding. Those
 remain required under [Compi #1631](https://github.com/H1V35/compi/issues/1631), including the historical
 composition and atomic-evaluation obligations in #1426/#1427/#1478.
+
+## Plan comparisons from authored Markdown links
+
+Discover candidate source pairs deterministically from parsed Markdown links in the same graph
+snapshot. Inline and reference-style links retain their original link evidence; reference definitions
+retain their own original document positions, including definitions outside a selected section.
+Only links located inside the selected section participate. CommonMark identifier normalization and
+first-definition precedence come from the existing Markdown parser ecosystem.
+
+A link suggests a comparison, not a semantic relationship or precedence. Collapse both directions
+into one source pair while retaining each authored reason. Resolve relative paths within the
+repository and target headings within the selected graph sources. Missing targets, unsupported paths,
+missing anchors and pairs without claims remain explicit. External destinations and non-Markdown
+assets are counted without being opened. Code examples, images and raw HTML are not scanned for
+Markdown relationships.
+
+The plan records its graph hash, policy, provenance, selected pairs, unresolved links and the number
+of possible pairs. It covers authored Markdown links only; absent links do not prove independence,
+and this policy does not establish full semantic-neighborhood coverage or graph admission.
+
+Bound discovery to 10,000 link definitions/links per document, 10,000 inspected links per plan,
+32,768 pairs and an 8 MiB working/output budget. A requested smaller output budget either returns
+the complete plan or fails explicitly. Planning makes no model calls, modifies no graph and creates
+no per-plan files. A caller may retain the complete result when it is needed for later review.
