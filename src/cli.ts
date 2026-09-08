@@ -78,12 +78,16 @@ async function main(args: string[]) {
             'graph review <--show <source-id>|--export> --input <file> [--store <file>] [--max-bytes 1024..134217728]',
           reviewRetirement:
             'graph review --discard <exact-plan-hash> [--store <file>] [--root <repo>]',
+          reviewRecovery:
+            'graph review --all --retry-failed <source-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--root <repo>] [--store <file>] [--deadline-ms 100..900000]',
           comparison:
             'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
           comparisonCohort:
             'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728] [--neighbors 0..8]',
           comparisonRetirement:
             'graph compare --discard <plan-hash> [--root <repo>] [--store <file>]',
+          comparisonRecovery:
+            'graph compare --all --retry-failed <pair-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--neighbors 0..8] [--root <repo>] [--store <file>] [--deadline-ms 100..900000]',
           comparisonReuse:
             'graph compare --all --input <new-graph> --from <old-graph> --reuse <complete-comparison-export> [--root <repo>] [--store <file>] [--neighbors 0..8] [--max-units 0..2048]',
           comparisonPlan:

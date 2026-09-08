@@ -13,6 +13,7 @@ export type AssessmentPlan = {
 };
 const maximumBytes = 128 * 1024 * 1024;
 const resultLimit = 8 * 1024 * 1024;
+const historyLimit = 2 * resultLimit;
 export type AssessmentResult = {
   status: 'reviewed' | 'failed';
   graphHash: string;
@@ -28,6 +29,7 @@ export type AssessmentContract<T extends AssessmentResult> = {
   parse: (value: unknown) => T;
   unitId: (result: T) => string;
   binding?: (result: T) => AssessmentResult;
+  retryable?: (result: T) => boolean;
 };
 type Row = {
   id: string;
@@ -36,6 +38,8 @@ type Row = {
   owner: string | null;
   value: string | null;
   value_hash: string | null;
+  previous_attempts?: string;
+  previous_attempts_hash?: string;
 };
 
 function fail(code: string, message: string): never {
@@ -77,7 +81,11 @@ function identity(db: Database, allowEmpty: boolean, applicationId: number) {
     .query<{ application_id: number }, []>('PRAGMA application_id')
     .get()?.application_id;
   const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
-  if (id === applicationId && (version === 1 || version === 2)) return true;
+  if (id === applicationId && (version === 1 || version === 2 || version === 3)) {
+    if (version === 3)
+      db.query('SELECT previous_attempts, previous_attempts_hash FROM reviews LIMIT 0').all();
+    return true;
+  }
   const objects = db
     .query<{ count: number }, []>('SELECT count(*) AS count FROM sqlite_schema')
     .get()?.count;
@@ -111,11 +119,38 @@ function initializePlan(db: Database, plan: AssessmentPlan) {
     hash(value),
   ]);
   for (const [ordinal, source] of plan.sources.entries())
-    db.run('INSERT INTO reviews VALUES (?, ?, ?, NULL, NULL, NULL)', [
-      source.id,
-      ordinal,
-      'pending',
-    ]);
+    db.run(
+      'INSERT INTO reviews (id, ordinal, state, owner, value, value_hash) VALUES (?, ?, ?, NULL, NULL, NULL)',
+      [source.id, ordinal, 'pending'],
+    );
+}
+
+function previousAttempts<T extends AssessmentResult>(row: Row, contract: AssessmentContract<T>) {
+  if (row.previous_attempts === undefined && row.previous_attempts_hash === undefined) return [];
+  const value = row.previous_attempts;
+  if (
+    value === undefined ||
+    Buffer.byteLength(value) > historyLimit ||
+    hash(value) !== row.previous_attempts_hash
+  )
+    fail('INVALID_REVIEW_STORE', 'Previous assessment attempts are oversized or altered');
+  const parsed: unknown = JSON.parse(value);
+  if (!Array.isArray(parsed) || parsed.length > 2)
+    fail('INVALID_REVIEW_STORE', 'An assessment retains at most two previous attempts');
+  return parsed.map((entry: unknown) => {
+    const result = contract.parse(entry);
+    if (
+      Buffer.byteLength(JSON.stringify(result)) > resultLimit ||
+      result.status !== 'failed' ||
+      contract.unitId(result) !== row.id ||
+      !contract.retryable?.(result)
+    )
+      fail(
+        'INVALID_REVIEW_STORE',
+        'Previous attempts must preserve safe failures of this assessment',
+      );
+    return result;
+  });
 }
 
 function decode<T extends AssessmentResult>(
@@ -126,6 +161,10 @@ function decode<T extends AssessmentResult>(
   const source = plan.sources[row.ordinal];
   if (!source || source.id !== row.id)
     fail('INVALID_REVIEW_STORE', 'Assessment sources differ from the retained plan');
+  const attempts = previousAttempts(row, contract);
+  const history = attempts.length ? { previousAttempts: attempts } : {};
+  if (row.state === 'pending' && attempts.length)
+    fail('INVALID_REVIEW_STORE', 'A pending assessment cannot conceal earlier attempts');
   const finished = row.state === 'reviewed' || row.state === 'failed';
   if (
     !['pending', 'running', 'reviewed', 'failed'].includes(row.state) ||
@@ -134,7 +173,8 @@ function decode<T extends AssessmentResult>(
     finished !== (row.value_hash !== null)
   )
     fail('INVALID_REVIEW_STORE', 'Assessment state is inconsistent');
-  if (!finished || row.value === null) return { id: row.id, state: row.state, result: null };
+  if (!finished || row.value === null)
+    return { id: row.id, state: row.state, result: null, ...history };
   if (Buffer.byteLength(row.value) > resultLimit || hash(row.value) !== row.value_hash)
     fail('INVALID_REVIEW_STORE', 'A retained assessment is oversized or altered');
   const result = contract.parse(JSON.parse(row.value));
@@ -145,7 +185,7 @@ function decode<T extends AssessmentResult>(
     { actualId: contract.unitId(result), id: row.id, promptHash: source.promptHash },
     plan,
   );
-  return { id: row.id, state: row.state, result };
+  return { id: row.id, state: row.state, result, ...history };
 }
 
 function records<T extends AssessmentResult>(
@@ -175,6 +215,22 @@ function recordTransition(db: Database, expectedHash: string) {
     db.run('PRAGMA user_version=2');
   }
   db.run('UPDATE cohort SET transition_hash=? WHERE id=1', [expectedHash]);
+}
+
+function enableRecovery(db: Database) {
+  const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
+  if (version === 3) return;
+  const running = db
+    .query<{ count: number }, []>("SELECT count(*) AS count FROM reviews WHERE state='running'")
+    .get()?.count;
+  if (running !== 0)
+    fail('REVIEW_UNRESOLVED', 'Finish all active claims before upgrading this store for recovery');
+  if (version === 1) db.run('ALTER TABLE cohort ADD COLUMN transition_hash TEXT');
+  db.run("ALTER TABLE reviews ADD COLUMN previous_attempts TEXT NOT NULL DEFAULT '[]'");
+  db.run(
+    `ALTER TABLE reviews ADD COLUMN previous_attempts_hash TEXT NOT NULL DEFAULT '${hash('[]')}'`,
+  );
+  db.run('PRAGMA user_version=3');
 }
 
 export class AssessmentStore<T extends AssessmentResult> {
@@ -245,6 +301,15 @@ export class AssessmentStore<T extends AssessmentResult> {
             hash(encoded),
             id,
           ]);
+          const attempts = rows.find((row) => row.id === id)?.previousAttempts;
+          if (attempts?.length) {
+            const history = JSON.stringify(attempts);
+            db.run('UPDATE reviews SET previous_attempts=?, previous_attempts_hash=? WHERE id=?', [
+              history,
+              hash(history),
+              id,
+            ]);
+          }
         }
         records(db, options.next.plan, contract);
       })
@@ -352,6 +417,56 @@ export class AssessmentStore<T extends AssessmentResult> {
     return this.db.transaction(() => records(this.db, this.plan, this.contract))();
   }
 
+  private reserve() {
+    const pages =
+      this.db.query<{ page_count: number }, []>('PRAGMA page_count').get()?.page_count ?? 32768;
+    const free =
+      this.db.query<{ freelist_count: number }, []>('PRAGMA freelist_count').get()
+        ?.freelist_count ?? 0;
+    const running =
+      this.db
+        .query<{ count: number }, []>("SELECT count(*) AS count FROM reviews WHERE state='running'")
+        .get()?.count ?? Infinity;
+    if ((pages - free) * 4096 + (running + 1) * 2 * resultLimit > maximumBytes)
+      fail(
+        'REVIEW_STORE_FULL',
+        'Export or retire retained evidence before another model invocation',
+      );
+  }
+
+  retryFailed(id: string, owner: string, maximumAttempts: number) {
+    return this.db
+      .transaction(() => {
+        assertPlan(this.db, this.plan, this.contract.applicationId);
+        const row = this.db.query<Row, [string]>('SELECT * FROM reviews WHERE id=?').get(id);
+        if (!row || row.state !== 'failed')
+          fail('ASSESSMENT_RETRY_NOT_ALLOWED', 'Retry requires a retained failed assessment');
+        const retained = decode(row, this.plan, this.contract);
+        if (!retained.result || !this.contract.retryable?.(retained.result))
+          fail(
+            'ASSESSMENT_RETRY_NOT_ALLOWED',
+            'Only confirmed safe invocation failures can be retried',
+          );
+        const previous = [...(retained.previousAttempts ?? []), retained.result];
+        if (previous.length >= maximumAttempts || maximumAttempts > 3)
+          fail(
+            'ASSESSMENT_RETRY_EXHAUSTED',
+            'The total attempt budget is exhausted; at most three attempts are allowed',
+          );
+        const history = JSON.stringify(previous);
+        if (Buffer.byteLength(history) > historyLimit)
+          fail('REVIEW_RESULT_TOO_LARGE', 'The complete previous attempts exceed 16 MiB');
+        this.reserve();
+        enableRecovery(this.db);
+        this.db.run(
+          "UPDATE reviews SET state='running', owner=?, value=NULL, value_hash=NULL, previous_attempts=?, previous_attempts_hash=? WHERE id=?",
+          [owner, history, hash(history), id],
+        );
+        return id;
+      })
+      .immediate();
+  }
+
   claim(owner: string) {
     return this.db
       .transaction(() => {
@@ -361,24 +476,7 @@ export class AssessmentStore<T extends AssessmentResult> {
           .get();
         if (!next) return null;
         decode(next, this.plan, this.contract);
-        const pages =
-          this.db.query<{ page_count: number }, []>('PRAGMA page_count').get()?.page_count ?? 32768;
-        const free =
-          this.db.query<{ freelist_count: number }, []>('PRAGMA freelist_count').get()
-            ?.freelist_count ?? 0;
-        const running =
-          this.db
-            .query<
-              { count: number },
-              []
-            >("SELECT count(*) AS count FROM reviews WHERE state='running'")
-            .get()?.count ?? Infinity;
-        const reserved = (running + 1) * 2 * resultLimit;
-        if ((pages - free) * 4096 + reserved > maximumBytes)
-          fail(
-            'REVIEW_STORE_FULL',
-            'Export or retire retained evidence before another model invocation',
-          );
+        this.reserve();
         this.db.run('UPDATE reviews SET state=?, owner=? WHERE id=? AND state=?', [
           'running',
           owner,

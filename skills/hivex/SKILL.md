@@ -109,6 +109,14 @@ Only pairs selected in the new graph with identical complete comparison inputs q
 association's current and original selection identities, keep the old export's full provenance, and
 execute only pending pairs. Reuse preserves adverse results and never retries uncertain invocations.
 
+For a failed source review or comparison, inspect its complete report before an explicit
+`graph review|compare --all --retry-failed <source-or-pair-id> --attempts 2 --max-units 1` on the
+same input/store and selection. This permits only safely ended invocation failures, never a completed
+adverse assessment or uncertain start/interruption/cleanup. The attempt limit includes earlier work,
+with at most three attempts total. `previousAttempts` preserves the full earlier receipts and unknown
+consumption, including across compatible graph transitions. Retain complete cohort exports before
+retirement; admitted graphs carry current successful assessments, not the earlier failure history.
+
 Save full exports as artifacts rather than dumping them into model context. Retain and version the
 admitted snapshot according to the project workflow. Never hand-edit a projection to invent acceptance.
 Admission covers its declared selection; it does not prove exhaustive consistency or approve code.

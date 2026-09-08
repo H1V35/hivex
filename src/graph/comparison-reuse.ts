@@ -30,11 +30,17 @@ const archiveSchema = z.object({
   comparisons: z
     .array(
       z.union([
-        z.object({ id: z.string(), state: z.enum(['pending', 'running']), result: z.null() }),
+        z.object({
+          id: z.string(),
+          state: z.enum(['pending', 'running']),
+          result: z.null(),
+          previousAttempts: z.array(comparisonResultSchema).max(2).optional(),
+        }),
         z.object({
           id: z.string(),
           state: z.enum(['reviewed', 'failed']),
           result: comparisonResultSchema,
+          previousAttempts: z.array(comparisonResultSchema).max(2).optional(),
         }),
       ]),
     )

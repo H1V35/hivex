@@ -151,25 +151,26 @@ const handlers = {
     if (process.env.HIVEX_TEST_SCENARIO === 'start-unconfirmed') return undefined;
     if (process.env.HIVEX_TEST_SCENARIO === 'oversized-frame')
       emit({ method: 'fixture/unknown', params: { text: 'x'.repeat(4_194_304) } });
-    if (['timeout', 'cancel'].includes(process.env.HIVEX_TEST_SCENARIO)) {
-      queueMicrotask(() =>
-        emit({
-          method: 'thread/tokenUsage/updated',
-          params: {
-            threadId: 'thread1',
-            turnId: 'turn1',
-            tokenUsage: {
-              total: {
-                inputTokens: 100,
-                cachedInputTokens: 20,
-                outputTokens: 25,
-                reasoningOutputTokens: 25,
-                totalTokens: 125,
+    if (['timeout', 'timeout-unmeasured', 'cancel'].includes(process.env.HIVEX_TEST_SCENARIO)) {
+      if (process.env.HIVEX_TEST_SCENARIO !== 'timeout-unmeasured')
+        queueMicrotask(() =>
+          emit({
+            method: 'thread/tokenUsage/updated',
+            params: {
+              threadId: 'thread1',
+              turnId: 'turn1',
+              tokenUsage: {
+                total: {
+                  inputTokens: 100,
+                  cachedInputTokens: 20,
+                  outputTokens: 25,
+                  reasoningOutputTokens: 25,
+                  totalTokens: 125,
+                },
               },
             },
-          },
-        }),
-      );
+          }),
+        );
       if (process.env.HIVEX_TEST_SCENARIO === 'cancel')
         queueMicrotask(() => process.kill(process.ppid, 'SIGINT'));
       return { turn: { id: 'turn1', status: 'inProgress' } };
