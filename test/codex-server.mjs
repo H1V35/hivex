@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { once } from 'node:events';
 
 if (
@@ -243,12 +243,25 @@ const handlers = {
   },
 };
 
+async function observeModelRequest() {
+  const calls = process.env.HIVEX_TEST_CALLS_PATH;
+  if (!calls) return;
+  appendFileSync(calls, 'called\n');
+  const hold = process.env.HIVEX_TEST_HOLD_PATH;
+  while (hold && existsSync(hold)) {
+    if (readFileSync(hold, 'utf8') === 'after-first' && readFileSync(calls, 'utf8') === 'called\n')
+      return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 for await (const line of createInterface({ input: process.stdin })) {
   const frame = JSON.parse(line);
   if (frame.id === undefined) continue;
   try {
     const handler = handlers[frame.method];
     if (!handler) throw new Error('unsupported request');
+    if (frame.method === 'turn/start') await observeModelRequest();
     const result = handler(frame.params);
     if (result !== undefined) emit({ id: frame.id, result });
   } catch {

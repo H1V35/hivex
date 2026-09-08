@@ -8,7 +8,7 @@ const terminal = z.looseObject({
 const itemEvent = identity.extend({
   item: z.looseObject({ id: z.string(), type: z.string(), text: z.string().optional() }),
 });
-const usage = z.object({
+export const usageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   cachedInputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
@@ -16,8 +16,8 @@ const usage = z.object({
   totalTokens: z.number().int().nonnegative(),
   cacheWriteInputTokens: z.number().int().nonnegative().optional(),
 });
-const usageEvent = identity.extend({ tokenUsage: z.looseObject({ total: usage }) });
-export type Usage = z.infer<typeof usage>;
+const usageEvent = identity.extend({ tokenUsage: z.looseObject({ total: usageSchema }) });
+export type Usage = z.infer<typeof usageSchema>;
 
 function consistentUsage(current: Usage, previous: Usage | undefined) {
   if (current.totalTokens !== current.inputTokens + current.outputTokens) return false;

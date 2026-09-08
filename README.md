@@ -254,6 +254,60 @@ filesystem read-root allowlist, so this interface does not claim OS-level read i
 graph rebuild and grounding requirements are recorded in the
 [native knowledge decision](docs/adr/0002-native-knowledge-candidates.md).
 
+## Resume candidate ingestion
+
+Ignore `.hivex/` in the adopting repository. `ingest` keeps one local SQLite store there by default;
+`--store` selects another local file. It never moves your Markdown or creates a file per source.
+
+```sh
+bun src/cli.ts ingest --collection hivex --max-units 1
+bun src/cli.ts ingest --max-units 20
+bun src/cli.ts ingest --max-units 0
+bun src/cli.ts ingest --show docs/adr/0001-versioned-project-knowledge.md
+```
+
+The first command freezes the complete plan. Later commands resume its original commit and
+collection when those arguments are omitted, even if HEAD advances. Explicit different inputs or
+a changed processing contract fail before extraction. Oversized sources must be split into declared
+complete sections before starting any source. This is candidate production, not graph admission.
+
+`--max-units` defaults to 20 and accepts 0–2048; zero checks progress without calling a model.
+Only pending sources are claimed. `--attempts` accepts 1–3 (default 3); `--deadline-ms` accepts
+100–900,000 (default 600,000) per invocation. Each report retains its effective deadline and the
+admitted Luna/max profile. Changing these execution limits does not reopen failed or unresolved
+sources or reset their attempt history. Two CLI processes
+can process distinct sources; no transaction stays open during a model call. Each attempt is
+checkpointed before invocation and after its report is available. Finished sources are reused,
+failed sources are retained, and an unresolved invocation is never retried automatically.
+
+Progress includes completed, pending, failed and unresolved source counts, plus recorded attempts,
+known total tokens and attempts with unknown usage. Known totals are partial when usage is unknown;
+reasoning and cached tokens are already included in their parent counters. `candidates-ready`
+requires every source to have a retained candidate and still reports `accepted: false`. A partial
+run exits successfully but does not establish that all processing has completed; a recorded failure
+exits with code 1.
+
+`--show <source-id>` opens a complete retained result or the checkpoint of an unfinished source
+without mutating the store. Its default output budget is 16,384 bytes; `--max-bytes` accepts
+1,024–8,388,608. A result that does not fit produces an explicit error with the required size, never
+a shortened candidate. Inspection and discard cannot be mixed with extraction options.
+
+The database is limited to 128 MiB and reserves space before invoking a model. Plans/results are
+bounded to 8 MiB each, and attempt details to 4 MiB per source. An individual report over 1 MiB
+retains its outcome, usage and identifying hashes with explicit omitted-detail metadata. Capacity
+or persistence failure cannot silently turn an unresolved source into a completed one.
+
+Retain the evidence needed for later admission or auditing before deliberately removing a cohort:
+
+```sh
+bun src/cli.ts ingest --discard <exact-plan-hash>
+```
+
+Discard empties that same store for reuse and makes no model calls. It rejects a different hash
+or any claimed/unresolved source. There is no automatic rotation or pruning of uncertain evidence.
+See the [persistence decision](docs/adr/0004-resumable-ingestion-store.md). Full rebuild admission,
+historical graph queries and implementation grounding remain required work.
+
 ## Development
 
 ```sh

@@ -1,10 +1,18 @@
 import { HivexError } from '../errors.ts';
+import { hash } from '../sources/markdown.ts';
 import { loadSnapshot } from '../workspace/snapshot.ts';
 import { extractionArguments } from './arguments.ts';
 import { extractAttempt, type ExtractionAttempt } from './attempt.ts';
 import { maximumSourceBytes, prepareExtraction, processingContract } from './preparation.ts';
 
-export async function extractCommand(args: string[]) {
+export type ExtractionCheckpoint =
+  | { state: 'started'; attempt: number; promptHash: string; deadlineMilliseconds: number }
+  | { state: 'recorded'; attempt: number; report: ExtractionAttempt };
+
+export async function extractCommand(
+  args: string[],
+  checkpoint?: (event: ExtractionCheckpoint) => void,
+) {
   const options = extractionArguments(args);
   const { id } = options;
   const snapshot = loadSnapshot({
@@ -49,7 +57,15 @@ export async function extractCommand(args: string[]) {
   for (let index = 0; index < options.attempts; index++) {
     const previous = attempts.at(-1);
     const feedback = previous ? correctionFeedback(previous) : '';
-    const result = await extractAttempt({ ...options, prompt: prompt + feedback, source });
+    const requestedPrompt = prompt + feedback;
+    checkpoint?.({
+      state: 'started',
+      attempt: index + 1,
+      promptHash: hash(requestedPrompt),
+      deadlineMilliseconds: options.deadlineMilliseconds,
+    });
+    const result = await extractAttempt({ ...options, prompt: requestedPrompt, source });
+    checkpoint?.({ state: 'recorded', attempt: index + 1, report: result.report });
     attempts.push(result.report);
     if (result.candidate)
       return {
