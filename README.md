@@ -603,6 +603,11 @@ The full original selection remains in the caller-owned old export. Adverse resu
 and unresolved invocations block replacement. This operation does not retry failed assessments or
 complete the whole update workflow.
 
+Transfer the store that retains the old cohort. Do not initialize a separate destination first.
+The atomic transition records its archive binding in assessment-store format 2; a repeated transfer
+must supply that same archive. Existing format-1 stores remain readable and resumable; their first
+new transition upgrades them. A destination without that transition record is rejected before calls.
+
 To also discover unlinked sources with shared documentary vocabulary, choose a bounded number of
 lexical neighbors per source:
 

@@ -341,3 +341,53 @@ test('blocks replacement after an uncertain comparison start and preserves all r
     expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
   });
 });
+
+test('rejects an unrecorded destination and reauthenticates the archive when repeating a transition', async () => {
+  await projectWithReviews((paths, original) => {
+    expect(compare(paths, original).status).toBe(0);
+    const archive = preserve(paths, original, 'compare');
+    const current = update(paths, original);
+    const unrelated = { ...current, comparisons: join(dirname(paths.store), 'unrelated.sqlite') };
+    expect(
+      invoke(paths.root, [
+        'graph',
+        'compare',
+        '--all',
+        '--input',
+        unrelated.input,
+        '--store',
+        unrelated.comparisons,
+        '--neighbors',
+        '2',
+        '--max-units',
+        '0',
+      ]).status,
+    ).toBe(0);
+    const bytes = readFileSync(unrelated.comparisons);
+    const calls = readFileSync(paths.calls, 'utf8');
+    const rejected = invoke(paths.root, [
+      ...transfer(original, unrelated, archive).slice(0, -2),
+      '--max-units',
+      '1',
+      '--codex',
+      paths.binary,
+    ]);
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain('REVIEW_ARCHIVE_MISMATCH');
+    expect(readFileSync(unrelated.comparisons)).toEqual(bytes);
+    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+
+    const args = transfer(original, current, archive);
+    expect(invoke(paths.root, args).status).toBe(0);
+    expect(invoke(paths.root, args).status).toBe(0);
+    const retainedStore = readFileSync(current.comparisons);
+    const altered = JSON.parse(readFileSync(archive, 'utf8'));
+    altered.comparisons[0].result.report.usage.totalTokens = 1;
+    writeFileSync(archive, JSON.stringify(altered));
+    const repeated = invoke(paths.root, args);
+    expect(repeated.status).toBe(1);
+    expect(repeated.stderr).toContain('REVIEW_ARCHIVE_MISMATCH');
+    expect(readFileSync(current.comparisons)).toEqual(retainedStore);
+    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+  });
+});

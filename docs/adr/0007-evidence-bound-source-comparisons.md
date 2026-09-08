@@ -145,5 +145,10 @@ failure before any accepted turn remains a failure. Reuse never retries an adver
 changes its verdict; changed/new pairs remain pending within the caller's execution budget. Removed
 pairs remain in the caller-owned archive. Existing capacity, output and explicit retention limits apply.
 
+The shared [assessment transition binding](0006-source-fidelity-review.md#reuse-unchanged-source-evidence)
+also applies to comparisons. Repeating a completed transition requires its exact recorded archive;
+a separately initialized destination is rejected. Use the store that still owns the old cohort,
+not a new store initialized with the destination plan.
+
 This implements pair reuse only; ingestion across changed plans, safe assessment retries and the
 whole update/resume command remain separate requirements of #18.

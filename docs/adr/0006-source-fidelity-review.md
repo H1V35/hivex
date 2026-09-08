@@ -102,3 +102,12 @@ A repeated transition to the already-current plan preserves progress. Ordinary e
 only pending sources within its explicit budget. Retained negative results continue to block admission;
 no automatic retry fishes for approval. Source comparison reuse and ingestion across changed source
 plans remain separate requirements of the complete update workflow.
+
+The first transition upgrades a version-1 assessment store to version 2, recording one bounded hash
+of the complete previous plan and archived rows in its cohort. Repetition requires that same archive
+binding; a separately initialized destination or an altered archive is rejected before any model call.
+Both versions remain readable without migration, and ordinary resume preserves their current work.
+Older transitions without this binding cannot retrospectively authenticate a repeated transfer;
+continue their current cohort through ordinary resume. Retirement and a subsequent new cohort clear
+the transition binding. Migration and replacement share the same transaction and cannot cross an
+active claim.
