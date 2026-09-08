@@ -593,6 +593,45 @@ certifies the recorded fidelity and selected comparisons, not every possible sem
 The real Luna corpus rebuild, known composition regressions (including #1478), implementation grounding
 and the complete adoption cycle remain required. See the [admission decision](docs/adr/0008-reviewed-graph-admission.md).
 
+## Ground an implementation review claim
+
+After committing the implementation and retaining a fresh admitted graph:
+
+```sh
+bun hivex ground "The API cache lifetime violates the accepted policy" --input hivex.graph.json --base origin/main --prepare
+bun hivex ground "The API cache lifetime violates the accepted policy" --input hivex.graph.json --base origin/main > /tmp/grounding.json
+bun hivex ground --check /tmp/grounding.json --input hivex.graph.json
+```
+
+`--prepare` shows the complete request without a model call. Execution uses native Luna/max;
+`--codex` and `--deadline-ms` follow the existing model-operation conventions. `--root` selects the
+project. Repeat `--source <source-id>` to add documentary sources to lexical retrieval. Hivex expands
+supersessions, exceptions and requirements, and discloses other unexpanded links. Missing context
+stays unresolved; it does not imply an independent or approved implementation.
+
+The base is resolved to its merge base with current `HEAD`; both resolved commits, file object IDs
+and a changeset digest are retained. The checkout must be clean. Complete before/after versions of
+all changed files are supplied, up to 32 text files, alongside up to 16 full sources, 512 claims and
+256 relationships. The complete request must fit 256 KiB. Empty, stale, unsupported or oversized
+inputs fail without a model call or truncation. Make a coherent smaller change or supply missing
+context explicitly when needed; do not omit applicable evidence to force a passing result.
+
+The result assesses the supplied claim as `supported`, `contradicted` or `unresolved`, with documentary
+and code citations and an explicit disposition for each amendment. A contradicted allegation may be
+a correctly dismissed finding. `status: reviewed` means that claim has a complete definitive
+assessment; it always keeps `implementationAccepted: false`. Unresolved evidence or a checkout changed
+during the call yields `status: failed` and exit 1, retaining the assessment and usage where available.
+
+Store the complete stdout result through the project's existing review workflow. `--check` revalidates
+a retained result (maximum 8 MiB) against current code, the graph, citations and processing contract
+without another model call. Changes invalidate corresponding evidence. Both commands create no
+persistent grounding files; the caller chooses whether to retain an artifact. Failed invocation or
+negative evidence is never automatically retried or converted to implementation approval.
+
+Tests, code review and coverage beyond the supplied claim remain the harness's responsibility.
+The [grounding decision](docs/adr/0009-implementation-claim-grounding.md) states the contract and the
+historical and real-model validation still required under #19.
+
 ## npm package preparation
 
 The owner selected the scoped package name `@h1v35/hivex` and the [MIT license](LICENSE).

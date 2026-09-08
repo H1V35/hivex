@@ -45,6 +45,7 @@ of treating truncated or missing evidence as a complete answer.
 | Review extraction fidelity             | `graph review`, or `graph review --all` for the cohort         |
 | Select and assess cross-source context | `graph compare-plan`, then `graph compare` or `--all`          |
 | Admit complete reviewed evidence       | `graph admit`, when supported by the installed version         |
+| Ground a specific review claim         | `ground <claim>`; reuse current evidence with `ground --check` |
 | Query a graph's bounded evidence       | `graph search`, `graph read`, `graph neighbors`                |
 
 ## Preserve the project's work history
@@ -91,6 +92,10 @@ admitted snapshot according to the project workflow. Never hand-edit a projectio
 Admission covers its declared selection; it does not prove exhaustive consistency or approve code.
 
 Before accepting an implementation, check its exact code/diff against applicable decisions and the
-exact admitted manifest, explicitly applying amendments, conditions and exceptions. Use the installed
-grounding interface when available. If that capability or sufficient evidence is absent, report the
+exact admitted manifest, explicitly applying amendments, conditions and exceptions. Use `ground <review-claim> --input <admitted-graph> --base <revision>` when available.
+Use `--prepare` to inspect the complete request without invoking a model and repeat `--source` to add
+needed documentary context. The checkout must contain the clean, committed implementation.
+A supported or contradicted claim is not approval of the entire change. Preserve unresolved evidence
+and invocation usage; use `ground --check <result> --input <admitted-graph>` to revalidate saved evidence
+without another model call. Changed inputs require a new corresponding assessment. If that capability or sufficient evidence is absent, report the
 check as incomplete; tests or graph admission alone do not constitute implementation grounding.
