@@ -83,6 +83,19 @@ export function reviewBinding(result: ReviewResult) {
   };
 }
 
+function validateRejectedOutput(result: ReviewResult) {
+  if (
+    result.rejectedOutput &&
+    (result.review !== null ||
+      result.report.outcome !== 'invalid-output' ||
+      hash(result.rejectedOutput.text) !== result.rejectedOutput.hash)
+  )
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message: 'Rejected fidelity output is altered or presented as an assessment',
+    });
+}
+
 function validateReviewProvenance(
   result: ReviewResult,
   prepared: ReturnType<typeof prepareSourceReview>,
@@ -96,16 +109,7 @@ function validateReviewProvenance(
       message: 'Feedback-driven fidelity must retain its original complete request binding',
     });
   if (result.feedback) validateFeedbackReview(result, prepared);
-  if (
-    result.rejectedOutput &&
-    (result.review !== null ||
-      result.report.outcome !== 'invalid-output' ||
-      hash(result.rejectedOutput.text) !== result.rejectedOutput.hash)
-  )
-    throw new HivexError({
-      code: 'INVALID_REVIEW_STORE',
-      message: 'Rejected fidelity output is altered or presented as an assessment',
-    });
+  validateRejectedOutput(result);
   if (
     result.association &&
     (result.association.originalHash !== hash(JSON.stringify(originalReview(result))) ||
@@ -136,6 +140,7 @@ export function validateSourceReviews(
   context: ReturnType<typeof createReviewContext>,
 ) {
   for (const row of rows) {
+    for (const previous of row.previousAttempts ?? []) validateRejectedOutput(previous);
     const result = row.result;
     if (!result) continue;
     const prepared = result.feedback
