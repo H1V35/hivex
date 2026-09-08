@@ -16,6 +16,7 @@ type Result = Awaited<ReturnType<typeof extractCommand>>;
 const maximumBytes = 128 * 1024 * 1024;
 const reservationBytes = 16 * 1024 * 1024;
 const applicationId = 0x48565849;
+const storeVersion = 2;
 const reportSchema = z.looseObject({
   outcome: z.string().max(256),
   code: z.string().max(128).optional(),
@@ -158,7 +159,8 @@ function boundedReport(report: ExtractionAttempt, original?: string) {
 function validateIdentity(db: Database) {
   const identity = db.query<{ application_id: number }, []>('PRAGMA application_id').get();
   const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get();
-  if (identity?.application_id === applicationId && version?.user_version === 1) return true;
+  if (identity?.application_id === applicationId && version?.user_version === storeVersion)
+    return true;
   const objects = db
     .query<{ count: number }, []>('SELECT count(*) AS count FROM sqlite_schema')
     .get();
@@ -323,6 +325,7 @@ export class IngestionStore {
   }
 
   private assertPlan() {
+    validateIdentity(this.db);
     const current = this.db
       .query<
         { value: string; value_hash: string },
@@ -374,7 +377,7 @@ export class IngestionStore {
             );
         }
         this.db.run(`PRAGMA application_id=${applicationId}`);
-        this.db.run('PRAGMA user_version=1');
+        this.db.run(`PRAGMA user_version=${storeVersion}`);
         this.validate(plan);
       })
       .immediate();

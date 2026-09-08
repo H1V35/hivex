@@ -16,7 +16,10 @@ remain in Git and their existing documentation folders; the store is never docum
 Use one local SQLite file, normally `.hivex/ingestion.sqlite`, excluded from Git. Store a single
 cohort and its bounded attempt reports and unaccepted candidates, without files per source or turn.
 The current format permits at most 2,048 sources, an 8 MiB plan, an 8 MiB result per source and a
-128 MiB database. Reserve capacity before starting work and fail explicitly when capacity runs out.
+128 MiB database. The first delivered store format is version 2, including the full cohort checksum.
+Experimental version-1 stores are rejected intact before any mutation or model invocation. Do not
+silently bless their unchecked metadata by generating a new checksum or relabelling their format.
+Reserve capacity before starting work and fail explicitly when capacity runs out.
 Use local storage, not a network filesystem. A short-lived SQLite rollback journal belongs to the
 same store; it is removed by normal transaction completion or recovered after interruption.
 

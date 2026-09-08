@@ -617,6 +617,27 @@ test('does not commit an in-flight result after the stored cohort changes', asyn
   });
 });
 
+test('rejects the earlier experimental store format without altering its evidence', async () => {
+  await fixture((paths) => {
+    const previous = new Database(paths.store);
+    previous.run('PRAGMA application_id=1213618249');
+    previous.run('PRAGMA user_version=1');
+    previous.run('CREATE TABLE cohort (id INTEGER PRIMARY KEY, value TEXT NOT NULL)');
+    previous.run('INSERT INTO cohort VALUES (1, ?)', ['{"legacy":"retained evidence"}']);
+    previous.close();
+    const before = readFileSync(paths.store);
+    for (const args of [[], ['--show', 'first.md'], ['--discard', '0'.repeat(64)]]) {
+      const result = ingest(paths, args);
+      expect(result.status).toBe(1);
+      expect(JSON.parse(result.stderr)).toMatchObject({
+        error: { code: 'INVALID_INGESTION_STORE' },
+      });
+    }
+    expect(readFileSync(paths.store)).toEqual(before);
+    expect(readFileSync(paths.calls, 'utf8')).toBe('');
+  });
+});
+
 test.each([
   ['$.planHash', '0'.repeat(64)],
   ['$.snapshot.commit', '0'.repeat(40)],

@@ -258,6 +258,7 @@ graph rebuild and grounding requirements are recorded in the
 
 Ignore `.hivex/` in the adopting repository. `ingest` keeps one local SQLite store there by default;
 `--store` selects another local file. It never moves your Markdown or creates a file per source.
+Stores have an explicit format version; unsupported formats are rejected intact before processing.
 
 ```sh
 bun src/cli.ts ingest --collection hivex --max-units 1
