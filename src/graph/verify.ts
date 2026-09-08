@@ -116,9 +116,13 @@ export function readGraph(path: string) {
     invalid('Use a regular graph snapshot of at most 64 MiB');
   const buffer = readFileSync(path);
   if (buffer.length > 64 * 1024 * 1024) invalid('The graph snapshot exceeds its size limit');
+  return decodeGraph(parseGraphDocument(buffer));
+}
+
+export function decodeGraph(value: unknown) {
   let graph: GraphSnapshot;
   try {
-    graph = graphSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer)));
+    graph = graphSchema.parse(value);
   } catch {
     return invalid('The graph snapshot format is unsupported or malformed');
   }
@@ -197,4 +201,12 @@ export function checkGraph(input: ReturnType<typeof readGraph>, root: string, ag
     },
     semanticReview: 'not-established',
   };
+}
+
+export function parseGraphDocument(bytes: Uint8Array): unknown {
+  try {
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch {
+    return invalid('The graph artifact is not valid UTF-8 JSON');
+  }
 }

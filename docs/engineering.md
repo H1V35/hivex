@@ -129,6 +129,16 @@ legacy framework into Hivex under another name. Preserve useful decisions in the
 retain necessary historical evidence in Git or a bounded private archive outside the active worktree.
 Do not rewrite Git history or destroy the accepted Opus graph before its replacement is admitted.
 
-Candidate ingestion implements bounded checkpoints without admitting a graph. Complete graph
-admission, historical evidence and implementation grounding remain required work. Release packages
-must exclude private project evidence and retired runtime material.
+Candidate ingestion implements bounded checkpoints without admitting a graph. The separate admission
+operation validates complete retained reviews and exports a manifest for versioned retention. Real
+corpus reconstruction, semantic regression evaluation and implementation grounding remain required
+work. Release packages must exclude private project evidence and retired runtime material.
+
+## Distribution
+
+The owner selected `@h1v35/hivex` for the npm package on 2026-09-08, retaining `hivex` as the installed
+command, and approved the MIT license. The scoped name avoids the unrelated existing unscoped npm
+package. Use an authenticated account authorized for that scope; do not infer npm ownership from a
+matching GitHub name. Release preparation must verify the packed contents and exclude private project
+evidence and runtime stores. Compi adopts a pinned published version after the complete cycle is
+validated; this decision alone does not mean a package has been published.

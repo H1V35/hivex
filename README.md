@@ -306,8 +306,9 @@ bun src/cli.ts ingest --discard <exact-plan-hash>
 
 Discard empties that same store for reuse and makes no model calls. It rejects a different hash
 or any claimed/unresolved source. There is no automatic rotation or pruning of uncertain evidence.
-See the [persistence decision](docs/adr/0004-resumable-ingestion-store.md). Full rebuild admission,
-historical graph queries and implementation grounding remain required work.
+See the [persistence decision](docs/adr/0004-resumable-ingestion-store.md). Candidate production feeds
+the review and admission operations below. Real corpus reconstruction, semantic regression evaluation
+and implementation grounding remain required before completing the project cycle.
 
 ## Inspect a candidate graph
 
@@ -346,8 +347,8 @@ fails explicitly rather than losing part of its evidence.
 
 These snapshots remain `accepted: false`, and their relationships currently come from source-local
 extraction. Source freshness and structural integrity do not establish semantic faithfulness, resolve
-cross-source precedence or admit an implementation. Semantic evaluation, graph admission and grounding
-remain required work. See the [snapshot decision](docs/adr/0005-source-bound-graph-snapshots.md).
+cross-source precedence or admit an implementation. Use the separate admission operation after
+complete reviews and comparisons. See the [snapshot decision](docs/adr/0005-source-bound-graph-snapshots.md).
 
 ## Development
 
@@ -549,3 +550,43 @@ a model during planning. The temporary FTS5 database is capped at 128 MiB; the c
 cohort retain their existing limits. A source with no shared terms stays explicit, and no missing
 link is silently resolved. This heuristic may miss paraphrases or select unrelated common vocabulary;
 it does not prove global consistency.
+
+## Admit and inspect a reviewed graph
+
+After source-fidelity reviews and the chosen comparison cohort are complete:
+
+```sh
+bun run cli graph admit --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
+bun run cli graph admit --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4 --export > /path/to/project/hivex.graph.json
+bun run cli graph check --input /path/to/project/hivex.graph.json --root /path/to/project
+bun run cli graph neighbors <claim-id> --input /path/to/project/hivex.graph.json --root /path/to/project
+```
+
+Use the same `--neighbors` setting as the comparison cohort (default 0). `--reviews` and
+`--comparisons` can select stores other than `.hivex/reviews.sqlite` and `.hivex/comparisons.sqlite`.
+Every required source and selected pair must have a retained successful assessment. Pending,
+interrupted, negative, stale or malformed evidence prevents admission. An empty graph is rejected;
+a single claim-bearing source can be admitted after fidelity review without inventing a pair.
+An explicit contradiction or precedence cycle prevents automatic admission.
+
+The result binds the original graph, complete review evidence, comparison selection and derived
+cross-source relationships to one hash: the admission manifest identity. Conditions, exceptions,
+partial scope and evidence from both endpoints remain on each relationship. No superseded claim or
+document is deleted. Queries use the same `check`, `read`, `search` and `neighbors` interfaces for
+candidate and admitted snapshots; admitted neighbor cursors bind to the full admission hash.
+
+Admission makes no model calls and creates no files. Without `--export` it returns a summary;
+`--export` returns the complete snapshot. Retain that artifact and commit it with the project's
+knowledge configuration so Git preserves previous versions. The complete snapshot must fit 256 MiB;
+`--max-bytes 1024..268435456` may set a smaller bound. Failure never returns a partial accepted export.
+
+Readers revalidate the embedded assessments and current source evidence, not only the checksum or
+`accepted` flag. A stale snapshot reports `accepted: false`; `--against <source-commit>` inspects its
+historical source revision within the supported processing contract. Unrelated code changes do not
+invalidate documentation freshness. This does not approve the changed code: grounding must bind its
+own result to the exact code/diff and this manifest.
+
+The manifest exposes its bounded comparison policy and `globalConsistency: not-proven`. Admission
+certifies the recorded fidelity and selected comparisons, not every possible semantic relationship.
+The real Luna corpus rebuild, known composition regressions (including #1478), implementation grounding
+and the complete adoption cycle remain required. See the [admission decision](docs/adr/0008-reviewed-graph-admission.md).
