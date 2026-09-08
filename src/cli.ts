@@ -16,6 +16,7 @@ import { reviewCohortCommand } from './graph/review-cohort.ts';
 import { comparisonCommand } from './graph/comparison.ts';
 import { comparisonCohortCommand } from './graph/comparison-cohort.ts';
 import { comparisonPlanCommand } from './graph/comparison-plan.ts';
+import { updateCommand } from './update.ts';
 
 function isCohort(args: string[]) {
   return args.some((arg) =>
@@ -45,6 +46,7 @@ async function main(args: string[]) {
   if (args[0] === 'ingest') return ingestCommand(args.slice(1));
   if (args[0] === 'plan') return planCommand(args.slice(1));
   if (args[0] === 'extract') return extractCommand(args.slice(1));
+  if (args[0] === 'update') return updateCommand(args.slice(1));
   if (args.length === 1 && args[0] === '--help')
     return {
       application: 'hivex',
@@ -126,6 +128,13 @@ async function main(args: string[]) {
             'Uses the existing Codex ChatGPT subscription and returns an unaccepted candidate.',
         },
         {
+          name: 'update',
+          usage:
+            'update --output <admitted-graph> [--root <repo>] [--ref <commit>] [--collection <id>] [--neighbors 0..8] [--max-units 0..2048] [--codex <binary>] [--deadline-ms 100..1800000]',
+          modelCalls:
+            'Resumes the existing ingestion, review and comparison cohorts through admission; --max-units 0 makes no model calls.',
+        },
+        {
           name: 'search',
           usage:
             'search <query> [--root <repo>] [--ref <revision>] [--collection <id>] [--limit 1..20] [--max-bytes 1024..65536]',
@@ -158,7 +167,13 @@ async function main(args: string[]) {
 try {
   const result = await main(Bun.argv.slice(2));
   process.stdout.write(JSON.stringify(result) + '\n');
-  if ('status' in result && result.status === 'failed') process.exitCode = 1;
+  if (
+    result &&
+    typeof result === 'object' &&
+    'status' in result &&
+    ['failed', 'blocked', 'contract-mismatch', 'retention-required'].includes(String(result.status))
+  )
+    process.exitCode = 1;
 } catch (error) {
   process.stderr.write(JSON.stringify(diagnostic(error)) + '\n');
   process.exitCode = 1;

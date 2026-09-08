@@ -85,6 +85,21 @@ source fidelity, comparison selection, comparison when needed, admission. One cl
 needs no invented pair. Use the configured knowledge profile.
 `--prepare` on a source review or pair comparison exposes the request without a model call.
 
+For the complete local cycle, use `update --output <admitted-graph>`. It composes the existing
+ingestion, graph build, source-review, comparison and admission handlers over the three default
+SQLite stores. The candidate, checkpoint and one transition directory are bounded caller-owned
+artifacts; a transition archive contains the previous admitted snapshot and the complete exports
+needed for reuse. Omit `--neighbors` to keep the CLI default, and keep an explicit or resumed value
+unchanged. `--max-units 0` performs no model calls. Update resumes pending rows, reports adverse,
+failed or uncertain rows with their IDs, and never invokes `--retry-failed` or `--revise` itself.
+If it returns `retention-required`, preserve or move the existing transition directory before
+starting another transition; Hivex never deletes that evidence automatically. Historical review or
+comparison exports must be produced with `--against` for their archived graph, and a current handler
+contract mismatch blocks the transition without adapting or discarding the store.
+An active or obsolete coordinator lock is an operator blocker and is never reaped automatically.
+After an interruption, a complete pending artifact may be finalized only when its bytes and normal
+artifact validation match; partial or different pending data remains blocked for inspection.
+
 Choose a bounded neighbor count appropriate to the corpus; four is a starting point, not a guarantee.
 Keep the same selection settings when resuming, inspecting and admitting that cohort. Reuse retained
 results. Investigate failed or interrupted work before an explicit retry; do not discard uncertain

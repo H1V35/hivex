@@ -60,6 +60,110 @@ const candidate = {
   ],
   relations: [],
 };
+function payloadFromPrompt(prompt) {
+  const marker = prompt.lastIndexOf('\n\n');
+  if (marker < 0) return null;
+  try {
+    return JSON.parse(prompt.slice(marker + 2));
+  } catch {
+    return null;
+  }
+}
+
+function updateReview(prompt) {
+  const packet = payloadFromPrompt(prompt);
+  if (!packet?.claims) return null;
+  const evidence = [{ quote: 'Never treat a cache as authority.', lineStart: 3, lineEnd: 3 }];
+  const adverse = process.env.HIVEX_TEST_SCENARIO === 'update-adverse';
+  return {
+    coverage: {
+      verdict: adverse ? 'incomplete' : 'complete',
+      reason: adverse
+        ? 'The fixture preserves a negative finding.'
+        : 'All source knowledge is preserved.',
+      evidence,
+    },
+    claims: packet.claims.map((claim) => ({
+      id: claim.id,
+      verdict: adverse ? 'distorted' : 'faithful',
+      reason: adverse
+        ? 'The fixture reports an adverse fidelity finding.'
+        : 'The claim is preserved.',
+      evidence,
+    })),
+    relations: (packet.relations ?? []).map((relation) => ({
+      id: relation.id,
+      verdict: 'faithful',
+      reason: 'The relation is preserved.',
+      evidence,
+    })),
+    omissions: [],
+    context: { verdict: 'sufficient', reason: 'The fixture supplies the complete source.' },
+  };
+}
+
+function updateComparison(prompt) {
+  const packet = payloadFromPrompt(prompt);
+  if (!packet?.sources?.length) return null;
+  const evidence = (source) => ({
+    quote: 'Never treat a cache as authority.',
+    lineStart: 3,
+    lineEnd: 3,
+    source,
+  });
+  const claims = packet.sources.flatMap((source) => source.claims ?? []);
+  const first = claims[0];
+  const second = claims.find((claim) => claim.id?.startsWith('s2:'));
+  if (!first || !second) return null;
+  return {
+    assessments: claims.map((claim) => ({
+      id: claim.id,
+      verdict: 'reviewed',
+      reason: 'The claim is reviewed.',
+      relations: ['r1'],
+      evidence: [evidence(claim.id.startsWith('s1:') ? 's1' : 's2')],
+    })),
+    relations: [
+      {
+        id: 'r1',
+        from: first.id,
+        to: second.id,
+        type: 'equivalent',
+        scope: { extent: 'whole-claim', description: 'The claims express the same rule.' },
+        conditions: [],
+        exceptions: [],
+        evidence: [evidence('s1'), evidence('s2')],
+      },
+    ],
+    coverage: { complete: true, reason: 'Both claims are reviewed.' },
+    context: { verdict: 'sufficient', reason: 'Both complete sources are supplied.' },
+  };
+}
+
+function updateResponse(prompt) {
+  if (process.env.HIVEX_TEST_SCENARIO === 'update-uncertain') return undefined;
+  if (prompt.startsWith('Review whether')) return updateReview(prompt);
+  if (prompt.startsWith('Compare project-knowledge')) return updateComparison(prompt);
+  return null;
+}
+
+function responseForPrompt(prompt) {
+  const candidatePath = process.env.HIVEX_TEST_CANDIDATE_PATH;
+  const specialized = process.env.HIVEX_TEST_SCENARIO?.startsWith('update')
+    ? updateResponse(prompt)
+    : null;
+  const responseCandidate =
+    specialized ??
+    (candidatePath && existsSync(candidatePath)
+      ? JSON.parse(readFileSync(candidatePath, 'utf8'))
+      : structuredClone(candidate));
+  if (
+    process.env.HIVEX_TEST_SCENARIO === 'retry-success' &&
+    !prompt.includes('Correct the previous invalid extraction')
+  )
+    responseCandidate.claims[0].evidence[0].quote = 'An absent source statement.';
+  return responseCandidate;
+}
 if (process.env.HIVEX_TEST_SCENARIO === 'invented-evidence')
   candidate.claims[0].evidence[0].quote = 'An absent source statement.';
 const emit = (frame) => process.stdout.write(JSON.stringify(frame) + '\n');
@@ -138,17 +242,9 @@ const handlers = {
       throw new Error('wrong turn controls');
     if (typeof params.input[0]?.text !== 'string' || !params.input[0].text.trim())
       throw new Error('prompt not supplied');
-    const candidatePath = process.env.HIVEX_TEST_CANDIDATE_PATH;
-    const responseCandidate =
-      candidatePath && existsSync(candidatePath)
-        ? JSON.parse(readFileSync(candidatePath, 'utf8'))
-        : structuredClone(candidate);
-    if (
-      process.env.HIVEX_TEST_SCENARIO === 'retry-success' &&
-      !params.input[0].text.includes('Correct the previous invalid extraction')
-    )
-      responseCandidate.claims[0].evidence[0].quote = 'An absent source statement.';
-    if (process.env.HIVEX_TEST_SCENARIO === 'start-unconfirmed') return undefined;
+    const responseCandidate = responseForPrompt(params.input[0].text);
+    if (['start-unconfirmed', 'update-uncertain'].includes(process.env.HIVEX_TEST_SCENARIO))
+      return undefined;
     if (process.env.HIVEX_TEST_SCENARIO === 'oversized-frame')
       emit({ method: 'fixture/unknown', params: { text: 'x'.repeat(4_194_304) } });
     if (['timeout', 'timeout-unmeasured', 'cancel'].includes(process.env.HIVEX_TEST_SCENARIO)) {

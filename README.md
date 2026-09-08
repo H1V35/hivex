@@ -336,6 +336,34 @@ See the [persistence decision](docs/adr/0004-resumable-ingestion-store.md). Cand
 the review and admission operations below. Real corpus reconstruction, semantic regression evaluation
 and implementation grounding remain required before completing the project cycle.
 
+## Run and resume the complete update cycle
+
+Use `update` to resume the existing ingestion, source-review and comparison stores through admission:
+
+```sh
+bun hivex update --output /path/to/project/hivex.graph.json
+bun hivex update --output /path/to/project/hivex.graph.json --max-units 0
+```
+
+The command uses `.hivex/ingestion.sqlite`, `.hivex/reviews.sqlite` and
+`.hivex/comparisons.sqlite`, plus one candidate, checkpoint and transition directory. It keeps the
+current `--neighbors` default when omitted and freezes an explicit or resumed value. Zero processing
+units performs only deterministic transitions and inspection. Completed work is reused; adverse,
+failed or uncertain rows are reported with their phase and source or pair ID, never retried or revised
+automatically. A changed source first archives the previous admitted snapshot, candidate and complete
+exports. `retention-required` means the caller must move that one transition directory before a new
+transition can begin. The managed admitted file is replaced atomically only after the new snapshot
+has passed the same complete admission inspection.
+
+Before reporting `unchanged`, update reconciles an interrupted publication and checks the requested
+collection/neighbors, current extraction receipts and candidate against the verified admission.
+Output and its pending file cannot alias reserved runtime paths. Pending checkpoints must match
+their frozen inputs and graph before promotion. Once a transition is active its archive is fixed;
+an intermediate correction requiring another archive returns `retention-required`. Incompatible
+processing contracts remain intact. Review and comparison resume against the frozen revision;
+admission still requires matching documentary inputs at HEAD (ADR 8), otherwise it reports a blocker
+at the admission phase while retaining the completed work.
+
 ## Inspect a candidate graph
 
 After every source in a cohort has a retained candidate, build its graph without another model call:

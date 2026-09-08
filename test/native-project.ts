@@ -19,7 +19,7 @@ export async function nativeProject(
     candidate: string;
     git: (args: string[]) => string;
   }) => void | Promise<void>,
-  options: { source?: string } = {},
+  options: { source?: string; assertSourceUnchanged?: boolean } = {},
 ) {
   const source = options.source ?? nativeSource;
   const directory = mkdtempSync(join(tmpdir(), 'hivex-native-project-'));
@@ -84,7 +84,8 @@ export async function nativeProject(
     writeFileSync(calls, '');
     await run({ root, store, binary, calls, hold, scenario, candidate, git });
     expect(git(['status', '--porcelain'])).toBe('');
-    expect(readFileSync(join(root, 'first.md'), 'utf8')).toBe(source);
+    if (options.assertSourceUnchanged !== false)
+      expect(readFileSync(join(root, 'first.md'), 'utf8')).toBe(source);
   } finally {
     cleanObservedServers(pids);
     rmSync(directory, { recursive: true, force: true });
