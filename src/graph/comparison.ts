@@ -7,7 +7,8 @@ import { invalidCitationIndexes } from '../sources/citation.ts';
 import { invokeModel } from '../model/invoke.ts';
 import { knowledgeModel, nativeVersion, requestedPolicyHash } from '../model/profile.ts';
 import { candidateSchema } from '../ingestion/claims.ts';
-import { createReviewContext, prepareSourceReview } from './source-review.ts';
+import { createReviewContext } from './source-review.ts';
+import { prepareKnowledgeSources } from './context.ts';
 import { digest } from './snapshot.ts';
 
 const reason = z.string().min(1).max(2048);
@@ -151,38 +152,14 @@ function argumentsFor(args: string[]) {
 }
 
 export function prepareComparison(context: ReturnType<typeof createReviewContext>, ids: string[]) {
-  const sources = [...ids].sort().map((id) => prepareSourceReview(context, id));
+  const prepared = prepareKnowledgeSources(context, ids);
+  const { sources, packet, bindings, claimBindings, nodes } = prepared;
   if (sources.some((source) => source.nodes.length === 0))
     throw new HivexError({
       code: 'COMPARISON_REQUIRES_CLAIMS',
       message:
         'Both sources need extracted claims; check source fidelity before comparing an empty extraction',
     });
-  const bindings = new Map<string, string>();
-  const claimBindings = new Map<string, string>();
-  const packet = {
-    sources: sources.map((source, index) => {
-      const id = `s${index + 1}`;
-      bindings.set(id, source.source.id);
-      const names = new Map(source.nodes.map((node) => [node.id, `${id}:${node.localIds[0]}`]));
-      for (const [node, name] of names) claimBindings.set(name, node);
-      return {
-        id,
-        sourceId: source.source.id,
-        section: source.source.section,
-        authority: source.source.authority,
-        firstLine: source.packet.firstLine,
-        markdown: source.source.content,
-        claims: source.nodes.map((node) => ({ id: names.get(node.id), ...node.statement })),
-        relations: source.edges.map((edge) => ({
-          from: names.get(edge.from),
-          to: names.get(edge.to),
-          type: edge.type,
-          evidence: edge.evidence,
-        })),
-      };
-    }),
-  };
   const prompt = `${instructions}\n\n${JSON.stringify(packet)}`;
   if (Buffer.byteLength(prompt) > 262144)
     throw new HivexError({
@@ -196,9 +173,7 @@ export function prepareComparison(context: ReturnType<typeof createReviewContext
     prompt,
     bindings,
     claimBindings,
-    nodes: new Map(
-      sources.flatMap((source) => source.nodes.map((node) => [node.id, node] as const)),
-    ),
+    nodes,
   };
 }
 
