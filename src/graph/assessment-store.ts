@@ -9,8 +9,13 @@ export type AssessmentPlan = {
   graphHash: string;
   selectionHash?: string;
   contract: { nativeVersion: string; requestedPolicyHash: string; schemaHash: string };
-  sources: { id: string; promptHash: string }[];
+  sources: { id: string; promptHash: string; schemaHash?: string }[];
 };
+
+export function assessmentSchemaHash(plan: AssessmentPlan, id: string) {
+  return plan.sources.find((source) => source.id === id)?.schemaHash ?? plan.contract.schemaHash;
+}
+
 const maximumBytes = 128 * 1024 * 1024;
 const resultLimit = 8 * 1024 * 1024;
 const historyLimit = 2 * resultLimit;
@@ -182,7 +187,12 @@ function decode<T extends AssessmentResult>(
     fail('INVALID_REVIEW_STORE', 'The result status differs from its retained row');
   validateAssessmentBinding(
     contract.binding?.(result) ?? result,
-    { actualId: contract.unitId(result), id: row.id, promptHash: source.promptHash },
+    {
+      actualId: contract.unitId(result),
+      id: row.id,
+      promptHash: source.promptHash,
+      schemaHash: assessmentSchemaHash(plan, row.id),
+    },
     plan,
   );
   return { id: row.id, state: row.state, result, ...history };
@@ -524,14 +534,14 @@ export class AssessmentStore<T extends AssessmentResult> {
 
 export function validateAssessmentBinding(
   result: AssessmentResult,
-  binding: { actualId: string; id: string; promptHash: string },
+  binding: { actualId: string; id: string; promptHash: string; schemaHash: string },
   plan: AssessmentPlan,
 ) {
   if (
     binding.actualId !== binding.id ||
     result.graphHash !== plan.graphHash ||
     result.contract.promptHash !== binding.promptHash ||
-    result.contract.schemaHash !== plan.contract.schemaHash ||
+    result.contract.schemaHash !== binding.schemaHash ||
     result.contract.nativeVersion !== plan.contract.nativeVersion ||
     result.contract.requestedPolicyHash !== plan.contract.requestedPolicyHash
   )

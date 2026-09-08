@@ -10,12 +10,16 @@ import { HivexError } from '../errors.ts';
 import { hash } from '../sources/markdown.ts';
 import { knowledgeModel, nativeVersion, requestedPolicyHash } from '../model/profile.ts';
 import {
+  compactReviewPacket,
   createReviewContext,
   prepareSourceReview,
+  reviewBindingsSchema,
+  reviewSchemaHash,
   runSourceReview,
   sourceReviewSchema,
   satisfactory,
   validateReview,
+  validateReviewOutput,
   sourceReviewPrompt,
 } from './source-review.ts';
 import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
@@ -41,6 +45,8 @@ export const reviewResultSchema = z.looseObject({
     requestedPolicyHash: digest,
   }),
   report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
+  reviewBindings: reviewBindingsSchema,
+  modelOutputHash: digest.optional(),
   review: sourceReviewSchema.nullable(),
   feedback: comparisonFeedbackSchema.optional(),
   rejectedOutput: z
@@ -109,12 +115,13 @@ function validateReviewProvenance(
       message: 'Feedback-driven fidelity must retain its original complete request binding',
     });
   if (result.feedback) validateFeedbackReview(result, prepared);
+  else validateReviewOutput(result, prepared);
   validateRejectedOutput(result);
   if (
     result.association &&
     (result.association.originalHash !== hash(JSON.stringify(originalReview(result))) ||
       result.contract.promptHash !==
-        hash(sourceReviewPrompt({ ...prepared.packet, graphHash: result.graphHash })))
+        hash(sourceReviewPrompt({ ...compactReviewPacket(prepared), graphHash: result.graphHash })))
   )
     throw new HivexError({
       code: 'INVALID_REVIEW_STORE',
@@ -242,6 +249,14 @@ export async function reviewCohortCommand(args: string[]) {
 }
 
 export function sourceReviewPlan(context: ReturnType<typeof createReviewContext>) {
+  const sources = context.input.graph.sources.map((source) => {
+    const prepared = prepareSourceReview(context, source.id);
+    return {
+      id: source.id,
+      promptHash: hash(prepared.prompt),
+      schemaHash: reviewSchemaHash(prepared),
+    };
+  });
   return {
     graphHash: context.input.graph.hash,
     contract: {
@@ -249,9 +264,6 @@ export function sourceReviewPlan(context: ReturnType<typeof createReviewContext>
       requestedPolicyHash: requestedPolicyHash(),
       schemaHash: hash(JSON.stringify(z.toJSONSchema(sourceReviewSchema))),
     },
-    sources: context.input.graph.sources.map((source) => ({
-      id: source.id,
-      promptHash: hash(prepareSourceReview(context, source.id).prompt),
-    })),
+    sources,
   } satisfies AssessmentPlan;
 }

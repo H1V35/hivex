@@ -7,7 +7,11 @@ import { readGraph, parseGraphDocument } from './verify.ts';
 import { createReviewContext } from './source-review.ts';
 import { prepareComparison } from './comparison.ts';
 import { unresolvedInvocation } from './assessment-cohort.ts';
-import { AssessmentStore, validateAssessmentBinding } from './assessment-store.ts';
+import {
+  AssessmentStore,
+  assessmentSchemaHash,
+  validateAssessmentBinding,
+} from './assessment-store.ts';
 import {
   comparisonBinding,
   comparisonContract,
@@ -91,6 +95,7 @@ function readArchive(options: { reuse: string; from: string; root: string }) {
         id: row.id,
         actualId: comparisonContract.unitId(row.result),
         promptHash: source.promptHash,
+        schemaHash: assessmentSchemaHash(plan, row.id),
       },
       plan,
     );

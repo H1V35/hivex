@@ -35,7 +35,7 @@ function cohort(paths: Paths, fixture: Fixture, operation: Operation) {
     response = {
       coverage: { verdict: 'complete', reason: 'The complete prohibition is preserved.', evidence },
       claims: [
-        { id: node.id, verdict: 'faithful', reason: 'The prohibition is preserved.', evidence },
+        { id: 'c1', verdict: 'faithful', reason: 'The prohibition is preserved.', evidence },
       ],
       relations: [],
       omissions: [],

@@ -124,8 +124,9 @@ from this source. Use its original receipt/graph, not a reassociated copy. Prepa
 full evidence and exposes the new bounded request without a model call. An executed reassessment may
 uphold the candidate. Only a completed adverse fidelity result satisfying the usual sufficient-context
 and evidence rules can feed `ingest --revise`; the comparison itself cannot. Keep both old and new
-receipts and their usage. Its model request uses short local IDs; the stored review preserves the graph
-bindings. Inspect `rejectedOutput` after validation failure before deciding on another explicit attempt;
+receipts and their usage. Ordinary and feedback model requests use short local IDs with exact
+per-source schema counts; the stored review preserves the graph bindings and model-output hash.
+Inspect `rejectedOutput` after validation failure before deciding on another explicit attempt;
 that text is untrusted diagnostics, not an assessed verdict. This standalone operation does not replace
 working review rows or admit a graph.
 

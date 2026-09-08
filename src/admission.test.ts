@@ -183,15 +183,21 @@ test('revalidates semantic coverage after a tampered snapshot receives a recompu
   await projectWithReviews((paths, fixture) => {
     expect(compare(paths, fixture).status).toBe(0);
     const result = admit(paths, fixture);
-    const value = JSON.parse(result.stdout);
-    value.sourceReviews[0].review.claims = [];
-    const { hash: _hash, ...content } = value;
-    value.hash = createHash('sha256').update(JSON.stringify(content)).digest('hex');
-    const input = retained(paths, JSON.stringify(value));
     const calls = readFileSync(paths.calls, 'utf8');
-    const rejected = invoke(paths.root, ['graph', 'check', '--input', input]);
-    expect(rejected.status).toBe(1);
-    expect(JSON.parse(rejected.stderr)).toMatchObject({ error: { code: 'INVALID_REVIEW_OUTPUT' } });
+    for (const change of ['claims', 'bindings', 'model-output']) {
+      const value = JSON.parse(result.stdout);
+      if (change === 'claims') value.sourceReviews[0].review.claims = [];
+      if (change === 'bindings') value.sourceReviews[0].reviewBindings.claims.c1 = '0'.repeat(64);
+      if (change === 'model-output') value.sourceReviews[0].modelOutputHash = '0'.repeat(64);
+      const { hash: _hash, ...content } = value;
+      value.hash = createHash('sha256').update(JSON.stringify(content)).digest('hex');
+      const input = retained(paths, JSON.stringify(value));
+      const rejected = invoke(paths.root, ['graph', 'check', '--input', input]);
+      expect(rejected.status).toBe(1);
+      expect(JSON.parse(rejected.stderr)).toMatchObject({
+        error: { code: 'INVALID_REVIEW_OUTPUT' },
+      });
+    }
     expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
   });
 });

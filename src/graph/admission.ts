@@ -10,6 +10,7 @@ import { checkGraph, decodeGraph, parseGraphDocument } from './verify.ts';
 import { createReviewContext } from './source-review.ts';
 import {
   AssessmentStore,
+  assessmentSchemaHash,
   validateAssessmentBinding,
   type AssessmentContract,
   type AssessmentPlan,
@@ -70,7 +71,12 @@ function records<T extends AssessmentResult>(
       invalid('Admission requires complete successful assessments');
     validateAssessmentBinding(
       contract.binding?.(result) ?? result,
-      { actualId: contract.unitId(result), id: source.id, promptHash: source.promptHash },
+      {
+        actualId: contract.unitId(result),
+        id: source.id,
+        promptHash: source.promptHash,
+        schemaHash: assessmentSchemaHash(plan, source.id),
+      },
       plan,
     );
     return { id: source.id, state: 'reviewed', result } satisfies {
