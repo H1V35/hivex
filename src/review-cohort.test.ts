@@ -154,6 +154,68 @@ test('resumes a graph review cohort without repeating completed model work', asy
   });
 });
 
+test('reserves result capacity for an in-flight review before allowing another model request', async () => {
+  await nativeProject(async (paths) => {
+    expect(
+      invoke(paths.root, ['ingest', '--store', paths.store, '--codex', paths.binary]).status,
+    ).toBe(0);
+    const built = invoke(paths.root, ['graph', 'build', '--store', paths.store, '--export']);
+    const input = join(dirname(paths.store), 'graph.json');
+    const store = join(dirname(paths.store), 'reviews.sqlite');
+    writeFileSync(input, built.stdout);
+    const args = [
+      'graph',
+      'review',
+      '--all',
+      '--input',
+      input,
+      '--store',
+      store,
+      '--codex',
+      paths.binary,
+    ];
+    expect(invoke(paths.root, [...args, '--max-units', '0']).status).toBe(0);
+    writeFileSync(paths.hold, 'hold');
+    const start = () =>
+      Bun.spawn([process.execPath, cli, ...args, '--root', paths.root, '--max-units', '1'], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+    const first = start();
+    let second: ReturnType<typeof start> | undefined;
+    try {
+      let deadline = Date.now() + 5000;
+      while (
+        readFileSync(paths.calls, 'utf8').split('\n').filter(Boolean).length < 3 &&
+        Date.now() < deadline
+      )
+        await Bun.sleep(20);
+      expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\ncalled\n');
+      using db = new Database(store);
+      db.run('CREATE TABLE occupied_capacity (value BLOB)');
+      db.run('INSERT INTO occupied_capacity VALUES (zeroblob(?))', [105 * 1024 * 1024]);
+      second = start();
+      deadline = Date.now() + 5000;
+      while (
+        second.exitCode === null &&
+        readFileSync(paths.calls, 'utf8') === 'called\ncalled\ncalled\n' &&
+        Date.now() < deadline
+      )
+        await Bun.sleep(20);
+      expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\ncalled\n');
+      expect(await second.exited).toBe(1);
+      expect(JSON.parse(await new Response(second.stderr).text())).toMatchObject({
+        error: { code: 'REVIEW_STORE_FULL' },
+      });
+    } finally {
+      first.kill('SIGKILL');
+      second?.kill('SIGKILL');
+      await Promise.all([first.exited, second?.exited]);
+      rmSync(paths.hold);
+    }
+  });
+});
+
 test('refuses to reuse a review store for a different graph even when its source files are unchanged', async () => {
   await nativeProject((paths) => {
     expect(

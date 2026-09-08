@@ -269,7 +269,9 @@ export class ReviewStore {
         const free =
           this.db.query<{ freelist_count: number }, []>('PRAGMA freelist_count').get()
             ?.freelist_count ?? 0;
-        if ((pages - free) * 4096 + 2 * resultLimit > maximumBytes)
+        const reserved =
+          (rows.filter((row) => row.state === 'running').length + 1) * 2 * resultLimit;
+        if ((pages - free) * 4096 + reserved > maximumBytes)
           fail(
             'REVIEW_STORE_FULL',
             'Export or retire retained evidence before another model invocation',

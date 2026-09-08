@@ -41,7 +41,8 @@ It is not an accepted graph or documentary authority. Do not create a file for e
 
 Prepare every complete source request before opening the store or invoking the model. The plan is
 limited to 1 MiB and 2,048 sources, each retained result to 8 MiB, and the database to 128 MiB. Reserve
-16 MiB of database capacity before claiming another source. Use local storage and a SQLite rollback
+16 MiB of database capacity for each claimed or newly requested source, including unresolved claims.
+Use local storage and a SQLite rollback
 journal; no network database is introduced. Data pages freed by retirement may be reused by the next
 cohort rather than growing a new file.
 
