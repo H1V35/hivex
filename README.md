@@ -591,3 +591,23 @@ The manifest exposes its bounded comparison policy and `globalConsistency: not-p
 certifies the recorded fidelity and selected comparisons, not every possible semantic relationship.
 The real Luna corpus rebuild, known composition regressions (including #1478), implementation grounding
 and the complete adoption cycle remain required. See the [admission decision](docs/adr/0008-reviewed-graph-admission.md).
+
+## npm package preparation
+
+The owner selected the scoped package name `@h1v35/hivex` and the [MIT license](LICENSE).
+The installed command remains `hivex`, with Bun as its runtime. Package contents explicitly include
+runtime source and documentation, excluding tests, experiment evidence and working stores.
+
+This checkout remains unpublished and `private: true` until the complete release is validated.
+Prepare a local archive with `bun pm pack --destination /tmp/hivex-package` and verify that archive
+in a separate project with `bun add --dev /path/to/archive.tgz` and `bunx --no-install hivex --help`.
+The registry name is scoped because the unrelated unscoped `hivex` package already exists.
+
+### Agent skill
+
+The package also ships `skills/hivex/SKILL.md`: a portable guide to selecting CLI operations, retrieving
+complete evidence, maintaining modular Markdown and following the knowledge-review workflow.
+Install or link that directory through the harness's supported skill-discovery path. Keep one
+versioned source rather than maintaining a separate copy of the instructions for each agent.
+The skill follows the installed CLI's actual capabilities and does not treat graph admission as
+implementation approval or restore the retired session fleet.

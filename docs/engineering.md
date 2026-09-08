@@ -11,6 +11,17 @@ an adopting project's layout, tracker or product packages. Codex, Git/GitHub and
 
 ## Development and verification
 
+Work is issue-first in `H1V35/hivex`. New vertical work follows discovery where decisions remain open,
+then an agreed spec, verifiable execution tickets, implementation and code review. Reuse settled scope
+instead of reopening an interview. The owning repository carries the execution ticket; a cross-repository
+parent supplies context and coordination, not a substitute for native tracking.
+
+Resolve the existing spec/ticket before changing code and link the PR and verification to it. Absorb
+review findings into the appropriate existing ticket whenever its scope permits. Open a separate issue
+only when strictly necessary to preserve independently actionable work, and record why it cannot be
+absorbed. Read-only retrieval does not need a new ticket. Specs and tickets track work and acceptance;
+resulting durable decisions also enter their repository authority.
+
 Use an existing issue for an already tracked requirement. Create a branch from the current remote
 main, keep each PR to one coherent change and preserve commit history when merging. Never push
 directly to main or force-push a shared branch. Apply review findings before acceptance; an invalid
@@ -142,3 +153,7 @@ package. Use an authenticated account authorized for that scope; do not infer np
 matching GitHub name. Release preparation must verify the packed contents and exclude private project
 evidence and runtime stores. Compi adopts a pinned published version after the complete cycle is
 validated; this decision alone does not mean a package has been published.
+
+Before publication, inspect and scan the exact package archive for secrets and unintended private
+content. Record its hash and the completed scan result; a repack requires a fresh check. Publish the
+same verified artifact, not an unchecked reconstruction from a changed working tree.

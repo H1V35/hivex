@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { admitCommand } from './graph/admission.ts';
 import { diagnostic } from './cli/diagnostic.ts';
 import { argumentsFor } from './cli/arguments.ts';
