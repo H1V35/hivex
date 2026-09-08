@@ -36,6 +36,7 @@ export async function extractSource(
     binary: string;
     attempts: number;
     deadlineMilliseconds: number;
+    previousAttempts?: ExtractionAttempt[];
   },
   checkpoint?: (event: ExtractionCheckpoint) => void,
 ) {
@@ -67,10 +68,10 @@ export async function extractSource(
       schemaHash: processing.schemaHash,
     },
   };
-  const attempts: ExtractionAttempt[] = [];
-  for (let index = 0; index < options.attempts; index++) {
+  const attempts: ExtractionAttempt[] = [...(options.previousAttempts ?? [])];
+  for (let index = attempts.length; index < options.attempts; index++) {
     const previous = attempts.at(-1);
-    const feedback = previous ? correctionFeedback(previous) : '';
+    const feedback = previous?.outcome === 'invalid-output' ? correctionFeedback(previous) : '';
     const requestedPrompt = prompt + feedback;
     checkpoint?.({
       state: 'started',

@@ -119,6 +119,18 @@ function failure(code: string, message: string): never {
   throw new HivexError({ code, message });
 }
 
+function retryIsSafe(report: z.infer<typeof reportSchema>) {
+  if (report.outcome === 'completed') return false;
+  if (report.cleanup === 'failed' || report.turnAccepted === 'unknown') return false;
+  if (report.code === 'MODEL_ADMISSION_FAILED')
+    return (
+      report.turnAccepted === undefined &&
+      ['confirmed', 'not-observed'].includes(String(report.cleanup))
+    );
+  if (report.cleanup !== 'confirmed' || report.turnAccepted !== 'confirmed') return false;
+  return report.outcome === 'invalid-output' || report.interruption === 'confirmed';
+}
+
 function readCohort(db: Database) {
   const row = db
     .query<
@@ -433,24 +445,7 @@ export class IngestionStore {
           >("SELECT id FROM units WHERE state='pending' ORDER BY ordinal LIMIT 1")
           .get();
         if (!next) return null;
-        const pages =
-          this.db.query<{ page_count: number }, []>('PRAGMA page_count').get()?.page_count ??
-          Infinity;
-        const free =
-          this.db.query<{ freelist_count: number }, []>('PRAGMA freelist_count').get()
-            ?.freelist_count ?? 0;
-        const running =
-          this.db
-            .query<
-              { count: number },
-              []
-            >("SELECT count(*) AS count FROM units WHERE state='running'")
-            .get()?.count ?? Infinity;
-        if ((pages - free) * 4096 + (running + 1) * reservationBytes > maximumBytes)
-          failure(
-            'INGESTION_STORE_FULL',
-            'The store has no reserved capacity for another extraction',
-          );
+        this.reserve(1);
         this.db.run("UPDATE units SET state='running', owner=? WHERE id=? AND state='pending'", [
           owner,
           next.id,
@@ -458,6 +453,53 @@ export class IngestionStore {
         return next.id;
       })
       .immediate();
+  }
+
+  retryFailed(id: string, owner: string, maximumAttempts: number) {
+    return this.db
+      .transaction(() => {
+        this.assertPlan();
+        const row = this.db.query<StoredUnit, [string]>('SELECT * FROM units WHERE id=?').get(id);
+        if (!row || row.state !== 'failed')
+          failure(
+            'INGESTION_RETRY_NOT_ALLOWED',
+            'Only a retained failed source can be explicitly retried',
+          );
+        const { result, checkpoint } = decodeUnit(row);
+        const reports = result?.attempts;
+        const last = reports?.at(-1);
+        if (!reports || !last || checkpoint.active || !retryIsSafe(last))
+          failure(
+            'INGESTION_RETRY_UNSAFE',
+            'The previous invocation must have a confirmed safe end before retry',
+          );
+        if (reports.length >= maximumAttempts)
+          failure(
+            'INGESTION_ATTEMPTS_EXHAUSTED',
+            'The source has exhausted its total attempt budget',
+          );
+        this.db.run(
+          "UPDATE units SET state='running', owner=?, result=NULL, result_hash=NULL WHERE id=?",
+          [owner, id],
+        );
+        this.reserve(0);
+        return reports;
+      })
+      .immediate();
+  }
+
+  private reserve(additionalClaims: number) {
+    const pages =
+      this.db.query<{ page_count: number }, []>('PRAGMA page_count').get()?.page_count ?? Infinity;
+    const free =
+      this.db.query<{ freelist_count: number }, []>('PRAGMA freelist_count').get()
+        ?.freelist_count ?? 0;
+    const running =
+      this.db
+        .query<{ count: number }, []>("SELECT count(*) AS count FROM units WHERE state='running'")
+        .get()?.count ?? Infinity;
+    if ((pages - free) * 4096 + (running + additionalClaims) * reservationBytes > maximumBytes)
+      failure('INGESTION_STORE_FULL', 'The store has no reserved capacity for another extraction');
   }
 
   complete(id: string, owner: string, result: Result) {
