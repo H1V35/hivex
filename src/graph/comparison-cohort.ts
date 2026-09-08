@@ -22,7 +22,7 @@ import {
 } from './assessment-cohort.ts';
 import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
 
-const resultSchema = z.looseObject({
+export const comparisonResultSchema = z.looseObject({
   command: z.literal('graph'),
   operation: z.literal('compare'),
   accepted: z.literal(false),
@@ -38,20 +38,33 @@ const resultSchema = z.looseObject({
   report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
   comparison: comparisonSchema.nullable(),
 });
-type ComparisonResult = z.infer<typeof resultSchema>;
-const comparisonContract = {
+export type ComparisonResult = z.infer<typeof comparisonResultSchema>;
+export const comparisonContract = {
   applicationId: 0x48565843,
-  parse: (value: unknown) => resultSchema.parse(value),
+  parse: (value: unknown) => comparisonResultSchema.parse(value),
   unitId: (result: ComparisonResult) =>
     hash(JSON.stringify(result.sources.map((source) => source.id))),
 };
 type Rows = ReturnType<AssessmentStore<ComparisonResult>['snapshot']>;
-type Context = ReturnType<typeof createContext>;
+type Context = ReturnType<typeof prepareComparisonCohort>;
 
 function createContext(options: ReturnType<typeof assessmentArguments>) {
   const context = createReviewContext(options);
-  const selection = buildComparisonPlan(context, 8 * 1024 * 1024, options.neighbors);
-  if (selection.status !== 'planned' || selection.pairs.length === 0)
+  const prepared = prepareComparisonCohort(context, options.neighbors);
+  if (!prepared.selection.pairs.length)
+    throw new HivexError({
+      code: 'COMPARISON_PLAN_UNRESOLVED',
+      message: 'Select at least one pair before cohort comparison',
+    });
+  return prepared;
+}
+
+export function prepareComparisonCohort(
+  context: ReturnType<typeof createReviewContext>,
+  neighbors: number,
+) {
+  const selection = buildComparisonPlan(context, 8 * 1024 * 1024, neighbors);
+  if (selection.status !== 'planned')
     throw new HivexError({
       code: 'COMPARISON_PLAN_UNRESOLVED',
       message:
@@ -150,7 +163,7 @@ function validateHashes(result: ComparisonResult, prepared: ReturnType<typeof pr
     });
 }
 
-function validateRows(rows: Rows, context: Context) {
+export function validateComparisons(rows: Rows, context: Context) {
   for (const row of rows) if (row.result) validateResult(row.result, prepare(context, row.id));
 }
 
@@ -214,16 +227,16 @@ export async function comparisonCohortCommand(args: string[]) {
   const context = createContext(options);
   if (options.show !== undefined || options.export) {
     const rows = AssessmentStore.read(options.store, context.plan, comparisonContract);
-    validateRows(rows, context);
+    validateComparisons(rows, context);
     return inspect(rows, context, options);
   }
   using store = new AssessmentStore(options.store, context.plan, comparisonContract);
   const previous = store.snapshot();
-  validateRows(previous, context);
+  validateComparisons(previous, context);
   const reused = previous.filter((row) => row.state === 'reviewed').length;
   const processed = await comparePending(options, context, store);
   const rows = store.snapshot();
-  validateRows(rows, context);
+  validateComparisons(rows, context);
   return {
     command: 'graph',
     operation: 'comparison-cohort',

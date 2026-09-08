@@ -99,8 +99,12 @@ function parse(args: string[]) {
   });
 }
 
-export function createReviewContext(options: { input: string; root: string; against?: string }) {
-  const input = readGraph(options.input);
+export function createReviewContext(options: {
+  input: string | ReturnType<typeof readGraph>;
+  root: string;
+  against?: string;
+}) {
+  const input = typeof options.input === 'string' ? readGraph(options.input) : options.input;
   const check = checkGraph(input, options.root, options.against);
   if (check.freshness.status !== 'fresh')
     throw new HivexError({
