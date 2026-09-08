@@ -520,3 +520,35 @@ test('preserves malformed model output for diagnosis and checks its integrity', 
     ).toBe(1);
   });
 });
+
+test('preserves literal Markdown and option-like review claims through execution and revalidation', async () => {
+  await implementation((paths, fixture) => {
+    writeFileSync(paths.candidate, JSON.stringify(assessment()));
+    for (const text of [
+      '- **Cache policy:** the implementation respects documentary authority.',
+      '--check',
+    ]) {
+      const result = invoke(paths.root, [
+        'ground',
+        '--input',
+        fixture.admitted,
+        '--base',
+        fixture.base,
+        ...fixture.graph.sources.flatMap((source) => ['--source', source.id]),
+        '--codex',
+        paths.binary,
+        '--',
+        text,
+      ]);
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout).claim).toBe(text);
+      const saved = join(dirname(paths.store), 'literal-grounding.json');
+      writeFileSync(saved, result.stdout);
+      const checked = invoke(paths.root, ['ground', '--check', saved, '--input', fixture.admitted]);
+      expect(checked.stderr).toBe('');
+      expect(checked.status).toBe(0);
+      expect(JSON.parse(checked.stdout).claim).toBe(text);
+    }
+  });
+});
