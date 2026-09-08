@@ -5,6 +5,9 @@ import { dirname, join } from 'node:path';
 import { nativeProject } from '../test/native-project.ts';
 import { invoke } from '../test/reviewed-project.ts';
 import { hash } from './sources/markdown.ts';
+import { IngestionStore, validateResultForPlan } from './ingestion/store.ts';
+import { createPlan } from './ingestion/plan.ts';
+import { loadSnapshot } from './workspace/snapshot.ts';
 
 const cli = join(import.meta.dirname, 'cli.ts');
 type Paths = Parameters<Parameters<typeof nativeProject>[0]>[0];
@@ -193,6 +196,86 @@ test('aborts reuse atomically when the archived cohort contains an uncertain inv
     }
   });
 });
+
+test.each(['invalid-json', 'start-unconfirmed'])(
+  'checks the full oversized invocation report before transfer: %s',
+  async (scenario) => {
+    await nativeProject((paths) => {
+      const uncertain = scenario === 'start-unconfirmed';
+      writeFileSync(paths.scenario, scenario);
+      const extracted = invoke(paths.root, [
+        'extract',
+        'first.md',
+        '--codex',
+        paths.binary,
+        '--attempts',
+        '1',
+        '--deadline-ms',
+        uncertain ? '100' : '600000',
+      ]);
+      expect(extracted.stderr).toBe('');
+      expect(extracted.status).toBe(1);
+      const result: Parameters<IngestionStore['complete']>[2] = JSON.parse(extracted.stdout);
+      const plan = createPlan(loadSnapshot({ root: paths.root, ref: 'HEAD' }), null);
+      const first = validateResultForPlan(result, 'first.md', plan).attempts[0];
+      if (!first) throw new Error('Expected the fixture invocation report');
+      const report = { ...first, diagnostic: { detail: 'x'.repeat(1024 * 1024) } };
+      {
+        using store = new IngestionStore(paths.store, plan);
+        const owner = 'oversized-report-fixture';
+        expect(store.claim(owner)).toBe('first.md');
+        store.checkpoint('first.md', owner, {
+          state: 'started',
+          attempt: 1,
+          promptHash: report.promptHash,
+          deadlineMilliseconds: report.deadlineMilliseconds,
+        });
+        store.checkpoint('first.md', owner, { state: 'recorded', attempt: 1, report });
+        store.complete('first.md', owner, { ...result, attempts: [report] });
+      }
+      const exported = ingest(paths, ['--export', '--max-bytes', '4194304']);
+      expect(exported.stderr).toBe('');
+      expect(exported.status).toBe(1);
+      const cohort: ReturnType<typeof IngestionStore.export> = JSON.parse(exported.stdout);
+      const row = cohort.units[0];
+      if (!row) throw new Error('Expected the exported fixture row');
+      expect(row.checkpoint.reports[0]).toHaveProperty('omittedDetails');
+      expect(row.checkpoint.reports[0]).not.toHaveProperty('turnAccepted');
+      expect(row.checkpoint.reports[0]).not.toHaveProperty('cleanup');
+      expect(row.result?.attempts[0]).toEqual(report);
+      expect(row.result?.attempts[0]?.turnAccepted).toBe(uncertain ? 'unknown' : 'confirmed');
+      expect(row.result?.attempts[0]?.cleanup).toBe('confirmed');
+      const archive = join(dirname(paths.store), 'large-report.json');
+      writeFileSync(archive, exported.stdout);
+      commit(paths, 'unrelated.txt');
+      const before = readFileSync(paths.store);
+      const calls = readFileSync(paths.calls, 'utf8');
+      const reused = ingest(paths, ['--reuse', archive, '--ref', 'HEAD', '--max-units', '0']);
+      if (uncertain) {
+        expect(reused.status).toBe(1);
+        expect(reused.stderr).toContain('INGESTION_UNRESOLVED');
+        expect(readFileSync(paths.store)).toEqual(before);
+      } else {
+        expect(reused.stderr).toBe('');
+        expect(reused.status).toBe(1);
+        expect(JSON.parse(reused.stdout)).toMatchObject({
+          reused: 1,
+          completed: 0,
+          failed: 1,
+          pending: 1,
+          processed: 0,
+          attempts: { recorded: 1, knownTotalTokens: 150 },
+        });
+        const current: ReturnType<typeof IngestionStore.result> = JSON.parse(
+          ingest(paths, ['--show', 'first.md', '--max-bytes', '4194304']).stdout,
+        );
+        expect(current.result?.attempts).toEqual([report]);
+      }
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+      expect(readFileSync(archive, 'utf8')).toBe(exported.stdout);
+    });
+  },
+);
 
 test('rejects an altered reused association while reading the store', async () => {
   await nativeProject((paths) => {

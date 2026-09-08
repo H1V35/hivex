@@ -456,7 +456,7 @@ export function assertTransferSafe(rows: IngestionRow[]) {
       (row) =>
         row.state === 'running' ||
         row.checkpoint.active !== null ||
-        row.checkpoint.reports.some((report) => unresolvedInvocation(report)),
+        (row.result?.attempts ?? row.checkpoint.reports).some(unresolvedInvocation),
     )
   )
     failure(
