@@ -1,45 +1,15 @@
-import { Database } from 'bun:sqlite';
 import { basename } from 'node:path';
-import { z } from 'zod';
 import { HivexError } from '../errors.ts';
 import type { Source } from '../sources/markdown.ts';
 import type { Snapshot } from '../workspace/snapshot.ts';
 import { cursorFor, encodedBytes } from './read.ts';
 
-const row = z.object({ id: z.string(), score: z.number() });
-const terms = (text: string) => [
-  ...new Set(
-    text
-      .toLowerCase()
-      .normalize('NFKC')
-      .match(/[\p{L}\p{N}]+/gu) ?? [],
-  ),
-];
+import { rankLexically, searchTerms as terms } from './lexical.ts';
+
 type Ranked = { id: string; kind: 'identifier' | 'text'; score: number | null };
 
 function lexical(snapshot: Snapshot, query: string): Ranked[] {
-  const db = new Database(':memory:');
-  try {
-    db.run(
-      'CREATE VIRTUAL TABLE sources USING fts5(id UNINDEXED, title, content, tokenize=unicode61)',
-    );
-    const insert = db.prepare('INSERT INTO sources VALUES (?, ?, ?)');
-    db.transaction(() => {
-      for (const source of snapshot.sources) insert.run(source.id, source.title, source.content);
-    })();
-    const expression = terms(query)
-      .map((term) => `"${term}"`)
-      .join(' OR ');
-    if (!expression) return [];
-    return db
-      .prepare(
-        'SELECT id, bm25(sources) AS score FROM sources WHERE sources MATCH ? ORDER BY score, id LIMIT 32',
-      )
-      .all(expression)
-      .map((value) => ({ ...row.parse(value), kind: 'text' }));
-  } finally {
-    db.close();
-  }
+  return rankLexically(snapshot.sources, query).map((match) => ({ ...match, kind: 'text' }));
 }
 
 function identifiers(snapshot: Snapshot, query: string): Ranked[] {

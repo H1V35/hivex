@@ -2,7 +2,8 @@
 
 - **Project** — the body of versioned knowledge adopted by a team and its agents.
 - **Snapshot** — an immutable view of a project's sources and their selection rules.
-- **Source** — an authored document that carries project knowledge. An index is not a source.
+- **Document** — authored Markdown that carries project knowledge and has a versioned history.
+- **Source** — a declared document or section selected as knowledge input, retaining its document's provenance. An index is not a source.
 - **Section** — a named part of an authored document, including its subordinate content. It shares the document’s provenance; selecting it does not establish independent authority.
 - **Collection** — an explicitly declared scope for finding related sources. It expresses relevance, not permission or revocation.
 - **Block** — a complete structural fragment of a source, such as a paragraph, list, table or code example.
@@ -12,6 +13,8 @@
 - **Citation** — the identity and location of evidence within a fixed snapshot.
 - **Claim** — an assertion about a project, including its conditions, exceptions and supporting evidence. A claim can be proposed or incorrect.
 - **Candidate** — a derived interpretation awaiting admission. Producing or structurally validating it does not make it authority.
+- **Graph snapshot** — an immutable projection of claims and relationships bound to a complete source cohort and its processing evidence.
+- **Admission** — the recorded acceptance of a graph projection after the required source, structural and semantic checks. It does not replace the authority of authored decisions.
 - **Ingestion plan** — a complete declared source cohort bound to its snapshot and processing inputs. It measures and identifies prospective work without executing or admitting it.
 - **Ingestion store** — bounded local state for one frozen cohort, its claimed sources, attempt reports and unaccepted candidates. It is not documentary authority or an admitted graph.
 - **Unresolved invocation** — work whose durable state cannot establish a retained final result. Neither a timeout nor a missing process establishes that no model request occurred.

@@ -132,6 +132,21 @@ function readCohort(db: Database) {
   return row.value;
 }
 
+function readUnits(db: Database, plan: Plan) {
+  const rows = db
+    .query<
+      StoredUnit & { ordinal: number },
+      []
+    >('SELECT id, ordinal, state, owner, result, result_hash, attempts, attempts_hash FROM units ORDER BY ordinal')
+    .all();
+  if (
+    rows.length !== plan.units.length ||
+    rows.some((row, index) => row.id !== plan.units[index]?.id || row.ordinal !== index)
+  )
+    failure('INVALID_INGESTION_STORE', 'Stored sources do not match the immutable plan');
+  return rows.map((row) => ({ id: row.id, ...decodeUnit(row) }));
+}
+
 function validateDirectory(path: string) {
   try {
     const directory = lstatSync(dirname(path));
@@ -187,6 +202,26 @@ export class IngestionStore {
   private readonly db: Database;
   private readonly plan: Plan;
   private readonly planText: string;
+
+  static candidates(path: string, plan: Plan) {
+    if (!IngestionStore.selection(path))
+      failure('INGESTION_NOT_READY', 'A complete ingestion cohort is required');
+    using db = new Database(path, { readonly: true, strict: true });
+    db.run('PRAGMA busy_timeout=1000');
+    return db.transaction(() => {
+      validateIdentity(db);
+      if (readCohort(db) !== JSON.stringify(plan))
+        failure(
+          'INGESTION_PLAN_MISMATCH',
+          'The retained cohort does not match its source and processing inputs',
+        );
+      return readUnits(db, plan).map((unit) => {
+        if (unit.result?.status !== 'candidate')
+          failure('INGESTION_NOT_READY', 'Every declared source needs a retained candidate');
+        return unit.result;
+      });
+    })();
+  }
 
   static selection(path: string) {
     validateDirectory(path);
@@ -384,18 +419,7 @@ export class IngestionStore {
   }
 
   private validate(plan: Plan) {
-    const rows = this.db
-      .query<
-        StoredUnit & { ordinal: number },
-        []
-      >('SELECT id, ordinal, state, owner, result, result_hash, attempts, attempts_hash FROM units ORDER BY ordinal')
-      .all();
-    if (
-      rows.length !== plan.units.length ||
-      rows.some((row, index) => row.id !== plan.units[index]?.id || row.ordinal !== index)
-    )
-      failure('INVALID_INGESTION_STORE', 'Stored sources do not match the immutable plan');
-    for (const row of rows) decodeUnit(row);
+    readUnits(this.db, plan);
   }
 
   claim(owner: string) {

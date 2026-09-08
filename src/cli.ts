@@ -7,8 +7,10 @@ import { relations } from './relations/query.ts';
 import { extractCommand } from './ingestion/command.ts';
 import { planCommand } from './ingestion/plan.ts';
 import { ingestCommand } from './ingestion/run.ts';
+import { graphCommand } from './graph/command.ts';
 
 async function main(args: string[]) {
+  if (args[0] === 'graph') return graphCommand(args.slice(1));
   if (args[0] === 'ingest') return ingestCommand(args.slice(1));
   if (args[0] === 'plan') return planCommand(args.slice(1));
   if (args[0] === 'extract') return extractCommand(args.slice(1));
@@ -17,6 +19,16 @@ async function main(args: string[]) {
       application: 'hivex',
       configuration: 'hivex.json',
       commands: [
+        {
+          name: 'graph',
+          usage: 'graph build [--root <repo>] [--store <file>] [--export]',
+          inspection: 'graph check --input <file> [--root <repo>] [--against <commit>]',
+          query:
+            'graph <search|read|neighbors> <query-or-id> --input <file> [--root <repo>] [--against <commit>] [--limit 1..20] [--max-bytes 1024..524288]',
+          continuation: 'graph neighbors <id> --input <file> [--cursor <continuation>]',
+          modelCalls:
+            'None. Candidates remain unaccepted; graph checks do not establish semantic validity.',
+        },
         {
           name: 'ingest',
           usage:
