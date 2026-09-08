@@ -1,5 +1,5 @@
 import { HivexError } from '../errors.ts';
-import { hash, parseSource, type Source } from '../sources/markdown.ts';
+import { hash, isMarkdownPath, parseSource, type Source } from '../sources/markdown.ts';
 import { selectionsFor, parseConfig, validateSectionPaths } from './config.ts';
 import { blobs, resolveCommit, trackedFiles } from './git.ts';
 import { selectedSources } from '../sources/sections.ts';
@@ -28,7 +28,7 @@ export function loadSnapshot(options: {
       message: 'Collection is not declared in hivex.json',
     });
   const declared = files.flatMap((file) => {
-    if (!/\.(?:md|markdown|mdown)$/i.test(file.path)) return [];
+    if (!isMarkdownPath(file.path)) return [];
     const selections = selectionsFor(file.path, config.collections);
     if (!selections.length) return [];
     return [{ ...file, selections }];

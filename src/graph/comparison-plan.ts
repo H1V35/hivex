@@ -2,7 +2,7 @@ import { parseArgs } from 'node:util';
 import { posix } from 'node:path';
 import { HivexError } from '../errors.ts';
 import { parseLimit } from '../cli/arguments.ts';
-import { hash, type Source } from '../sources/markdown.ts';
+import { hash, isMarkdownPath, type Source } from '../sources/markdown.ts';
 import { createReviewContext } from './source-review.ts';
 
 type Reason = {
@@ -180,7 +180,7 @@ class ComparisonPlan {
       return;
     }
     const candidates = this.sourcesByPath.get(target.path) ?? [];
-    if (!candidates.length && !target.path.toLowerCase().endsWith('.md')) {
+    if (!candidates.length && !isMarkdownPath(target.path)) {
       this.nonMarkdown++;
       return;
     }

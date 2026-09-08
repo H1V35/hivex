@@ -51,6 +51,7 @@ export type Source = {
   };
 };
 export const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+export const isMarkdownPath = (path: string) => /\.(?:md|markdown|mdown)$/i.test(path);
 
 function readMetadata(tree: ReturnType<typeof fromMarkdown>) {
   const node = tree.children.find((child) => child.type === 'yaml');
@@ -180,11 +181,13 @@ function quotation(node: MarkdownNode, content: string) {
 
 function linkDefinitions(tree: MarkdownNode) {
   const definitions = new Map<string, MarkdownNode>();
+  let count = 0;
   for (const node of descendants(tree)) {
     if (node.type !== 'definition' || node.identifier === undefined) continue;
+    count++;
     const key = normalizeIdentifier(node.identifier);
     if (!definitions.has(key)) definitions.set(key, node);
-    if (definitions.size > 10000)
+    if (count > 10000)
       throw new HivexError({
         code: 'SOURCE_REFERENCE_LIMIT',
         message: 'A document may contain at most 10000 link definitions',
@@ -196,23 +199,23 @@ function linkDefinitions(tree: MarkdownNode) {
 function documentReferences(tree: MarkdownNode, content: string): Source['references'] {
   const definitions = linkDefinitions(tree);
   const references: Source['references'] = [];
-  const append = (reference: Source['references'][number]) => {
-    if (references.length >= 10000)
+  let links = 0;
+  for (const node of descendants(tree)) {
+    if (node.type !== 'link' && node.type !== 'linkReference') continue;
+    links++;
+    if (links > 10000)
       throw new HivexError({
         code: 'SOURCE_REFERENCE_LIMIT',
         message: 'A document may contain at most 10000 Markdown links',
       });
-    references.push(reference);
-  };
-  for (const node of descendants(tree)) {
     if (node.type === 'link' && node.url !== undefined) {
-      append({ url: node.url, evidence: quotation(node, content) });
+      references.push({ url: node.url, evidence: quotation(node, content) });
       continue;
     }
     if (node.type !== 'linkReference' || node.identifier === undefined) continue;
     const definition = definitions.get(normalizeIdentifier(node.identifier));
     if (definition?.url === undefined) continue;
-    append({
+    references.push({
       url: definition.url,
       evidence: quotation(node, content),
       definition: quotation(definition, content),

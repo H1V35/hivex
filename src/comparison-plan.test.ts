@@ -50,6 +50,33 @@ test('plans a documented comparison without interpreting the link as semantic pr
   );
 });
 
+test('counts duplicate definition nodes toward the document limit before resolving identifiers', async () => {
+  const body = nativeSource + '\n' + '[same]: second.md\n'.repeat(10000);
+  await nativeProject(
+    (paths) => {
+      expect(invoke(paths.root, ['search', 'cache']).status).toBe(0);
+      writeFileSync(join(paths.root, 'second.md'), body + '[same]: missing.md\n');
+      paths.git(['add', 'second.md']);
+      paths.git([
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '-qm',
+        'excessive definitions',
+      ]);
+      const invalid = invoke(paths.root, ['search', 'cache']);
+      expect(invalid.status).toBe(1);
+      expect(JSON.parse(invalid.stderr)).toMatchObject({
+        error: { code: 'SOURCE_REFERENCE_LIMIT' },
+      });
+      expect(readFileSync(paths.calls, 'utf8')).toBe('');
+    },
+    { source: body },
+  );
+});
+
 test('accepts the documented Markdown link limit and rejects the next link without partial output', async () => {
   const body = nativeSource + '\n' + '[x]() '.repeat(10000) + '\n\nTrailing text.\n';
   await nativeProject(
@@ -209,7 +236,7 @@ test('resolves reference-style links from their original definitions and limits 
 test('reports unresolved Markdown targets while ignoring links inside code and never following external links', async () => {
   const body =
     nativeSource +
-    '\n[Broken](missing.md)\n[Escape](../outside.md)\n[External](https://example.invalid/remote.md)\n[Asset](image.png)\n\n```md\n[Code example](also-missing.md)\n```\n';
+    '\n[Broken](missing.md)\n[Escape](../outside.md)\n[External](https://example.invalid/remote.md)\n[Asset](image.png)\n[Markdown](missing.markdown)\n[MDOWN](missing.MDOWN)\n\n```md\n[Code example](also-missing.md)\n```\n';
   await nativeProject(
     (paths) => {
       expect(
@@ -224,13 +251,17 @@ test('reports unresolved Markdown targets while ignoring links inside code and n
       expect(plan.unresolved.map((item) => item.url)).toEqual([
         'missing.md',
         '../outside.md',
+        'missing.markdown',
+        'missing.MDOWN',
         'missing.md',
         '../outside.md',
+        'missing.markdown',
+        'missing.MDOWN',
       ]);
       expect(JSON.parse(result.stdout)).toMatchObject({
         accepted: false,
         pairs: [],
-        coverage: { links: 8, externalLinks: 2, nonMarkdownLinks: 2 },
+        coverage: { links: 12, externalLinks: 2, nonMarkdownLinks: 2 },
       });
       expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\n');
     },
