@@ -10,8 +10,10 @@ import { ingestCommand } from './ingestion/run.ts';
 import { graphCommand } from './graph/command.ts';
 import { sourceReviewCommand } from './graph/source-review.ts';
 import { reviewCohortCommand } from './graph/review-cohort.ts';
+import { comparisonCommand } from './graph/comparison.ts';
 
 async function main(args: string[]) {
+  if (args[0] === 'graph' && args[1] === 'compare') return comparisonCommand(args.slice(2));
   if (args[0] === 'graph' && args[1] === 'review') {
     const reviewArgs = args.slice(2);
     if (
@@ -46,8 +48,10 @@ async function main(args: string[]) {
             'graph review <--show <source-id>|--export> --input <file> [--store <file>] [--max-bytes 1024..134217728]',
           reviewRetirement:
             'graph review --discard <exact-plan-hash> [--store <file>] [--root <repo>]',
+          comparison:
+            'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
           modelCalls:
-            'Review uses native Luna/max; --prepare and all other graph operations make no model calls. Candidates remain unaccepted.',
+            'Review and compare use native Luna/max; --prepare and deterministic graph operations make no model calls. Candidates remain unaccepted.',
         },
         {
           name: 'ingest',

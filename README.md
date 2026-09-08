@@ -433,3 +433,30 @@ After preserving evidence needed for admission or investigation, explicitly reti
 `graph review --discard <exact-plan-hash>`. This removes its retained reviews transactionally and
 allows the same file to serve another cohort. A wrong hash or unresolved claim prevents retirement.
 No per-source files, automatic history rotation or automatic disposal of uncertain work are created.
+
+### Compare source decisions
+
+```sh
+bun run cli graph compare 'docs/decision.md' 'docs/amendment.md' --input /tmp/candidate-graph.json --root /path/to/project --prepare
+bun run cli graph compare 'docs/decision.md' 'docs/amendment.md' --input /tmp/candidate-graph.json --root /path/to/project
+```
+
+Comparison supplies both complete sources, their statements and existing source-local relationships
+within a 256 KiB request budget. Both sources need extracted claims. `--prepare` returns the exact
+prompt and schema without a model call. Sources are serialized deterministically, so swapping the
+arguments produces the same request; that serialization is not documentary precedence.
+
+Short identifiers keep model requests and responses compact. Returned assessments and relationships
+use the original graph IDs and source citations. `sourceBindings`, `modelOutputHash`, `comparisonHash`
+and the prompt/schema contract preserve the link to the normalized model output. Relation IDs such
+as `r1` are local to that comparison, never precedence or permanent graph identities.
+
+Every claim must be assessed, and each relationship needs evidence from both endpoint sources.
+Relationships preserve their affected claim scope, conditions and exceptions. Explicit compatible
+exceptions can be reviewed successfully; a reported contradiction, unspecified scope, incomplete
+coverage or missing context returns `status: failed` and exit code 1. Valid negative findings remain
+in `comparison`; invalid output returns `comparison: null` while retaining the invocation report.
+
+This command makes no graph changes and writes no per-comparison artifacts. It always returns
+`accepted: false`: a successful pair comparison is not graph-wide coverage, admission or code
+grounding. See the [comparison decision](docs/adr/0007-evidence-bound-source-comparisons.md).

@@ -9,6 +9,7 @@
 - [Resumable ingestion](adr/0004-resumable-ingestion-store.md): bounded candidate persistence and interruption handling.
 - [Graph snapshots](adr/0005-source-bound-graph-snapshots.md): source-bound projections, integrity and freshness before admission.
 - [Source fidelity](adr/0006-source-fidelity-review.md): complete extraction assessments before semantic admission.
+- [Source comparisons](adr/0007-evidence-bound-source-comparisons.md): scoped relationships with evidence from both sources.
 
 The [CLI guide](../README.md) describes current executable interfaces. Historical evidence under
 `evidence/` records a bounded experiment at its cited revision, not a standing quality verdict.
