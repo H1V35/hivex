@@ -6,6 +6,11 @@ date: 2026-09-08
 
 # Review extraction fidelity against complete versioned sources
 
+Coverage concerns substantive project assertions, not a second transcription of the source.
+Provenance labels or illustrative examples already preserved by the source identity or literal
+evidence do not require standalone claims unless they add a distinct rule, requirement, exception,
+rationale or behavior. Material conditions and quantitative requirements still belong in the claims.
+
 Before admission, review whether the extracted claims and relationships preserve their source's
 meaning. Literal citation checks establish provenance, not semantic fidelity. Use the admitted
 Luna/max native route with a separate structured review of the complete source and extraction.
