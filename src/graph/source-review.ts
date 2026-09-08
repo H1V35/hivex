@@ -181,11 +181,20 @@ export function reviewModelSchema(prepared: Prepared) {
   const bindings = reviewBindings(prepared);
   const claims = Object.keys(bindings.claims);
   const relations = Object.keys(bindings.relations);
+  const firstLine = prepared.source.section?.lineStart ?? 1;
+  const lastLine = prepared.source.section?.lineEnd ?? prepared.source.content.split('\n').length;
+  const line = evidence.element.shape.lineStart.min(firstLine).max(lastLine);
+  const sourceEvidence = z
+    .array(evidence.element.extend({ lineStart: line, lineEnd: line }))
+    .min(1)
+    .max(8);
   return sourceReviewSchema.extend({
+    coverage: sourceReviewSchema.shape.coverage.extend({ evidence: sourceEvidence.min(0) }),
     claims: z
       .array(
         sourceReviewSchema.shape.claims.element.extend({
           id: z.enum(claims.length ? claims : ['c1']),
+          evidence: sourceEvidence,
         }),
       )
       .length(claims.length),
@@ -193,9 +202,13 @@ export function reviewModelSchema(prepared: Prepared) {
       .array(
         sourceReviewSchema.shape.relations.element.extend({
           id: z.enum(relations.length ? relations : ['r1']),
+          evidence: sourceEvidence,
         }),
       )
       .length(relations.length),
+    omissions: z
+      .array(sourceReviewSchema.shape.omissions.element.extend({ evidence: sourceEvidence }))
+      .max(64),
   });
 }
 

@@ -4,6 +4,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { nativeProject } from '../test/native-project.ts';
 import type { GraphSnapshot } from './graph/snapshot.ts';
+import { z } from 'zod';
+import {
+  createReviewContext,
+  prepareSourceReview,
+  reviewModelSchema,
+  sourceReviewSchema,
+} from './graph/source-review.ts';
 
 const cli = join(import.meta.dirname, 'cli.ts');
 
@@ -289,6 +296,10 @@ test('keeps ordinary no-knowledge valid with zero compact IDs and required evide
       expect(schema.properties.relations.minItems).toBe(0);
       expect(schema.properties.relations.maxItems).toBe(0);
       expect(schema.properties.relations.items.properties.id.enum).toEqual(['r1']);
+      expect(schema.properties.coverage.properties.evidence.items.properties).toMatchObject({
+        lineStart: { minimum: 1, maximum: 4 },
+        lineEnd: { minimum: 1, maximum: 4 },
+      });
 
       const evidence = [{ quote: '# Cache', lineStart: 1, lineEnd: 1 }];
       writeFileSync(
@@ -325,6 +336,99 @@ test('keeps ordinary no-knowledge valid with zero compact IDs and required evide
     { source: '# Cache\n\nNo project rule is declared here.\n' },
   );
 });
+
+test.each([false, true])(
+  'bounds every review evidence coordinate to its source (section: %s)',
+  async (section) => {
+    await nativeProject(
+      (paths) => {
+        writeFileSync(
+          join(paths.root, 'hivex.json'),
+          JSON.stringify({
+            version: 1,
+            collections: [
+              {
+                id: 'project',
+                include: [section ? { path: 'first.md', anchor: 'rules' } : 'first.md'],
+              },
+            ],
+          }),
+        );
+        paths.git(['add', 'hivex.json']);
+        paths.git([
+          '-c',
+          'user.name=Test',
+          '-c',
+          'user.email=test@example.invalid',
+          'commit',
+          '-qm',
+          'Select review source',
+        ]);
+        const quote = { quote: 'Never treat a cache as authority.', lineStart: 7, lineEnd: 7 };
+        writeFileSync(
+          paths.candidate,
+          JSON.stringify({
+            claims: [
+              {
+                id: 'c1',
+                text: quote.quote,
+                kind: 'constraint',
+                conditions: [],
+                exceptions: [],
+                evidence: [quote],
+              },
+            ],
+            relations: [],
+          }),
+        );
+        expect(
+          invoke(paths.root, ['ingest', '--store', paths.store, '--codex', paths.binary]).status,
+        ).toBe(0);
+        const built = invoke(paths.root, ['graph', 'build', '--store', paths.store, '--export']);
+        expect(built.status).toBe(0);
+        const input = join(dirname(paths.store), 'graph.json');
+        writeFileSync(input, built.stdout);
+        const prepared = prepareSourceReview(
+          createReviewContext({ input, root: paths.root }),
+          section ? 'first.md#rules' : 'first.md',
+        );
+        const modelSchema = reviewModelSchema(prepared);
+        const minimum = section ? 5 : 1;
+        const maximum = section ? 8 : 13;
+        const schemas = [
+          modelSchema.shape.coverage.shape.evidence,
+          modelSchema.shape.claims.element.shape.evidence,
+          modelSchema.shape.relations.element.shape.evidence,
+          modelSchema.shape.omissions.element.shape.evidence,
+        ];
+        for (const schema of schemas) {
+          expect(z.toJSONSchema(schema.element)).toMatchObject({
+            properties: {
+              lineStart: { type: 'integer', minimum, maximum },
+              lineEnd: { type: 'integer', minimum, maximum },
+            },
+          });
+          const boundary = [{ ...quote, lineStart: minimum, lineEnd: maximum }];
+          expect(schema.parse(boundary)).toEqual(boundary);
+          for (const coordinate of ['lineStart', 'lineEnd']) {
+            for (const value of [minimum - 1, maximum + 1, 1669000000000000]) {
+              expect(schema.safeParse([{ ...quote, [coordinate]: value }]).success).toBe(false);
+            }
+          }
+        }
+        expect(
+          sourceReviewSchema.shape.coverage.shape.evidence.safeParse([
+            { ...quote, lineEnd: 1669000000000000 },
+          ]).success,
+        ).toBe(true);
+      },
+      {
+        source:
+          '# Document\n\nIntroduction.\n\n## Rules\n\nNever treat a cache as authority.\nKeep the source.\n\n## Other\n\nOutside.\n',
+      },
+    );
+  },
+);
 
 test('keeps failed native review accounting and refuses stale inputs before another model call', async () => {
   await nativeProject((paths) => {
