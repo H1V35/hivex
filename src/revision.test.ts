@@ -245,3 +245,129 @@ test('an unchanged response preserves the adverse finding instead of repeating r
     { source },
   );
 });
+
+test('rejects a valid graph whose source differs from the frozen cohort even when its receipt hash is copied', async () => {
+  await nativeProject(
+    (paths) => {
+      const { original, graph, input, feedback, args } = prepare(paths);
+      const frozenStore = readFileSync(paths.store);
+      writeFileSync(
+        join(paths.root, 'first.md'),
+        source + 'This is a different source revision.\n',
+      );
+      paths.git(['add', 'first.md']);
+      paths.git([
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '-qm',
+        'Change source inputs',
+      ]);
+      writeFileSync(paths.candidate, JSON.stringify(original.candidate));
+      const other = join(dirname(paths.store), 'other.sqlite');
+      expect(invoke(paths.root, ['ingest', '--store', other, '--codex', paths.binary]).status).toBe(
+        0,
+      );
+      const built = invoke(paths.root, ['graph', 'build', '--store', other, '--export']);
+      const changed: GraphSnapshot = JSON.parse(built.stdout);
+      const descriptor = changed.sources.find((item) => item.id === 'first.md');
+      const old = graph.sources.find((item) => item.id === 'first.md');
+      if (!descriptor || !old) throw new Error('Expected both source descriptors');
+      descriptor.extraction.receiptHash = old.extraction.receiptHash;
+      const { hash: _hash, ...content } = changed;
+      changed.hash = new Bun.CryptoHasher('sha256').update(JSON.stringify(content)).digest('hex');
+      writeFileSync(input, JSON.stringify(changed));
+      expect(invoke(paths.root, ['graph', 'check', '--input', input]).status).toBe(0);
+      writeFileSync(
+        paths.candidate,
+        JSON.stringify({
+          coverage: { verdict: 'incomplete', reason: 'The retention rule is missing.', evidence },
+          claims: changed.nodes
+            .filter((node) => node.source === 'first.md')
+            .map((node) => ({
+              id: node.id,
+              verdict: 'faithful',
+              reason: 'The cache prohibition is preserved.',
+              evidence,
+            })),
+          relations: [],
+          omissions: [{ text: 'Preserve the original source.', evidence: omitted }],
+          context: { verdict: 'sufficient', reason: 'The complete source is supplied.' },
+        }),
+      );
+      const reviewed = invoke(paths.root, [
+        'graph',
+        'review',
+        'first.md',
+        '--input',
+        input,
+        '--codex',
+        paths.binary,
+      ]);
+      expect(reviewed.status).toBe(1);
+      expect(JSON.parse(reviewed.stdout).report.outcome).toBe('completed');
+      writeFileSync(feedback, reviewed.stdout);
+      const calls = readFileSync(paths.calls, 'utf8');
+      const prepared = invoke(paths.root, [...args, '--prepare']);
+      expect(prepared.status).toBe(1);
+      expect(prepared.stderr).toContain('INGESTION_REVISION_INVALID');
+      expect(readFileSync(paths.store)).toEqual(frozenStore);
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+      writeFileSync(join(paths.root, 'first.md'), source);
+      paths.git(['add', 'first.md']);
+      paths.git([
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '-qm',
+        'Restore fixture source',
+      ]);
+    },
+    { source },
+  );
+});
+
+test('reports the semantic revision limit explicitly after safe retries consume ten attempts', async () => {
+  await nativeProject(
+    (paths) => {
+      for (const text of [
+        'A cache must never be treated as documentary authority.',
+        'Caches do not establish documentary authority.',
+        'Never use cached content as documentary authority.',
+      ]) {
+        const { ingest, original, args } = prepare(paths);
+        writeFileSync(paths.scenario, 'changed-effort');
+        expect(invoke(paths.root, args).status).toBe(1);
+        expect(
+          invoke(paths.root, [...ingest, '--retry-failed', 'first.md', '--attempts', '2']).status,
+        ).toBe(1);
+        rmSync(paths.scenario);
+        writeFileSync(
+          paths.candidate,
+          JSON.stringify({
+            ...original.candidate,
+            claims: [{ ...original.candidate.claims[0], text }],
+          }),
+        );
+        expect(
+          invoke(paths.root, [...ingest, '--retry-failed', 'first.md', '--attempts', '3']).status,
+        ).toBe(0);
+      }
+      const { args, inspect } = prepare(paths);
+      const before = inspect('first.md').stdout;
+      expect(JSON.parse(before).result.candidateAttempt).toBe(10);
+      const calls = readFileSync(paths.calls, 'utf8');
+      const result = invoke(paths.root, [...args, '--prepare']);
+      expect(result.status).toBe(1);
+      expect(JSON.parse(result.stderr).error.code).toBe('INGESTION_REVISION_INVALID');
+      expect(result.stderr).toContain('exhausted its three semantic revisions');
+      expect(inspect('first.md').stdout).toBe(before);
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+    },
+    { source },
+  );
+}, 15000);

@@ -53,6 +53,9 @@ source-bound graph, plus a validated adverse fidelity result with sufficient con
 retain a completed admitted invocation, literal evidence and complete claim/relation coverage. A
 passing review, an unresolved finding, insufficient context or an uncertain invocation cannot trigger
 revision. A cohort export may supply the selected source result; it does not approve other rows.
+The graph's source snapshot and complete source descriptor, including authority and processing inputs,
+must match the frozen ingestion plan. Resolve the model's source from that plan; candidate and receipt
+hashes alone cannot establish which documentary revision the invocation may read.
 
 Prepare the complete request before claiming work. It includes the original source, prior candidate,
 claim/relation identities and review findings, all treated as untrusted evidence. Source Markdown
