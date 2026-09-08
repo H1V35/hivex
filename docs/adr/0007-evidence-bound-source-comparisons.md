@@ -117,3 +117,33 @@ persistent index or query files. Existing pair/plan/cohort limits still apply to
 This is a retrieval heuristic, not full semantic coverage: common vocabulary may create irrelevant
 candidates and paraphrases without shared terms may be missed. Record those limits when interpreting
 subsequent comparison, admission and grounding evidence.
+
+## Reuse compatible comparisons
+
+Under [Hivex #18](https://github.com/H1V35/hivex/issues/18), an explicit transition can reuse a
+retained comparison when the pair remains selected and its complete model request, source descriptors,
+claim identities and processing contract remain identical. The request includes both complete sources,
+their authority, original positions, claims, conditions, exceptions and local relationships. A shared
+document hash or coincident pair ID is insufficient.
+
+Selection decides which pairs to assess; its global hash, retrieval ranks and neighbor count are not
+model inputs. Recompute the new selection and retain its complete reasons. A changed selection may
+reuse an unchanged pair, but never supplies evidence for a newly selected pair. Preserve the old graph
+and complete comparison export, including its selection, before replacing the working cohort.
+
+Keep the original comparison, graph/source snapshot, prompt, native invocation, verdict and usage
+unchanged. Its association binds the current graph, source snapshot and selection, the original
+selection hash and the complete original receipt. The old export owns the original selection's full
+provenance. Repeated transitions retain the same original receipt and selection identity without
+nesting associations. Every inspection and admission revalidates current selection, complete pair
+inputs, source/claim bindings, literal citations and original/normalized output hashes.
+
+Use the existing bounded comparison store and atomic cohort replacement. Validate the complete old
+archive against the old graph and the actual retained rows before mutation. Uncertain starts,
+unconfirmed interruptions, failed cleanup and active claims block replacement. A known preflight
+failure before any accepted turn remains a failure. Reuse never retries an adverse assessment or
+changes its verdict; changed/new pairs remain pending within the caller's execution budget. Removed
+pairs remain in the caller-owned archive. Existing capacity, output and explicit retention limits apply.
+
+This implements pair reuse only; ingestion across changed plans, safe assessment retries and the
+whole update/resume command remain separate requirements of #18.

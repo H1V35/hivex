@@ -46,6 +46,7 @@ of treating truncated or missing evidence as a complete answer.
 | Review extraction fidelity             | `graph review`, or `graph review --all` for the cohort         |
 | Reuse unchanged source reviews         | `graph review --all --from <old-graph> --reuse <old-export>`   |
 | Select and assess cross-source context | `graph compare-plan`, then `graph compare` or `--all`          |
+| Reuse unchanged pair assessments       | `graph compare --all --from <old-graph> --reuse <old-export>`  |
 | Admit complete reviewed evidence       | `graph admit`, when supported by the installed version         |
 | Ground a specific review claim         | `ground <claim>`; reuse current evidence with `ground --check` |
 | Query a graph's bounded evidence       | `graph search`, `graph read`, `graph neighbors`                |
@@ -100,6 +101,13 @@ When a graph changes, preserve its old graph and complete review export before u
 Only identical complete source-review inputs qualify; inspect `association` for the current binding
 while the original graph/prompt/verdict/usage remain intact. Changed sources need new review, retained
 negative results remain blockers and unresolved invocations prevent cohort replacement.
+
+For comparisons, preserve the old graph and complete comparison export, then use the same `--from`
+and `--reuse` transition with `graph compare --all --max-units 0`. Choose the new `--neighbors` setting
+and keep it for execution, inspection and admission; the old export retains its original settings.
+Only pairs selected in the new graph with identical complete comparison inputs qualify. Inspect the
+association's current and original selection identities, keep the old export's full provenance, and
+execute only pending pairs. Reuse preserves adverse results and never retries uncertain invocations.
 
 Save full exports as artifacts rather than dumping them into model context. Retain and version the
 admitted snapshot according to the project workflow. Never hand-edit a projection to invent acceptance.
