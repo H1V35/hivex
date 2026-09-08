@@ -395,3 +395,8 @@ does not declare that snapshot current at HEAD. The command writes no per-review
 always returns `accepted: false`. Source fidelity alone does not establish cross-source consistency,
 effective authority, graph admission or implementation grounding. See the
 [review decision](docs/adr/0006-source-fidelity-review.md).
+
+The [recorded native evaluation](evidence/source-review-1427.json) covers four agent-authored
+synthetic examples: preserved/reversed negation and preserved/omitted conditions. Luna/max produced
+the expected distinction in all four, using 30,496 reported tokens including 11,776 cached input
+tokens. This small experiment is not human gold, a corpus evaluation or evidence of graph admission.

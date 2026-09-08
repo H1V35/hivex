@@ -2,7 +2,8 @@ import { parseArgs } from 'node:util';
 import { z } from 'zod';
 import { HivexError } from '../errors.ts';
 import { parseLimit } from '../cli/arguments.ts';
-import { hash, type Source } from '../sources/markdown.ts';
+import { hash } from '../sources/markdown.ts';
+import { invalidCitationIndexes } from '../sources/citation.ts';
 import { loadSnapshot } from '../workspace/snapshot.ts';
 import { invokeModel } from '../model/invoke.ts';
 import { knowledgeModel, nativeVersion, requestedPolicyHash } from '../model/profile.ts';
@@ -165,7 +166,8 @@ function validateReview(review: SourceReview, prepared: ReturnType<typeof prepar
     ...review.relations,
     ...review.omissions,
   ].flatMap((entry) => entry.evidence);
-  validateCitations(citations, prepared.source);
+  if (invalidCitationIndexes(prepared.source, citations).length)
+    invalid('Review evidence must occur in its original source line range');
   if (
     review.coverage.verdict === 'no-knowledge' &&
     (prepared.nodes.length || prepared.edges.length || review.omissions.length)
@@ -182,25 +184,6 @@ function validateReview(review: SourceReview, prepared: ReturnType<typeof prepar
     !review.coverage.evidence.length
   )
     invalid('A nonempty source requires evidence for a no-knowledge assessment');
-}
-
-function validateCitations(entries: z.infer<typeof evidence>, source: Source) {
-  const lines = source.content.split('\n');
-  const first = source.section?.lineStart ?? 1;
-  for (const entry of entries) {
-    const start = entry.lineStart - first;
-    const end = entry.lineEnd - first;
-    if (
-      start < 0 ||
-      end < start ||
-      end >= lines.length ||
-      !lines
-        .slice(start, end + 1)
-        .join('\n')
-        .includes(entry.quote)
-    )
-      invalid('Review evidence must occur in its original source line range');
-  }
 }
 
 function satisfactory(review: SourceReview) {
