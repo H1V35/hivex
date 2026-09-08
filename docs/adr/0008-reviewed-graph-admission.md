@@ -28,6 +28,10 @@ the requested output budget; failure never yields a partial accepted artifact. T
 still must fit 64 MiB, and each embedded assessment retains its original 8 MiB limit. Revalidation
 applies those component limits in addition to the outer artifact limit.
 
+Optional authored-link fields are omitted when absent, so a complete exported selection compares
+equally with the reconstructed in-memory selection. JSON round-trips must preserve admission without
+changing its hashes or requiring model work again.
+
 Every read revalidates integrity, source evidence and the embedded semantic assessments, rather than
 trusting an `accepted` flag or checksum alone. Freshness is evaluated against the requested project
 revision. A historical snapshot can be inspected against its original revision; changed documentary

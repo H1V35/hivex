@@ -25,64 +25,32 @@ export async function projectWithReviews(
   run: (paths: Paths, fixture: Fixture) => void | Promise<void>,
   reviewedSources = 2,
   singleSource = false,
+  source?: string,
 ) {
-  await nativeProject(async (paths) => {
-    if (singleSource) {
-      paths.git(['rm', 'second.md']);
-      paths.git([
-        '-c',
-        'user.name=Test',
-        '-c',
-        'user.email=test@example.invalid',
-        'commit',
-        '-qm',
-        'One source',
-      ]);
-    }
-    expect(
-      invoke(paths.root, ['ingest', '--store', paths.store, '--codex', paths.binary]).status,
-    ).toBe(0);
-    const built = invoke(paths.root, ['graph', 'build', '--store', paths.store, '--export']);
-    expect(built.status).toBe(0);
-    const graph: GraphSnapshot = JSON.parse(built.stdout);
-    const input = join(dirname(paths.store), 'graph.json');
-    const reviews = join(dirname(paths.store), 'reviews.sqlite');
-    const comparisons = join(dirname(paths.store), 'comparisons.sqlite');
-    writeFileSync(input, built.stdout);
-    expect(
-      invoke(paths.root, [
-        'graph',
-        'review',
-        '--all',
-        '--input',
-        input,
-        '--store',
-        reviews,
-        '--max-units',
-        '0',
-      ]).status,
-    ).toBe(0);
-    const evidence = [{ quote: 'Never treat a cache as authority.', lineStart: 3, lineEnd: 3 }];
-    for (const source of graph.sources.slice(0, reviewedSources)) {
-      const node = graph.nodes.find((node) => node.source === source.id);
-      if (!node) throw new Error('Expected source claim');
-      writeFileSync(
-        paths.candidate,
-        JSON.stringify({
-          coverage: { verdict: 'complete', reason: 'All source knowledge is preserved.', evidence },
-          claims: [
-            {
-              id: node.id,
-              verdict: 'faithful',
-              reason: 'The complete prohibition is preserved.',
-              evidence,
-            },
-          ],
-          relations: [],
-          omissions: [],
-          context: { verdict: 'sufficient', reason: 'The rule is self-contained.' },
-        }),
-      );
+  await nativeProject(
+    async (paths) => {
+      if (singleSource) {
+        paths.git(['rm', 'second.md']);
+        paths.git([
+          '-c',
+          'user.name=Test',
+          '-c',
+          'user.email=test@example.invalid',
+          'commit',
+          '-qm',
+          'One source',
+        ]);
+      }
+      expect(
+        invoke(paths.root, ['ingest', '--store', paths.store, '--codex', paths.binary]).status,
+      ).toBe(0);
+      const built = invoke(paths.root, ['graph', 'build', '--store', paths.store, '--export']);
+      expect(built.status).toBe(0);
+      const graph: GraphSnapshot = JSON.parse(built.stdout);
+      const input = join(dirname(paths.store), 'graph.json');
+      const reviews = join(dirname(paths.store), 'reviews.sqlite');
+      const comparisons = join(dirname(paths.store), 'comparisons.sqlite');
+      writeFileSync(input, built.stdout);
       expect(
         invoke(paths.root, [
           'graph',
@@ -92,15 +60,55 @@ export async function projectWithReviews(
           input,
           '--store',
           reviews,
-          '--codex',
-          paths.binary,
           '--max-units',
-          '1',
+          '0',
         ]).status,
       ).toBe(0);
-    }
-    await run(paths, { input, reviews, comparisons, graph, built: built.stdout });
-  });
+      const evidence = [{ quote: 'Never treat a cache as authority.', lineStart: 3, lineEnd: 3 }];
+      for (const source of graph.sources.slice(0, reviewedSources)) {
+        const node = graph.nodes.find((node) => node.source === source.id);
+        if (!node) throw new Error('Expected source claim');
+        writeFileSync(
+          paths.candidate,
+          JSON.stringify({
+            coverage: {
+              verdict: 'complete',
+              reason: 'All source knowledge is preserved.',
+              evidence,
+            },
+            claims: [
+              {
+                id: node.id,
+                verdict: 'faithful',
+                reason: 'The complete prohibition is preserved.',
+                evidence,
+              },
+            ],
+            relations: [],
+            omissions: [],
+            context: { verdict: 'sufficient', reason: 'The rule is self-contained.' },
+          }),
+        );
+        expect(
+          invoke(paths.root, [
+            'graph',
+            'review',
+            '--all',
+            '--input',
+            input,
+            '--store',
+            reviews,
+            '--codex',
+            paths.binary,
+            '--max-units',
+            '1',
+          ]).status,
+        ).toBe(0);
+      }
+      await run(paths, { input, reviews, comparisons, graph, built: built.stdout });
+    },
+    { source },
+  );
 }
 
 export function comparisonResponse() {
