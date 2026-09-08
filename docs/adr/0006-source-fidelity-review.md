@@ -94,6 +94,9 @@ missing or altered results and any unresolved claimant. Replace the cohort trans
 bounded SQLite file, reusing compatible results and leaving changed/new sources pending. Removed
 sources remain in the caller's archive. Existing plan, result and database size limits still apply.
 The archive's lifecycle is caller-owned; this operation does not create an automatic history tree.
+An explicit preflight admission failure before any accepted turn, with confirmed cleanup or no
+observed server, remains a retained failure; it does not imply an uncertain model invocation. Other
+missing acceptance evidence, unconfirmed starts/interruptions and failed cleanup block replacement.
 
 A repeated transition to the already-current plan preserves progress. Ordinary execution then handles
 only pending sources within its explicit budget. Retained negative results continue to block admission;

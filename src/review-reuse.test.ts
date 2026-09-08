@@ -328,3 +328,42 @@ test('does not replace a cohort that retains an uncertain model start even after
     expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
   }, 0);
 });
+
+test('preserves an explicit preflight failure that never started a model when reusing its evidence', async () => {
+  await projectWithReviews((paths, fixture) => {
+    const before = readFileSync(paths.calls, 'utf8');
+    const failed = invoke(paths.root, [
+      'graph',
+      'review',
+      '--all',
+      '--input',
+      fixture.input,
+      '--store',
+      fixture.reviews,
+      '--codex',
+      join(paths.root, 'missing-codex'),
+      '--max-units',
+      '1',
+    ]);
+    expect(failed.status).toBe(1);
+    expect(readFileSync(paths.calls, 'utf8')).toBe(before);
+    const archive = preserveReviews(paths, fixture, 1);
+    const original = JSON.parse(readFileSync(archive, 'utf8')).reviews[0].result;
+    expect(original.report).toMatchObject({
+      code: 'MODEL_ADMISSION_FAILED',
+      cleanup: 'not-observed',
+    });
+    expect(original.report.turnAccepted).toBeUndefined();
+    const input = removeSecondSource(paths);
+    const calls = readFileSync(paths.calls, 'utf8');
+    const result = invoke(paths.root, transfer(fixture, input, archive));
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({ failed: 1, completed: 0, processed: 0 });
+    const current = preserveReviews(paths, { ...fixture, input }, 1);
+    expect(JSON.parse(readFileSync(current, 'utf8')).reviews[0].result.report).toEqual(
+      original.report,
+    );
+    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+  }, 0);
+});

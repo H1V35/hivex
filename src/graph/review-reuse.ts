@@ -94,7 +94,12 @@ function unresolvedInvocation(report: ReviewResult['report']) {
     report.interruption === 'unconfirmed'
   )
     return true;
-  if (report.turnAccepted !== 'confirmed') return false;
+  if (report.turnAccepted !== 'confirmed')
+    return !(
+      report.turnAccepted === undefined &&
+      report.code === 'MODEL_ADMISSION_FAILED' &&
+      ['confirmed', 'not-observed'].includes(String(report.cleanup))
+    );
   return (
     report.cleanup !== 'confirmed' ||
     (!['completed', 'invalid-output'].includes(report.outcome) &&
