@@ -10,7 +10,12 @@ import type { extractCommand, ExtractionCheckpoint } from './command.ts';
 import { usageSchema } from '../model/transcript.ts';
 import type { ExtractionAttempt } from './attempt.ts';
 import { candidateSchema } from './claims.ts';
-import { revisionsSchema, validateHistory, type Revision } from './history.ts';
+import {
+  maximumExtractionAttempts,
+  revisionsSchema,
+  validateHistory,
+  type Revision,
+} from './history.ts';
 import { inputUnitSchema, processingSchema, sectionSchema } from '../graph/snapshot.ts';
 
 type Plan = ReturnType<typeof createPlan>;
@@ -38,11 +43,11 @@ const reportSchema = z.looseObject({
   promptHash: z.string().regex(/^[a-f0-9]{64}$/),
 });
 const attemptStateSchema = z.object({
-  reports: z.array(reportSchema).max(12),
+  reports: z.array(reportSchema).max(maximumExtractionAttempts),
   revisions: revisionsSchema.optional(),
   active: z
     .object({
-      attempt: z.number().int().min(1).max(12),
+      attempt: z.number().int().min(1).max(maximumExtractionAttempts),
       promptHash: z.string().regex(/^[a-f0-9]{64}$/),
       deadlineMilliseconds: z.number().int().min(100).max(1_800_000),
     })
@@ -97,10 +102,10 @@ const resultSchema = z.looseObject({
   accepted: z.literal(false),
   status: z.enum(['candidate', 'failed']),
   source: z.looseObject({ id: z.string() }),
-  attempts: z.array(reportSchema).min(1).max(12),
+  attempts: z.array(reportSchema).min(1).max(maximumExtractionAttempts),
   revisions: revisionsSchema.optional(),
   candidate: candidateSchema.nullable(),
-  candidateAttempt: z.number().int().min(1).max(12).nullable(),
+  candidateAttempt: z.number().int().min(1).max(maximumExtractionAttempts).nullable(),
   association: associationSchema.optional(),
 });
 const rowStateSchema = z.enum(['pending', 'running', 'candidate', 'failed']);
@@ -881,22 +886,25 @@ export class IngestionStore {
             'INGESTION_RETRY_UNSAFE',
             'The previous invocation must have a confirmed safe end before retry',
           );
-        if (reports.length >= (checkpoint.revisions?.at(-1)?.afterAttempt ?? 0) + maximumAttempts)
+        if (
+          reports.length >= maximumExtractionAttempts ||
+          reports.length >= (checkpoint.revisions?.at(-1)?.afterAttempt ?? 0) + maximumAttempts
+        )
           failure(
             'INGESTION_ATTEMPTS_EXHAUSTED',
             'The source has exhausted its total attempt budget',
           );
+        this.reserve(1);
         this.db.run(
           "UPDATE units SET state='running', owner=?, result=NULL, result_hash=NULL WHERE id=?",
           [owner, id],
         );
-        this.reserve(0);
         return { previousAttempts: reports, revisions: checkpoint.revisions };
       })
       .immediate();
   }
 
-  revise(id: string, owner: string, revision: Revision) {
+  revise(id: string, owner: string, revision: Revision, maximumRevisions: number) {
     return this.db
       .transaction(() => {
         this.assertPlan();
@@ -922,6 +930,16 @@ export class IngestionStore {
           failure(
             'INGESTION_REVISION_UNSAFE',
             'The previous extraction must have a confirmed completed invocation',
+          );
+        if ((checkpoint.revisions?.length ?? 0) >= maximumRevisions)
+          failure(
+            'INGESTION_REVISION_INVALID',
+            'The configured semantic revision limit is exhausted',
+          );
+        if (result.attempts.length >= maximumExtractionAttempts)
+          failure(
+            'INGESTION_ATTEMPTS_EXHAUSTED',
+            'The source has exhausted its total attempt budget',
           );
         const revisions = revisionsSchema.parse([...(checkpoint.revisions ?? []), revision]);
         validateHistory(revisions, checkpoint.reports.length);

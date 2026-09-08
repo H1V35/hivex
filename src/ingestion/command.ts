@@ -4,7 +4,7 @@ import { loadSnapshot, type Snapshot } from '../workspace/snapshot.ts';
 import { extractionArguments } from './arguments.ts';
 import { extractAttempt, type ExtractionAttempt } from './attempt.ts';
 import { maximumSourceBytes, prepareExtraction, processingContract } from './preparation.ts';
-import type { Revision } from './history.ts';
+import { maximumExtractionAttempts, type Revision } from './history.ts';
 
 export type ExtractionCheckpoint =
   | { state: 'started'; attempt: number; promptHash: string; deadlineMilliseconds: number }
@@ -74,7 +74,8 @@ export async function extractSource(
   const attempts: ExtractionAttempt[] = [...(options.previousAttempts ?? [])];
   const revision = options.revisions?.at(-1);
   const offset = revision?.afterAttempt ?? 0;
-  for (let index = attempts.length; index < offset + options.attempts; index++) {
+  const end = Math.min(offset + options.attempts, maximumExtractionAttempts);
+  for (let index = attempts.length; index < end; index++) {
     const previous = attempts.at(-1);
     const feedback =
       index > offset && previous?.outcome === 'invalid-output' ? correctionFeedback(previous) : '';
