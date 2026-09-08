@@ -483,3 +483,23 @@ not rerun an adverse semantic review or resolve a contradiction.
 Earlier reports and known/unknown consumption remain visible through `ingest --show`. Retrying a
 startup failure or interrupted turn reuses the original prompt; correction feedback is reserved for
 invalid extraction output. A retry cannot use `--max-units 0` or create a new cohort without history.
+
+### Plan documented source comparisons
+
+```sh
+bun run cli graph compare-plan --input /tmp/candidate-graph.json --root /path/to/project
+```
+
+The deterministic plan proposes pairs connected by authored Markdown links in the same snapshot.
+Each reason retains the link's exact quote and original lines. Reference-style links also retain
+their definition's position in the original document; definitions can live outside a selected
+section, while links outside that section do not participate. Both link directions share one pair.
+
+External URLs and non-Markdown assets are counted without being opened. Missing graph targets or
+anchors, unsupported paths and pairs without extracted claims stay in `unresolved` and return exit
+code 1. Code examples, images and raw HTML are outside this discovery policy. A link does not prove
+that one claim supports, contradicts or supersedes another.
+
+The plan reports the selected pairs and total possible pairs, but does not certify the unselected
+pairs as unrelated. It remains `accepted: false` and creates no files or model requests. Its complete
+output must fit `--max-bytes` (16 KiB by default, maximum 8 MiB); it is never silently truncated.
