@@ -33,6 +33,13 @@ const provenanceSchema = z.object({
     basePromptHash: digest,
     schemaHash: digest,
   }),
+  association: z
+    .strictObject({
+      planHash: digest,
+      snapshot: z.strictObject({ commit: z.string(), configHash: digest }),
+      originalHash: digest,
+    })
+    .optional(),
 });
 const completedReceiptSchema = z.object({
   outcome: z.literal('completed'),
@@ -51,10 +58,17 @@ export function inputHash(plan: Plan) {
 }
 
 function validateProvenance(record: unknown, source: Snapshot['sources'][number], plan: Plan) {
-  const provenance = provenanceSchema.parse(record);
+  const raw = z.record(z.string(), z.unknown()).parse(record);
+  const provenance = provenanceSchema.parse(raw);
   const unit = plan.units.find((item) => item.id === source.id);
+  const { association } = provenance;
+  const { association: _association, ...original } = raw;
   if (
-    !isDeepStrictEqual(provenance.snapshot, plan.snapshot) ||
+    (association &&
+      (association.planHash !== plan.planHash ||
+        !isDeepStrictEqual(association.snapshot, plan.snapshot) ||
+        association.originalHash !== hash(JSON.stringify(original)))) ||
+    (!association && !isDeepStrictEqual(provenance.snapshot, plan.snapshot)) ||
     !isDeepStrictEqual(provenance.model, plan.processing.model) ||
     !isDeepStrictEqual(provenance.source, {
       id: source.id,
