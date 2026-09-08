@@ -15,6 +15,7 @@
 - **Candidate** — a derived interpretation awaiting admission. Producing or structurally validating it does not make it authority.
 - **Graph snapshot** — an immutable projection of claims and relationships bound to a complete source cohort and its processing evidence.
 - **Admission** — the recorded acceptance of a graph projection after the required source, structural and semantic checks. It does not replace the authority of authored decisions.
+- **Source-fidelity review** — an assessment of whether an extraction preserves a complete source's meaning, with explicit omissions and context limits. It is one prerequisite of admission, not a global consistency verdict.
 - **Ingestion plan** — a complete declared source cohort bound to its snapshot and processing inputs. It measures and identifies prospective work without executing or admitting it.
 - **Ingestion store** — bounded local state for one frozen cohort, its claimed sources, attempt reports and unaccepted candidates. It is not documentary authority or an admitted graph.
 - **Unresolved invocation** — work whose durable state cannot establish a retained final result. Neither a timeout nor a missing process establishes that no model request occurred.

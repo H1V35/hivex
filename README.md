@@ -367,3 +367,31 @@ required by an adopting project.
 
 [Domain language](docs/CONTEXT.md) · [Initial decision](docs/adr/0001-versioned-project-knowledge.md) ·
 [Native knowledge candidates](docs/adr/0002-native-knowledge-candidates.md)
+
+### Review extraction fidelity
+
+```sh
+bun run cli graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project --prepare
+bun run cli graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project
+```
+
+The first command exposes the exact prompt and structured output schema without starting a model.
+The second reviews the complete versioned source, its claims and source-local relationships through
+the admitted Codex/Luna/max profile. The full request must fit 256 KiB; exceeding the limit fails
+before a model call. Use `--codex <binary>` for the native executable and `--deadline-ms` (default
+600000, maximum 900000) to bound the invocation. No automatic retry is performed by this operation.
+
+Every claim and relation needs one assessment with literal source evidence. The review also records
+omissions, source coverage and missing context. `status: reviewed` requires faithful assessments,
+complete coverage or an explicit no-knowledge assessment, no omissions and sufficient context.
+Distortion, ambiguity, insufficient context, malformed output and native failure return `status:
+failed` with exit code 1; model usage remains in the report. Failed transport/schema validation
+returns no review. A completed semantic assessment remains available even when its findings prevent
+success.
+
+Results identify the graph hash, original source snapshot, compared revision and prompt/schema
+contract. `--against <commit>` makes the comparison explicit for a historical source snapshot; it
+does not declare that snapshot current at HEAD. The command writes no per-review artifacts and
+always returns `accepted: false`. Source fidelity alone does not establish cross-source consistency,
+effective authority, graph admission or implementation grounding. See the
+[review decision](docs/adr/0006-source-fidelity-review.md).

@@ -8,8 +8,10 @@ import { extractCommand } from './ingestion/command.ts';
 import { planCommand } from './ingestion/plan.ts';
 import { ingestCommand } from './ingestion/run.ts';
 import { graphCommand } from './graph/command.ts';
+import { sourceReviewCommand } from './graph/source-review.ts';
 
 async function main(args: string[]) {
+  if (args[0] === 'graph' && args[1] === 'review') return sourceReviewCommand(args.slice(2));
   if (args[0] === 'graph') return graphCommand(args.slice(1));
   if (args[0] === 'ingest') return ingestCommand(args.slice(1));
   if (args[0] === 'plan') return planCommand(args.slice(1));
@@ -26,8 +28,10 @@ async function main(args: string[]) {
           query:
             'graph <search|read|neighbors> <query-or-id> --input <file> [--root <repo>] [--against <commit>] [--limit 1..20] [--max-bytes 1024..524288]',
           continuation: 'graph neighbors <id> --input <file> [--cursor <continuation>]',
+          review:
+            'graph review <source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
           modelCalls:
-            'None. Candidates remain unaccepted; graph checks do not establish semantic validity.',
+            'Review uses native Luna/max; --prepare and all other graph operations make no model calls. Candidates remain unaccepted.',
         },
         {
           name: 'ingest',
