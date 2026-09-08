@@ -224,6 +224,7 @@ export class ReviewStore {
             this.db.run(
               'CREATE TABLE reviews (id TEXT PRIMARY KEY, ordinal INTEGER UNIQUE NOT NULL, state TEXT NOT NULL, owner TEXT, value TEXT, value_hash TEXT)',
             );
+            this.db.run('CREATE INDEX review_queue ON reviews (state, ordinal)');
             initializePlan(this.db, plan);
           })
           .immediate();
@@ -261,16 +262,25 @@ export class ReviewStore {
   claim(owner: string) {
     return this.db
       .transaction(() => {
-        const rows = records(this.db, this.plan);
-        const next = rows.find((row) => row.state === 'pending');
+        assertPlan(this.db, this.plan);
+        const next = this.db
+          .query<Row, []>("SELECT * FROM reviews WHERE state='pending' ORDER BY ordinal LIMIT 1")
+          .get();
         if (!next) return null;
+        decode(next, this.plan);
         const pages =
           this.db.query<{ page_count: number }, []>('PRAGMA page_count').get()?.page_count ?? 32768;
         const free =
           this.db.query<{ freelist_count: number }, []>('PRAGMA freelist_count').get()
             ?.freelist_count ?? 0;
-        const reserved =
-          (rows.filter((row) => row.state === 'running').length + 1) * 2 * resultLimit;
+        const running =
+          this.db
+            .query<
+              { count: number },
+              []
+            >("SELECT count(*) AS count FROM reviews WHERE state='running'")
+            .get()?.count ?? Infinity;
+        const reserved = (running + 1) * 2 * resultLimit;
         if ((pages - free) * 4096 + reserved > maximumBytes)
           fail(
             'REVIEW_STORE_FULL',

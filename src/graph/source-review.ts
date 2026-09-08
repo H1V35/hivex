@@ -112,7 +112,13 @@ export function createReviewContext(options: { input: string; root: string; agai
     ref: input.graph.sourceSnapshot.commit,
     selection: { collection: input.graph.selection.collection ?? undefined },
   });
-  return { input, check, sources: new Map(snapshot.sources.map((source) => [source.id, source])) };
+  return {
+    input,
+    check,
+    sources: new Map(snapshot.sources.map((source) => [source.id, source])),
+    nodesBySource: Map.groupBy(input.graph.nodes, (node) => node.source),
+    edgesBySource: Map.groupBy(input.graph.edges, (edge) => edge.source),
+  };
 }
 
 export function prepareSourceReview(context: ReturnType<typeof createReviewContext>, id: string) {
@@ -123,8 +129,8 @@ export function prepareSourceReview(context: ReturnType<typeof createReviewConte
       code: 'SOURCE_NOT_FOUND',
       message: 'Review requires a source in this graph',
     });
-  const nodes = input.graph.nodes.filter((node) => node.source === source.id);
-  const edges = input.graph.edges.filter((edge) => edge.source === source.id);
+  const nodes = context.nodesBySource.get(source.id) ?? [];
+  const edges = context.edgesBySource.get(source.id) ?? [];
   const packet = {
     graphHash: input.graph.hash,
     source: {
