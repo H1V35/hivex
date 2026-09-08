@@ -88,12 +88,16 @@ const instructions = [
   'Use the supplied short claim and source identifiers. The caller binds them to the original graph and source identities.',
   'Report only relationships between claims from different supplied sources. Use local relation IDs r1, r2, etc.',
   'Every relation needs literal evidence from both endpoint sources, at their original inclusive line ranges.',
+  'Copy quotes byte-for-byte from Markdown. Prefer separate single-line quotes; preserve every newline in multiline quotes, never replacing it with a space.',
   'Preserve conditions, exceptions, negation and scope. A scoped compatible exception is not an unconditional contradiction.',
+  'Consistent repetition of scope in a statement and its conditions or exceptions is not ambiguity or distortion. Flag a changed meaning or conflicting applicability, not redundancy alone; do not invent metadata absent from the supplied claim.',
+  'When explicit amendment text replaces or extends an earlier rule, use supersedes or exception-to for the affected scope. Reserve contradicts for incompatible claims that remain unresolved; do not add a redundant contradiction merely because the prior and amended rules differ.',
   'Supersession or exception precedence requires explicit documentary evidence. Dates, IDs, serialization order and status labels alone never prove it.',
   'The two sources are serialized by ID for reproducibility; this is not authored order. Use original line positions within the same document.',
   'State whether a relation affects a whole claim or only part of it. Never turn a claim-level replacement into whole-document supersession.',
   'List each relation in the assessments of both endpoint claims, and no unrelated assessment.',
   'Flag distorted candidates, missing source knowledge, ambiguous scope and missing surrounding or external context as unresolved or incomplete.',
+  'Judge relationships within the supplied pair, not the external truth of every source assertion. A faithfully preserved reference or an unrelated claim does not require its external document or prototype to be supplied. Require additional context only when its absence prevents assessing candidate fidelity or an actual relationship in this pair.',
   'If the schema limits prevent a complete comparison, explicitly mark coverage incomplete; never silently omit relations to claim success.',
   'Do not decide doctrine or invent an owner resolution. An unresolved contradiction remains a contradiction.',
   'This comparison covers only the supplied pair. It does not establish graph-wide consistency, authority, admission or implementation grounding.',
@@ -339,6 +343,8 @@ export async function runComparison(
         error instanceof HivexError
           ? error.message
           : 'Comparison does not match the required schema',
+      rejectedOutput:
+        typeof result.value === 'string' ? { text: result.value, hash: hash(result.value) } : null,
     };
   }
 }
