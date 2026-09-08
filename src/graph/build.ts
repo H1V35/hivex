@@ -1,14 +1,11 @@
-import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { HivexError } from '../errors.ts';
 import { createPlan } from '../ingestion/plan.ts';
-import { IngestionStore } from '../ingestion/store.ts';
+import { IngestionStore, validateResultForPlan } from '../ingestion/store.ts';
 import { validateCandidateEvidence } from '../ingestion/evidence.ts';
 import { hash } from '../sources/markdown.ts';
 import { loadSnapshot, type Snapshot } from '../workspace/snapshot.ts';
 import {
-  digest,
-  sectionSchema,
   sealGraph,
   statementSchema,
   reportedProfileSchema,
@@ -18,29 +15,6 @@ import {
 } from './snapshot.ts';
 
 type Plan = ReturnType<typeof createPlan>;
-const provenanceSchema = z.object({
-  snapshot: z.object({ commit: z.string(), configHash: digest }),
-  source: z.object({
-    id: z.string(),
-    path: z.string(),
-    contentHash: digest,
-    section: sectionSchema,
-  }),
-  model: z.object({ name: z.string(), effort: z.string(), provider: z.string() }),
-  contract: z.object({
-    nativeVersion: z.string(),
-    requestedPolicyHash: digest,
-    basePromptHash: digest,
-    schemaHash: digest,
-  }),
-  association: z
-    .strictObject({
-      planHash: digest,
-      snapshot: z.strictObject({ commit: z.string(), configHash: digest }),
-      originalHash: digest,
-    })
-    .optional(),
-});
 const completedReceiptSchema = z.object({
   outcome: z.literal('completed'),
   cleanup: z.literal('confirmed'),
@@ -57,38 +31,6 @@ export function inputHash(plan: Plan) {
   });
 }
 
-function validateProvenance(record: unknown, source: Snapshot['sources'][number], plan: Plan) {
-  const raw = z.record(z.string(), z.unknown()).parse(record);
-  const provenance = provenanceSchema.parse(raw);
-  const unit = plan.units.find((item) => item.id === source.id);
-  const { association } = provenance;
-  const { association: _association, ...original } = raw;
-  if (
-    (association &&
-      (association.planHash !== plan.planHash ||
-        !isDeepStrictEqual(association.snapshot, plan.snapshot) ||
-        association.originalHash !== hash(JSON.stringify(original)))) ||
-    (!association && !isDeepStrictEqual(provenance.snapshot, plan.snapshot)) ||
-    !isDeepStrictEqual(provenance.model, plan.processing.model) ||
-    !isDeepStrictEqual(provenance.source, {
-      id: source.id,
-      path: source.path,
-      contentHash: source.contentHash,
-      section: source.section,
-    }) ||
-    !isDeepStrictEqual(provenance.contract, {
-      nativeVersion: plan.processing.nativeVersion,
-      requestedPolicyHash: plan.processing.requestedPolicyHash,
-      basePromptHash: unit?.basePromptHash,
-      schemaHash: plan.processing.schemaHash,
-    })
-  )
-    throw new HivexError({
-      code: 'GRAPH_PROVENANCE_MISMATCH',
-      message: 'A retained candidate does not match its declared inputs',
-    });
-}
-
 type CandidateRecord = ReturnType<typeof IngestionStore.candidates>[number];
 type Candidate = NonNullable<CandidateRecord['candidate']>;
 type GraphSource = GraphContent['sources'][number];
@@ -99,7 +41,7 @@ function describeSource(record: CandidateRecord, source: Snapshot['sources'][num
       code: 'GRAPH_SOURCE_MISSING',
       message: 'The source has no complete candidate',
     });
-  validateProvenance(record, source, plan);
+  validateResultForPlan(record, source.id, plan);
   validateCandidateEvidence({ candidate: record.candidate, source });
   const receipt = completedReceiptSchema.parse(record.attempts[record.candidateAttempt - 1]);
   if (
