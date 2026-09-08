@@ -44,6 +44,7 @@ of treating truncated or missing evidence as a complete answer.
 | Correct evidenced extraction omissions | `ingest --revise <source> --input <graph> --feedback <review>` |
 | Assemble/check a candidate snapshot    | `graph build`, `graph check`                                   |
 | Review extraction fidelity             | `graph review`, or `graph review --all` for the cohort         |
+| Reuse unchanged source reviews         | `graph review --all --from <old-graph> --reuse <old-export>`   |
 | Select and assess cross-source context | `graph compare-plan`, then `graph compare` or `--all`          |
 | Admit complete reviewed evidence       | `graph admit`, when supported by the installed version         |
 | Ground a specific review claim         | `ground <claim>`; reuse current evidence with `ground --check` |
@@ -93,6 +94,12 @@ fidelity context. Inspect its exact request with `--prepare`; preserve the origi
 This operation changes one candidate, never the source's authority or the review's verdict. A passing,
 uncertain or insufficient-context review cannot justify revision. A replacement still needs fidelity
 review and admission; unchanged output is a failure, not a reason to repeat the same adverse review.
+
+When a graph changes, preserve its old graph and complete review export before using `--from` and
+`--reuse` with the new `--input`. Start with `--max-units 0` to transfer evidence without model calls.
+Only identical complete source-review inputs qualify; inspect `association` for the current binding
+while the original graph/prompt/verdict/usage remain intact. Changed sources need new review, retained
+negative results remain blockers and unresolved invocations prevent cohort replacement.
 
 Save full exports as artifacts rather than dumping them into model context. Retain and version the
 admitted snapshot according to the project workflow. Never hand-edit a projection to invent acceptance.

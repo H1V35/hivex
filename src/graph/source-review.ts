@@ -151,7 +151,7 @@ export function prepareSourceReview(context: ReturnType<typeof createReviewConte
     claims: nodes,
     relations: edges,
   };
-  const prompt = `${instructions}\n\n${JSON.stringify(packet)}`;
+  const prompt = sourceReviewPrompt(packet);
   if (Buffer.byteLength(prompt) > 262_144)
     throw new HivexError({
       code: 'REVIEW_INPUT_TOO_LARGE',
@@ -159,6 +159,12 @@ export function prepareSourceReview(context: ReturnType<typeof createReviewConte
         'The complete review packet exceeds 256 KiB; declare smaller complete source sections',
     });
   return { input, check, source, nodes, edges, packet, prompt };
+}
+
+export function sourceReviewPrompt(
+  packet: ReturnType<typeof prepareSourceReview>['packet'],
+): string {
+  return `${instructions}\n\n${JSON.stringify(packet)}`;
 }
 
 function invalid(message: string): never {

@@ -69,7 +69,7 @@ function records<T extends AssessmentResult>(
     if (!source || result.status !== 'reviewed')
       invalid('Admission requires complete successful assessments');
     validateAssessmentBinding(
-      result,
+      contract.binding?.(result) ?? result,
       { actualId: contract.unitId(result), id: source.id, promptHash: source.promptHash },
       plan,
     );

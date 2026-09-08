@@ -74,8 +74,9 @@ The retained review's usage remains in its original receipt; ingestion attempt t
 calls only, so copying review evidence does not charge it as a new invocation.
 
 A successful replacement is still a candidate and needs fresh fidelity review before admission.
-Unrelated source candidates remain intact. Reassociation of compatible source reviews across graph
-hashes is separate work; this revision operation does not relabel existing assessments as current.
+Unrelated source candidates remain intact. Reassociation of compatible source reviews uses the explicit
+[source-review operation](0006-source-fidelity-review.md#reuse-unchanged-source-evidence); ingestion
+revision itself does not relabel existing assessments as current.
 
 ## Lifecycle
 

@@ -15,6 +15,7 @@ import {
   sourceReviewSchema,
   satisfactory,
   validateReview,
+  sourceReviewPrompt,
 } from './source-review.ts';
 import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
 import { usageSchema } from '../model/transcript.ts';
@@ -35,6 +36,17 @@ export const reviewResultSchema = z.looseObject({
   }),
   report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
   review: sourceReviewSchema.nullable(),
+  association: z
+    .strictObject({
+      graphHash: digest,
+      promptHash: digest,
+      sourceSnapshot: z.strictObject({
+        commit: z.string().regex(/^[a-f0-9]{40}$/),
+        configHash: digest,
+      }),
+      originalHash: digest,
+    })
+    .optional(),
 });
 export type ReviewResult = z.infer<typeof reviewResultSchema>;
 
@@ -42,7 +54,51 @@ export const reviewContract = {
   applicationId: 0x48565852,
   parse: (value: unknown) => reviewResultSchema.parse(value),
   unitId: (result: ReviewResult) => result.source.id,
+  binding: reviewBinding,
 };
+
+export function originalReview(result: ReviewResult) {
+  const { association: _association, ...original } = result;
+  return original;
+}
+
+export function reviewBinding(result: ReviewResult) {
+  if (!result.association) return result;
+  return {
+    ...result,
+    graphHash: result.association.graphHash,
+    contract: { ...result.contract, promptHash: result.association.promptHash },
+  };
+}
+
+function validateReviewProvenance(
+  result: ReviewResult,
+  prepared: ReturnType<typeof prepareSourceReview>,
+) {
+  if (
+    result.association &&
+    (result.association.originalHash !== hash(JSON.stringify(originalReview(result))) ||
+      result.contract.promptHash !==
+        hash(sourceReviewPrompt({ ...prepared.packet, graphHash: result.graphHash })))
+  )
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message:
+        'The original receipt or its complete source-review inputs differ from the reused evidence',
+    });
+  if (
+    !isDeepStrictEqual(result.source, prepared.packet.source) ||
+    !isDeepStrictEqual(
+      result.association?.sourceSnapshot ?? result.sourceSnapshot,
+      prepared.input.graph.sourceSnapshot,
+    ) ||
+    !isDeepStrictEqual(result.model, knowledgeModel)
+  )
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message: 'Review provenance differs from its source or admitted model',
+    });
+}
 
 export function validateSourceReviews(
   rows: ReturnType<AssessmentStore<ReviewResult>['snapshot']>,
@@ -52,15 +108,7 @@ export function validateSourceReviews(
     const result = row.result;
     if (!result) continue;
     const prepared = prepareSourceReview(context, row.id);
-    if (
-      !isDeepStrictEqual(result.source, prepared.packet.source) ||
-      !isDeepStrictEqual(result.sourceSnapshot, context.input.graph.sourceSnapshot) ||
-      !isDeepStrictEqual(result.model, knowledgeModel)
-    )
-      throw new HivexError({
-        code: 'INVALID_REVIEW_STORE',
-        message: 'Review provenance differs from its source or admitted model',
-      });
+    validateReviewProvenance(result, prepared);
     validateCompletedInvocation(result.report);
     if (result.review) validateReview(result.review, prepared);
     const passed =
@@ -131,6 +179,10 @@ export async function reviewCohortCommand(args: string[]) {
         message: 'The complete retained review exceeds the output budget',
       });
     return result;
+  }
+  if (options.reuse && options.from) {
+    const { reuseSourceReviews } = await import('./review-reuse.ts');
+    reuseSourceReviews(options, context);
   }
   using store = new AssessmentStore(options.store, plan, reviewContract);
   const previous = store.snapshot();

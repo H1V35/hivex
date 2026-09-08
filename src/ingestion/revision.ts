@@ -11,6 +11,7 @@ import {
   reviewResultSchema,
   sourceReviewPlan,
   validateSourceReviews,
+  reviewBinding,
 } from '../graph/review-cohort.ts';
 import { validateAssessmentBinding } from '../graph/assessment-store.ts';
 import { createPlan } from './plan.ts';
@@ -137,7 +138,7 @@ function prepareRevision(options: ReturnType<typeof argumentsFor>) {
   const feedback = readFeedback(options.feedback, options.id);
   const plan = sourceReviewPlan(context);
   validateAssessmentBinding(
-    feedback,
+    reviewBinding(feedback),
     { id: options.id, actualId: feedback.source.id, promptHash: hash(prepared.prompt) },
     plan,
   );
