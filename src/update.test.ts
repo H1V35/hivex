@@ -123,6 +123,210 @@ function reviseFixtureSource(
   ).toBe(0);
 }
 
+test.each(['archiving', 'active'])(
+  'resumes an incoming %s bundle after a crash before checkpoint B is saved',
+  async (state) => {
+    await nativeProject(
+      (paths) => {
+        ignoreRuntime(paths);
+        writeFileSync(paths.scenario, 'update');
+        const output = join(dirname(paths.root), 'admitted.json');
+        expect(update(paths, output, ['--neighbors', '1']).status).toBe(0);
+        const checkpoint = join(paths.root, '.hivex/update.json');
+        const ingestion = join(paths.root, '.hivex/ingestion.sqlite');
+        const checkpointA = readFileSync(checkpoint);
+        const ingestionA = readFileSync(ingestion);
+        const admittedA = readFileSync(output);
+
+        writeFileSync(join(paths.root, 'second.md'), linkedSource + '\nSource B.\n');
+        commitFixture(paths, 'second.md');
+        const commitB = paths.git(['rev-parse', 'HEAD']);
+        expect(JSON.parse(update(paths, output, ['--max-units', '0']).stdout)).toMatchObject({
+          status: 'partial',
+          phase: 'ingest',
+        });
+        const targetB = JSON.parse(readFileSync(checkpoint, 'utf8')).target;
+        const directory = join(paths.root, '.hivex/update-transition');
+        const manifest = join(directory, 'manifest.json');
+        const bundle = JSON.parse(readFileSync(manifest, 'utf8'));
+        const archives = ['admitted', 'candidate', 'ingestion', 'reviews', 'comparisons'].map(
+          (name) => join(directory, `${name}.json`),
+        );
+        const evidence = archives.map((path) => readFileSync(path));
+        // Reproduce the durable boundary: bundle B exists, but checkpoint and stores still belong to A.
+        writeFileSync(ingestion, ingestionA);
+        writeFileSync(checkpoint, checkpointA);
+        writeFileSync(manifest, JSON.stringify({ ...bundle, state }));
+        const retainedManifest = readFileSync(manifest);
+        writeFileSync(join(paths.root, 'code.ts'), 'export const laterCommit = true;\n');
+        commitFixture(paths, 'code.ts');
+        const commitC = paths.git(['rev-parse', 'HEAD']);
+        const count = calls(paths.calls);
+
+        const different = update(paths, output, ['--ref', commitC, '--max-units', '0']);
+        expect(different.status).toBe(1);
+        expect(readFileSync(checkpoint)).toEqual(checkpointA);
+        expect(readFileSync(ingestion)).toEqual(ingestionA);
+        expect(readFileSync(manifest)).toEqual(retainedManifest);
+
+        const resumed = update(paths, output, ['--max-units', '0']);
+        expect(JSON.parse(resumed.stdout)).toMatchObject({ status: 'partial', phase: 'ingest' });
+        expect(JSON.parse(readFileSync(checkpoint, 'utf8'))).toMatchObject({
+          phase: 'ingest',
+          target: { ...targetB, commit: commitB, neighbors: 1 },
+        });
+        expect(JSON.parse(readFileSync(manifest, 'utf8'))).toMatchObject({
+          state: 'active',
+          target: bundle.target,
+          previous: bundle.previous,
+        });
+        expect(archives.map((path) => readFileSync(path))).toEqual(evidence);
+        expect(readFileSync(output)).toEqual(admittedA);
+        expect(calls(paths.calls)).toBe(count);
+        expect(JSON.parse(update(paths, output).stdout)).toMatchObject({ status: 'admitted' });
+        expect(JSON.parse(readFileSync(output, 'utf8')).graph.sourceSnapshot.commit).toBe(commitB);
+        expect(archives.map((path) => readFileSync(path))).toEqual(evidence);
+        expect(calls(paths.calls)).toBe(count + 3);
+      },
+      { source: linkedSource },
+    );
+  },
+  15000,
+);
+
+test('rejects a different collection before reusing a complete unmanaged ingestion cohort', async () => {
+  await nativeProject((paths) => {
+    ignoreRuntime(paths);
+    writeFileSync(paths.scenario, 'update');
+    writeFileSync(
+      join(paths.root, 'hivex.json'),
+      JSON.stringify({
+        version: 1,
+        collections: [
+          { id: 'a', include: ['first.md'] },
+          { id: 'b', include: ['second.md'] },
+        ],
+      }),
+    );
+    commitFixture(paths, 'hivex.json');
+    expect(
+      invoke(paths.root, ['ingest', '--collection', 'a', '--codex', paths.binary]).status,
+    ).toBe(0);
+    const store = join(paths.root, '.hivex/ingestion.sqlite');
+    const before = readFileSync(store);
+    const count = calls(paths.calls);
+    const output = join(dirname(paths.root), 'admitted.json');
+    const result = update(paths, output, ['--collection', 'b']);
+    expect(result.status).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({ accepted: false, status: 'blocked' });
+    expect(readFileSync(store)).toEqual(before);
+    for (const path of [
+      output,
+      join(paths.root, '.hivex/update.json'),
+      join(paths.root, '.hivex/update-transition'),
+    ])
+      expect(existsSync(path)).toBe(false);
+    expect(calls(paths.calls)).toBe(count);
+  });
+});
+
+test.each([false, true])(
+  'never reports historical unchanged as current admission (checkpoint: %s)',
+  async (checkpoint) => {
+    await nativeProject(
+      (paths) => {
+        ignoreRuntime(paths);
+        writeFileSync(paths.scenario, 'update');
+        const output = join(dirname(paths.root), 'admitted.json');
+        expect(update(paths, output).status).toBe(0);
+        const commitA = paths.git(['rev-parse', 'HEAD']);
+        const admittedA = readFileSync(output);
+        if (!checkpoint)
+          renameSync(
+            join(paths.root, '.hivex/update.json'),
+            join(dirname(paths.root), 'checkpoint-A.json'),
+          );
+        writeFileSync(join(paths.root, 'second.md'), linkedSource + '\nSource B.\n');
+        commitFixture(paths, 'second.md');
+        const count = calls(paths.calls);
+        const result = update(paths, output, ['--ref', commitA, '--max-units', '0']);
+        expect(result.status).toBe(1);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          accepted: false,
+          status: 'blocked',
+          phase: 'admit',
+        });
+        expect(
+          JSON.parse(
+            invoke(paths.root, ['graph', 'check', '--input', output, '--against', commitA]).stdout,
+          ),
+        ).toMatchObject({ accepted: true });
+        expect(
+          JSON.parse(invoke(paths.root, ['graph', 'check', '--input', output]).stdout),
+        ).toMatchObject({ accepted: false, freshness: { status: 'stale' } });
+        expect(readFileSync(output)).toEqual(admittedA);
+        expect(calls(paths.calls)).toBe(count);
+      },
+      { source: linkedSource },
+    );
+  },
+);
+
+test('reconciles compatible pending transition manifests and preserves invalid pending evidence', async () => {
+  await nativeProject(
+    (paths) => {
+      ignoreRuntime(paths);
+      writeFileSync(paths.scenario, 'update');
+      const output = join(dirname(paths.root), 'admitted.json');
+      expect(update(paths, output).status).toBe(0);
+      const admittedA = readFileSync(output);
+      writeFileSync(join(paths.root, 'second.md'), linkedSource + '\nSource B.\n');
+      commitFixture(paths, 'second.md');
+      expect(update(paths, output, ['--max-units', '0']).status).toBe(0);
+      const manifest = join(paths.root, '.hivex/update-transition/manifest.json');
+      const active = JSON.parse(readFileSync(manifest, 'utf8'));
+      const archiving = JSON.stringify({ ...active, state: 'archiving' }) + '\n';
+      const count = calls(paths.calls);
+      for (const pending of [
+        '{',
+        JSON.stringify({ ...active, target: { ...active.target, inputHash: '0'.repeat(64) } }),
+        JSON.stringify({
+          ...active,
+          previous: { ...active.previous, admittedHash: '0'.repeat(64) },
+        }),
+        JSON.stringify({ ...active, files: { ...active.files, ingestion: null } }),
+      ]) {
+        writeFileSync(manifest, archiving);
+        writeFileSync(`${manifest}.pending`, pending);
+        expect(update(paths, output, ['--max-units', '0']).status).toBe(1);
+        expect(readFileSync(manifest, 'utf8')).toBe(archiving);
+        expect(readFileSync(`${manifest}.pending`, 'utf8')).toBe(pending);
+      }
+      writeFileSync(`${manifest}.pending`, JSON.stringify(active) + '\n');
+      expect(JSON.parse(update(paths, output, ['--max-units', '0']).stdout)).toMatchObject({
+        phase: 'ingest',
+        status: 'partial',
+      });
+      expect(JSON.parse(readFileSync(manifest, 'utf8'))).toEqual(active);
+      expect(existsSync(`${manifest}.pending`)).toBe(false);
+      expect(readFileSync(output)).toEqual(admittedA);
+      expect(calls(paths.calls)).toBe(count);
+      expect(JSON.parse(update(paths, output).stdout)).toMatchObject({ status: 'admitted' });
+      expect(calls(paths.calls)).toBe(count + 3);
+      const complete = JSON.parse(readFileSync(manifest, 'utf8'));
+      writeFileSync(manifest, JSON.stringify({ ...complete, state: 'active' }) + '\n');
+      writeFileSync(`${manifest}.pending`, JSON.stringify(complete) + '\n');
+      expect(JSON.parse(update(paths, output, ['--max-units', '0']).stdout)).toMatchObject({
+        status: 'unchanged',
+      });
+      expect(JSON.parse(readFileSync(manifest, 'utf8'))).toEqual(complete);
+      expect(existsSync(`${manifest}.pending`)).toBe(false);
+      expect(calls(paths.calls)).toBe(count + 3);
+    },
+    { source: linkedSource },
+  );
+}, 15000);
+
 test('rejects an older ingestion processing contract before any snapshot transition', async () => {
   await nativeProject((paths) => {
     ignoreRuntime(paths);

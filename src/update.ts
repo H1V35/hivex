@@ -385,11 +385,57 @@ function readTransition(paths: Paths) {
   }
   const manifest = join(paths.transition, 'manifest.json');
   const pending = `${manifest}.pending`;
-  const value = readJson(manifest, 8 * 1024 * 1024) ?? readJson(pending, 8 * 1024 * 1024);
-  if (value === null)
-    invalid('The transition directory has no manifest', 'UPDATE_RETENTION_REQUIRED');
-  const transition = transitionSchema.parse(value);
-  if (!regularFile(manifest)) renameSync(pending, manifest);
+  const value = readJson(manifest, 8 * 1024 * 1024);
+  const next = readJson(pending, 8 * 1024 * 1024);
+  const current = value === null ? null : transitionSchema.parse(value);
+  const transition = next === null ? current : transitionSchema.parse(next);
+  if (!transition) invalid('The transition directory has no manifest', 'UPDATE_RETENTION_REQUIRED');
+  if (next !== null && current) validatePendingTransition(current, transition);
+  validateTransitionFiles(paths, transition);
+  if (next !== null) {
+    if (transition.state === 'complete') validateTransitionAdmission(paths, transition);
+    renameSync(pending, manifest);
+  }
+  return transition;
+}
+
+function validateTransitionAdmission(paths: Paths, transition: Transition) {
+  const admitted = outputProjection(paths.output, dirname(paths.runtime), transition.target.commit);
+  if (
+    !admitted ||
+    !admittedFresh(admitted) ||
+    admitted.check.hash !== transition.expectedAcceptedHash ||
+    admitted.input.graph.inputHash !== transition.target.inputHash
+  )
+    invalid('The pending transition lacks its verified admission', 'UPDATE_RETENTION_REQUIRED');
+}
+
+function validatePendingTransition(current: Transition, next: Transition) {
+  const phases = ['archiving', 'active', 'complete'];
+  if (
+    !sameTarget(current.target, next.target) ||
+    !isDeepStrictEqual(current.previous, next.previous) ||
+    phases.indexOf(next.state) < phases.indexOf(current.state) ||
+    (current.expectedAcceptedHash !== null &&
+      next.expectedAcceptedHash !== current.expectedAcceptedHash)
+  )
+    invalid(
+      'The pending transition changes its retained identity or completed work',
+      'UPDATE_RETENTION_REQUIRED',
+    );
+  for (const name of ['admitted', 'candidate', 'ingestion', 'reviews', 'comparisons'] as const) {
+    if (
+      (current.files[name] !== null || current.state !== 'archiving') &&
+      !isDeepStrictEqual(current.files[name], next.files[name])
+    )
+      invalid(
+        'The pending transition replaces retained archive evidence',
+        'UPDATE_RETENTION_REQUIRED',
+      );
+  }
+}
+
+function validateTransitionFiles(paths: Paths, transition: Transition) {
   for (const name of ['admitted', 'candidate', 'ingestion', 'reviews', 'comparisons'] as const) {
     const record = transition.files[name];
     if (!record) continue;
@@ -398,7 +444,6 @@ function readTransition(paths: Paths) {
     if (!stat || stat.size !== record.bytes || hash(readFileSync(file, 'utf8')) !== record.hash)
       invalid(`Altered transition archive: ${file}`, 'UPDATE_RETENTION_REQUIRED');
   }
-  return transition;
 }
 
 function writeTransition(paths: Paths, transition: Transition) {
@@ -1144,7 +1189,43 @@ function readCycleCheckpoint(options: UpdateOptions, paths: Paths) {
   validateCheckpoint(options, paths, checkpoint);
   if (!options.neighborsExplicit) options.neighbors = checkpoint.target.neighbors;
   if (!options.collectionExplicit) options.collection = checkpoint.target.collection ?? undefined;
-  return reconcileAdmission(options, paths, checkpoint);
+  return reconcileAdmission(options, paths, resumeIncomingTransition(options, paths, checkpoint));
+}
+
+function resumeIncomingTransition(options: UpdateOptions, paths: Paths, checkpoint: Checkpoint) {
+  if (checkpoint.phase !== 'admitted') return checkpoint;
+  const transition = readTransition(paths);
+  if (
+    !transition ||
+    transition.state === 'complete' ||
+    sameTarget(transition.target, checkpoint.target)
+  )
+    return checkpoint;
+  const admitted = outputProjection(paths.output, options.root, checkpoint.target.commit);
+  if (
+    transition.previous.admittedHash !== checkpoint.admittedHash ||
+    transition.previous.candidateHash !== checkpoint.candidateHash ||
+    !admitted ||
+    admitted.check.hash !== checkpoint.admittedHash ||
+    !admissionMatchesTarget(admitted, checkpoint.target)
+  )
+    invalid(
+      'The incoming transition does not belong to the retained admission',
+      'UPDATE_RETENTION_REQUIRED',
+    );
+  const incoming: Checkpoint = {
+    ...checkpoint,
+    phase: 'ingest',
+    target: { ...checkpoint.target, ...transition.target },
+  };
+  const target = targetFor(options, incoming);
+  if (inputHash(target.plan) !== incoming.target.inputHash)
+    invalid(
+      'The incoming transition differs from its frozen processing inputs',
+      'INGESTION_PLAN_MISMATCH',
+    );
+  writeCheckpoint(paths.checkpoint, incoming);
+  return incoming;
 }
 
 function retainedCandidateMatches(paths: Paths, root: string, graphHash: string) {
@@ -1232,6 +1313,7 @@ function unchangedResponse(
       neighbors: options.neighbors,
     }) &&
     retainedCandidateMatches(paths, options.root, current.input.graph.hash) &&
+    admittedFresh(readProjection(paths.output, options.root)) &&
     (!checkpoint || checkpoint.target.commit === target.snapshot.commit)
   )
     return {
@@ -1278,14 +1360,7 @@ async function prepareCycle(options: UpdateOptions, paths: Paths): Promise<Prepa
   let checkpoint = readCycleCheckpoint(options, paths);
   const target = targetFor(options, checkpoint);
   options.ref = target.snapshot.commit;
-  if (
-    regularFile(paths.ingestion)?.size &&
-    !isDeepStrictEqual(IngestionStore.read(paths.ingestion).plan.processing, target.plan.processing)
-  )
-    invalid(
-      'The retained ingestion processing contract is incompatible; preserve the store',
-      'INGESTION_PLAN_MISMATCH',
-    );
+  validateIngestionTarget(paths, target);
   const continued = continueCompletedCheckpoint(paths, checkpoint, target);
   if ('response' in continued) return continued;
   checkpoint = continued.checkpoint;
@@ -1310,6 +1385,21 @@ async function prepareCycle(options: UpdateOptions, paths: Paths): Promise<Prepa
     writeCheckpoint(paths.checkpoint, checkpoint);
   }
   return { context: { options, paths, target, checkpoint, transition, old } };
+}
+
+function validateIngestionTarget(paths: Paths, target: Target) {
+  if (!regularFile(paths.ingestion)?.size) return;
+  const { plan } = IngestionStore.read(paths.ingestion);
+  if (!isDeepStrictEqual(plan.selection, target.plan.selection))
+    invalid(
+      'The retained ingestion collection differs from the requested update scope',
+      'UPDATE_OPTIONS_MISMATCH',
+    );
+  if (!isDeepStrictEqual(plan.processing, target.plan.processing))
+    invalid(
+      'The retained ingestion processing contract is incompatible; preserve the store',
+      'INGESTION_PLAN_MISMATCH',
+    );
 }
 
 type BuildResult =
