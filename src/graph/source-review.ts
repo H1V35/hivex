@@ -99,7 +99,7 @@ function parse(args: string[]) {
   });
 }
 
-function prepare(options: ReturnType<typeof argumentsFor>) {
+export function createReviewContext(options: { input: string; root: string; against?: string }) {
   const input = readGraph(options.input);
   const check = checkGraph(input, options.root, options.against);
   if (check.freshness.status !== 'fresh')
@@ -107,18 +107,30 @@ function prepare(options: ReturnType<typeof argumentsFor>) {
       code: 'GRAPH_STALE',
       message: 'Review requires a graph matching the selected source revision',
     });
-  const source = loadSnapshot({
+  const snapshot = loadSnapshot({
     root: options.root,
     ref: input.graph.sourceSnapshot.commit,
-    selection: { sourceId: options.id },
-  }).sources.find((source) => source.id === options.id);
+    selection: { collection: input.graph.selection.collection ?? undefined },
+  });
+  return {
+    input,
+    check,
+    sources: new Map(snapshot.sources.map((source) => [source.id, source])),
+    nodesBySource: Map.groupBy(input.graph.nodes, (node) => node.source),
+    edgesBySource: Map.groupBy(input.graph.edges, (edge) => edge.source),
+  };
+}
+
+export function prepareSourceReview(context: ReturnType<typeof createReviewContext>, id: string) {
+  const { input, check } = context;
+  const source = context.sources.get(id);
   if (!source || !input.sources.has(source.id))
     throw new HivexError({
       code: 'SOURCE_NOT_FOUND',
       message: 'Review requires a source in this graph',
     });
-  const nodes = input.graph.nodes.filter((node) => node.source === source.id);
-  const edges = input.graph.edges.filter((edge) => edge.source === source.id);
+  const nodes = context.nodesBySource.get(source.id) ?? [];
+  const edges = context.edgesBySource.get(source.id) ?? [];
   const packet = {
     graphHash: input.graph.hash,
     source: {
@@ -157,7 +169,10 @@ function covers(actual: { id: string }[], expected: { id: string }[]) {
     invalid('Review must assess every supplied claim and relation exactly once');
 }
 
-function validateReview(review: SourceReview, prepared: ReturnType<typeof prepare>) {
+export function validateReview(
+  review: SourceReview,
+  prepared: ReturnType<typeof prepareSourceReview>,
+) {
   covers(review.claims, prepared.nodes);
   covers(review.relations, prepared.edges);
   const citations = [
@@ -186,7 +201,7 @@ function validateReview(review: SourceReview, prepared: ReturnType<typeof prepar
     invalid('A nonempty source requires evidence for a no-knowledge assessment');
 }
 
-function satisfactory(review: SourceReview) {
+export function satisfactory(review: SourceReview) {
   return (
     ['complete', 'no-knowledge'].includes(review.coverage.verdict) &&
     review.context.verdict === 'sufficient' &&
@@ -197,7 +212,17 @@ function satisfactory(review: SourceReview) {
 
 export async function sourceReviewCommand(args: string[]) {
   const options = argumentsFor(args);
-  const prepared = prepare(options);
+  return runSourceReview(prepareSourceReview(createReviewContext(options), options.id), options);
+}
+
+export async function runSourceReview(
+  prepared: ReturnType<typeof prepareSourceReview>,
+  options: {
+    binary: string;
+    deadlineMilliseconds: number;
+    prepare?: boolean;
+  },
+) {
   const schema = z.toJSONSchema(sourceReviewSchema);
   const envelope = {
     command: 'graph',

@@ -9,9 +9,19 @@ import { planCommand } from './ingestion/plan.ts';
 import { ingestCommand } from './ingestion/run.ts';
 import { graphCommand } from './graph/command.ts';
 import { sourceReviewCommand } from './graph/source-review.ts';
+import { reviewCohortCommand } from './graph/review-cohort.ts';
 
 async function main(args: string[]) {
-  if (args[0] === 'graph' && args[1] === 'review') return sourceReviewCommand(args.slice(2));
+  if (args[0] === 'graph' && args[1] === 'review') {
+    const reviewArgs = args.slice(2);
+    if (
+      reviewArgs.some((arg) =>
+        ['--all', '--show', '--export', '--discard'].includes(arg.split('=')[0] ?? ''),
+      )
+    )
+      return reviewCohortCommand(reviewArgs);
+    return sourceReviewCommand(reviewArgs);
+  }
   if (args[0] === 'graph') return graphCommand(args.slice(1));
   if (args[0] === 'ingest') return ingestCommand(args.slice(1));
   if (args[0] === 'plan') return planCommand(args.slice(1));
@@ -30,6 +40,12 @@ async function main(args: string[]) {
           continuation: 'graph neighbors <id> --input <file> [--cursor <continuation>]',
           review:
             'graph review <source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
+          reviewCohort:
+            'graph review --all --input <file> [--store <file>] [--root <repo>] [--max-units 0..2048] [--codex <binary>] [--deadline-ms 100..900000]',
+          reviewEvidence:
+            'graph review <--show <source-id>|--export> --input <file> [--store <file>] [--max-bytes 1024..134217728]',
+          reviewRetirement:
+            'graph review --discard <exact-plan-hash> [--store <file>] [--root <repo>]',
           modelCalls:
             'Review uses native Luna/max; --prepare and all other graph operations make no model calls. Candidates remain unaccepted.',
         },

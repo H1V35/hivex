@@ -31,3 +31,34 @@ This is a source-fidelity check. It does not establish cross-source consistency,
 graph admission or implementation grounding. Those remain required under
 [Compi #1631](https://github.com/H1V35/compi/issues/1631). Resumable cohort review and retention of
 admission evidence must integrate the same checks rather than infer them from extraction success.
+
+## Resumable cohort review
+
+Review a graph cohort through the same source-fidelity contract, retaining results in one local
+SQLite file, normally `.hivex/reviews.sqlite`, excluded from Git. This working store is separate
+from candidate ingestion: it binds reviews to a complete graph hash and review processing contract.
+It is not an accepted graph or documentary authority. Do not create a file for each source or call.
+
+Prepare every complete source request before opening the store or invoking the model. The plan is
+limited to 1 MiB and 2,048 sources, each retained result to 8 MiB, and the database to 128 MiB. Reserve
+16 MiB of database capacity for each claimed or newly requested source, including unresolved claims.
+Use local storage and a SQLite rollback
+journal; no network database is introduced. Data pages freed by retirement may be reused by the next
+cohort rather than growing a new file.
+
+Claim a pending source atomically before calling the model, outside the database transaction, and
+retain its complete result only for the recorded claimant. Resume pending sources without repeating
+finished work. An interrupted invocation remains unresolved and cannot be automatically retried or
+discarded. Retained negative assessments remain negative; re-running the command cannot turn them
+into approval. Failed calls retain reported consumption, and unknown consumption remains explicit.
+
+Inspection and complete export are read-only. They revalidate stored assessments, their checksums,
+source citations and coverage before returning them; a complete result must fit the caller's budget.
+The caller exports or preserves needed evidence before explicitly retiring a cohort with its exact
+plan hash. Retirement rejects unresolved claims and clears retained reviews transactionally. The
+same file can then serve a new cohort; no automatic rotation or retention by wall-clock age occurs.
+
+This first cohort contract resumes one exact graph. Reuse across changed graph snapshots is not
+established: a different graph or processing contract is rejected rather than relabelled as reviewed.
+Full cohort source fidelity still does not establish cross-source consistency, effective authority,
+graph admission or implementation grounding.
