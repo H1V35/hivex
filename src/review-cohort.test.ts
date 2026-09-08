@@ -154,6 +154,67 @@ test('resumes a graph review cohort without repeating completed model work', asy
   });
 });
 
+test('two CLI processes can safely initialize the same empty review store', async () => {
+  await nativeProject(async (paths) => {
+    expect(
+      invoke(paths.root, ['ingest', '--store', paths.store, '--codex', paths.binary]).status,
+    ).toBe(0);
+    const built = invoke(paths.root, ['graph', 'build', '--store', paths.store, '--export']);
+    const input = join(dirname(paths.store), 'graph.json');
+    const store = join(dirname(paths.store), 'reviews.sqlite');
+    writeFileSync(input, built.stdout);
+    using db = new Database(store);
+    db.run('BEGIN IMMEDIATE');
+    const start = () =>
+      Bun.spawn(
+        [
+          process.execPath,
+          cli,
+          'graph',
+          'review',
+          '--all',
+          '--input',
+          input,
+          '--store',
+          store,
+          '--root',
+          paths.root,
+          '--max-units',
+          '0',
+        ],
+        { stdout: 'pipe', stderr: 'pipe' },
+      );
+    const first = start();
+    const second = start();
+    try {
+      await Bun.sleep(400);
+      db.run('COMMIT');
+      const results = await Promise.all(
+        [first, second].map(async (child) => ({
+          code: await child.exited,
+          stdout: await new Response(child.stdout).text(),
+          stderr: await new Response(child.stderr).text(),
+        })),
+      );
+      for (const result of results) {
+        expect(result.stderr).toBe('');
+        expect(result.code).toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          accepted: false,
+          pending: 2,
+          completed: 0,
+          processed: 0,
+        });
+      }
+      expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\n');
+    } finally {
+      first.kill('SIGKILL');
+      second.kill('SIGKILL');
+      await Promise.all([first.exited, second.exited]);
+    }
+  });
+});
+
 test('reserves result capacity for an in-flight review before allowing another model request', async () => {
   await nativeProject(async (paths) => {
     expect(

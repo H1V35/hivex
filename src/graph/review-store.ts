@@ -216,6 +216,7 @@ export class ReviewStore {
         this.db.run('PRAGMA synchronous=FULL');
         this.db
           .transaction(() => {
+            if (identity(this.db, true)) return;
             this.db.run(`PRAGMA application_id=${applicationId}`);
             this.db.run('PRAGMA user_version=1');
             this.db.run(
