@@ -6,6 +6,7 @@ import { loadSnapshot, type Snapshot } from '../workspace/snapshot.ts';
 import { createPlan } from './plan.ts';
 import { extractSource } from './command.ts';
 import { IngestionStore } from './store.ts';
+import { reviseCommand } from './revision.ts';
 
 function input(args: string[]) {
   try {
@@ -100,6 +101,8 @@ function argumentsFor(args: string[]) {
 }
 
 export async function ingestCommand(args: string[]) {
+  if (args.some((argument) => argument === '--revise' || argument.startsWith('--revise=')))
+    return reviseCommand(args);
   const options = argumentsFor(args);
   if (options.discard !== undefined) return IngestionStore.discard(options.store, options.discard);
   if (options.show !== undefined)
@@ -143,7 +146,7 @@ async function processSources(
 ) {
   const sources = new Map(snapshot.sources.map((source) => [source.id, source]));
   const owner = crypto.randomUUID();
-  const previousAttempts = options.retry
+  const recovery = options.retry
     ? store.retryFailed(options.retry, owner, options.attempts)
     : undefined;
   let processed = 0;
@@ -164,7 +167,7 @@ async function processSources(
         binary: options.binary,
         attempts: options.attempts,
         deadlineMilliseconds: options.deadlineMilliseconds,
-        previousAttempts: retrying ? previousAttempts : undefined,
+        ...(retrying ? recovery : {}),
       },
       (event) => store.checkpoint(id, owner, event),
     );

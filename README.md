@@ -504,10 +504,36 @@ output after confirmed cleanup, or an acknowledged interruption with confirmed c
 starts, failed cleanup, unresolved claims and already successful candidates are rejected. This does
 not rerun an adverse semantic review or resolve a contradiction.
 
-`--attempts` is the total source budget, including prior invocations, and remains limited to three.
+`--attempts` is the current extraction round's total budget, including prior invocations in that
+round, and remains limited to three.
 Earlier reports and known/unknown consumption remain visible through `ingest --show`. Retrying a
 startup failure or interrupted turn reuses the original prompt; correction feedback is reserved for
 invalid extraction output. A retry cannot use `--max-units 0` or create a new cohort without history.
+
+### Correct a candidate after adverse fidelity review
+
+```sh
+bun hivex ingest --revise docs/policy.md --input /tmp/candidate-graph.json --feedback /tmp/source-review.json --prepare
+bun hivex ingest --revise docs/policy.md --input /tmp/candidate-graph.json --feedback /tmp/source-review.json
+```
+
+`--feedback` accepts a full source review or a cohort export containing that source exactly once.
+The selected result must identify evidenced omissions or distortions, sufficient context and a safely
+completed native invocation. The input graph must preserve the exact retained candidate and receipt
+for the selected source. Invalid, passing, unresolved or mismatched feedback is rejected before a
+model call. `--prepare` exposes the complete request without changing the store.
+
+Revision processes exactly one source. It retains the old candidate, full negative review, request
+and all extraction attempts in that source's existing record. Inspect them with `ingest --show` and
+an appropriate byte budget. `--attempts` limits the new round to 1–3 calls; at most three semantic
+revisions and twelve extraction calls are permitted per source. A failed revision can use the same
+safe `--retry-failed` operation, without resetting its round budget or losing the correction request.
+An unchanged response fails without automatically repeating the model or the adverse review.
+
+Build a new candidate graph after successful corrections, then review its fidelity before admission.
+This command preserves unrelated extractions. Use the explicit source-review reuse operation above
+to associate compatible fidelity evidence with the new graph. Preserve the full old review export
+before replacing its working cohort.
 
 ### Plan documented source comparisons
 

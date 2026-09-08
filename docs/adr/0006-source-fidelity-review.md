@@ -66,6 +66,12 @@ operation below; a different graph or processing contract is otherwise rejected.
 fidelity still does not establish cross-source consistency, effective authority, graph admission or
 implementation grounding.
 
+For evidenced omissions or distortions with sufficient context, the
+[ingestion revision operation](0004-resumable-ingestion-store.md#correct-adverse-fidelity-findings)
+can produce a replacement candidate while preserving this negative review. Revision does not change
+its verdict, erase usage or admit the replacement. Unresolved context requires resolving the missing
+inputs, not repeatedly requesting a more favorable assessment.
+
 ## Reuse unchanged source evidence
 
 A change to one source changes the graph hash without necessarily changing another source's fidelity

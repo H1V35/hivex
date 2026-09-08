@@ -3,6 +3,7 @@ import { hash, type Source } from '../sources/markdown.ts';
 import { invokeModel } from '../model/invoke.ts';
 import { candidateSchema, extractionSchema } from './claims.ts';
 import { validateCandidateEvidence } from './evidence.ts';
+import type { Revision } from './history.ts';
 
 type ModelReport = Awaited<ReturnType<typeof invokeModel>>['report'];
 export type ExtractionAttempt = {
@@ -19,6 +20,7 @@ export async function extractAttempt(options: {
   prompt: string;
   deadlineMilliseconds: number;
   source: Source;
+  previousCandidate?: Revision['candidate'];
 }) {
   const base = {
     promptHash: hash(options.prompt),
@@ -43,6 +45,14 @@ export async function extractAttempt(options: {
       });
     const candidate = parsed.data;
     validateCandidateEvidence({ candidate, source: options.source });
+    if (
+      options.previousCandidate &&
+      JSON.stringify(candidate) === JSON.stringify(options.previousCandidate)
+    )
+      throw new HivexError({
+        code: 'UNCHANGED_REVISION',
+        message: 'The replacement did not change the candidate with adverse fidelity findings',
+      });
     return { candidate, report: { ...response.report, ...base }, retry: false };
   } catch (error) {
     const report: ExtractionAttempt = {
@@ -55,6 +65,6 @@ export async function extractAttempt(options: {
           ? error.details?.issues
           : 'Output does not match the extraction schema',
     };
-    return { candidate: null, report, retry: true };
+    return { candidate: null, report, retry: report.code !== 'UNCHANGED_REVISION' };
   }
 }

@@ -4,6 +4,7 @@ import { loadSnapshot, type Snapshot } from '../workspace/snapshot.ts';
 import { extractionArguments } from './arguments.ts';
 import { extractAttempt, type ExtractionAttempt } from './attempt.ts';
 import { maximumSourceBytes, prepareExtraction, processingContract } from './preparation.ts';
+import type { Revision } from './history.ts';
 
 export type ExtractionCheckpoint =
   | { state: 'started'; attempt: number; promptHash: string; deadlineMilliseconds: number }
@@ -37,6 +38,7 @@ export async function extractSource(
     attempts: number;
     deadlineMilliseconds: number;
     previousAttempts?: ExtractionAttempt[];
+    revisions?: Revision[];
   },
   checkpoint?: (event: ExtractionCheckpoint) => void,
 ) {
@@ -67,12 +69,16 @@ export async function extractSource(
       basePromptHash,
       schemaHash: processing.schemaHash,
     },
+    ...(options.revisions?.length ? { revisions: options.revisions } : {}),
   };
   const attempts: ExtractionAttempt[] = [...(options.previousAttempts ?? [])];
-  for (let index = attempts.length; index < options.attempts; index++) {
+  const revision = options.revisions?.at(-1);
+  const offset = revision?.afterAttempt ?? 0;
+  for (let index = attempts.length; index < offset + options.attempts; index++) {
     const previous = attempts.at(-1);
-    const feedback = previous?.outcome === 'invalid-output' ? correctionFeedback(previous) : '';
-    const requestedPrompt = prompt + feedback;
+    const feedback =
+      index > offset && previous?.outcome === 'invalid-output' ? correctionFeedback(previous) : '';
+    const requestedPrompt = (revision?.prompt ?? prompt) + feedback;
     checkpoint?.({
       state: 'started',
       attempt: index + 1,
@@ -84,6 +90,7 @@ export async function extractSource(
       deadlineMilliseconds: options.deadlineMilliseconds,
       prompt: requestedPrompt,
       source,
+      previousCandidate: revision?.candidate,
     });
     checkpoint?.({ state: 'recorded', attempt: index + 1, report: result.report });
     attempts.push(result.report);

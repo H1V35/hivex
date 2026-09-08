@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { invoke, projectWithReviews } from '../test/reviewed-project.ts';
 import { nativeSource } from '../test/native-project.ts';
 import type { Fixture, Paths } from '../test/reviewed-project.ts';
@@ -92,7 +92,7 @@ test('reuses unchanged source fidelity after another source changes without rela
 });
 
 function preserveReviews(paths: Paths, fixture: Fixture, status = 0) {
-  const path = join(dirname(paths.store), 'reviews.json');
+  const path = join(dirname(paths.store), basename(fixture.input, '.json') + '-reviews.json');
   const result = invoke(paths.root, [
     'graph',
     'review',
@@ -254,6 +254,23 @@ test('keeps an unchanged adverse review negative after reassociation and does no
           paths.binary,
         ]).status,
       ).toBe(1);
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+      const currentEvidence = preserveReviews(paths, { ...fixture, input }, 1);
+      const correction = invoke(paths.root, [
+        'ingest',
+        '--revise',
+        'first.md',
+        '--input',
+        input,
+        '--store',
+        join(dirname(paths.store), 'updated-ingestion.sqlite'),
+        '--feedback',
+        currentEvidence,
+        '--prepare',
+      ]);
+      expect(correction.stderr).toBe('');
+      expect(correction.status).toBe(0);
+      expect(JSON.parse(correction.stdout).prompt).toContain('Preserve the original source.');
       expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
     },
     0,

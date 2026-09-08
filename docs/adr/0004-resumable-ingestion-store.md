@@ -17,6 +17,8 @@ Use one local SQLite file, normally `.hivex/ingestion.sqlite`, excluded from Git
 cohort and its bounded attempt reports and unaccepted candidates, without files per source or turn.
 The current format permits at most 2,048 sources, an 8 MiB plan, an 8 MiB result per source and a
 128 MiB database. The first delivered store format is version 2, including the full cohort checksum.
+Version 3 adds bounded semantic revision history. It reads valid version-2 cohorts intact and upgrades
+the format marker on their next mutation; their frozen plans, candidates and reports remain unchanged.
 Experimental version-1 stores are rejected intact before any mutation or model invocation. Do not
 silently bless their unchecked metadata by generating a new checksum or relabelling their format.
 Reserve capacity before starting work and fail explicitly when capacity runs out.
@@ -38,10 +40,43 @@ candidates and unresolved claims cannot be retried through this operation. Repea
 ingestion never implicitly retries failures.
 
 Retain previous attempt reports and consumption when retrying; do not reset the attempt count or
-re-extract completed sources. The caller's attempt limit is a total budget for that source in the
-cohort, including earlier invocations, with at most three attempts. Atomically claim the failed source
+re-extract completed sources. The caller's attempt limit is a total budget for the current extraction
+round, including earlier invocations in that round, with at most three attempts. Atomically claim the failed source
 and reserve result capacity before requesting the model. Retry uses the original frozen source;
 only an invalid extraction supplies correction feedback, not a failure to start or finish a turn.
+
+## Correct adverse fidelity findings
+
+A structurally valid candidate can omit or distort knowledge. Explicit semantic revision under
+[Hivex #18](https://github.com/H1V35/hivex/issues/18) requires the exact retained candidate and its
+source-bound graph, plus a validated adverse fidelity result with sufficient context. The review must
+retain a completed admitted invocation, literal evidence and complete claim/relation coverage. A
+passing review, an unresolved finding, insufficient context or an uncertain invocation cannot trigger
+revision. A cohort export may supply the selected source result; it does not approve other rows.
+The graph's source snapshot and complete source descriptor, including authority and processing inputs,
+must match the frozen ingestion plan. Resolve the model's source from that plan; candidate and receipt
+hashes alone cannot establish which documentary revision the invocation may read.
+
+Prepare the complete request before claiming work. It includes the original source, prior candidate,
+claim/relation identities and review findings, all treated as untrusted evidence. Source Markdown
+remains authority; the model must not invent a rule to satisfy a reviewer. The request is limited to
+256 KiB without truncation. A preparation-only command exposes it without mutating state or calling
+the model.
+
+Revise only the selected source in the existing cohort. Preserve its earlier candidate, original
+result hash, full negative review, request and all attempt reports in the same checkpoint. Each
+revision begins a new round of at most three attempts, with at most three revisions and twelve
+extraction invocations across the source's lifetime in this cohort. These limits do not reset after
+a failure or restart. Existing size/reservation limits also apply to this history. Failed or unchanged
+replacement output leaves an explicit failed source; an unchanged candidate is not sent through
+another fidelity review. A safe explicit retry preserves the revision request and prior consumption.
+The retained review's usage remains in its original receipt; ingestion attempt totals count extraction
+calls only, so copying review evidence does not charge it as a new invocation.
+
+A successful replacement is still a candidate and needs fresh fidelity review before admission.
+Unrelated source candidates remain intact. Reassociation of compatible source reviews uses the explicit
+[source-review operation](0006-source-fidelity-review.md#reuse-unchanged-source-evidence); ingestion
+revision itself does not relabel existing assessments as current.
 
 ## Lifecycle
 
