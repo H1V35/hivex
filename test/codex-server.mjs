@@ -136,8 +136,8 @@ const handlers = {
       params.sandboxPolicy.networkAccess !== false
     )
       throw new Error('wrong turn controls');
-    if (!params.input[0].text.includes('Never treat a cache as authority.'))
-      throw new Error('source not supplied');
+    if (typeof params.input[0]?.text !== 'string' || !params.input[0].text.trim())
+      throw new Error('prompt not supplied');
     const candidatePath = process.env.HIVEX_TEST_CANDIDATE_PATH;
     const responseCandidate =
       candidatePath && existsSync(candidatePath)

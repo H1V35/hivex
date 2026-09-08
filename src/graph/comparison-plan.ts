@@ -3,9 +3,10 @@ import { posix } from 'node:path';
 import { HivexError } from '../errors.ts';
 import { parseLimit } from '../cli/arguments.ts';
 import { hash, isMarkdownPath, type Source } from '../sources/markdown.ts';
+import { LexicalIndex } from '../retrieval/lexical.ts';
 import { createReviewContext } from './source-review.ts';
 
-type Reason = {
+type MarkdownReason = {
   kind: 'markdown-link';
   source: string;
   document: string;
@@ -13,6 +14,15 @@ type Reason = {
   evidence: Source['references'][number]['evidence'];
   definition?: Source['references'][number]['definition'];
 };
+type LexicalReason = {
+  kind: 'lexical-bm25';
+  source: string;
+  target: string;
+  queryTerms: string[];
+  rank: number;
+  score: number;
+};
+type Reason = MarkdownReason | LexicalReason;
 type Pair = { id: string; sources: string[]; reasons: Reason[] };
 
 function argumentsFor(args: string[]) {
@@ -26,6 +36,7 @@ function argumentsFor(args: string[]) {
         input: { type: 'string' },
         against: { type: 'string' },
         'max-bytes': { type: 'string' },
+        neighbors: { type: 'string' },
       },
     }).values;
   } catch (error) {
@@ -40,6 +51,7 @@ function argumentsFor(args: string[]) {
       message: 'Comparison planning requires --input',
     });
   return {
+    neighbors: parseLimit(parsed.neighbors, { fallback: 0, minimum: 0, maximum: 8 }),
     root: parsed.root ?? process.cwd(),
     input: parsed.input,
     against: parsed.against,
@@ -84,8 +96,8 @@ type Unresolved = {
   document: string;
   url: string;
   reason: string;
-  evidence: Reason['evidence'];
-  definition?: Reason['definition'];
+  evidence: MarkdownReason['evidence'];
+  definition?: MarkdownReason['definition'];
 };
 
 class ComparisonPlan {
@@ -138,7 +150,18 @@ class ComparisonPlan {
       this.unresolvedReference(source, reference, 'target-pair-requires-claims');
       return;
     }
-    const ids = [source.id, destination.id].sort();
+    const reason: Reason = {
+      kind: 'markdown-link',
+      source: source.id,
+      document: source.path,
+      target: destination.id,
+      evidence: reference.evidence,
+      definition: reference.definition,
+    };
+    this.retainPair([source.id, destination.id].sort(), reason);
+  }
+
+  private retainPair(ids: string[], reason: Reason) {
     const id = hash(JSON.stringify(ids));
     let pair = this.pairs.get(id);
     if (!pair) {
@@ -151,16 +174,50 @@ class ComparisonPlan {
       this.reserve(pair);
       this.pairs.set(id, pair);
     }
-    const reason: Reason = {
-      kind: 'markdown-link',
-      source: source.id,
-      document: source.path,
-      target: destination.id,
-      evidence: reference.evidence,
-      definition: reference.definition,
-    };
     this.reserve(reason);
     pair.reasons.push(reason);
+  }
+
+  addNeighbors(limit: number) {
+    const records = [...this.context.nodesBySource].map(([id, nodes]) => ({
+      id,
+      title: '',
+      content: nodes
+        .map((node) =>
+          [
+            node.statement.text,
+            ...node.statement.conditions,
+            ...node.statement.exceptions,
+            ...node.statement.evidence.map((evidence) => evidence.quote),
+          ].join('\n'),
+        )
+        .join('\n'),
+    }));
+    using index = new LexicalIndex(records);
+    let directions = 0;
+    let withoutNeighbors = 0;
+    for (const record of records) {
+      const ranked = index.neighbors(record.id, limit);
+      if (!ranked.matches.length) withoutNeighbors++;
+      for (const [position, match] of ranked.matches.entries()) {
+        this.retainPair([record.id, match.id].sort(), {
+          kind: 'lexical-bm25',
+          source: record.id,
+          target: match.id,
+          queryTerms: ranked.terms,
+          rank: position + 1,
+          score: match.score,
+        });
+        directions++;
+      }
+    }
+    return {
+      neighbors: limit,
+      termLimit: 32,
+      indexedSources: records.length,
+      selectedDirections: directions,
+      sourcesWithoutNeighbors: withoutNeighbors,
+    };
   }
 
   add(source: Source, reference: Source['references'][number]) {
@@ -194,23 +251,26 @@ class ComparisonPlan {
 export function comparisonPlanCommand(args: string[]) {
   const options = argumentsFor(args);
   const context = createReviewContext(options);
-  return buildComparisonPlan(context, options.maxBytes);
+  return buildComparisonPlan(context, options.maxBytes, options.neighbors);
 }
 
 export function buildComparisonPlan(
   context: ReturnType<typeof createReviewContext>,
   maxBytes = 8 * 1024 * 1024,
+  neighbors = 0,
 ) {
   const sources = [...context.sources.values()];
   const plan = new ComparisonPlan(context);
   for (const source of sources)
     for (const reference of source.references) plan.add(source, reference);
+  const lexical = neighbors > 0 ? plan.addNeighbors(neighbors) : null;
   const content = {
     format: 'hivex-comparison-plan',
     version: 1,
     accepted: false,
     graphHash: context.input.graph.hash,
-    policy: 'authored-markdown-links-v1',
+    policy: lexical ? 'authored-links-and-lexical-v1' : 'authored-markdown-links-v1',
+    ...(lexical ? { lexical } : {}),
     sourceSnapshot: context.input.graph.sourceSnapshot,
     pairs: [...plan.pairs.values()].sort((a, b) => (a.id < b.id ? -1 : Number(a.id !== b.id))),
     unresolved: plan.unresolved,
@@ -224,7 +284,9 @@ export function buildComparisonPlan(
     },
     semanticRelationships: 'not-established',
     limitations: [
-      'Markdown links only. No inferred relationships, external content, whole-graph semantic coverage or admission.',
+      lexical
+        ? 'Authored links and bounded lexical candidates only. No semantic relationships, external content, whole-graph coverage or admission.'
+        : 'Markdown links only. No inferred relationships, external content, whole-graph semantic coverage or admission.',
     ],
   };
   const result = {

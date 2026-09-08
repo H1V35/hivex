@@ -532,3 +532,20 @@ requested byte budget (default 16 KiB, maximum 128 MiB). Preserve needed evidenc
 retirement; it clears retained results and enables reuse of the same file. Retirement rejects
 unresolved invocations. A completed cohort still reports `accepted: false`: it covers the selected
 pairs, and does not establish full graph consistency, admission or implementation grounding.
+
+To also discover unlinked sources with shared documentary vocabulary, choose a bounded number of
+lexical neighbors per source:
+
+```sh
+bun run cli graph compare-plan --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
+bun run cli graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
+bun run cli graph compare --export --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4 --max-bytes 134217728
+```
+
+`--neighbors` accepts 0–8, defaults to 0 (the existing authored-link plan), and must remain the same
+when resuming or inspecting that cohort. It adds BM25 candidates from up to 32 shared terms per
+source, preserving the query terms, ranks and scores beside authored link reasons. It does not invoke
+a model during planning. The temporary FTS5 database is capped at 128 MiB; the complete plan and
+cohort retain their existing limits. A source with no shared terms stays explicit, and no missing
+link is silently resolved. This heuristic may miss paraphrases or select unrelated common vocabulary;
+it does not prove global consistency.

@@ -50,7 +50,7 @@ type Context = ReturnType<typeof createContext>;
 
 function createContext(options: ReturnType<typeof assessmentArguments>) {
   const context = createReviewContext(options);
-  const selection = buildComparisonPlan(context);
+  const selection = buildComparisonPlan(context, 8 * 1024 * 1024, options.neighbors);
   if (selection.status !== 'planned' || selection.pairs.length === 0)
     throw new HivexError({
       code: 'COMPARISON_PLAN_UNRESOLVED',
