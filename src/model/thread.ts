@@ -22,6 +22,7 @@ const mcpInventory = z.looseObject({
   ),
   nextCursor: z.null().optional(),
 });
+const threadStartTimeoutMilliseconds = 90_000;
 
 export async function startKnowledgeThread(options: {
   rpc: AppServerConnection;
@@ -36,7 +37,7 @@ export async function startKnowledgeThread(options: {
         ...knowledgeThread,
         cwd: workspace,
       },
-      { signal },
+      { signal, timeoutMilliseconds: threadStartTimeoutMilliseconds },
     ),
   );
   if (started.cwd !== workspace) throw new Error('Native Codex workspace changed');

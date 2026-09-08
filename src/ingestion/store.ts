@@ -22,7 +22,7 @@ const reportSchema = z.looseObject({
   outcome: z.string().max(256),
   code: z.string().max(128).optional(),
   usage: usageSchema.nullable(),
-  deadlineMilliseconds: z.number().int().min(100).max(900_000),
+  deadlineMilliseconds: z.number().int().min(100).max(1_800_000),
   promptHash: z.string().regex(/^[a-f0-9]{64}$/),
 });
 const attemptStateSchema = z.object({
@@ -32,7 +32,7 @@ const attemptStateSchema = z.object({
     .object({
       attempt: z.number().int().min(1).max(12),
       promptHash: z.string().regex(/^[a-f0-9]{64}$/),
-      deadlineMilliseconds: z.number().int().min(100).max(900_000),
+      deadlineMilliseconds: z.number().int().min(100).max(1_800_000),
     })
     .nullable(),
 });

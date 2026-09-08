@@ -228,7 +228,7 @@ bun hivex extract docs/adr/0001-versioned-project-knowledge.md --ref <commit> --
 The source must be declared in the selected commit's `hivex.json` and contain at most 32,768 UTF-8
 bytes. For a larger document, declare and extract a complete heading section. `--codex` selects the
 native executable; it defaults to `codex` on PATH. The default deadline is 600,000 milliseconds;
-accepted values are 100–900,000. Each invocation, including an interrupted attempt, is recorded.
+accepted values are 100–1,800,000. Each invocation, including an interrupted attempt, is recorded.
 Missing usage is `null`; reasoning output and cached input are subsets of the reported output/input
 counters, not additional tokens to add again.
 
@@ -275,7 +275,7 @@ complete sections before starting any source. This is candidate production, not 
 
 `--max-units` defaults to 20 and accepts 0–2048; zero checks progress without calling a model.
 Only pending sources are claimed. `--attempts` accepts 1–3 (default 3); `--deadline-ms` accepts
-100–900,000 (default 600,000) per invocation. Each report retains its effective deadline and the
+100–1,800,000 (default 600,000) per invocation. Each report retains its effective deadline and the
 admitted Luna/max profile. Changing these execution limits does not reopen failed or unresolved
 sources or reset their attempt history. Two CLI processes
 can process distinct sources; no transaction stays open during a model call. Each attempt is
@@ -381,7 +381,7 @@ The first command exposes the exact prompt and structured output schema without 
 The second reviews the complete versioned source, its claims and source-local relationships through
 the admitted Codex/Luna/max profile. The full request must fit 256 KiB; exceeding the limit fails
 before a model call. Use `--codex <binary>` for the native executable and `--deadline-ms` (default
-600000, maximum 900000) to bound the invocation. No automatic retry is performed by this operation.
+600000, maximum 1800000) to bound the invocation. No automatic retry is performed by this operation.
 
 Every claim and relation needs one assessment with literal source evidence. The review also records
 omissions, source coverage and missing context. `status: reviewed` requires faithful assessments,
@@ -637,7 +637,7 @@ bun hivex graph compare --all --retry-failed <pair-id> --input /tmp/candidate-gr
 
 Supply the project's `--root` and existing `--store` as needed. `--attempts 2` allows the second
 attempt, counting the first retained failure; the maximum total is three. Each explicit retry makes
-one attempt, with the same prepared model request. `--deadline-ms` retains its supported 100–900000
+one attempt, with the same prepared model request. `--deadline-ms` retains its supported 100–1,800,000
 range. Ordinary resume does not retry failed rows, and retry cannot be mixed with a graph transition.
 
 Only safely ended invocation failures qualify: preflight admission failure, malformed output after
@@ -653,6 +653,32 @@ adds bounded recovery history to the same store; its first retry upgrades older
 formats atomically and requires no active claims during migration. Keep the complete cohort exports
 before retirement: graph admission retains current successful evidence, while failed-attempt history
 remains in the working store and these caller-owned archives.
+
+### Reassess fidelity after comparison feedback
+
+A comparison may expose a candidate distortion missed by an earlier source review. Retain the
+original results and give that concrete concern to a standalone fidelity reassessment:
+
+```sh
+bun hivex graph compare --show <pair-id> --input /tmp/candidate-graph.json --neighbors 4 --max-bytes 1048576 > /tmp/comparison-feedback.json
+bun hivex graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --feedback /tmp/comparison-feedback.json --prepare
+bun hivex graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --feedback /tmp/comparison-feedback.json > /tmp/reassessed-fidelity.json
+bun hivex ingest --revise 'docs/decisions.md' --input /tmp/candidate-graph.json --feedback /tmp/reassessed-fidelity.json --prepare
+```
+
+Supply the project's `--root` and stores as needed. The feedback must be a complete original
+comparison result (or `--show` envelope) of at most 256 KiB, from the same graph, with at least one
+unresolved candidate claim from this source. For a reused comparison, return to its preserved original
+graph/receipt. The complete source and feedback request must also fit 256 KiB.
+
+The reviewer independently assesses all source claims and may uphold the extraction. This mode uses
+short local IDs and exact coverage counts; the returned review preserves original graph identities and
+the checked mapping. Rejected output is retained as hashed diagnostic text, never as a partial review.
+A comparison's
+insufficient context does not itself prove a fidelity defect. The resulting review retains the full
+comparison receipt and hash; it changes neither working cohort. Only valid adverse fidelity with
+sufficient context and concrete omissions/distortions can justify revision. Preparation and validation
+make no model calls; execution is one new assessment with the configured Luna/max profile.
 
 ## Admit and inspect a reviewed graph
 

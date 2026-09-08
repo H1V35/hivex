@@ -21,6 +21,7 @@ import { extractionSchema } from './claims.ts';
 import { prepareExtraction } from './preparation.ts';
 import { revisionSchema } from './history.ts';
 import { inputUnitSchema } from '../graph/snapshot.ts';
+import { prepareFeedbackReview, feedbackReviewSchema } from '../graph/source-feedback.ts';
 
 function invalid(message: string): never {
   throw new HivexError({ code: 'INGESTION_REVISION_INVALID', message });
@@ -64,7 +65,7 @@ function argumentsFor(args: string[]) {
     deadlineMilliseconds: parseLimit(values['deadline-ms'], {
       fallback: 600000,
       minimum: 100,
-      maximum: 900000,
+      maximum: 1_800_000,
     }),
   };
 }
@@ -117,6 +118,43 @@ function frozenRevisionSource(
   return { source, snapshot, plan };
 }
 
+function validateRevisionFeedback(
+  feedback: ReturnType<typeof readFeedback>,
+  context: ReturnType<typeof createReviewContext>,
+  prepared: ReturnType<typeof prepareSourceReview>,
+) {
+  const reviewed = feedback.feedback
+    ? prepareFeedbackReview(context, prepared.source.id, feedback.feedback)
+    : prepared;
+  const plan = sourceReviewPlan(context);
+  if (feedback.feedback)
+    plan.contract.schemaHash = hash(JSON.stringify(z.toJSONSchema(feedbackReviewSchema(reviewed))));
+  validateAssessmentBinding(
+    reviewBinding(feedback),
+    { id: prepared.source.id, actualId: feedback.source.id, promptHash: hash(reviewed.prompt) },
+    plan,
+  );
+  validateSourceReviews(
+    [{ id: prepared.source.id, state: feedback.status, result: feedback }],
+    context,
+  );
+  const review = feedback.review;
+  if (
+    feedback.status !== 'failed' ||
+    feedback.report.outcome !== 'completed' ||
+    !review ||
+    review.context.verdict !== 'sufficient' ||
+    [...review.claims, ...review.relations].some((item) => item.verdict === 'unresolved') ||
+    review.coverage.verdict === 'unresolved' ||
+    (!review.omissions.length &&
+      ![...review.claims, ...review.relations].some((item) => item.verdict === 'distorted'))
+  )
+    invalid(
+      'Revision requires evidenced omissions or distortions with sufficient context and a safely completed review',
+    );
+  return review;
+}
+
 function prepareRevision(options: ReturnType<typeof argumentsFor>) {
   const context = createReviewContext(options);
   const prepared = prepareSourceReview(context, options.id);
@@ -136,27 +174,7 @@ function prepareRevision(options: ReturnType<typeof argumentsFor>) {
   if ((previous.revisions?.length ?? 0) >= 3)
     invalid('This source has exhausted its three semantic revisions');
   const feedback = readFeedback(options.feedback, options.id);
-  const plan = sourceReviewPlan(context);
-  validateAssessmentBinding(
-    reviewBinding(feedback),
-    { id: options.id, actualId: feedback.source.id, promptHash: hash(prepared.prompt) },
-    plan,
-  );
-  validateSourceReviews([{ id: options.id, state: feedback.status, result: feedback }], context);
-  const review = feedback.review;
-  if (
-    feedback.status !== 'failed' ||
-    feedback.report.outcome !== 'completed' ||
-    !review ||
-    review.context.verdict !== 'sufficient' ||
-    [...review.claims, ...review.relations].some((item) => item.verdict === 'unresolved') ||
-    review.coverage.verdict === 'unresolved' ||
-    (!review.omissions.length &&
-      ![...review.claims, ...review.relations].some((item) => item.verdict === 'distorted'))
-  )
-    invalid(
-      'Revision requires evidenced omissions or distortions with sufficient context and a safely completed review',
-    );
+  const review = validateRevisionFeedback(feedback, context, prepared);
   const prompt =
     prepareExtraction(frozen.source).prompt +
     '\n\n' +

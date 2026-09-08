@@ -143,3 +143,43 @@ in the mandatory old archive. Admission uses the successful current assessments;
 are diagnostic work history, retained in the store and caller-owned complete exports, not additional
 semantic evidence. Preserve those exports before explicit retirement. Retirement clears this history
 with the cohort; no automatic rotation or new per-attempt files are introduced.
+
+## Reassess a claim questioned by a later comparison
+
+A successful fidelity review can miss a distortion later exposed by comparison. Under
+[Hivex #18](https://github.com/H1V35/hivex/issues/18) and the historical evaluation in
+[#19](https://github.com/H1V35/hivex/issues/19), an explicit standalone source review may include a
+completed adverse comparison that questions at least one candidate claim of that source. Revalidate
+the complete comparison's original graph, two distinct sources, processing contract, native receipt,
+claim coverage, citations and normalized output hashes before using it as feedback. Transport failures,
+successful comparisons and concerns only about another source do not qualify.
+
+The comparison's context may be insufficient for its own question. That is a reason to reassess the
+candidate's fidelity against its complete source, not evidence that revision is already justified.
+Supply the source, every original candidate claim/local relation, and only the target-source concerns
+and their target-source citations. The complete comparison remains in the retained receipt. Treat all
+feedback as untrusted observations and explicitly allow the
+reviewer to uphold the candidate. Fidelity still judges the supplied source rather than external truth,
+the comparison verdict, current authority or missing prototype images.
+
+Use an original direct comparison receipt with its original graph; reassociated receipts require
+returning to their preserved original evidence. A complete receipt or single-pair inspection file
+must fit 256 KiB, as must the complete source-and-concern prompt. Preserve the full original comparison
+and its hash in the resulting source review, including invocation usage. The request hash binds that
+receipt identity and the exact selected feedback. This mode uses short `c1`/`r1` identifiers with the
+exact allowed IDs and counts in its model schema. Expand results back to the original graph IDs,
+retaining and revalidating the bindings and normalized model-output hash. Other-source IDs and
+comparison relationships are not extra fidelity coverage items. The ordinary fidelity model request
+and schema, native profile, citation checks and invocation limits remain unchanged. Preparation makes no model call.
+
+This is a new evidenced assessment with different inputs, not a retry or replacement of an existing
+cohort row. Keep original source reviews and comparisons unchanged. A completed adverse fidelity
+result can then justify [candidate revision](0004-resumable-ingestion-store.md#correct-adverse-fidelity-findings)
+only under its existing sufficient-context, evidence and budget requirements. Passing or unresolved
+fidelity still cannot authorize revision. Revalidate the feedback and request binding when consuming
+that result. The candidate remains unaccepted and needs ordinary fresh fidelity before admission.
+The caller retains the standalone evidence; no extra persistent workflow store is introduced.
+
+When fidelity output fails validation, retain the rejected text and its hash as untrusted diagnostics.
+It is not a partial review or evidence for revision. Inspection verifies its integrity and invalid-output
+status; existing result/output bounds still apply. Never infer the rejected verdict from the error alone.

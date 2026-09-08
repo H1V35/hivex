@@ -77,10 +77,11 @@ function argumentsFor(args: string[]) {
     against: parsed.values.against,
     binary: parsed.values.codex ?? 'codex',
     prepare: parsed.values.prepare ?? false,
+    feedback: parsed.values.feedback,
     deadlineMilliseconds: parseLimit(parsed.values['deadline-ms'], {
       fallback: 600_000,
       minimum: 100,
-      maximum: 900_000,
+      maximum: 1_800_000,
     }),
   };
 }
@@ -97,6 +98,7 @@ function parse(args: string[]) {
       codex: { type: 'string' },
       'deadline-ms': { type: 'string' },
       prepare: { type: 'boolean' },
+      feedback: { type: 'string' },
     },
   });
 }
@@ -162,7 +164,10 @@ export function prepareSourceReview(context: ReturnType<typeof createReviewConte
 }
 
 export function sourceReviewPrompt(
-  packet: ReturnType<typeof prepareSourceReview>['packet'],
+  packet: Omit<ReturnType<typeof prepareSourceReview>['packet'], 'claims' | 'relations'> & {
+    claims: Pick<ReturnType<typeof prepareSourceReview>['nodes'][number], 'id' | 'statement'>[];
+    relations: Omit<ReturnType<typeof prepareSourceReview>['edges'][number], 'source'>[];
+  },
 ): string {
   return `${instructions}\n\n${JSON.stringify(packet)}`;
 }
@@ -222,20 +227,32 @@ export function satisfactory(review: SourceReview) {
   );
 }
 
+type SourceReviewPreparation = ReturnType<typeof prepareSourceReview> & {
+  feedback?: { comparison: unknown; hash: string };
+};
+
 export async function sourceReviewCommand(args: string[]) {
   const options = argumentsFor(args);
-  return runSourceReview(prepareSourceReview(createReviewContext(options), options.id), options);
+  const context = createReviewContext(options);
+  let prepared: SourceReviewPreparation = prepareSourceReview(context, options.id);
+  if (options.feedback) {
+    const { prepareFeedbackReview, readComparisonFeedback } = await import('./source-feedback.ts');
+    prepared = prepareFeedbackReview(context, options.id, readComparisonFeedback(options.feedback));
+  }
+  return runSourceReview(prepared, options);
 }
 
 export async function runSourceReview(
-  prepared: ReturnType<typeof prepareSourceReview>,
+  prepared: SourceReviewPreparation,
   options: {
     binary: string;
     deadlineMilliseconds: number;
     prepare?: boolean;
   },
 ) {
-  const schema = z.toJSONSchema(sourceReviewSchema);
+  const feedbackModel = prepared.feedback ? await import('./source-feedback.ts') : undefined;
+  const modelSchema = feedbackModel?.feedbackReviewSchema(prepared) ?? sourceReviewSchema;
+  const schema = z.toJSONSchema(modelSchema);
   const envelope = {
     command: 'graph',
     operation: 'review',
@@ -245,6 +262,9 @@ export async function runSourceReview(
     comparedCommit: prepared.check.freshness.comparedCommit,
     source: prepared.packet.source,
     model: knowledgeModel,
+    ...(feedbackModel
+      ? { feedback: prepared.feedback, reviewBindings: feedbackModel.reviewBindings(prepared) }
+      : {}),
     contract: {
       nativeVersion,
       requestedPolicyHash: requestedPolicyHash(),
@@ -260,14 +280,18 @@ export async function runSourceReview(
   if (result.report.outcome !== 'completed')
     return { ...envelope, status: 'failed', report: result.report, review: null };
   try {
-    const review = sourceReviewSchema.parse(
+    const modelReview = modelSchema.parse(
       JSON.parse(typeof result.value === 'string' ? result.value : 'null'),
     );
+    const review = feedbackModel
+      ? feedbackModel.expandFeedbackReview(modelReview, prepared)
+      : modelReview;
     validateReview(review, prepared);
     return {
       ...envelope,
       status: satisfactory(review) ? 'reviewed' : 'failed',
       report: result.report,
+      ...(feedbackModel ? { modelOutputHash: hash(JSON.stringify(modelReview)) } : {}),
       review,
     };
   } catch (error) {
@@ -278,6 +302,8 @@ export async function runSourceReview(
       issue:
         error instanceof HivexError ? error.message : 'Review does not match its required schema',
       review: null,
+      rejectedOutput:
+        typeof result.value === 'string' ? { text: result.value, hash: hash(result.value) } : null,
     };
   }
 }

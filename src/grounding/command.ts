@@ -151,7 +151,7 @@ function argumentsFor(args: string[]) {
     deadlineMilliseconds: parseLimit(parsed.values['deadline-ms'], {
       fallback: 600000,
       minimum: 100,
-      maximum: 900000,
+      maximum: 1_800_000,
     }),
   };
 }

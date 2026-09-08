@@ -21,6 +21,11 @@ import {
 import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
 import { usageSchema } from '../model/transcript.ts';
 import { digest } from './snapshot.ts';
+import {
+  comparisonFeedbackSchema,
+  prepareFeedbackReview,
+  validateFeedbackReview,
+} from './source-feedback.ts';
 
 export const reviewResultSchema = z.looseObject({
   command: z.literal('graph'),
@@ -37,6 +42,11 @@ export const reviewResultSchema = z.looseObject({
   }),
   report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
   review: sourceReviewSchema.nullable(),
+  feedback: comparisonFeedbackSchema.optional(),
+  rejectedOutput: z
+    .strictObject({ text: z.string().max(8 * 1024 * 1024), hash: digest })
+    .nullable()
+    .optional(),
   association: z
     .strictObject({
       graphHash: digest,
@@ -73,10 +83,33 @@ export function reviewBinding(result: ReviewResult) {
   };
 }
 
+function validateRejectedOutput(result: ReviewResult) {
+  if (
+    result.rejectedOutput &&
+    (result.review !== null ||
+      result.report.outcome !== 'invalid-output' ||
+      hash(result.rejectedOutput.text) !== result.rejectedOutput.hash)
+  )
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message: 'Rejected fidelity output is altered or presented as an assessment',
+    });
+}
+
 function validateReviewProvenance(
   result: ReviewResult,
   prepared: ReturnType<typeof prepareSourceReview>,
 ) {
+  if (
+    result.feedback &&
+    (result.association || result.contract.promptHash !== hash(prepared.prompt))
+  )
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message: 'Feedback-driven fidelity must retain its original complete request binding',
+    });
+  if (result.feedback) validateFeedbackReview(result, prepared);
+  validateRejectedOutput(result);
   if (
     result.association &&
     (result.association.originalHash !== hash(JSON.stringify(originalReview(result))) ||
@@ -107,9 +140,12 @@ export function validateSourceReviews(
   context: ReturnType<typeof createReviewContext>,
 ) {
   for (const row of rows) {
+    for (const previous of row.previousAttempts ?? []) validateRejectedOutput(previous);
     const result = row.result;
     if (!result) continue;
-    const prepared = prepareSourceReview(context, row.id);
+    const prepared = result.feedback
+      ? prepareFeedbackReview(context, row.id, result.feedback)
+      : prepareSourceReview(context, row.id);
     validateReviewProvenance(result, prepared);
     validateCompletedInvocation(result.report);
     if (result.review) validateReview(result.review, prepared);
