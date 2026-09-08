@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type { Source } from '../sources/markdown.ts';
 import { HivexError } from '../errors.ts';
 import type { candidateSchema } from './claims.ts';
+import { invalidCitationIndexes } from '../sources/citation.ts';
 
 type Candidate = z.infer<typeof candidateSchema>;
 
@@ -9,19 +10,12 @@ export function validateCandidateEvidence(options: { candidate: Candidate; sourc
   const { candidate, source } = options;
   const ids = new Set<string>();
   const issues: { path: string; rule: string }[] = [];
-  const lines = source.content.split('\n');
-  const firstLine = source.section?.lineStart ?? 1;
   const check = (entries: Candidate['claims'][number]['evidence'], path: string) => {
-    for (const [index, entry] of entries.entries()) {
-      const start = entry.lineStart - firstLine;
-      const end = entry.lineEnd - firstLine;
-      const inRange = start >= 0 && end >= start && end < lines.length;
-      const content = inRange ? lines.slice(start, end + 1).join('\n') : '';
-      if (!inRange || !content.includes(entry.quote))
-        issues.push({
-          path: `${path}.evidence[${index}]`,
-          rule: 'Quote must occur within the stated original source lines',
-        });
+    for (const index of invalidCitationIndexes(source, entries)) {
+      issues.push({
+        path: `${path}.evidence[${index}]`,
+        rule: 'Quote must occur within the stated original source lines',
+      });
     }
   };
   for (const [index, claim] of candidate.claims.entries()) {
