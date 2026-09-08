@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { diagnostic } from './cli/diagnostic.ts';
 import { argumentsFor } from './cli/arguments.ts';
 import { loadSnapshot } from './workspace/snapshot.ts';
