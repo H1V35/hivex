@@ -35,6 +35,22 @@ The prepare operation shows the exact bounded request without invoking the model
 one result on stdout, with no per-comparison files or graph mutation. The current request limit is
 256 KiB, covering both complete sources and their extracted context.
 
+Context sufficiency concerns the selected pair. A faithfully preserved reference or a claim unrelated
+to the other source does not require supplying its external document or prototype merely to verify
+the assertion's external basis. Keep the reference and its limits explicit. Missing context still
+blocks when it prevents judging candidate fidelity or an actual relationship within the supplied pair.
+
+An explicit authored amendment can resolve a difference by replacing or extending part of an earlier
+rule. Represent that affected scope with `supersedes` or `exception-to`, preserving the prior claim,
+unchanged parts, conditions and exceptions. Reserve `contradicts` for incompatibility that remains
+unresolved; do not add a redundant contradiction solely because the former and amended rules differ.
+Authored evidence must establish that resolution; dates, IDs and status labels alone remain insufficient.
+
+These clarifications address two observed comparison failures in [Hivex #19](https://github.com/H1V35/hivex/issues/19).
+They change the comparison request hash. Earlier assessments and consumption remain in their complete
+archives and cannot be silently relabelled as results of the clarified request. Graph admission retains
+its existing requirement to reject unresolved contradictions, incomplete coverage and insufficient context.
+
 This operation covers the selected pair only and always returns `accepted: false`. It does not
 establish graph-wide relationship coverage, effective authority, admission or code grounding. Those
 remain required under [Compi #1631](https://github.com/H1V35/compi/issues/1631), including the historical
