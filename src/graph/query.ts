@@ -2,7 +2,9 @@ import { HivexError } from '../errors.ts';
 import { rankLexically } from '../retrieval/lexical.ts';
 import type { checkGraph, readGraph } from './verify.ts';
 
-type LoadedGraph = ReturnType<typeof readGraph>;
+import type { ReviewedRelationship } from './admission.ts';
+
+type LoadedGraph = ReturnType<typeof readGraph> & { relationships?: ReviewedRelationship[] };
 type Check = ReturnType<typeof checkGraph>;
 
 export function budgeted<T>(response: T, maxBytes: number) {
@@ -127,17 +129,12 @@ export function neighbors(options: {
       code: 'GRAPH_NODE_NOT_FOUND',
       message: 'The claim is not in this graph snapshot',
     });
-  const matches = options.input.graph.edges.filter(
+  const matches = [...options.input.graph.edges, ...(options.input.relationships ?? [])].filter(
     (edge) => edge.from === options.id || edge.to === options.id,
   );
-  const start = neighborOffset(
-    options.cursor,
-    options.input.graph.hash,
-    options.id,
-    matches.length,
-  );
+  const start = neighborOffset(options.cursor, options.check.hash, options.id, matches.length);
   const relations: {
-    edge: LoadedGraph['graph']['edges'][number];
+    edge: LoadedGraph['graph']['edges'][number] | ReviewedRelationship;
     neighbor: { id: string; source: string; preview: string | null };
     neighborEvidence: string;
   }[] = [];
@@ -147,7 +144,7 @@ export function neighbors(options: {
     relations,
     continuation:
       start + relations.length < matches.length
-        ? `n1.${options.input.graph.hash}.${options.id}.${start + relations.length}`
+        ? `n1.${options.check.hash}.${options.id}.${start + relations.length}`
         : null,
   });
   for (const edge of matches.slice(start, start + options.limit)) {

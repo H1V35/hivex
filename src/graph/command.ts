@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { HivexError } from '../errors.ts';
 import { parseLimit } from '../cli/arguments.ts';
 import { buildGraph } from './build.ts';
-import { readGraph, checkGraph } from './verify.ts';
+import { readProjection } from './admission.ts';
 import { budgeted, readNode, searchGraph, neighbors } from './query.ts';
 
 function input(args: string[]) {
@@ -120,8 +120,7 @@ export function graphCommand(args: string[]) {
       code: 'INVALID_ARGUMENT',
       message: 'Graph inspection requires --input',
     });
-  const input = readGraph(options.input);
-  const check = checkGraph(input, options.root, options.against);
+  const { input, check } = readProjection(options.input, options.root, options.against);
   if (options.operation === 'read') return readNode(input, options.value, check, options.maxBytes);
   if (options.operation === 'search')
     return searchGraph({ ...options, input, check, query: options.value });

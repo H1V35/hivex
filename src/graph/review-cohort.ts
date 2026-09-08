@@ -20,7 +20,7 @@ import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
 import { usageSchema } from '../model/transcript.ts';
 import { digest } from './snapshot.ts';
 
-const reviewResultSchema = z.looseObject({
+export const reviewResultSchema = z.looseObject({
   command: z.literal('graph'),
   operation: z.literal('review'),
   accepted: z.literal(false),
@@ -38,13 +38,13 @@ const reviewResultSchema = z.looseObject({
 });
 export type ReviewResult = z.infer<typeof reviewResultSchema>;
 
-const reviewContract = {
+export const reviewContract = {
   applicationId: 0x48565852,
   parse: (value: unknown) => reviewResultSchema.parse(value),
   unitId: (result: ReviewResult) => result.source.id,
 };
 
-function validateResults(
+export function validateSourceReviews(
   rows: ReturnType<AssessmentStore<ReviewResult>['snapshot']>,
   context: ReturnType<typeof createReviewContext>,
 ) {
@@ -98,18 +98,7 @@ export async function reviewCohortCommand(args: string[]) {
   if (options.discard !== undefined)
     return AssessmentStore.discard(options.store, options.discard, reviewContract.applicationId);
   const context = createReviewContext(options);
-  const plan: AssessmentPlan = {
-    graphHash: context.input.graph.hash,
-    contract: {
-      nativeVersion,
-      requestedPolicyHash: requestedPolicyHash(),
-      schemaHash: hash(JSON.stringify(z.toJSONSchema(sourceReviewSchema))),
-    },
-    sources: context.input.graph.sources.map((source) => ({
-      id: source.id,
-      promptHash: hash(prepareSourceReview(context, source.id).prompt),
-    })),
-  };
+  const plan = sourceReviewPlan(context);
   const envelope = {
     command: 'graph',
     operation: 'review-cohort',
@@ -119,7 +108,7 @@ export async function reviewCohortCommand(args: string[]) {
   };
   if (options.show !== undefined || options.export) {
     const rows = AssessmentStore.read(options.store, plan, reviewContract);
-    validateResults(rows, context);
+    validateSourceReviews(rows, context);
     if (options.export) {
       const result = { ...envelope, plan, reviews: rows, ...summarize(rows) };
       if (Buffer.byteLength(JSON.stringify(result)) + 1 > options.maxBytes)
@@ -145,10 +134,25 @@ export async function reviewCohortCommand(args: string[]) {
   }
   using store = new AssessmentStore(options.store, plan, reviewContract);
   const previous = store.snapshot();
-  validateResults(previous, context);
+  validateSourceReviews(previous, context);
   const reused = previous.filter((row) => row.state === 'reviewed').length;
   const processed = await reviewPending(options, context, store);
   const rows = store.snapshot();
-  validateResults(rows, context);
+  validateSourceReviews(rows, context);
   return { ...envelope, processed, reused, ...summarize(rows) };
+}
+
+export function sourceReviewPlan(context: ReturnType<typeof createReviewContext>) {
+  return {
+    graphHash: context.input.graph.hash,
+    contract: {
+      nativeVersion,
+      requestedPolicyHash: requestedPolicyHash(),
+      schemaHash: hash(JSON.stringify(z.toJSONSchema(sourceReviewSchema))),
+    },
+    sources: context.input.graph.sources.map((source) => ({
+      id: source.id,
+      promptHash: hash(prepareSourceReview(context, source.id).prompt),
+    })),
+  } satisfies AssessmentPlan;
 }

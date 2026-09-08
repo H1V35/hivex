@@ -133,16 +133,13 @@ function decode<T extends AssessmentResult>(
   if (Buffer.byteLength(row.value) > resultLimit || hash(row.value) !== row.value_hash)
     fail('INVALID_REVIEW_STORE', 'A retained assessment is oversized or altered');
   const result = contract.parse(JSON.parse(row.value));
-  if (
-    result.status !== row.state ||
-    contract.unitId(result) !== row.id ||
-    result.graphHash !== plan.graphHash ||
-    result.contract.promptHash !== source.promptHash ||
-    result.contract.schemaHash !== plan.contract.schemaHash ||
-    result.contract.nativeVersion !== plan.contract.nativeVersion ||
-    result.contract.requestedPolicyHash !== plan.contract.requestedPolicyHash
-  )
-    fail('INVALID_REVIEW_STORE', 'An assessment result differs from its planned inputs');
+  if (result.status !== row.state)
+    fail('INVALID_REVIEW_STORE', 'The result status differs from its retained row');
+  validateAssessmentBinding(
+    result,
+    { actualId: contract.unitId(result), id: row.id, promptHash: source.promptHash },
+    plan,
+  );
   return { id: row.id, state: row.state, result };
 }
 
@@ -343,4 +340,20 @@ export class AssessmentStore<T extends AssessmentResult> {
   [Symbol.dispose]() {
     this.db.close();
   }
+}
+
+export function validateAssessmentBinding(
+  result: AssessmentResult,
+  binding: { actualId: string; id: string; promptHash: string },
+  plan: AssessmentPlan,
+) {
+  if (
+    binding.actualId !== binding.id ||
+    result.graphHash !== plan.graphHash ||
+    result.contract.promptHash !== binding.promptHash ||
+    result.contract.schemaHash !== plan.contract.schemaHash ||
+    result.contract.nativeVersion !== plan.contract.nativeVersion ||
+    result.contract.requestedPolicyHash !== plan.contract.requestedPolicyHash
+  )
+    fail('INVALID_REVIEW_STORE', 'An assessment result differs from its planned inputs');
 }

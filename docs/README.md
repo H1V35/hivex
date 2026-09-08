@@ -11,6 +11,8 @@
 - [Source fidelity](adr/0006-source-fidelity-review.md): complete extraction assessments before semantic admission.
 - [Source comparisons](adr/0007-evidence-bound-source-comparisons.md): scoped relationships with evidence from both sources.
 
+- [Reviewed graph admission](adr/0008-reviewed-graph-admission.md): complete evidence, scoped relationships and historical inspection.
+
 The [CLI guide](../README.md) describes current executable interfaces. Historical evidence under
 `evidence/` records a bounded experiment at its cited revision, not a standing quality verdict.
 An adopting project owns its product documentation and source configuration outside this repository.

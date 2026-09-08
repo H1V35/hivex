@@ -50,7 +50,7 @@ of treating truncated or missing evidence as a complete answer.
 
 Follow the project's spec/ticket process before implementation. In projects with issue tracking,
 identify the agreed spec and execution ticket in the owning repository; a cross-repository parent is
-coordination, not a replacement. Reuse an appropriate ticket for findings. Open another only when
+coordination, not a replacement. Respect its declared blockers. Reuse an appropriate ticket for findings. Open another only when
 strictly necessary, with the reason recorded. Link changes and verification to that work item, and
 capture resulting decisions in the repository authority. Ordinary read-only retrieval creates no ticket.
 
