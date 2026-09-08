@@ -19,6 +19,10 @@ The current format permits at most 2,048 sources, an 8 MiB plan, an 8 MiB result
 128 MiB database. The first delivered store format is version 2, including the full cohort checksum.
 Version 3 adds bounded semantic revision history. It reads valid version-2 cohorts intact and upgrades
 the format marker on their next mutation; their frozen plans, candidates and reports remain unchanged.
+Version 4 adds one bounded transition binding for explicit reuse. It reads valid version-2 and
+version-3 cohorts intact and upgrades the format marker only after a validated transition or other
+successful mutation; the binding records the complete old plan and rows, not a copy of either inside
+each source result.
 Experimental version-1 stores are rejected intact before any mutation or model invocation. Do not
 silently bless their unchecked metadata by generating a new checksum or relabelling their format.
 Reserve capacity before starting work and fail explicitly when capacity runs out.
@@ -44,6 +48,31 @@ re-extract completed sources. The caller's attempt limit is a total budget for t
 round, including earlier invocations in that round, with at most three attempts. Atomically claim the failed source
 and reserve result capacity before requesting the model. Retry uses the original frozen source;
 only an invalid extraction supplies correction feedback, not a failure to start or finish a turn.
+
+## Reuse compatible extraction after a snapshot changes
+
+`ingest --export` is a read-only complete export of the frozen plan, every source row and its retained
+result or checkpoint. The caller owns that export. Ordinary ingestion remains frozen and never uses a
+new `HEAD` implicitly. An explicit transition uses the same store with
+`ingest --reuse <export> --ref <new-commit> --max-units 0`; the destination revision and zero model
+budget are required so the transition is a reviewable checkpoint before new extraction begins.
+
+Before replacement, validate the archive against the complete current store, including each row's
+state, result, attempts, revision history, checkpoints and usage. A running row, active checkpoint or
+uncertain invocation blocks replacement. The transition is immediate and atomic: a failed archive or
+capacity check leaves the old cohort byte-for-byte intact. A destination that is already initialized
+accepts repetition only when its recorded transition binding matches the same complete old archive;
+an altered archive is rejected even when the destination plan is already present.
+
+Reuse compares the complete processing contract and complete source unit: identifier, path, collection,
+content hash, section, authority, prompt hash and limits. A changed or new unit becomes pending. A
+compatible candidate or safely retained failed result is copied with its attempts, revision history,
+usage and budgets unchanged; no failure is retried automatically. The new result carries only a
+binding to the current plan and snapshot plus the hash of the original result. The original receipt is
+not rewritten, and the old plan is not copied into every result. Store reads and graph assembly both
+revalidate the unit/contract relationship and the association; graph receipt hashes still cover the
+complete current record. A later `ingest --revise` therefore starts a new extraction origin while
+preserving the reused candidate's history and remaining budgets.
 
 ## Correct adverse fidelity findings
 

@@ -96,6 +96,17 @@ This operation changes one candidate, never the source's authority or the review
 uncertain or insufficient-context review cannot justify revision. A replacement still needs fidelity
 review and admission; unchanged output is a failure, not a reason to repeat the same adverse review.
 
+When the declared source snapshot changes, preserve the complete candidate cohort with
+`ingest --export`, then use the same store for the explicit transition:
+`ingest --reuse <export> --ref <new-commit> --max-units 0`. The export includes the previous plan,
+every unit row and its retained checkpoint. A transition compares the complete processing contract
+and unit descriptor; only identical units reuse candidate or failed evidence. Changed and new units
+stay pending, failed evidence is not retried, and the caller retains the old export. Running, active or
+uncertain invocations abort the transaction. Repeating a transition requires the same archive even
+after the destination has been initialized. Reused results expose a minimal current plan/snapshot
+association; their original receipt, history, usage and revision budgets remain intact, and
+`graph build` revalidates the association before using the candidate.
+
 When a graph changes, preserve its old graph and complete review export before using `--from` and
 `--reuse` with the new `--input`. Start with `--max-units 0` to transfer evidence without model calls.
 Only identical complete source-review inputs qualify; inspect `association` for the current binding
