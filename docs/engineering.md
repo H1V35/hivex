@@ -129,5 +129,6 @@ legacy framework into Hivex under another name. Preserve useful decisions in the
 retain necessary historical evidence in Git or a bounded private archive outside the active worktree.
 Do not rewrite Git history or destroy the accepted Opus graph before its replacement is admitted.
 
-Unfinished ingestion persistence does not yet satisfy every policy above. Its completion is required
-work, not a guarantee already delivered by this document. Release packages must exclude private project evidence and retired runtime material.
+Candidate ingestion implements bounded checkpoints without admitting a graph. Complete graph
+admission, historical evidence and implementation grounding remain required work. Release packages
+must exclude private project evidence and retired runtime material.

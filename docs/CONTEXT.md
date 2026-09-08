@@ -13,5 +13,7 @@
 - **Claim** — an assertion about a project, including its conditions, exceptions and supporting evidence. A claim can be proposed or incorrect.
 - **Candidate** — a derived interpretation awaiting admission. Producing or structurally validating it does not make it authority.
 - **Ingestion plan** — a complete declared source cohort bound to its snapshot and processing inputs. It measures and identifies prospective work without executing or admitting it.
+- **Ingestion store** — bounded local state for one frozen cohort, its claimed sources, attempt reports and unaccepted candidates. It is not documentary authority or an admitted graph.
+- **Unresolved invocation** — work whose durable state cannot establish a retained final result. Neither a timeout nor a missing process establishes that no model request occurred.
 - **Grounding** — checking an implementation against applicable documented decisions, using evidence from both the implementation and the documents.
 - **Continuation** — a position from which reading the same source and snapshot can resume without silently losing content.

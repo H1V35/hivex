@@ -1,10 +1,18 @@
 import { HivexError } from '../errors.ts';
-import { loadSnapshot } from '../workspace/snapshot.ts';
+import { hash, type Source } from '../sources/markdown.ts';
+import { loadSnapshot, type Snapshot } from '../workspace/snapshot.ts';
 import { extractionArguments } from './arguments.ts';
 import { extractAttempt, type ExtractionAttempt } from './attempt.ts';
 import { maximumSourceBytes, prepareExtraction, processingContract } from './preparation.ts';
 
-export async function extractCommand(args: string[]) {
+export type ExtractionCheckpoint =
+  | { state: 'started'; attempt: number; promptHash: string; deadlineMilliseconds: number }
+  | { state: 'recorded'; attempt: number; report: ExtractionAttempt };
+
+export async function extractCommand(
+  args: string[],
+  checkpoint?: (event: ExtractionCheckpoint) => void,
+) {
   const options = extractionArguments(args);
   const { id } = options;
   const snapshot = loadSnapshot({
@@ -18,6 +26,20 @@ export async function extractCommand(args: string[]) {
       code: 'SOURCE_NOT_FOUND',
       message: 'Extraction requires a declared source',
     });
+  return extractSource({ ...options, source, snapshot }, checkpoint);
+}
+
+export async function extractSource(
+  options: {
+    source: Source;
+    snapshot: Pick<Snapshot, 'commit' | 'configHash'>;
+    binary: string;
+    attempts: number;
+    deadlineMilliseconds: number;
+  },
+  checkpoint?: (event: ExtractionCheckpoint) => void,
+) {
+  const { source, snapshot } = options;
   const sourceBytes = Buffer.byteLength(source.content);
   if (sourceBytes > maximumSourceBytes)
     throw new HivexError({
@@ -49,7 +71,20 @@ export async function extractCommand(args: string[]) {
   for (let index = 0; index < options.attempts; index++) {
     const previous = attempts.at(-1);
     const feedback = previous ? correctionFeedback(previous) : '';
-    const result = await extractAttempt({ ...options, prompt: prompt + feedback, source });
+    const requestedPrompt = prompt + feedback;
+    checkpoint?.({
+      state: 'started',
+      attempt: index + 1,
+      promptHash: hash(requestedPrompt),
+      deadlineMilliseconds: options.deadlineMilliseconds,
+    });
+    const result = await extractAttempt({
+      binary: options.binary,
+      deadlineMilliseconds: options.deadlineMilliseconds,
+      prompt: requestedPrompt,
+      source,
+    });
+    checkpoint?.({ state: 'recorded', attempt: index + 1, report: result.report });
     attempts.push(result.report);
     if (result.candidate)
       return {

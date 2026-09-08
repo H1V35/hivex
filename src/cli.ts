@@ -6,8 +6,10 @@ import { read } from './retrieval/read.ts';
 import { relations } from './relations/query.ts';
 import { extractCommand } from './ingestion/command.ts';
 import { planCommand } from './ingestion/plan.ts';
+import { ingestCommand } from './ingestion/run.ts';
 
 async function main(args: string[]) {
+  if (args[0] === 'ingest') return ingestCommand(args.slice(1));
   if (args[0] === 'plan') return planCommand(args.slice(1));
   if (args[0] === 'extract') return extractCommand(args.slice(1));
   if (args.length === 1 && args[0] === '--help')
@@ -15,6 +17,16 @@ async function main(args: string[]) {
       application: 'hivex',
       configuration: 'hivex.json',
       commands: [
+        {
+          name: 'ingest',
+          usage:
+            'ingest [--root <repo>] [--store <file>] [--ref <commit>] [--collection <id>] [--codex <binary>] [--max-units 0..2048] [--attempts 1..3] [--deadline-ms 100..900000]',
+          inspection:
+            'ingest --show <source-id> [--root <repo>] [--store <file>] [--max-bytes 1024..8388608]',
+          discard: 'ingest --discard <exact-plan-hash> [--root <repo>] [--store <file>]',
+          modelCalls:
+            'Persists unaccepted candidates through native Codex; inspection and discard make no model calls.',
+        },
         {
           name: 'plan',
           usage:
