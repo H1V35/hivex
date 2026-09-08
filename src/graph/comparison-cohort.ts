@@ -19,6 +19,7 @@ import {
   assessmentArguments,
   summarize,
   validateCompletedInvocation,
+  retryableAssessment,
 } from './assessment-cohort.ts';
 import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
 
@@ -57,6 +58,7 @@ export const comparisonContract = {
   unitId: (result: ComparisonResult) =>
     hash(JSON.stringify(result.sources.map((source) => source.id))),
   binding: comparisonBinding,
+  retryable: retryableAssessment,
 };
 type Rows = ReturnType<AssessmentStore<ComparisonResult>['snapshot']>;
 type Context = ReturnType<typeof prepareComparisonCohort>;
@@ -237,7 +239,13 @@ function inspect(rows: Rows, context: Context, options: ReturnType<typeof assess
         comparisons: rows,
         ...summarize(rows),
       }
-    : { ...envelope, pair: row?.id, state: row?.state, result: row?.result };
+    : {
+        ...envelope,
+        pair: row?.id,
+        state: row?.state,
+        result: row?.result,
+        previousAttempts: row?.previousAttempts,
+      };
   if (Buffer.byteLength(JSON.stringify(result)) + 1 > options.maxBytes)
     throw new HivexError({
       code: 'COMPARISON_OUTPUT_BUDGET',
@@ -252,9 +260,10 @@ async function comparePending(
   store: AssessmentStore<ComparisonResult>,
 ) {
   const owner = crypto.randomUUID();
+  const retry = options.retry ? store.retryFailed(options.retry, owner, options.attempts) : null;
   let processed = 0;
   while (processed < options.maxUnits) {
-    const id = store.claim(owner);
+    const id = processed === 0 && retry !== null ? retry : store.claim(owner);
     if (id === null) break;
     const result = await runComparison(prepare(context, id), options);
     store.complete(id, owner, result);

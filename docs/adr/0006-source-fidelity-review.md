@@ -111,3 +111,35 @@ Older transitions without this binding cannot retrospectively authenticate a rep
 continue their current cohort through ordinary resume. Retirement and a subsequent new cohort clear
 the transition binding. Migration and replacement share the same transaction and cannot cross an
 active claim.
+
+## Explicit recovery of safe assessment failures
+
+Under [Hivex #18](https://github.com/H1V35/hivex/issues/18), the caller may explicitly retry a
+failed source review or pair comparison whose invocation ended safely: a preflight admission failure
+before an accepted turn, invalid output after confirmed completion and cleanup, or an acknowledged
+interruption with confirmed cleanup. Unknown turn acceptance, unconfirmed interruption, failed cleanup,
+active claims and completed semantic assessments are ineligible. Adverse findings and insufficient
+context require addressing their evidence; this operation never fishes for a different verdict.
+
+Claim only the selected failure in the existing exact cohort, preserving its full previous receipt
+before another invocation. The same model request and processing contract apply; recovery does not
+add evidence, change the prompt or automatically repair the rejected output. Each explicit retry
+starts one attempt and shares the command's unit budget. At most three attempts are allowed for a
+unit, including retained earlier failures. The caller's attempt limit is the total allowance, not
+an additional number of retries. Ordinary resume never retries failures.
+
+Assessment-store format 3 retains up to two complete previous failed results separately from the
+latest result. Each result keeps its 8 MiB limit, previous results together fit 16 MiB, and the whole
+store remains bounded to 128 MiB with existing reservation before invocation. Migration from format
+1 or 2 occurs atomically with the first valid retry, requires no active claims and preserves the
+transition binding and every other row. All three formats remain readable without migration.
+After a crash during retry, the active claim and prior receipts remain visible; no process-age or
+elapsed-time inference makes it retryable.
+
+Inspection and complete cohort exports expose `previousAttempts`. Totals count each current and
+previous receipt once and preserve missing usage as unmeasured. Compatible graph transitions carry
+that history and its remaining attempt budget. Removed or incompatible units retain their history
+in the mandatory old archive. Admission uses the successful current assessments; earlier failures
+are diagnostic work history, retained in the store and caller-owned complete exports, not additional
+semantic evidence. Preserve those exports before explicit retirement. Retirement clears this history
+with the cohort; no automatic rotation or new per-attempt files are introduced.

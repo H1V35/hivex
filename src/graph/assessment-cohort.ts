@@ -27,6 +27,8 @@ function input(args: string[]) {
         neighbors: { type: 'string' },
         reuse: { type: 'string' },
         from: { type: 'string' },
+        'retry-failed': { type: 'string' },
+        attempts: { type: 'string' },
       },
     }).values;
   } catch (error) {
@@ -39,6 +41,15 @@ function input(args: string[]) {
 
 function validateInspectionFlags(values: ReturnType<typeof input>) {
   if (
+    (values['retry-failed'] !== undefined && values.reuse !== undefined) ||
+    (values.attempts !== undefined && values['retry-failed'] === undefined)
+  )
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message:
+        'Choose an explicit --all --retry-failed assessment; --attempts belongs only to recovery',
+    });
+  if (
     (values.reuse !== undefined || values.from !== undefined) &&
     (!values.all || !values.reuse || !values.from)
   )
@@ -49,13 +60,15 @@ function validateInspectionFlags(values: ReturnType<typeof input>) {
 
   if (
     !values.all &&
-    [values.codex, values['max-units'], values['deadline-ms']].some((value) => value !== undefined)
+    [values.codex, values['max-units'], values['deadline-ms'], values['retry-failed']].some(
+      (value) => value !== undefined,
+    )
   )
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
       message: 'Inspection and retirement cannot be mixed with execution options',
     });
-  if ((values.all || values.discard !== undefined) && values['max-bytes'] !== undefined)
+  if (values['max-bytes'] !== undefined && !values.show && !values.export)
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
       message: '--max-bytes belongs to inspection or export',
@@ -88,11 +101,16 @@ export function assessmentArguments(args: string[], operation: 'review' | 'compa
         'Choose --all, --show, --export or --discard; non-discard operations require --input',
     });
   validateInspectionFlags(values);
+  const maxUnits = parseLimit(values['max-units'], { fallback: 20, minimum: 0, maximum: 2048 });
+  if (values['retry-failed'] !== undefined && maxUnits === 0)
+    throw new HivexError({ code: 'INVALID_ARGUMENT', message: 'Retry requires a processing slot' });
   const root = values.root ?? process.cwd();
   return {
     root,
     reuse: values.reuse,
     from: values.from,
+    retry: values['retry-failed'],
+    attempts: parseLimit(values.attempts, { fallback: 3, minimum: 1, maximum: 3 }),
     neighbors: parseLimit(values.neighbors, { fallback: 0, minimum: 0, maximum: 8 }),
     input: values.input ?? '',
     against: values.against,
@@ -103,7 +121,7 @@ export function assessmentArguments(args: string[], operation: 'review' | 'compa
     show: values.show,
     export: values.export ?? false,
     discard: values.discard,
-    maxUnits: parseLimit(values['max-units'], { fallback: 20, minimum: 0, maximum: 2048 }),
+    maxUnits,
     maxBytes: parseLimit(values['max-bytes'], {
       fallback: 16384,
       minimum: 1024,
@@ -118,8 +136,16 @@ export function assessmentArguments(args: string[], operation: 'review' | 'compa
 }
 
 export function summarize(
-  rows: { state: string; result: { report: { usage: { totalTokens: number } | null } } | null }[],
+  rows: {
+    state: string;
+    result: { report: { usage: { totalTokens: number } | null } } | null;
+    previousAttempts?: { report: { usage: { totalTokens: number } | null } }[];
+  }[],
 ) {
+  const results = rows.flatMap((row) => [
+    ...(row.previousAttempts ?? []),
+    ...(row.result ? [row.result] : []),
+  ]);
   const count = (state: string) => rows.filter((row) => row.state === state).length;
   const completed = count('reviewed');
   const failed = count('failed');
@@ -133,11 +159,12 @@ export function summarize(
     failed,
     unresolved,
     pending: count('pending'),
-    reportedTokens: rows.reduce(
-      (sum, row) => sum + (row.result?.report.usage?.totalTokens ?? 0),
+    recordedAttempts: results.length,
+    reportedTokens: results.reduce(
+      (sum, result) => sum + (result.report.usage?.totalTokens ?? 0),
       0,
     ),
-    unmeasuredResults: rows.filter((row) => row.result && row.result.report.usage === null).length,
+    unmeasuredResults: results.filter((result) => result.report.usage === null).length,
   };
 }
 
@@ -179,5 +206,16 @@ export function unresolvedInvocation(report: { outcome: string; [key: string]: u
     report.cleanup !== 'confirmed' ||
     (!['completed', 'invalid-output'].includes(report.outcome) &&
       report.interruption !== 'confirmed')
+  );
+}
+
+export function retryableAssessment(result: {
+  status: string;
+  report: { outcome: string; [key: string]: unknown };
+}) {
+  return (
+    result.status === 'failed' &&
+    result.report.outcome !== 'completed' &&
+    !unresolvedInvocation(result.report)
   );
 }

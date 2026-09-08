@@ -152,3 +152,8 @@ not a new store initialized with the destination plan.
 
 This implements pair reuse only; ingestion across changed plans, safe assessment retries and the
 whole update/resume command remain separate requirements of #18.
+
+Pair comparisons also support the shared [explicit safe-recovery contract](0006-source-fidelity-review.md#explicit-recovery-of-safe-assessment-failures).
+Use the selected pair ID and unchanged neighbor settings. Retry only eligible invocation failures;
+completed adverse comparisons remain blockers. Full earlier receipts, unknown consumption and the
+three-attempt total budget survive reuse across compatible graphs.

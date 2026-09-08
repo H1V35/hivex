@@ -2,6 +2,7 @@ import {
   assessmentArguments,
   summarize,
   validateCompletedInvocation,
+  retryableAssessment,
 } from './assessment-cohort.ts';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
@@ -55,6 +56,7 @@ export const reviewContract = {
   parse: (value: unknown) => reviewResultSchema.parse(value),
   unitId: (result: ReviewResult) => result.source.id,
   binding: reviewBinding,
+  retryable: retryableAssessment,
 };
 
 export function originalReview(result: ReviewResult) {
@@ -129,9 +131,10 @@ async function reviewPending(
   store: AssessmentStore<ReviewResult>,
 ) {
   const owner = crypto.randomUUID();
+  const retry = options.retry ? store.retryFailed(options.retry, owner, options.attempts) : null;
   let processed = 0;
   while (processed < options.maxUnits) {
-    const id = store.claim(owner);
+    const id = processed === 0 && retry !== null ? retry : store.claim(owner);
     if (id === null) break;
     const result = await runSourceReview(prepareSourceReview(context, id), options);
     store.complete(id, owner, result);
@@ -172,7 +175,13 @@ export async function reviewCohortCommand(args: string[]) {
         code: 'SOURCE_NOT_FOUND',
         message: 'The review source is not in this cohort',
       });
-    const result = { ...envelope, source: row.id, state: row.state, result: row.result };
+    const result = {
+      ...envelope,
+      source: row.id,
+      state: row.state,
+      result: row.result,
+      previousAttempts: row.previousAttempts,
+    };
     if (Buffer.byteLength(JSON.stringify(result)) + 1 > options.maxBytes)
       throw new HivexError({
         code: 'REVIEW_OUTPUT_BUDGET',

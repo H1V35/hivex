@@ -625,6 +625,35 @@ cohort retain their existing limits. A source with no shared terms stays explici
 link is silently resolved. This heuristic may miss paraphrases or select unrelated common vocabulary;
 it does not prove global consistency.
 
+### Recover a safe assessment failure
+
+Inspect the failed source or pair with `--show` before retrying. For a confirmed safe invocation
+failure, use the same graph, working store and comparison selection:
+
+```sh
+bun hivex graph review --all --retry-failed 'docs/decisions.md' --input /tmp/candidate-graph.json --attempts 2 --max-units 1
+bun hivex graph compare --all --retry-failed <pair-id> --input /tmp/candidate-graph.json --neighbors 4 --attempts 2 --max-units 1
+```
+
+Supply the project's `--root` and existing `--store` as needed. `--attempts 2` allows the second
+attempt, counting the first retained failure; the maximum total is three. Each explicit retry makes
+one attempt, with the same prepared model request. `--deadline-ms` retains its supported 100–900000
+range. Ordinary resume does not retry failed rows, and retry cannot be mixed with a graph transition.
+
+Only safely ended invocation failures qualify: preflight admission failure, malformed output after
+confirmed completion/cleanup, or acknowledged interruption with confirmed cleanup. Completed adverse
+assessments, insufficient context, unknown starts, unconfirmed interruption and failed cleanup remain
+blocked. A successful assessment cannot be retried through this command.
+
+Inspection/export expose full earlier receipts as `previousAttempts`. `recordedAttempts`,
+`reportedTokens` and `unmeasuredResults` include these receipts without counting reused evidence as
+new calls. Unknown consumption stays unknown. History and remaining budgets survive compatible graph
+transitions. `recordedAttempts` includes failed preflights and is not a model-call count. Format 3
+adds bounded recovery history to the same store; its first retry upgrades older
+formats atomically and requires no active claims during migration. Keep the complete cohort exports
+before retirement: graph admission retains current successful evidence, while failed-attempt history
+remains in the working store and these caller-owned archives.
+
 ## Admit and inspect a reviewed graph
 
 After source-fidelity reviews and the chosen comparison cohort are complete:
