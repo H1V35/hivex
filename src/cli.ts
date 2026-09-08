@@ -63,11 +63,11 @@ async function main(args: string[]) {
           comparison:
             'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
           comparisonCohort:
-            'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728]',
+            'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728] [--neighbors 0..8]',
           comparisonRetirement:
             'graph compare --discard <plan-hash> [--root <repo>] [--store <file>]',
           comparisonPlan:
-            'graph compare-plan --input <file> [--root <repo>] [--against <commit>] [--max-bytes 1024..8388608]',
+            'graph compare-plan --input <file> [--root <repo>] [--against <commit>] [--max-bytes 1024..8388608] [--neighbors 0..8]',
           modelCalls:
             'Review and compare use native Luna/max; --prepare and deterministic graph operations make no model calls. Candidates remain unaccepted.',
         },

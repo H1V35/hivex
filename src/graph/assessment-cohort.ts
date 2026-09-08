@@ -24,6 +24,7 @@ function input(args: string[]) {
         export: { type: 'boolean' },
         discard: { type: 'string' },
         'max-bytes': { type: 'string' },
+        neighbors: { type: 'string' },
       },
     }).values;
   } catch (error) {
@@ -57,6 +58,12 @@ function validateInspectionFlags(values: ReturnType<typeof input>) {
 
 export function assessmentArguments(args: string[], operation: 'review' | 'compare') {
   const values = input(args);
+  if (values.neighbors !== undefined && (operation !== 'compare' || values.discard !== undefined))
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message:
+        '--neighbors belongs to comparison execution or inspection, not source review or retirement',
+    });
   if (
     (!values.input && !values.discard) ||
     [values.all, values.show !== undefined, values.export, values.discard !== undefined].filter(
@@ -73,6 +80,7 @@ export function assessmentArguments(args: string[], operation: 'review' | 'compa
   const root = values.root ?? process.cwd();
   return {
     root,
+    neighbors: parseLimit(values.neighbors, { fallback: 0, minimum: 0, maximum: 8 }),
     input: values.input ?? '',
     against: values.against,
     store:

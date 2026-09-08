@@ -320,3 +320,43 @@ test('a killed comparison remains unresolved and cannot be silently retried or r
     { source: linkedSource },
   );
 });
+
+test('binds lexical discovery settings to retained comparison work and requires the same selection for inspection', async () => {
+  await nativeProject(
+    (paths) => {
+      const f = fixture(paths);
+      expect(invoke(paths.root, [...f.args, '--neighbors', '1']).status).toBe(0);
+      const calls = readFileSync(paths.calls, 'utf8');
+      const changed = invoke(paths.root, f.args);
+      expect(changed.status).toBe(1);
+      expect(JSON.parse(changed.stderr)).toMatchObject({ error: { code: 'REVIEW_PLAN_MISMATCH' } });
+      const exported = invoke(paths.root, [
+        ...f.inspect,
+        '--neighbors',
+        '1',
+        '--max-bytes',
+        '65536',
+      ]);
+      expect(exported.status).toBe(0);
+      expect(JSON.parse(exported.stdout)).toMatchObject({
+        selection: { policy: 'authored-links-and-lexical-v1', lexical: { neighbors: 1 } },
+        completed: 1,
+      });
+      const invalidReview = invoke(paths.root, [
+        'graph',
+        'review',
+        '--all',
+        '--input',
+        f.input,
+        '--neighbors',
+        '1',
+      ]);
+      expect(invalidReview.status).toBe(1);
+      expect(JSON.parse(invalidReview.stderr)).toMatchObject({
+        error: { code: 'INVALID_ARGUMENT' },
+      });
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+    },
+    { source: linkedSource },
+  );
+});

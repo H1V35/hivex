@@ -90,3 +90,30 @@ evidence before retiring: it clears the retained comparisons transactionally and
 same bounded file. There is no automatic rotation, per-pair file tree or implicit retry. This working
 cohort still covers only the selected authored-link pairs; completing it does not establish full
 semantic coverage, graph admission or implementation grounding.
+
+## Optional lexical neighbors
+
+Authored links alone miss relationships that an author never linked. `--neighbors 1..8` adds a
+bounded deterministic selection over the graph's extracted statement text, conditions, exceptions and
+quoted evidence. It does not infer a semantic relationship or remove unresolved authored links.
+`--neighbors 0` is the default and preserves the existing authored-link plan byte for byte.
+
+Build one in-memory FTS5 index for the command. Use SQLite's own `unicode61` vocabulary and document
+frequencies, avoiding a second tokenizer for neighbor selection. For each source, select up to 32
+terms that occur in at least two sources, ordered by increasing document frequency and then term.
+Rank matching other sources with BM25, breaking ties by source ID, and retain at most the requested
+number of outgoing candidates. Incoming selections may give a source more neighbors; canonical
+source pairs are deduplicated. Sources with no shared terms remain counted explicitly.
+See [SQLite's FTS5 vocabulary reference](https://www.sqlite.org/fts5.html#the_fts5vocab_virtual_table_module).
+
+A lexical reason records the initiating source, target, query terms, position and score. Preserve
+any authored reasons for the same pair. The expanded policy and neighbor count participate in the
+selection hash, so a retained cohort rejects different selection settings. Use the same setting for
+execution and inspection; retirement still uses only its exact processing-plan hash. The comparison
+request itself remains unchanged: the model assesses both complete sources, not search snippets.
+
+The FTS5 working database is limited to 128 MiB and is disposed at command completion; it creates no
+persistent index or query files. Existing pair/plan/cohort limits still apply to the combined result.
+This is a retrieval heuristic, not full semantic coverage: common vocabulary may create irrelevant
+candidates and paraphrases without shared terms may be missed. Record those limits when interpreting
+subsequent comparison, admission and grounding evidence.
