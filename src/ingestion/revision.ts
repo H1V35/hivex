@@ -19,7 +19,7 @@ import { IngestionStore } from './store.ts';
 import { extractSource } from './command.ts';
 import { extractionSchema } from './claims.ts';
 import { prepareExtraction } from './preparation.ts';
-import { revisionSchema } from './history.ts';
+import { maximumExtractionAttempts, maximumRevisionCount, revisionSchema } from './history.ts';
 import { inputUnitSchema } from '../graph/snapshot.ts';
 import { prepareFeedbackReview } from '../graph/source-feedback.ts';
 
@@ -39,6 +39,7 @@ function argumentsFor(args: string[]) {
       store: { type: 'string' },
       codex: { type: 'string' },
       attempts: { type: 'string' },
+      'max-revisions': { type: 'string' },
       'deadline-ms': { type: 'string' },
       prepare: { type: 'boolean' },
     },
@@ -62,6 +63,11 @@ function argumentsFor(args: string[]) {
     binary: values.codex ?? 'codex',
     prepare: values.prepare ?? false,
     attempts: parseLimit(values.attempts, { fallback: 3, minimum: 1, maximum: 3 }),
+    maxRevisions: parseLimit(values['max-revisions'], {
+      fallback: 3,
+      minimum: 1,
+      maximum: maximumRevisionCount,
+    }),
     deadlineMilliseconds: parseLimit(values['deadline-ms'], {
       fallback: 600000,
       minimum: 100,
@@ -176,8 +182,14 @@ function prepareRevision(options: ReturnType<typeof argumentsFor>) {
     invalid(
       'The supplied graph must preserve the exact current candidate and receipt for this source',
     );
-  if ((previous.revisions?.length ?? 0) >= 3)
-    invalid('This source has exhausted its three semantic revisions');
+  if ((previous.revisions?.length ?? 0) >= options.maxRevisions) {
+    const names = ['', 'one', 'two', 'three', 'four'];
+    invalid(
+      `This source has exhausted its ${names[options.maxRevisions] ?? options.maxRevisions} semantic revisions`,
+    );
+  }
+  if (previous.attempts.length >= maximumExtractionAttempts)
+    invalid('This source has exhausted its total extraction attempt budget');
   const feedback = readFeedback(options.feedback, options.id);
   const review = validateRevisionFeedback(feedback, context, prepared);
   const prompt =
@@ -226,7 +238,7 @@ export async function reviseCommand(args: string[]) {
   const { snapshot, plan } = prepared;
   using store = new IngestionStore(options.store, plan);
   const owner = crypto.randomUUID();
-  const recovery = store.revise(options.id, owner, prepared.revision);
+  const recovery = store.revise(options.id, owner, prepared.revision, options.maxRevisions);
   const result = await extractSource(
     { ...options, source: prepared.source, snapshot, ...recovery },
     (event) => store.checkpoint(options.id, owner, event),

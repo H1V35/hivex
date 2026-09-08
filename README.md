@@ -558,10 +558,13 @@ model call. `--prepare` exposes the complete request without changing the store.
 
 Revision processes exactly one source. It retains the old candidate, full negative review, request
 and all extraction attempts in that source's existing record. Inspect them with `ingest --show` and
-an appropriate byte budget. `--attempts` limits the new round to 1–3 calls; at most three semantic
-revisions and twelve extraction calls are permitted per source. A failed revision can use the same
-safe `--retry-failed` operation, without resetting its round budget or losing the correction request.
-An unchanged response fails without automatically repeating the model or the adverse review.
+an appropriate byte budget. `--attempts` limits the new round to 1–3 calls; three semantic
+revisions remain the default. Pass `--max-revisions 4` explicitly to `ingest --revise` to authorize
+the fourth revision; the option accepts 1–4. The source still has an absolute limit of twelve
+extraction calls, and the history retains every revision, origin and usage. A failed revision can
+use the same safe `--retry-failed` operation, without resetting its round budget or losing the
+correction request. An unchanged response fails without automatically repeating the model or the
+adverse review.
 
 Build a new candidate graph after successful corrections, then review its fidelity before admission.
 This command preserves unrelated extractions. Use the explicit source-review reuse operation above

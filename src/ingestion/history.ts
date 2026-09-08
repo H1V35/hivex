@@ -4,8 +4,12 @@ import { hash } from '../sources/markdown.ts';
 import { candidateSchema } from './claims.ts';
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
+export const maximumRevisionCount = 4;
+export const maximumExtractionAttempts = 12;
+const maximumRoundAttempts = 3;
+
 export const revisionSchema = z.strictObject({
-  afterAttempt: z.number().int().min(1).max(9),
+  afterAttempt: z.number().int().min(1).max(maximumExtractionAttempts),
   candidate: candidateSchema,
   previousResultHash: digest,
   feedback: z.record(z.string(), z.unknown()),
@@ -13,7 +17,7 @@ export const revisionSchema = z.strictObject({
   prompt: z.string().max(262144),
   promptHash: digest,
 });
-export const revisionsSchema = z.array(revisionSchema).max(3);
+export const revisionsSchema = z.array(revisionSchema).max(maximumRevisionCount);
 export type Revision = z.infer<typeof revisionSchema>;
 
 export function validateHistory(revisions: Revision[], reports: number) {
@@ -21,7 +25,7 @@ export function validateHistory(revisions: Revision[], reports: number) {
   for (const revision of revisions) {
     if (
       revision.afterAttempt <= previous ||
-      revision.afterAttempt > previous + 3 ||
+      revision.afterAttempt > previous + maximumRoundAttempts ||
       revision.afterAttempt > reports ||
       hash(JSON.stringify(revision.feedback)) !== revision.feedbackHash ||
       Buffer.byteLength(revision.prompt) > 262144 ||
@@ -33,7 +37,12 @@ export function validateHistory(revisions: Revision[], reports: number) {
       });
     previous = revision.afterAttempt;
   }
-  if (reports > previous + 3)
+  if (reports > maximumExtractionAttempts)
+    throw new HivexError({
+      code: 'INVALID_INGESTION_STORE',
+      message: 'The source exceeds twelve extraction attempts',
+    });
+  if (reports > previous + maximumRoundAttempts)
     throw new HivexError({
       code: 'INVALID_INGESTION_STORE',
       message: 'The extraction round exceeds three attempts',

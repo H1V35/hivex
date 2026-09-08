@@ -334,30 +334,7 @@ test('rejects a valid graph whose source differs from the frozen cohort even whe
 test('reports the semantic revision limit explicitly after safe retries consume ten attempts', async () => {
   await nativeProject(
     (paths) => {
-      for (const text of [
-        'A cache must never be treated as documentary authority.',
-        'Caches do not establish documentary authority.',
-        'Never use cached content as documentary authority.',
-      ]) {
-        const { ingest, original, args } = prepare(paths);
-        writeFileSync(paths.scenario, 'changed-effort');
-        expect(invoke(paths.root, args).status).toBe(1);
-        expect(
-          invoke(paths.root, [...ingest, '--retry-failed', 'first.md', '--attempts', '2']).status,
-        ).toBe(1);
-        rmSync(paths.scenario);
-        writeFileSync(
-          paths.candidate,
-          JSON.stringify({
-            ...original.candidate,
-            claims: [{ ...original.candidate.claims[0], text }],
-          }),
-        );
-        expect(
-          invoke(paths.root, [...ingest, '--retry-failed', 'first.md', '--attempts', '3']).status,
-        ).toBe(0);
-      }
-      const { args, inspect } = prepare(paths);
+      const { args, inspect } = reachTenAttempts(paths);
       const before = inspect('first.md').stdout;
       expect(JSON.parse(before).result.candidateAttempt).toBe(10);
       const calls = readFileSync(paths.calls, 'utf8');
@@ -371,3 +348,123 @@ test('reports the semantic revision limit explicitly after safe retries consume 
     { source },
   );
 }, 15000);
+
+test('allows an explicit fourth revision while retaining its complete history', async () => {
+  await nativeProject(
+    (paths) => {
+      const { args, inspect, original } = reachTenAttempts(paths);
+      const before = JSON.parse(inspect('first.md').stdout).result as {
+        attempts: { outcome: string }[];
+        candidate: unknown;
+        revisions: unknown[];
+      };
+      const replacement = {
+        ...original.candidate,
+        claims: [{ ...original.candidate.claims[0], text: 'Fourth revision candidate.' }],
+      };
+      writeFileSync(paths.candidate, JSON.stringify(replacement));
+      writeFileSync(paths.scenario, 'retry-success');
+      const revised = invoke(paths.root, setRevisionOptions(args, '3', '4'));
+      expect(revised.status).toBe(0);
+
+      const inspected = JSON.parse(inspect('first.md').stdout) as {
+        state: string;
+        result: {
+          attempts: { outcome: string }[];
+          candidate: unknown;
+          candidateAttempt: number;
+          revisions: unknown[];
+        };
+      };
+      expect(inspected.state).toBe('candidate');
+      expect(inspected.result).toMatchObject({ candidateAttempt: 12, candidate: replacement });
+      expect(inspected.result.attempts).toHaveLength(12);
+      expect(inspected.result.revisions).toHaveLength(4);
+      expect(inspected.result.attempts.slice(0, 10)).toEqual(before.attempts);
+      expect(inspected.result.revisions.slice(0, 3)).toEqual(before.revisions);
+      expect(inspected.result.revisions[3]).toMatchObject({
+        afterAttempt: 10,
+        candidate: before.candidate,
+      });
+      expect(
+        inspected.result.attempts.slice(10).map((attempt: { outcome: string }) => attempt.outcome),
+      ).toEqual(['invalid-output', 'completed']);
+
+      rmSync(paths.scenario);
+      const next = prepare(paths);
+      const calls = readFileSync(paths.calls, 'utf8');
+      const fifth = invoke(paths.root, [...setRevisionOptions(next.args, '3', '4'), '--prepare']);
+      expect(fifth.status).toBe(1);
+      expect(JSON.parse(fifth.stderr).error.code).toBe('INGESTION_REVISION_INVALID');
+      expect(JSON.parse(next.inspect('first.md').stdout).state).toBe('candidate');
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+    },
+    { source },
+  );
+}, 20000);
+
+test('clamps an exhausted fourth round and leaves no running claim for a retry', async () => {
+  await nativeProject(
+    (paths) => {
+      const { args, ingest, inspect } = reachTenAttempts(paths);
+      writeFileSync(paths.scenario, 'invalid-json');
+      const exhausted = invoke(paths.root, setRevisionOptions(args, '3', '4'));
+      expect(exhausted.status).toBe(1);
+      const inspected = JSON.parse(inspect('first.md').stdout);
+      expect(inspected.state).toBe('failed');
+      expect(inspected.result.attempts).toHaveLength(12);
+      expect(inspected.result.candidate).toBeNull();
+
+      const calls = readFileSync(paths.calls, 'utf8');
+      rmSync(paths.scenario);
+      const retry = invoke(paths.root, [
+        ...ingest,
+        '--retry-failed',
+        'first.md',
+        '--attempts',
+        '3',
+      ]);
+      expect(retry.status).toBe(1);
+      expect(JSON.parse(retry.stderr).error.code).toBe('INGESTION_ATTEMPTS_EXHAUSTED');
+      expect(JSON.parse(inspect('first.md').stdout).state).toBe('failed');
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+    },
+    { source },
+  );
+}, 20000);
+
+function reachTenAttempts(paths: Paths) {
+  for (const text of [
+    'A cache must never be treated as documentary authority.',
+    'Caches do not establish documentary authority.',
+    'Never use cached content as documentary authority.',
+  ]) {
+    const { ingest, original, args } = prepare(paths);
+    writeFileSync(paths.scenario, 'changed-effort');
+    expect(invoke(paths.root, args).status).toBe(1);
+    expect(
+      invoke(paths.root, [...ingest, '--retry-failed', 'first.md', '--attempts', '2']).status,
+    ).toBe(1);
+    rmSync(paths.scenario);
+    writeFileSync(
+      paths.candidate,
+      JSON.stringify({
+        ...original.candidate,
+        claims: [{ ...original.candidate.claims[0], text }],
+      }),
+    );
+    expect(
+      invoke(paths.root, [...ingest, '--retry-failed', 'first.md', '--attempts', '3']).status,
+    ).toBe(0);
+  }
+  return prepare(paths);
+}
+
+function setRevisionOptions(args: string[], attempts: string, maxRevisions: string) {
+  const result = [...args];
+  const index = result.indexOf('--attempts');
+  if (index < 0) throw new Error('Expected revision attempts option');
+  result[index + 1] = attempts;
+  result.push('--max-revisions', maxRevisions);
+  return result;
+}
