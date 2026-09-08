@@ -9,8 +9,8 @@ Use Bun 1.4.2, Git 2.45 or newer, and a committed checkout:
 
 ```sh
 bun install
-bun src/cli.ts search "versioned sources" --collection hivex
-bun src/cli.ts read docs/adr/0001-versioned-project-knowledge.md --ref <commit-from-search>
+bun hivex search "versioned sources" --collection hivex
+bun hivex read docs/adr/0001-versioned-project-knowledge.md --ref <commit-from-search>
 ```
 
 Git 2.45 introduced the no-lazy-fetch control used to keep source reads local, including in
@@ -27,7 +27,7 @@ matching amendment does not hide the original decision. Omit the cursor to read 
 the beginning. Pass the same `--ref` and source ID:
 
 ```sh
-bun src/cli.ts read <source-id> --ref <commit-from-search> --cursor <readCursor> --max-bytes 16384
+bun hivex read <source-id> --ref <commit-from-search> --cursor <readCursor> --max-bytes 16384
 ```
 
 Continue with the returned `continuation` until it is null. Each page fits the byte budget including
@@ -59,7 +59,8 @@ Add and commit `hivex.json` in its Git root:
 }
 ```
 
-Then run `bun /path/to/hivex/src/cli.ts search "your question" --root /path/to/project`.
+From the Hivex checkout, run `bun hivex search "your question" --root /path/to/project`.
+After installing `@h1v35/hivex` in a project, the same `bun hivex` command resolves its installed binary.
 Collections must have distinct ownership of each selected passage. `aliasPrefix` associates explicit
 references such as `ADR 0006` with numbered filenames such as `0006-policy.md`; it is configuration,
 not a Compi-specific behavior. Files must be regular tracked UTF-8 Markdown. Symlinks are refused.
@@ -120,8 +121,8 @@ Unselected text remains available through the full-document read but is not inde
 Inspect replacement and amendment records associated with a source:
 
 ```sh
-bun src/cli.ts relations docs/adr/0088-ui-design-system-ratified.md --limit 4 --max-bytes 8192
-bun src/cli.ts relations <source-id> --ref <commit-from-response> --cursor <continuation>
+bun hivex relations docs/adr/0088-ui-design-system-ratified.md --limit 4 --max-bytes 8192
+bun hivex relations <source-id> --ref <commit-from-response> --cursor <continuation>
 ```
 
 Configure the optional input alongside `collections` in the committed `hivex.json`:
@@ -189,8 +190,8 @@ when excluded from default search. Collection selection does not revoke source a
 Inspect the complete declared source cohort before making a model call:
 
 ```sh
-bun src/cli.ts plan --collection hivex --limit 10 --max-bytes 16384
-bun src/cli.ts plan --collection hivex --ref <commit-from-plan> --cursor <continuation>
+bun hivex plan --collection hivex --limit 10 --max-bytes 16384
+bun hivex plan --collection hivex --ref <commit-from-plan> --cursor <continuation>
 ```
 
 `plan` reads committed sources and makes no model call or workspace write. Default selection is the
@@ -221,7 +222,7 @@ the trailing newline. This planning interface does not execute or resume a rebui
 admitted `codex-cli 0.153.2` on macOS or Linux. This is an explicit model operation:
 
 ```sh
-bun src/cli.ts extract docs/adr/0001-versioned-project-knowledge.md --ref <commit> --attempts 3 --deadline-ms 600000
+bun hivex extract docs/adr/0001-versioned-project-knowledge.md --ref <commit> --attempts 3 --deadline-ms 600000
 ```
 
 The source must be declared in the selected commit's `hivex.json` and contain at most 32,768 UTF-8
@@ -261,10 +262,10 @@ Ignore `.hivex/` in the adopting repository. `ingest` keeps one local SQLite sto
 Stores have an explicit format version; unsupported formats are rejected intact before processing.
 
 ```sh
-bun src/cli.ts ingest --collection hivex --max-units 1
-bun src/cli.ts ingest --max-units 20
-bun src/cli.ts ingest --max-units 0
-bun src/cli.ts ingest --show docs/adr/0001-versioned-project-knowledge.md
+bun hivex ingest --collection hivex --max-units 1
+bun hivex ingest --max-units 20
+bun hivex ingest --max-units 0
+bun hivex ingest --show docs/adr/0001-versioned-project-knowledge.md
 ```
 
 The first command freezes the complete plan. Later commands resume its original commit and
@@ -301,7 +302,7 @@ or persistence failure cannot silently turn an unresolved source into a complete
 Retain the evidence needed for later admission or auditing before deliberately removing a cohort:
 
 ```sh
-bun src/cli.ts ingest --discard <exact-plan-hash>
+bun hivex ingest --discard <exact-plan-hash>
 ```
 
 Discard empties that same store for reuse and makes no model calls. It rejects a different hash
@@ -315,12 +316,12 @@ and implementation grounding remain required before completing the project cycle
 After every source in a cohort has a retained candidate, build its graph without another model call:
 
 ```sh
-bun src/cli.ts graph build
-bun src/cli.ts graph build --export > .hivex/candidate.graph.json
-bun src/cli.ts graph check --input .hivex/candidate.graph.json
-bun src/cli.ts graph search "cache authority" --input .hivex/candidate.graph.json
-bun src/cli.ts graph read <claim-id> --input .hivex/candidate.graph.json
-bun src/cli.ts graph neighbors <claim-id> --input .hivex/candidate.graph.json
+bun hivex graph build
+bun hivex graph build --export > .hivex/candidate.graph.json
+bun hivex graph check --input .hivex/candidate.graph.json
+bun hivex graph search "cache authority" --input .hivex/candidate.graph.json
+bun hivex graph read <claim-id> --input .hivex/candidate.graph.json
+bun hivex graph neighbors <claim-id> --input .hivex/candidate.graph.json
 ```
 
 The default build response is a small summary. `--export` writes the complete candidate snapshot to
@@ -372,8 +373,8 @@ required by an adopting project.
 ### Review extraction fidelity
 
 ```sh
-bun run cli graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project --prepare
-bun run cli graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project
+bun hivex graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project --prepare
+bun hivex graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project
 ```
 
 The first command exposes the exact prompt and structured output schema without starting a model.
@@ -405,10 +406,10 @@ tokens. This small experiment is not human gold, a corpus evaluation or evidence
 ### Resume a source-review cohort
 
 ```sh
-bun run cli graph review --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 20
-bun run cli graph review --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 0
-bun run cli graph review --show 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project
-bun run cli graph review --export --input /tmp/candidate-graph.json --root /path/to/project --max-bytes 134217728
+bun hivex graph review --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 20
+bun hivex graph review --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 0
+bun hivex graph review --show 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project
+bun hivex graph review --export --input /tmp/candidate-graph.json --root /path/to/project --max-bytes 134217728
 ```
 
 The working store defaults to `.hivex/reviews.sqlite`; `--store` selects another local path. A cohort
@@ -438,8 +439,8 @@ No per-source files, automatic history rotation or automatic disposal of uncerta
 ### Compare source decisions
 
 ```sh
-bun run cli graph compare 'docs/decision.md' 'docs/amendment.md' --input /tmp/candidate-graph.json --root /path/to/project --prepare
-bun run cli graph compare 'docs/decision.md' 'docs/amendment.md' --input /tmp/candidate-graph.json --root /path/to/project
+bun hivex graph compare 'docs/decision.md' 'docs/amendment.md' --input /tmp/candidate-graph.json --root /path/to/project --prepare
+bun hivex graph compare 'docs/decision.md' 'docs/amendment.md' --input /tmp/candidate-graph.json --root /path/to/project
 ```
 
 Comparison supplies both complete sources, their statements and existing source-local relationships
@@ -471,7 +472,7 @@ a small agent-authored experiment, not human gold or validation of the real docu
 ### Retry a failed extraction
 
 After inspecting and addressing a failed source, use
-`bun run cli ingest --retry-failed <source-id>` with the same store and source cohort. It retries that source
+`bun hivex ingest --retry-failed <source-id>` with the same store and source cohort. It retries that source
 first, then continues pending sources within `--max-units`. Completed sources are reused. Ordinary
 `ingest` never retries failed sources implicitly.
 
@@ -488,7 +489,7 @@ invalid extraction output. A retry cannot use `--max-units 0` or create a new co
 ### Plan documented source comparisons
 
 ```sh
-bun run cli graph compare-plan --input /tmp/candidate-graph.json --root /path/to/project
+bun hivex graph compare-plan --input /tmp/candidate-graph.json --root /path/to/project
 ```
 
 The deterministic plan proposes pairs connected by authored Markdown links in the same snapshot.
@@ -508,11 +509,11 @@ output must fit `--max-bytes` (16 KiB by default, maximum 8 MiB); it is never si
 ### Retain and resume selected source comparisons
 
 ```sh
-bun run cli graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 20
-bun run cli graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 0
-bun run cli graph compare --show <pair-id> --input /tmp/candidate-graph.json --root /path/to/project
-bun run cli graph compare --export --input /tmp/candidate-graph.json --root /path/to/project --max-bytes 134217728
-bun run cli graph compare --discard <plan-hash> --root /path/to/project
+bun hivex graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 20
+bun hivex graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 0
+bun hivex graph compare --show <pair-id> --input /tmp/candidate-graph.json --root /path/to/project
+bun hivex graph compare --export --input /tmp/candidate-graph.json --root /path/to/project --max-bytes 134217728
+bun hivex graph compare --discard <plan-hash> --root /path/to/project
 ```
 
 The cohort recomputes the authored-link plan from the exact fresh graph. Resolve that plan's missing
@@ -538,9 +539,9 @@ To also discover unlinked sources with shared documentary vocabulary, choose a b
 lexical neighbors per source:
 
 ```sh
-bun run cli graph compare-plan --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
-bun run cli graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
-bun run cli graph compare --export --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4 --max-bytes 134217728
+bun hivex graph compare-plan --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
+bun hivex graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
+bun hivex graph compare --export --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4 --max-bytes 134217728
 ```
 
 `--neighbors` accepts 0–8, defaults to 0 (the existing authored-link plan), and must remain the same
@@ -556,10 +557,10 @@ it does not prove global consistency.
 After source-fidelity reviews and the chosen comparison cohort are complete:
 
 ```sh
-bun run cli graph admit --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
-bun run cli graph admit --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4 --export > /path/to/project/hivex.graph.json
-bun run cli graph check --input /path/to/project/hivex.graph.json --root /path/to/project
-bun run cli graph neighbors <claim-id> --input /path/to/project/hivex.graph.json --root /path/to/project
+bun hivex graph admit --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4
+bun hivex graph admit --input /tmp/candidate-graph.json --root /path/to/project --neighbors 4 --export > /path/to/project/hivex.graph.json
+bun hivex graph check --input /path/to/project/hivex.graph.json --root /path/to/project
+bun hivex graph neighbors <claim-id> --input /path/to/project/hivex.graph.json --root /path/to/project
 ```
 
 Use the same `--neighbors` setting as the comparison cohort (default 0). `--reviews` and

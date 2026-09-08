@@ -12,8 +12,9 @@ continues to own implementation, Git and code review.
 
 Read the repository's agent instructions, documentation map and `hivex.json`. Run `hivex --help` once
 for the installed version when its interface is unfamiliar. In a project installation, use
-`bunx --no-install hivex`; the package is `@h1v35/hivex`. Do not fetch the unrelated unscoped `hivex`
-package. In Hivex's own checkout, the development equivalent is `bun run cli`.
+`bun hivex`; Bun resolves the locally installed binary. The package is `@h1v35/hivex`. Do not fetch the unrelated unscoped `hivex`
+package. In Hivex's own checkout, `bun hivex` runs its development entry point.
+Use `bunx --no-install hivex` when a harness explicitly needs binary-only resolution.
 
 Use the installed version's help and package README for uncommon flags. Do not invent commands or
 report an unsupported stage as completed. Existing project authorization still applies; this skill
@@ -67,8 +68,9 @@ amendments. State which part is replaced and what remains applicable; a partial 
 whole-document revocation.
 
 Update the existing authoritative document when it owns the topic. Link shared rules instead of
-copying them. Documentation records intent and constraints that code cannot explain; avoid a second
-manual narrating implementation details. Preserve useful decisions in the repository, not private
+copying them. Keep code self-explanatory through clear names, structure and behavior. Repository Markdown is the
+source of truth for intent, constraints, decisions and reasons that code cannot explain. Do not write
+a parallel manual describing the implementation or compensate for unclear code with documentation. Preserve useful decisions in the repository, not private
 agent memory. Historical agent assertions require provenance before becoming current doctrine.
 
 ## Rebuild and review deliberately
