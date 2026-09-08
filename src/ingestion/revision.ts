@@ -21,6 +21,7 @@ import { extractionSchema } from './claims.ts';
 import { prepareExtraction } from './preparation.ts';
 import { revisionSchema } from './history.ts';
 import { inputUnitSchema } from '../graph/snapshot.ts';
+import { prepareFeedbackReview } from '../graph/source-feedback.ts';
 
 function invalid(message: string): never {
   throw new HivexError({ code: 'INGESTION_REVISION_INVALID', message });
@@ -136,10 +137,13 @@ function prepareRevision(options: ReturnType<typeof argumentsFor>) {
   if ((previous.revisions?.length ?? 0) >= 3)
     invalid('This source has exhausted its three semantic revisions');
   const feedback = readFeedback(options.feedback, options.id);
+  const reviewed = feedback.feedback
+    ? prepareFeedbackReview(context, options.id, feedback.feedback)
+    : prepared;
   const plan = sourceReviewPlan(context);
   validateAssessmentBinding(
     reviewBinding(feedback),
-    { id: options.id, actualId: feedback.source.id, promptHash: hash(prepared.prompt) },
+    { id: options.id, actualId: feedback.source.id, promptHash: hash(reviewed.prompt) },
     plan,
   );
   validateSourceReviews([{ id: options.id, state: feedback.status, result: feedback }], context);

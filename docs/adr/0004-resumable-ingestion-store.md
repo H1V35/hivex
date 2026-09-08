@@ -73,6 +73,11 @@ another fidelity review. A safe explicit retry preserves the revision request an
 The retained review's usage remains in its original receipt; ingestion attempt totals count extraction
 calls only, so copying review evidence does not charge it as a new invocation.
 
+A standalone [fidelity reassessment with comparison feedback](0006-source-fidelity-review.md#reassess-a-claim-questioned-by-a-later-comparison)
+may supply that adverse evidence. Revalidate its complete original comparison and prepared request
+before revision. The comparison itself never authorizes a candidate change; the resulting fidelity
+must independently satisfy the same sufficient-context and concrete omission/distortion requirements.
+
 A successful replacement is still a candidate and needs fresh fidelity review before admission.
 Unrelated source candidates remain intact. Reassociation of compatible source reviews uses the explicit
 [source-review operation](0006-source-fidelity-review.md#reuse-unchanged-source-evidence); ingestion

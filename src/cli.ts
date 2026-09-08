@@ -69,7 +69,7 @@ async function main(args: string[]) {
             'graph <search|read|neighbors> <query-or-id> --input <file> [--root <repo>] [--against <commit>] [--limit 1..20] [--max-bytes 1024..524288]',
           continuation: 'graph neighbors <id> --input <file> [--cursor <continuation>]',
           review:
-            'graph review <source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
+            'graph review <source-id> --input <file> [--feedback <comparison-result>] [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
           reviewCohort:
             'graph review --all --input <file> [--store <file>] [--root <repo>] [--max-units 0..2048] [--codex <binary>] [--deadline-ms 100..900000]',
           reviewReuse:

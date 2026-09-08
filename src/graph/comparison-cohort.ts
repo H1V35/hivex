@@ -126,10 +126,10 @@ function prepare(context: Context, id: string) {
   return prepareComparison(context.context, sources);
 }
 
-function validateResult(
+export function validateComparisonResult(
   result: ComparisonResult,
   prepared: ReturnType<typeof prepareComparison>,
-  selectionHash: string,
+  selectionHash?: string,
 ) {
   if (
     result.association &&
@@ -213,7 +213,7 @@ function validateHashes(result: ComparisonResult, prepared: ReturnType<typeof pr
 export function validateComparisons(rows: Rows, context: Context) {
   for (const row of rows)
     if (row.result)
-      validateResult(row.result, prepare(context, row.id), context.selection.planHash);
+      validateComparisonResult(row.result, prepare(context, row.id), context.selection.planHash);
 }
 
 function inspect(rows: Rows, context: Context, options: ReturnType<typeof assessmentArguments>) {

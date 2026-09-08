@@ -21,6 +21,7 @@ import {
 import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
 import { usageSchema } from '../model/transcript.ts';
 import { digest } from './snapshot.ts';
+import { comparisonFeedbackSchema, prepareFeedbackReview } from './source-feedback.ts';
 
 export const reviewResultSchema = z.looseObject({
   command: z.literal('graph'),
@@ -37,6 +38,7 @@ export const reviewResultSchema = z.looseObject({
   }),
   report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
   review: sourceReviewSchema.nullable(),
+  feedback: comparisonFeedbackSchema.optional(),
   association: z
     .strictObject({
       graphHash: digest,
@@ -109,7 +111,17 @@ export function validateSourceReviews(
   for (const row of rows) {
     const result = row.result;
     if (!result) continue;
-    const prepared = prepareSourceReview(context, row.id);
+    const prepared = result.feedback
+      ? prepareFeedbackReview(context, row.id, result.feedback)
+      : prepareSourceReview(context, row.id);
+    if (
+      result.feedback &&
+      (result.association || result.contract.promptHash !== hash(prepared.prompt))
+    )
+      throw new HivexError({
+        code: 'INVALID_REVIEW_STORE',
+        message: 'Feedback-driven fidelity must retain its original complete request binding',
+      });
     validateReviewProvenance(result, prepared);
     validateCompletedInvocation(result.report);
     if (result.review) validateReview(result.review, prepared);

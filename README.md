@@ -654,6 +654,29 @@ formats atomically and requires no active claims during migration. Keep the comp
 before retirement: graph admission retains current successful evidence, while failed-attempt history
 remains in the working store and these caller-owned archives.
 
+### Reassess fidelity after comparison feedback
+
+A comparison may expose a candidate distortion missed by an earlier source review. Retain the
+original results and give that concrete concern to a standalone fidelity reassessment:
+
+```sh
+bun hivex graph compare --show <pair-id> --input /tmp/candidate-graph.json --neighbors 4 --max-bytes 1048576 > /tmp/comparison-feedback.json
+bun hivex graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --feedback /tmp/comparison-feedback.json --prepare
+bun hivex graph review 'docs/decisions.md' --input /tmp/candidate-graph.json --feedback /tmp/comparison-feedback.json > /tmp/reassessed-fidelity.json
+bun hivex ingest --revise 'docs/decisions.md' --input /tmp/candidate-graph.json --feedback /tmp/reassessed-fidelity.json --prepare
+```
+
+Supply the project's `--root` and stores as needed. The feedback must be a complete original
+comparison result (or `--show` envelope) of at most 256 KiB, from the same graph, with at least one
+unresolved candidate claim from this source. For a reused comparison, return to its preserved original
+graph/receipt. The complete source and feedback request must also fit 256 KiB.
+
+The reviewer independently assesses all source claims and may uphold the extraction. A comparison's
+insufficient context does not itself prove a fidelity defect. The resulting review retains the full
+comparison receipt and hash; it changes neither working cohort. Only valid adverse fidelity with
+sufficient context and concrete omissions/distortions can justify revision. Preparation and validation
+make no model calls; execution is one new assessment with the configured Luna/max profile.
+
 ## Admit and inspect a reviewed graph
 
 After source-fidelity reviews and the chosen comparison cohort are complete:

@@ -77,6 +77,7 @@ function argumentsFor(args: string[]) {
     against: parsed.values.against,
     binary: parsed.values.codex ?? 'codex',
     prepare: parsed.values.prepare ?? false,
+    feedback: parsed.values.feedback,
     deadlineMilliseconds: parseLimit(parsed.values['deadline-ms'], {
       fallback: 600_000,
       minimum: 100,
@@ -97,6 +98,7 @@ function parse(args: string[]) {
       codex: { type: 'string' },
       'deadline-ms': { type: 'string' },
       prepare: { type: 'boolean' },
+      feedback: { type: 'string' },
     },
   });
 }
@@ -222,13 +224,23 @@ export function satisfactory(review: SourceReview) {
   );
 }
 
+type SourceReviewPreparation = ReturnType<typeof prepareSourceReview> & {
+  feedback?: { comparison: unknown; hash: string };
+};
+
 export async function sourceReviewCommand(args: string[]) {
   const options = argumentsFor(args);
-  return runSourceReview(prepareSourceReview(createReviewContext(options), options.id), options);
+  const context = createReviewContext(options);
+  let prepared: SourceReviewPreparation = prepareSourceReview(context, options.id);
+  if (options.feedback) {
+    const { prepareFeedbackReview, readComparisonFeedback } = await import('./source-feedback.ts');
+    prepared = prepareFeedbackReview(context, options.id, readComparisonFeedback(options.feedback));
+  }
+  return runSourceReview(prepared, options);
 }
 
 export async function runSourceReview(
-  prepared: ReturnType<typeof prepareSourceReview>,
+  prepared: SourceReviewPreparation,
   options: {
     binary: string;
     deadlineMilliseconds: number;
@@ -245,6 +257,7 @@ export async function runSourceReview(
     comparedCommit: prepared.check.freshness.comparedCommit,
     source: prepared.packet.source,
     model: knowledgeModel,
+    ...(prepared.feedback ? { feedback: prepared.feedback } : {}),
     contract: {
       nativeVersion,
       requestedPolicyHash: requestedPolicyHash(),
