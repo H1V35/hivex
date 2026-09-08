@@ -1,38 +1,32 @@
 import { Database } from 'bun:sqlite';
 import { closeSync, lstatSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { z } from 'zod';
 import { HivexError } from '../errors.ts';
 import { hash } from '../sources/markdown.ts';
-import { usageSchema } from '../model/transcript.ts';
-import { digest } from './snapshot.ts';
-import { sourceReviewSchema } from './source-review.ts';
 
-export type ReviewPlan = {
+export type AssessmentPlan = {
   graphHash: string;
+  selectionHash?: string;
   contract: { nativeVersion: string; requestedPolicyHash: string; schemaHash: string };
   sources: { id: string; promptHash: string }[];
 };
 const maximumBytes = 128 * 1024 * 1024;
 const resultLimit = 8 * 1024 * 1024;
-const applicationId = 0x48565852;
-const resultSchema = z.looseObject({
-  command: z.literal('graph'),
-  operation: z.literal('review'),
-  accepted: z.literal(false),
-  status: z.enum(['reviewed', 'failed']),
-  graphHash: digest,
-  source: z.looseObject({ id: z.string() }),
-  contract: z.looseObject({
-    promptHash: digest,
-    schemaHash: digest,
-    nativeVersion: z.string(),
-    requestedPolicyHash: digest,
-  }),
-  report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
-  review: sourceReviewSchema.nullable(),
-});
-export type ReviewResult = z.infer<typeof resultSchema>;
+export type AssessmentResult = {
+  status: 'reviewed' | 'failed';
+  graphHash: string;
+  contract: {
+    promptHash: string;
+    schemaHash: string;
+    nativeVersion: string;
+    requestedPolicyHash: string;
+  };
+};
+export type AssessmentContract<T extends AssessmentResult> = {
+  applicationId: number;
+  parse: (value: unknown) => T;
+  unitId: (result: T) => string;
+};
 type Row = {
   id: string;
   ordinal: number;
@@ -70,13 +64,13 @@ function file(path: string, readonly: boolean) {
   }
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > maximumBytes)
-    fail('INVALID_REVIEW_STORE', 'Use a regular review store of at most 128 MiB');
+    fail('INVALID_REVIEW_STORE', 'Use a regular assessment store of at most 128 MiB');
   const db = new Database(path, { strict: true, readonly });
   db.run('PRAGMA busy_timeout=1000');
   return db;
 }
 
-function identity(db: Database, allowEmpty: boolean) {
+function identity(db: Database, allowEmpty: boolean, applicationId: number) {
   const id = db
     .query<{ application_id: number }, []>('PRAGMA application_id')
     .get()?.application_id;
@@ -86,11 +80,11 @@ function identity(db: Database, allowEmpty: boolean) {
     .query<{ count: number }, []>('SELECT count(*) AS count FROM sqlite_schema')
     .get()?.count;
   if (allowEmpty && id === 0 && version === 0 && objects === 0) return false;
-  return fail('INVALID_REVIEW_STORE', 'Unsupported review store format');
+  return fail('INVALID_REVIEW_STORE', 'Unsupported assessment store format');
 }
 
-function assertPlan(db: Database, plan: ReviewPlan) {
-  identity(db, false);
+function assertPlan(db: Database, plan: AssessmentPlan, applicationId: number) {
+  identity(db, false, applicationId);
   const row = db
     .query<
       { value: string; value_hash: string; retired: number },
@@ -98,16 +92,17 @@ function assertPlan(db: Database, plan: ReviewPlan) {
     >('SELECT value, value_hash, retired FROM cohort WHERE id=1')
     .get();
   if (!row || hash(row.value) !== row.value_hash)
-    fail('INVALID_REVIEW_STORE', 'Review plan is missing or altered');
-  if (row.retired !== 0) fail('REVIEW_STORE_RETIRED', 'This review cohort was explicitly retired');
+    fail('INVALID_REVIEW_STORE', 'Assessment plan is missing or altered');
+  if (row.retired !== 0)
+    fail('REVIEW_STORE_RETIRED', 'This assessment cohort was explicitly retired');
   if (row.value !== JSON.stringify(plan))
     fail(
       'REVIEW_PLAN_MISMATCH',
-      'The retained review belongs to another graph or processing contract',
+      'The retained assessment belongs to another graph or processing contract',
     );
 }
 
-function initializePlan(db: Database, plan: ReviewPlan) {
+function initializePlan(db: Database, plan: AssessmentPlan) {
   const value = JSON.stringify(plan);
   db.run('INSERT OR REPLACE INTO cohort VALUES (1, ?, ?, 0)', [value, hash(value)]);
   for (const [ordinal, source] of plan.sources.entries())
@@ -118,10 +113,14 @@ function initializePlan(db: Database, plan: ReviewPlan) {
     ]);
 }
 
-function decode(row: Row, plan: ReviewPlan) {
+function decode<T extends AssessmentResult>(
+  row: Row,
+  plan: AssessmentPlan,
+  contract: AssessmentContract<T>,
+) {
   const source = plan.sources[row.ordinal];
   if (!source || source.id !== row.id)
-    fail('INVALID_REVIEW_STORE', 'Review sources differ from the retained plan');
+    fail('INVALID_REVIEW_STORE', 'Assessment sources differ from the retained plan');
   const finished = row.state === 'reviewed' || row.state === 'failed';
   if (
     !['pending', 'running', 'reviewed', 'failed'].includes(row.state) ||
@@ -129,47 +128,56 @@ function decode(row: Row, plan: ReviewPlan) {
     finished !== (row.value !== null) ||
     finished !== (row.value_hash !== null)
   )
-    fail('INVALID_REVIEW_STORE', 'Review state is inconsistent');
+    fail('INVALID_REVIEW_STORE', 'Assessment state is inconsistent');
   if (!finished || row.value === null) return { id: row.id, state: row.state, result: null };
   if (Buffer.byteLength(row.value) > resultLimit || hash(row.value) !== row.value_hash)
-    fail('INVALID_REVIEW_STORE', 'A retained review is oversized or altered');
-  const result = resultSchema.parse(JSON.parse(row.value));
+    fail('INVALID_REVIEW_STORE', 'A retained assessment is oversized or altered');
+  const result = contract.parse(JSON.parse(row.value));
   if (
     result.status !== row.state ||
-    result.source.id !== row.id ||
+    contract.unitId(result) !== row.id ||
     result.graphHash !== plan.graphHash ||
     result.contract.promptHash !== source.promptHash ||
     result.contract.schemaHash !== plan.contract.schemaHash ||
     result.contract.nativeVersion !== plan.contract.nativeVersion ||
     result.contract.requestedPolicyHash !== plan.contract.requestedPolicyHash
   )
-    fail('INVALID_REVIEW_STORE', 'A review result differs from its planned inputs');
+    fail('INVALID_REVIEW_STORE', 'An assessment result differs from its planned inputs');
   return { id: row.id, state: row.state, result };
 }
 
-function records(db: Database, plan: ReviewPlan) {
-  assertPlan(db, plan);
+function records<T extends AssessmentResult>(
+  db: Database,
+  plan: AssessmentPlan,
+  contract: AssessmentContract<T>,
+) {
+  assertPlan(db, plan, contract.applicationId);
   const rows = db.query<Row, []>('SELECT * FROM reviews ORDER BY ordinal').all();
   if (rows.length !== plan.sources.length || rows.some((row, index) => row.ordinal !== index))
-    fail('INVALID_REVIEW_STORE', 'Review coverage differs from the retained plan');
-  return rows.map((row) => decode(row, plan));
+    fail('INVALID_REVIEW_STORE', 'Assessment coverage differs from the retained plan');
+  return rows.map((row) => decode(row, plan, contract));
 }
 
-export class ReviewStore {
+export class AssessmentStore<T extends AssessmentResult> {
+  private readonly contract: AssessmentContract<T>;
   private readonly db: Database;
-  private readonly plan: ReviewPlan;
+  private readonly plan: AssessmentPlan;
 
-  static read(path: string, plan: ReviewPlan) {
+  static read<T extends AssessmentResult>(
+    path: string,
+    plan: AssessmentPlan,
+    contract: AssessmentContract<T>,
+  ) {
     using db = file(path, true);
-    return db.transaction(() => records(db, plan))();
+    return db.transaction(() => records(db, plan, contract))();
   }
 
-  static discard(path: string, expectedHash: string) {
+  static discard(path: string, expectedHash: string, applicationId: number) {
     lstatSync(path);
     using db = file(path, false);
     return db
       .transaction(() => {
-        identity(db, false);
+        identity(db, false, applicationId);
         const row = db
           .query<
             { value: string; value_hash: string; retired: number },
@@ -177,7 +185,10 @@ export class ReviewStore {
           >('SELECT * FROM cohort WHERE id=1')
           .get();
         if (!row || hash(row.value) !== row.value_hash || row.retired !== 0)
-          fail('INVALID_REVIEW_STORE', 'The retained review plan is invalid or already retired');
+          fail(
+            'INVALID_REVIEW_STORE',
+            'The retained assessment plan is invalid or already retired',
+          );
         if (expectedHash !== row.value_hash)
           fail('REVIEW_PLAN_MISMATCH', 'Retirement requires the exact current plan hash');
         const claimed = db
@@ -204,19 +215,21 @@ export class ReviewStore {
       .immediate();
   }
 
-  constructor(path: string, plan: ReviewPlan) {
+  constructor(path: string, plan: AssessmentPlan, contract: AssessmentContract<T>) {
+    this.contract = contract;
+    const applicationId = contract.applicationId;
     this.plan = plan;
     if (Buffer.byteLength(JSON.stringify(plan)) > 1024 * 1024 || plan.sources.length > 2048)
-      fail('REVIEW_PLAN_TOO_LARGE', 'A review cohort must fit 1 MiB and 2048 sources');
+      fail('REVIEW_PLAN_TOO_LARGE', 'An assessment cohort must fit 1 MiB and 2048 sources');
     this.db = file(path, false);
     try {
-      if (!identity(this.db, true)) {
+      if (!identity(this.db, true, applicationId)) {
         this.db.run('PRAGMA page_size=4096');
         this.db.run('PRAGMA journal_mode=DELETE');
         this.db.run('PRAGMA synchronous=FULL');
         this.db
           .transaction(() => {
-            if (identity(this.db, true)) return;
+            if (identity(this.db, true, applicationId)) return;
             this.db.run(`PRAGMA application_id=${applicationId}`);
             this.db.run('PRAGMA user_version=1');
             this.db.run(
@@ -247,9 +260,9 @@ export class ReviewStore {
       const pageSize = this.db
         .query<{ page_size: number }, []>('PRAGMA page_size')
         .get()?.page_size;
-      if (pageSize !== 4096) fail('INVALID_REVIEW_STORE', 'Unsupported review store page size');
+      if (pageSize !== 4096) fail('INVALID_REVIEW_STORE', 'Unsupported assessment store page size');
       this.db.run('PRAGMA max_page_count=32768');
-      records(this.db, plan);
+      records(this.db, plan, this.contract);
     } catch (error) {
       this.db.close();
       throw error;
@@ -257,18 +270,18 @@ export class ReviewStore {
   }
 
   snapshot() {
-    return this.db.transaction(() => records(this.db, this.plan))();
+    return this.db.transaction(() => records(this.db, this.plan, this.contract))();
   }
 
   claim(owner: string) {
     return this.db
       .transaction(() => {
-        assertPlan(this.db, this.plan);
+        assertPlan(this.db, this.plan, this.contract.applicationId);
         const next = this.db
           .query<Row, []>("SELECT * FROM reviews WHERE state='pending' ORDER BY ordinal LIMIT 1")
           .get();
         if (!next) return null;
-        decode(next, this.plan);
+        decode(next, this.plan, this.contract);
         const pages =
           this.db.query<{ page_count: number }, []>('PRAGMA page_count').get()?.page_count ?? 32768;
         const free =
@@ -303,18 +316,19 @@ export class ReviewStore {
     if (Buffer.byteLength(value) > resultLimit)
       fail(
         'REVIEW_RESULT_TOO_LARGE',
-        'The full review exceeds 8 MiB; its claim remains unresolved',
+        'The full assessment exceeds 8 MiB; its claim remains unresolved',
       );
-    const result = resultSchema.parse(output);
+    const result = this.contract.parse(output);
     this.db
       .transaction(() => {
-        assertPlan(this.db, this.plan);
+        assertPlan(this.db, this.plan, this.contract.applicationId);
         const row = this.db.query<Row, [string]>('SELECT * FROM reviews WHERE id=?').get(id);
         if (!row || row.state !== 'running' || row.owner !== owner)
-          fail('REVIEW_CLAIM_LOST', 'Only the recorded owner can complete a review claim');
+          fail('REVIEW_CLAIM_LOST', 'Only the recorded owner can complete a assessment claim');
         decode(
           { ...row, state: result.status, owner: null, value, value_hash: hash(value) },
           this.plan,
+          this.contract,
         );
         this.db.run('UPDATE reviews SET state=?, owner=NULL, value=?, value_hash=? WHERE id=?', [
           result.status,

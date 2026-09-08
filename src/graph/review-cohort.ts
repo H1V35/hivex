@@ -1,12 +1,13 @@
-import { parseArgs } from 'node:util';
-import { resolve } from 'node:path';
+import {
+  assessmentArguments,
+  summarize,
+  validateCompletedInvocation,
+} from './assessment-cohort.ts';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
-import { parseLimit } from '../cli/arguments.ts';
 import { HivexError } from '../errors.ts';
 import { hash } from '../sources/markdown.ts';
 import { knowledgeModel, nativeVersion, requestedPolicyHash } from '../model/profile.ts';
-import { reportedProfileSchema } from './snapshot.ts';
 import {
   createReviewContext,
   prepareSourceReview,
@@ -15,120 +16,36 @@ import {
   satisfactory,
   validateReview,
 } from './source-review.ts';
-import { ReviewStore, type ReviewPlan, type ReviewResult } from './review-store.ts';
+import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
+import { usageSchema } from '../model/transcript.ts';
+import { digest } from './snapshot.ts';
 
-function input(args: string[]) {
-  try {
-    return parseArgs({
-      args,
-      strict: true,
-      options: {
-        all: { type: 'boolean' },
-        input: { type: 'string' },
-        root: { type: 'string' },
-        store: { type: 'string' },
-        against: { type: 'string' },
-        codex: { type: 'string' },
-        'max-units': { type: 'string' },
-        'deadline-ms': { type: 'string' },
-        show: { type: 'string' },
-        export: { type: 'boolean' },
-        discard: { type: 'string' },
-        'max-bytes': { type: 'string' },
-      },
-    }).values;
-  } catch (error) {
-    throw new HivexError({
-      code: 'INVALID_ARGUMENT',
-      message: error instanceof Error ? error.message : 'Invalid cohort review arguments',
-    });
-  }
-}
+const reviewResultSchema = z.looseObject({
+  command: z.literal('graph'),
+  operation: z.literal('review'),
+  accepted: z.literal(false),
+  status: z.enum(['reviewed', 'failed']),
+  graphHash: digest,
+  source: z.looseObject({ id: z.string() }),
+  contract: z.looseObject({
+    promptHash: digest,
+    schemaHash: digest,
+    nativeVersion: z.string(),
+    requestedPolicyHash: digest,
+  }),
+  report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
+  review: sourceReviewSchema.nullable(),
+});
+export type ReviewResult = z.infer<typeof reviewResultSchema>;
 
-function validateInspectionFlags(values: ReturnType<typeof input>) {
-  if (
-    !values.all &&
-    [values.codex, values['max-units'], values['deadline-ms']].some((value) => value !== undefined)
-  )
-    throw new HivexError({
-      code: 'INVALID_ARGUMENT',
-      message: 'Inspection and retirement cannot be mixed with execution options',
-    });
-  if ((values.all || values.discard !== undefined) && values['max-bytes'] !== undefined)
-    throw new HivexError({
-      code: 'INVALID_ARGUMENT',
-      message: '--max-bytes belongs to inspection or export',
-    });
-  if (values.discard !== undefined && (values.input !== undefined || values.against !== undefined))
-    throw new HivexError({
-      code: 'INVALID_ARGUMENT',
-      message: 'Retirement uses the retained plan hash, not a replacement graph',
-    });
-}
-
-function argumentsFor(args: string[]) {
-  const values = input(args);
-  if (
-    (!values.input && !values.discard) ||
-    [values.all, values.show !== undefined, values.export, values.discard !== undefined].filter(
-      Boolean,
-    ).length !== 1 ||
-    Object.values(values).some((value) => value === '')
-  )
-    throw new HivexError({
-      code: 'INVALID_ARGUMENT',
-      message:
-        'Choose --all, --show, --export or --discard; non-discard operations require --input',
-    });
-  validateInspectionFlags(values);
-  const root = values.root ?? process.cwd();
-  return {
-    root,
-    input: values.input ?? '',
-    against: values.against,
-    store: values.store ?? resolve(root, '.hivex/reviews.sqlite'),
-    binary: values.codex ?? 'codex',
-    show: values.show,
-    export: values.export ?? false,
-    discard: values.discard,
-    maxUnits: parseLimit(values['max-units'], { fallback: 20, minimum: 0, maximum: 2048 }),
-    maxBytes: parseLimit(values['max-bytes'], {
-      fallback: 16384,
-      minimum: 1024,
-      maximum: 128 * 1024 * 1024,
-    }),
-    deadlineMilliseconds: parseLimit(values['deadline-ms'], {
-      fallback: 600000,
-      minimum: 100,
-      maximum: 900000,
-    }),
-  };
-}
-
-function summarize(rows: ReturnType<ReviewStore['snapshot']>) {
-  const count = (state: string) => rows.filter((row) => row.state === state).length;
-  const completed = count('reviewed');
-  const failed = count('failed');
-  const unresolved = count('running');
-  let status = 'pending';
-  if (completed === rows.length) status = 'reviewed';
-  if (failed || unresolved) status = 'failed';
-  return {
-    status,
-    completed,
-    failed,
-    unresolved,
-    pending: count('pending'),
-    reportedTokens: rows.reduce(
-      (sum, row) => sum + (row.result?.report.usage?.totalTokens ?? 0),
-      0,
-    ),
-    unmeasuredResults: rows.filter((row) => row.result && row.result.report.usage === null).length,
-  };
-}
+const reviewContract = {
+  applicationId: 0x48565852,
+  parse: (value: unknown) => reviewResultSchema.parse(value),
+  unitId: (result: ReviewResult) => result.source.id,
+};
 
 function validateResults(
-  rows: ReturnType<ReviewStore['snapshot']>,
+  rows: ReturnType<AssessmentStore<ReviewResult>['snapshot']>,
   context: ReturnType<typeof createReviewContext>,
 ) {
   for (const row of rows) {
@@ -158,31 +75,10 @@ function validateResults(
   }
 }
 
-function validateCompletedInvocation(report: ReviewResult['report']) {
-  if (report.outcome !== 'completed') return;
-  const profile = z.looseObject(reportedProfileSchema.shape).safeParse(report.admission);
-  if (
-    !profile.success ||
-    profile.data.model !== knowledgeModel.name ||
-    profile.data.effort !== knowledgeModel.effort ||
-    profile.data.modelProvider !== knowledgeModel.provider ||
-    profile.data.authType !== 'chatgpt' ||
-    profile.data.configuredEndpointOrigin !== 'https://chatgpt.com' ||
-    report.cleanup !== 'confirmed' ||
-    report.turnAccepted !== 'confirmed' ||
-    typeof report.threadId !== 'string' ||
-    typeof report.turnId !== 'string'
-  )
-    throw new HivexError({
-      code: 'INVALID_REVIEW_STORE',
-      message: 'A completed review lacks its admitted native invocation evidence',
-    });
-}
-
 async function reviewPending(
-  options: ReturnType<typeof argumentsFor>,
+  options: ReturnType<typeof assessmentArguments>,
   context: ReturnType<typeof createReviewContext>,
-  store: ReviewStore,
+  store: AssessmentStore<ReviewResult>,
 ) {
   const owner = crypto.randomUUID();
   let processed = 0;
@@ -198,10 +94,11 @@ async function reviewPending(
 }
 
 export async function reviewCohortCommand(args: string[]) {
-  const options = argumentsFor(args);
-  if (options.discard !== undefined) return ReviewStore.discard(options.store, options.discard);
+  const options = assessmentArguments(args, 'review');
+  if (options.discard !== undefined)
+    return AssessmentStore.discard(options.store, options.discard, reviewContract.applicationId);
   const context = createReviewContext(options);
-  const plan: ReviewPlan = {
+  const plan: AssessmentPlan = {
     graphHash: context.input.graph.hash,
     contract: {
       nativeVersion,
@@ -221,7 +118,7 @@ export async function reviewCohortCommand(args: string[]) {
     planHash: hash(JSON.stringify(plan)),
   };
   if (options.show !== undefined || options.export) {
-    const rows = ReviewStore.read(options.store, plan);
+    const rows = AssessmentStore.read(options.store, plan, reviewContract);
     validateResults(rows, context);
     if (options.export) {
       const result = { ...envelope, plan, reviews: rows, ...summarize(rows) };
@@ -246,7 +143,7 @@ export async function reviewCohortCommand(args: string[]) {
       });
     return result;
   }
-  using store = new ReviewStore(options.store, plan);
+  using store = new AssessmentStore(options.store, plan, reviewContract);
   const previous = store.snapshot();
   validateResults(previous, context);
   const reused = previous.filter((row) => row.state === 'reviewed').length;

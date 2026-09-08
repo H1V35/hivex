@@ -11,19 +11,25 @@ import { graphCommand } from './graph/command.ts';
 import { sourceReviewCommand } from './graph/source-review.ts';
 import { reviewCohortCommand } from './graph/review-cohort.ts';
 import { comparisonCommand } from './graph/comparison.ts';
+import { comparisonCohortCommand } from './graph/comparison-cohort.ts';
 import { comparisonPlanCommand } from './graph/comparison-plan.ts';
+
+function isCohort(args: string[]) {
+  return args.some((arg) =>
+    ['--all', '--show', '--export', '--discard'].includes(arg.split('=')[0] ?? ''),
+  );
+}
 
 function dispatchGraph(args: string[]) {
   if (args[0] === 'compare-plan') return comparisonPlanCommand(args.slice(1));
-  if (args[0] === 'compare') return comparisonCommand(args.slice(1));
+  if (args[0] === 'compare') {
+    const comparisonArgs = args.slice(1);
+    if (isCohort(comparisonArgs)) return comparisonCohortCommand(comparisonArgs);
+    return comparisonCommand(comparisonArgs);
+  }
   if (args[0] === 'review') {
     const reviewArgs = args.slice(1);
-    if (
-      reviewArgs.some((arg) =>
-        ['--all', '--show', '--export', '--discard'].includes(arg.split('=')[0] ?? ''),
-      )
-    )
-      return reviewCohortCommand(reviewArgs);
+    if (isCohort(reviewArgs)) return reviewCohortCommand(reviewArgs);
     return sourceReviewCommand(reviewArgs);
   }
   return graphCommand(args);
@@ -56,6 +62,10 @@ async function main(args: string[]) {
             'graph review --discard <exact-plan-hash> [--store <file>] [--root <repo>]',
           comparison:
             'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
+          comparisonCohort:
+            'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728]',
+          comparisonRetirement:
+            'graph compare --discard <plan-hash> [--root <repo>] [--store <file>]',
           comparisonPlan:
             'graph compare-plan --input <file> [--root <repo>] [--against <commit>] [--max-bytes 1024..8388608]',
           modelCalls:
