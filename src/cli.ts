@@ -72,6 +72,8 @@ async function main(args: string[]) {
             'graph review <source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
           reviewCohort:
             'graph review --all --input <file> [--store <file>] [--root <repo>] [--max-units 0..2048] [--codex <binary>] [--deadline-ms 100..900000]',
+          reviewReuse:
+            'graph review --all --input <new-graph> --from <old-graph> --reuse <complete-review-export> [--store <file>] [--root <repo>] [--max-units 0..2048]',
           reviewEvidence:
             'graph review <--show <source-id>|--export> --input <file> [--store <file>] [--max-bytes 1024..134217728]',
           reviewRetirement:

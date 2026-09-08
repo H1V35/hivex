@@ -436,6 +436,29 @@ After preserving evidence needed for admission or investigation, explicitly reti
 allows the same file to serve another cohort. A wrong hash or unresolved claim prevents retirement.
 No per-source files, automatic history rotation or automatic disposal of uncertain work are created.
 
+### Reuse source reviews after a graph changes
+
+Preserve the old graph and a complete `graph review --export` before replacing its working cohort.
+Then explicitly transfer compatible evidence into the new plan:
+
+```sh
+bun hivex graph review --all --input /tmp/new-graph.json --from /tmp/old-graph.json --reuse /tmp/old-reviews.json --max-units 0
+bun hivex graph review --all --input /tmp/new-graph.json --max-units 20
+```
+
+Use the same `--root` and `--store` as the original cohort. The first command makes no model calls.
+It checks that the archive completely matches the retained evidence and rejects unresolved claims.
+It updates the same bounded store atomically, leaving changed/new sources pending. The second command
+reviews those pending sources. Repeating the transfer to an already-current plan preserves progress.
+
+Reuse requires identical full Markdown, source metadata, claims, relations and processing inputs;
+only the graph-hash marker may differ in the prepared source request. A matching document hash alone
+does not qualify. Reused results retain their original `graphHash`, `sourceSnapshot`, `contract`,
+verdict, report and usage; `association` identifies the current graph and binds that unchanged result.
+Admission revalidates both. Negative reviews remain negative and are not automatically rerun.
+The caller retains the old graph/export according to the project's audit policy. This operation
+does not yet reuse ingestion candidates across changed plans or reuse source-pair comparisons.
+
 ### Compare source decisions
 
 ```sh

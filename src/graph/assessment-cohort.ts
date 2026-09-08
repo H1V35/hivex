@@ -25,6 +25,8 @@ function input(args: string[]) {
         discard: { type: 'string' },
         'max-bytes': { type: 'string' },
         neighbors: { type: 'string' },
+        reuse: { type: 'string' },
+        from: { type: 'string' },
       },
     }).values;
   } catch (error) {
@@ -35,7 +37,19 @@ function input(args: string[]) {
   }
 }
 
-function validateInspectionFlags(values: ReturnType<typeof input>) {
+function validateInspectionFlags(
+  values: ReturnType<typeof input>,
+  operation: 'review' | 'compare',
+) {
+  if (
+    (values.reuse !== undefined || values.from !== undefined) &&
+    (operation !== 'review' || !values.all || !values.reuse || !values.from)
+  )
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: '--reuse and --from belong together to source review --all',
+    });
+
   if (
     !values.all &&
     [values.codex, values['max-units'], values['deadline-ms']].some((value) => value !== undefined)
@@ -76,10 +90,12 @@ export function assessmentArguments(args: string[], operation: 'review' | 'compa
       message:
         'Choose --all, --show, --export or --discard; non-discard operations require --input',
     });
-  validateInspectionFlags(values);
+  validateInspectionFlags(values, operation);
   const root = values.root ?? process.cwd();
   return {
     root,
+    reuse: values.reuse,
+    from: values.from,
     neighbors: parseLimit(values.neighbors, { fallback: 0, minimum: 0, maximum: 8 }),
     input: values.input ?? '',
     against: values.against,

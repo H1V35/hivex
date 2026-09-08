@@ -43,6 +43,7 @@ of treating truncated or missing evidence as a complete answer.
 | Produce or resume a candidate cohort   | `ingest`; inspect retained work with `--show`                  |
 | Assemble/check a candidate snapshot    | `graph build`, `graph check`                                   |
 | Review extraction fidelity             | `graph review`, or `graph review --all` for the cohort         |
+| Reuse unchanged source reviews         | `graph review --all --from <old-graph> --reuse <old-export>`   |
 | Select and assess cross-source context | `graph compare-plan`, then `graph compare` or `--all`          |
 | Admit complete reviewed evidence       | `graph admit`, when supported by the installed version         |
 | Ground a specific review claim         | `ground <claim>`; reuse current evidence with `ground --check` |
@@ -86,6 +87,12 @@ Choose a bounded neighbor count appropriate to the corpus; four is a starting po
 Keep the same selection settings when resuming, inspecting and admitting that cohort. Reuse retained
 results. Investigate failed or interrupted work before an explicit retry; do not discard uncertain
 work to make the workflow appear green. Export needed evidence before an authorized retirement.
+
+When a graph changes, preserve its old graph and complete review export before using `--from` and
+`--reuse` with the new `--input`. Start with `--max-units 0` to transfer evidence without model calls.
+Only identical complete source-review inputs qualify; inspect `association` for the current binding
+while the original graph/prompt/verdict/usage remain intact. Changed sources need new review, retained
+negative results remain blockers and unresolved invocations prevent cohort replacement.
 
 Save full exports as artifacts rather than dumping them into model context. Retain and version the
 admitted snapshot according to the project workflow. Never hand-edit a projection to invent acceptance.

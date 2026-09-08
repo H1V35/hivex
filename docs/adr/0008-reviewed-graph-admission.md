@@ -32,6 +32,10 @@ Optional authored-link fields are omitted when absent, so a complete exported se
 equally with the reconstructed in-memory selection. JSON round-trips must preserve admission without
 changing its hashes or requiring model work again.
 
+Reused source assessments retain their complete original result and an explicit association with
+this graph. Validate both the current binding and equality of the original source-review inputs,
+preserving the original prompt/graph identities and invocation usage. Reuse is not a new model call.
+
 Every read revalidates integrity, source evidence and the embedded semantic assessments, rather than
 trusting an `accepted` flag or checksum alone. Freshness is evaluated against the requested project
 revision. A historical snapshot can be inspected against its original revision; changed documentary

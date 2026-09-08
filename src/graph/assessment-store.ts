@@ -1,6 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { closeSync, lstatSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { HivexError } from '../errors.ts';
 import { hash } from '../sources/markdown.ts';
 
@@ -26,6 +27,7 @@ export type AssessmentContract<T extends AssessmentResult> = {
   applicationId: number;
   parse: (value: unknown) => T;
   unitId: (result: T) => string;
+  binding?: (result: T) => AssessmentResult;
 };
 type Row = {
   id: string;
@@ -136,7 +138,7 @@ function decode<T extends AssessmentResult>(
   if (result.status !== row.state)
     fail('INVALID_REVIEW_STORE', 'The result status differs from its retained row');
   validateAssessmentBinding(
-    result,
+    contract.binding?.(result) ?? result,
     { actualId: contract.unitId(result), id: row.id, promptHash: source.promptHash },
     plan,
   );
@@ -167,6 +169,56 @@ export class AssessmentStore<T extends AssessmentResult> {
   ) {
     using db = file(path, true);
     return db.transaction(() => records(db, plan, contract))();
+  }
+
+  static refresh<T extends AssessmentResult>(
+    options: {
+      path: string;
+      previous: { plan: AssessmentPlan; rows: ReturnType<AssessmentStore<T>['snapshot']> };
+      next: { plan: AssessmentPlan; results: Map<string, T> };
+    },
+    contract: AssessmentContract<T>,
+  ) {
+    lstatSync(options.path);
+    using db = file(options.path, false);
+    return db
+      .transaction(() => {
+        identity(db, false, contract.applicationId);
+        const current = db
+          .query<{ value: string }, []>('SELECT value FROM cohort WHERE id=1')
+          .get();
+        if (current?.value === JSON.stringify(options.next.plan)) {
+          records(db, options.next.plan, contract);
+          return;
+        }
+        const rows = records(db, options.previous.plan, contract);
+        if (rows.some((row) => row.state === 'running'))
+          fail('REVIEW_UNRESOLVED', 'Resolve every claimed invocation before replacing its cohort');
+        if (!isDeepStrictEqual(rows, options.previous.rows))
+          fail(
+            'REVIEW_ARCHIVE_MISMATCH',
+            'Preserve an exact complete export of the retained cohort before replacement',
+          );
+        const value = JSON.stringify(options.next.plan);
+        if (Buffer.byteLength(value) > 1024 * 1024 || options.next.plan.sources.length > 2048)
+          fail('REVIEW_PLAN_TOO_LARGE', 'An assessment cohort must fit 1 MiB and 2048 sources');
+        db.run('PRAGMA max_page_count=32768');
+        db.run('DELETE FROM reviews');
+        initializePlan(db, options.next.plan);
+        for (const [id, result] of options.next.results) {
+          const encoded = JSON.stringify(result);
+          if (Buffer.byteLength(encoded) > resultLimit)
+            fail('REVIEW_RESULT_TOO_LARGE', 'A reused assessment exceeds 8 MiB');
+          db.run('UPDATE reviews SET state=?, value=?, value_hash=? WHERE id=?', [
+            result.status,
+            encoded,
+            hash(encoded),
+            id,
+          ]);
+        }
+        records(db, options.next.plan, contract);
+      })
+      .immediate();
   }
 
   static discard(path: string, expectedHash: string, applicationId: number) {
