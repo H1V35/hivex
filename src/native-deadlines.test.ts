@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
-import type { AppServerConnection } from './model/connection.ts';
-import { startKnowledgeThread } from './model/thread.ts';
+import { readFileSync } from 'node:fs';
+import { nativeProject } from '../test/native-project.ts';
+import { invoke } from '../test/reviewed-project.ts';
 import { assessmentArguments } from './graph/assessment-cohort.ts';
 import { extractionArguments } from './ingestion/arguments.ts';
 
@@ -17,38 +18,37 @@ test('accepts the 30-minute native deadline and keeps the current default', () =
   ).toBe(1_800_000);
 });
 
-test('extends only thread/start to a 90-second RPC timeout', async () => {
-  const requests: { method: string; timeoutMilliseconds?: number }[] = [];
-  const rpc = {
-    request: async (
-      method: string,
-      _params: unknown,
-      options?: { timeoutMilliseconds?: number },
-    ) => {
-      requests.push({ method, timeoutMilliseconds: options?.timeoutMilliseconds });
-      if (method === 'thread/start')
-        return {
-          thread: { id: 'thread1', ephemeral: true },
-          model: 'gpt-5.6-luna',
-          modelProvider: 'openai',
-          reasoningEffort: 'max',
-          cwd: '/workspace',
-          sandbox: { type: 'readOnly' },
-          instructionSources: [],
-        };
-      return { data: [], nextCursor: null };
-    },
-  } as unknown as AppServerConnection;
+test('retains a 30-minute ingestion receipt across progress and inspection without another call', async () => {
+  await nativeProject((paths) => {
+    const args = ['ingest', '--store', paths.store];
+    const ingested = invoke(paths.root, [
+      ...args,
+      '--codex',
+      paths.binary,
+      '--max-units',
+      '1',
+      '--deadline-ms',
+      '1800000',
+    ]);
+    expect(ingested.stderr).toBe('');
+    expect(ingested.status).toBe(0);
+    expect(JSON.parse(ingested.stdout)).toMatchObject({ completed: 1, processed: 1 });
+    expect(readFileSync(paths.calls, 'utf8')).toBe('called\n');
 
-  expect(
-    await startKnowledgeThread({
-      rpc,
-      workspace: '/workspace',
-      signal: new AbortController().signal,
-    }),
-  ).toBe('thread1');
-  expect(requests).toEqual([
-    { method: 'thread/start', timeoutMilliseconds: 90_000 },
-    { method: 'mcpServerStatus/list', timeoutMilliseconds: undefined },
-  ]);
+    const progress = invoke(paths.root, [...args, '--codex', paths.binary, '--max-units', '0']);
+    expect(progress.stderr).toBe('');
+    expect(progress.status).toBe(0);
+    expect(JSON.parse(progress.stdout)).toMatchObject({ completed: 1, processed: 0 });
+    const inspected = invoke(paths.root, [...args, '--show', 'first.md']);
+    expect(inspected.stderr).toBe('');
+    expect(inspected.status).toBe(0);
+    expect(JSON.parse(inspected.stdout)).toMatchObject({
+      state: 'candidate',
+      result: {
+        status: 'candidate',
+        attempts: [{ outcome: 'completed', deadlineMilliseconds: 1_800_000 }],
+      },
+    });
+    expect(readFileSync(paths.calls, 'utf8')).toBe('called\n');
+  });
 });
