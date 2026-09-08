@@ -212,8 +212,12 @@ function regularFile(path: string) {
 function atomicWrite(path: string, value: string, mode = 0o600) {
   ensureDirectory(dirname(path));
   const pending = `${path}.pending`;
-  if (regularFile(pending))
-    invalid(`An unfinished artifact needs inspection: ${pending}`, 'UPDATE_ARTIFACT_PENDING');
+  if (regularFile(pending)) {
+    if (readFileSync(pending, 'utf8') !== value)
+      invalid(`An unfinished artifact needs inspection: ${pending}`, 'UPDATE_ARTIFACT_PENDING');
+    renameSync(pending, path);
+    return;
+  }
   let fd: number | undefined;
   try {
     fd = openSync(pending, 'wx', mode);
@@ -231,8 +235,11 @@ function atomicWrite(path: string, value: string, mode = 0o600) {
 function pendingWrite(path: string, value: string, mode = 0o600) {
   ensureDirectory(dirname(path));
   const pending = `${path}.pending`;
-  if (regularFile(pending))
-    invalid(`An unfinished artifact needs inspection: ${pending}`, 'UPDATE_ARTIFACT_PENDING');
+  if (regularFile(pending)) {
+    if (readFileSync(pending, 'utf8') !== value)
+      invalid(`An unfinished artifact needs inspection: ${pending}`, 'UPDATE_ARTIFACT_PENDING');
+    return pending;
+  }
   const fd = openSync(pending, 'wx', mode);
   try {
     writeFileSync(fd, value);
@@ -260,7 +267,13 @@ function readJson(path: string, maximumBytes: number) {
 }
 
 function readCheckpoint(path: string) {
-  const value = readJson(path, 8 * 1024 * 1024);
+  const pending = `${path}.pending`;
+  const value = readJson(path, 8 * 1024 * 1024) ?? readJson(pending, 8 * 1024 * 1024);
+  if (!regularFile(path) && value !== null) {
+    const checkpoint = checkpointSchema.parse(value);
+    renameSync(pending, path);
+    return checkpoint;
+  }
   return value === null ? null : checkpointSchema.parse(value);
 }
 
@@ -281,10 +294,13 @@ function readTransition(paths: Paths) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
     throw error;
   }
-  const value = readJson(join(paths.transition, 'manifest.json'), 8 * 1024 * 1024);
+  const manifest = join(paths.transition, 'manifest.json');
+  const pending = `${manifest}.pending`;
+  const value = readJson(manifest, 8 * 1024 * 1024) ?? readJson(pending, 8 * 1024 * 1024);
   if (value === null)
     invalid('The transition directory has no manifest', 'UPDATE_RETENTION_REQUIRED');
   const transition = transitionSchema.parse(value);
+  if (!regularFile(manifest)) renameSync(pending, manifest);
   for (const name of ['admitted', 'candidate', 'ingestion', 'reviews', 'comparisons'] as const) {
     const record = transition.files[name];
     if (!record) continue;
@@ -404,12 +420,42 @@ function acquireLock(path: string) {
     };
   } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
-    const value = readJson(path, 4096);
+    let value: unknown;
+    try {
+      value = readJson(path, 4096);
+    } catch {
+      return { response: lockBlocked(path, 'lock-invalid') };
+    }
     const pid = z.object({ pid: z.number().int().positive() }).safeParse(value).data?.pid;
-    if (pid === undefined || pidAlive(pid)) return null;
-    unlinkSync(path);
-    return acquireLock(path);
+    return {
+      response: lockBlocked(
+        path,
+        pid !== undefined && pidAlive(pid) ? 'lock-active' : 'lock-obsolete',
+        pid,
+      ),
+    };
   }
+}
+
+function lockBlocked(
+  path: string,
+  reason: 'lock-active' | 'lock-obsolete' | 'lock-invalid',
+  pid?: number,
+) {
+  const owner = pid === undefined ? '' : ` (PID ${pid})`;
+  return {
+    command: 'update',
+    accepted: false,
+    status: 'blocked',
+    phase: 'lock',
+    reason,
+    lock: path,
+    message: `The update lock${owner} needs operator inspection`,
+    actions: [
+      `Inspect ${path} and confirm whether an update coordinator is still running.`,
+      `Remove ${path} manually only after confirming that no coordinator owns it.`,
+    ],
+  } as Record<string, unknown>;
 }
 
 function targetFor(options: UpdateOptions, checkpoint: Checkpoint | null): Target {
@@ -552,7 +598,10 @@ async function prepareTransition(
     if ('response' in started) return started;
     transition = started.transition;
   }
-  if (transition.state === 'complete') return { transition };
+  if (transition.state === 'complete')
+    return {
+      response: retention(paths, 'A previous transition still owns the single retention directory'),
+    };
   transition = archivePreviousFiles(paths, transition, inputs);
   writeTransition(paths, transition);
   return archiveStores(options, paths, transition, inputs.oldCandidate);
@@ -1142,7 +1191,11 @@ async function prepareCycle(options: UpdateOptions, paths: Paths): Promise<Prepa
   return { context: { options, paths, target, checkpoint, transition, old } };
 }
 
-function buildCandidate(context: CycleContext) {
+type BuildResult =
+  | { response: Record<string, unknown> }
+  | { candidate: CandidateInfo | null; transition: Transition | null };
+
+async function buildCandidate(context: CycleContext): Promise<BuildResult> {
   const { options, paths, checkpoint } = context;
   writeCheckpoint(paths.checkpoint, { ...checkpoint, phase: 'build' });
   const built = graphCommand([
@@ -1156,9 +1209,18 @@ function buildCandidate(context: CycleContext) {
   if (Buffer.byteLength(jsonText(built)) > maximumCandidateBytes)
     invalid('The candidate graph exceeds its size limit', 'UPDATE_CANDIDATE_INVALID');
   const currentCandidate = candidateInfo(paths, options.root);
+  let transition = context.transition;
+  if (currentCandidate && currentCandidate.hash !== built.hash) {
+    const prepared = await prepareTransition(options, paths, context.target, {
+      oldAccepted: context.old,
+      oldCandidate: currentCandidate,
+    });
+    if ('response' in prepared && prepared.response) return { response: prepared.response };
+    transition = prepared.transition ?? transition;
+  }
   if (!currentCandidate || currentCandidate.hash !== built.hash)
     atomicWrite(paths.candidate, jsonText(built));
-  return candidateInfo(paths, options.root);
+  return { candidate: candidateInfo(paths, options.root), transition };
 }
 
 function publishAdmission(
@@ -1210,10 +1272,14 @@ function publishAdmission(
 }
 
 async function runCycle(context: CycleContext) {
-  const { options, paths, target, transition, checkpoint } = context;
-  const ingestion = await runIngestion(options, paths, target, transition);
+  const { options, paths, target, checkpoint } = context;
+  const ingestion = await runIngestion(options, paths, target, context.transition);
   if (!ingestion.ready) return ingestion.response;
-  const candidate = buildCandidate(context);
+  const built = await buildCandidate(context);
+  if ('response' in built) return built.response;
+  const candidate = built.candidate;
+  const transition = built.transition;
+  const active = { ...context, transition };
   writeCheckpoint(paths.checkpoint, {
     ...checkpoint,
     phase: 'review',
@@ -1246,7 +1312,7 @@ async function runCycle(context: CycleContext) {
     String(options.neighbors),
     '--export',
   ]) as { hash: string };
-  return publishAdmission(context, candidate?.hash ?? null, snapshot);
+  return publishAdmission(active, candidate?.hash ?? null, snapshot);
 }
 
 export async function updateCommand(args: string[]) {
@@ -1254,10 +1320,7 @@ export async function updateCommand(args: string[]) {
   const paths = pathsFor(options);
   ensureDirectory(paths.runtime);
   const lock = acquireLock(paths.lock);
-  if (!lock)
-    return blocked('lock', [
-      { id: null, kind: 'uncertain', message: 'Another update coordinator owns this repository' },
-    ]);
+  if ('response' in lock) return lock.response;
   try {
     try {
       const prepared = await prepareCycle(options, paths);

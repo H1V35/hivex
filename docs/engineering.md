@@ -125,6 +125,14 @@ when the task needs it; Hivex does not impose the retired machinery's fixed toke
 Knowledge-model operations use the admitted Luna/max profile and record actual usage, including
 failed or interrupted attempts. Deterministic retrieval and maintenance do not require a model.
 
+The `update` command is the bounded coordinator for the complete local knowledge cycle. It reuses the
+three SQLite stores and owns only a small checkpoint, candidate and single transition directory.
+It archives and verifies the previous admitted artifact before atomic replacement, preserves adverse
+or uncertain evidence, and never retries or revises it automatically. A live or obsolete coordinator
+lock is an explicit operator blocker; Hivex does not reap it. A complete `.pending` artifact may be
+finalized only after its bytes pass the existing artifact validation; partial or different bytes stay
+blocked for inspection.
+
 Grounding complements tests and code review. A claim that an implementation satisfies documented
 decisions requires evidence tied to its exact code/diff and the accepted knowledge manifest.
 Missing graph admission, unresolved contradictions or insufficient evidence remain unresolved;
