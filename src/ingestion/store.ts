@@ -10,13 +10,14 @@ import type { extractCommand, ExtractionCheckpoint } from './command.ts';
 import { usageSchema } from '../model/transcript.ts';
 import type { ExtractionAttempt } from './attempt.ts';
 import { candidateSchema } from './claims.ts';
+import { revisionsSchema, validateHistory, type Revision } from './history.ts';
 
 type Plan = ReturnType<typeof createPlan>;
 type Result = Awaited<ReturnType<typeof extractCommand>>;
 const maximumBytes = 128 * 1024 * 1024;
 const reservationBytes = 16 * 1024 * 1024;
 const applicationId = 0x48565849;
-const storeVersion = 2;
+const storeVersion = 3;
 const reportSchema = z.looseObject({
   outcome: z.string().max(256),
   code: z.string().max(128).optional(),
@@ -25,10 +26,11 @@ const reportSchema = z.looseObject({
   promptHash: z.string().regex(/^[a-f0-9]{64}$/),
 });
 const attemptStateSchema = z.object({
-  reports: z.array(reportSchema).max(3),
+  reports: z.array(reportSchema).max(12),
+  revisions: revisionsSchema.optional(),
   active: z
     .object({
-      attempt: z.number().int().min(1).max(3),
+      attempt: z.number().int().min(1).max(12),
       promptHash: z.string().regex(/^[a-f0-9]{64}$/),
       deadlineMilliseconds: z.number().int().min(100).max(900_000),
     })
@@ -49,12 +51,14 @@ const resultSchema = z.looseObject({
   accepted: z.literal(false),
   status: z.enum(['candidate', 'failed']),
   source: z.looseObject({ id: z.string() }),
-  attempts: z.array(reportSchema).min(1).max(3),
+  attempts: z.array(reportSchema).min(1).max(12),
+  revisions: revisionsSchema.optional(),
   candidate: candidateSchema.nullable(),
-  candidateAttempt: z.number().int().min(1).max(3).nullable(),
+  candidateAttempt: z.number().int().min(1).max(12).nullable(),
 });
 
 function validatePhase(row: StoredUnit, state: z.infer<typeof attemptStateSchema>) {
+  validateHistory(state.revisions ?? [], state.reports.length);
   switch (row.state) {
     case 'pending':
       if (row.owner !== null || state.reports.length || state.active)
@@ -104,6 +108,8 @@ function decodeUnit(row: StoredUnit) {
   );
   if (!isDeepStrictEqual(reports, checkpoint.reports))
     failure('INVALID_INGESTION_STORE', 'The result does not match its checkpointed attempts');
+  if (!isDeepStrictEqual(result.revisions, checkpoint.revisions))
+    failure('INVALID_INGESTION_STORE', 'The result differs from its retained revision history');
   return { result, checkpoint };
 }
 
@@ -186,7 +192,10 @@ function boundedReport(report: ExtractionAttempt, original?: string) {
 function validateIdentity(db: Database) {
   const identity = db.query<{ application_id: number }, []>('PRAGMA application_id').get();
   const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get();
-  if (identity?.application_id === applicationId && version?.user_version === storeVersion)
+  if (
+    identity?.application_id === applicationId &&
+    [2, storeVersion].includes(version?.user_version ?? 0)
+  )
     return true;
   const objects = db
     .query<{ count: number }, []>('SELECT count(*) AS count FROM sqlite_schema')
@@ -305,6 +314,7 @@ export class IngestionStore {
         planHash: plan.planHash,
         source: id,
         state: row.state,
+        resultHash: row.result_hash,
         result,
         checkpoint: result === null ? checkpoint : undefined,
       };
@@ -473,7 +483,7 @@ export class IngestionStore {
             'INGESTION_RETRY_UNSAFE',
             'The previous invocation must have a confirmed safe end before retry',
           );
-        if (reports.length >= maximumAttempts)
+        if (reports.length >= (checkpoint.revisions?.at(-1)?.afterAttempt ?? 0) + maximumAttempts)
           failure(
             'INGESTION_ATTEMPTS_EXHAUSTED',
             'The source has exhausted its total attempt budget',
@@ -483,7 +493,49 @@ export class IngestionStore {
           [owner, id],
         );
         this.reserve(0);
-        return reports;
+        return { previousAttempts: reports, revisions: checkpoint.revisions };
+      })
+      .immediate();
+  }
+
+  revise(id: string, owner: string, revision: Revision) {
+    return this.db
+      .transaction(() => {
+        this.assertPlan();
+        const row = this.db.query<StoredUnit, [string]>('SELECT * FROM units WHERE id=?').get(id);
+        if (!row || row.state !== 'candidate' || row.result_hash !== revision.previousResultHash)
+          failure('INGESTION_REVISION_MISMATCH', 'Revision requires the exact retained candidate');
+        const { result, checkpoint } = decodeUnit(row);
+        if (
+          !result ||
+          !isDeepStrictEqual(result.candidate, revision.candidate) ||
+          result.attempts.length !== revision.afterAttempt
+        )
+          failure(
+            'INGESTION_REVISION_MISMATCH',
+            'The revision does not preserve the candidate and its attempts',
+          );
+        const last = result.attempts.at(-1);
+        if (
+          last?.outcome !== 'completed' ||
+          last.cleanup !== 'confirmed' ||
+          last.turnAccepted !== 'confirmed'
+        )
+          failure(
+            'INGESTION_REVISION_UNSAFE',
+            'The previous extraction must have a confirmed completed invocation',
+          );
+        const revisions = revisionsSchema.parse([...(checkpoint.revisions ?? []), revision]);
+        validateHistory(revisions, checkpoint.reports.length);
+        const value = JSON.stringify({ ...checkpoint, revisions });
+        if (Buffer.byteLength(value) > 4 * 1024 * 1024)
+          failure('INGESTION_REPORT_TOO_LARGE', 'Revision evidence exceeds the checkpoint budget');
+        this.reserve(1);
+        this.db.run(
+          "UPDATE units SET state='running', owner=?, result=NULL, result_hash=NULL, attempts=?, attempts_hash=? WHERE id=?",
+          [owner, value, hash(value), id],
+        );
+        return { previousAttempts: result.attempts, revisions };
       })
       .immediate();
   }

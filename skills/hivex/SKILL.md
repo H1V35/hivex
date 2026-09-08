@@ -41,6 +41,7 @@ of treating truncated or missing evidence as a complete answer.
 | Measure the declared rebuild inputs    | `plan`                                                         |
 | Inspect one model extraction           | `extract`; it produces a candidate                             |
 | Produce or resume a candidate cohort   | `ingest`; inspect retained work with `--show`                  |
+| Correct evidenced extraction omissions | `ingest --revise <source> --input <graph> --feedback <review>` |
 | Assemble/check a candidate snapshot    | `graph build`, `graph check`                                   |
 | Review extraction fidelity             | `graph review`, or `graph review --all` for the cohort         |
 | Select and assess cross-source context | `graph compare-plan`, then `graph compare` or `--all`          |
@@ -86,6 +87,12 @@ Choose a bounded neighbor count appropriate to the corpus; four is a starting po
 Keep the same selection settings when resuming, inspecting and admitting that cohort. Reuse retained
 results. Investigate failed or interrupted work before an explicit retry; do not discard uncertain
 work to make the workflow appear green. Export needed evidence before an authorized retirement.
+
+Use `ingest --revise` for a retained candidate with evidenced omissions or distortions and sufficient
+fidelity context. Inspect its exact request with `--prepare`; preserve the original review and usage.
+This operation changes one candidate, never the source's authority or the review's verdict. A passing,
+uncertain or insufficient-context review cannot justify revision. A replacement still needs fidelity
+review and admission; unchanged output is a failure, not a reason to repeat the same adverse review.
 
 Save full exports as artifacts rather than dumping them into model context. Retain and version the
 admitted snapshot according to the project workflow. Never hand-edit a projection to invent acceptance.

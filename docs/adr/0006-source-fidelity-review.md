@@ -65,3 +65,9 @@ This first cohort contract resumes one exact graph. Reuse across changed graph s
 established: a different graph or processing contract is rejected rather than relabelled as reviewed.
 Full cohort source fidelity still does not establish cross-source consistency, effective authority,
 graph admission or implementation grounding.
+
+For evidenced omissions or distortions with sufficient context, the
+[ingestion revision operation](0004-resumable-ingestion-store.md#correct-adverse-fidelity-findings)
+can produce a replacement candidate while preserving this negative review. Revision does not change
+its verdict, erase usage or admit the replacement. Unresolved context requires resolving the missing
+inputs, not repeatedly requesting a more favorable assessment.

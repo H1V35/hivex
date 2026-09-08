@@ -51,7 +51,7 @@ const sourceSchema = inputUnitSchema.extend({
   extraction: z.strictObject({
     candidateHash: digest,
     receiptHash: digest,
-    candidateAttempt: z.number().int().min(1).max(3),
+    candidateAttempt: z.number().int().min(1).max(12),
     claimOrder: z.array(z.string().regex(/^c[1-9][0-9]{0,2}$/)).max(64),
     relationOrder: z
       .array(z.strictObject({ edgeId: digest, fromLocalId: z.string(), toLocalId: z.string() }))
@@ -68,7 +68,7 @@ const sourceSchema = inputUnitSchema.extend({
         }),
       )
       .min(1)
-      .max(3),
+      .max(12),
   }),
 });
 export const nodeSchema = z.strictObject({
