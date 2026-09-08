@@ -77,7 +77,7 @@ function identity(db: Database, allowEmpty: boolean, applicationId: number) {
     .query<{ application_id: number }, []>('PRAGMA application_id')
     .get()?.application_id;
   const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
-  if (id === applicationId && version === 1) return true;
+  if (id === applicationId && (version === 1 || version === 2)) return true;
   const objects = db
     .query<{ count: number }, []>('SELECT count(*) AS count FROM sqlite_schema')
     .get()?.count;
@@ -106,7 +106,10 @@ function assertPlan(db: Database, plan: AssessmentPlan, applicationId: number) {
 
 function initializePlan(db: Database, plan: AssessmentPlan) {
   const value = JSON.stringify(plan);
-  db.run('INSERT OR REPLACE INTO cohort VALUES (1, ?, ?, 0)', [value, hash(value)]);
+  db.run('INSERT OR REPLACE INTO cohort (id, value, value_hash, retired) VALUES (1, ?, ?, 0)', [
+    value,
+    hash(value),
+  ]);
   for (const [ordinal, source] of plan.sources.entries())
     db.run('INSERT INTO reviews VALUES (?, ?, ?, NULL, NULL, NULL)', [
       source.id,
@@ -157,6 +160,23 @@ function records<T extends AssessmentResult>(
   return rows.map((row) => decode(row, plan, contract));
 }
 
+function transitionHash(db: Database) {
+  const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
+  if (version === 1) return null;
+  return db
+    .query<{ transition_hash: string | null }, []>('SELECT transition_hash FROM cohort WHERE id=1')
+    .get()?.transition_hash;
+}
+
+function recordTransition(db: Database, expectedHash: string) {
+  const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
+  if (version === 1) {
+    db.run('ALTER TABLE cohort ADD COLUMN transition_hash TEXT');
+    db.run('PRAGMA user_version=2');
+  }
+  db.run('UPDATE cohort SET transition_hash=? WHERE id=1', [expectedHash]);
+}
+
 export class AssessmentStore<T extends AssessmentResult> {
   private readonly contract: AssessmentContract<T>;
   private readonly db: Database;
@@ -187,8 +207,17 @@ export class AssessmentStore<T extends AssessmentResult> {
         const current = db
           .query<{ value: string }, []>('SELECT value FROM cohort WHERE id=1')
           .get();
-        if (current?.value === JSON.stringify(options.next.plan)) {
+        const value = JSON.stringify(options.next.plan);
+        const transition = hash(
+          JSON.stringify({ plan: options.previous.plan, rows: options.previous.rows }),
+        );
+        if (current?.value === value && value !== JSON.stringify(options.previous.plan)) {
           records(db, options.next.plan, contract);
+          if (transitionHash(db) !== transition)
+            fail(
+              'REVIEW_ARCHIVE_MISMATCH',
+              'Reuse requires the retained old cohort or its exact recorded transition archive',
+            );
           return;
         }
         const rows = records(db, options.previous.plan, contract);
@@ -199,12 +228,13 @@ export class AssessmentStore<T extends AssessmentResult> {
             'REVIEW_ARCHIVE_MISMATCH',
             'Preserve an exact complete export of the retained cohort before replacement',
           );
-        const value = JSON.stringify(options.next.plan);
+        if (current?.value === value) return;
         if (Buffer.byteLength(value) > 1024 * 1024 || options.next.plan.sources.length > 2048)
           fail('REVIEW_PLAN_TOO_LARGE', 'An assessment cohort must fit 1 MiB and 2048 sources');
         db.run('PRAGMA max_page_count=32768');
         db.run('DELETE FROM reviews');
         initializePlan(db, options.next.plan);
+        recordTransition(db, transition);
         for (const [id, result] of options.next.results) {
           const encoded = JSON.stringify(result);
           if (Buffer.byteLength(encoded) > resultLimit)

@@ -37,6 +37,18 @@ export const comparisonResultSchema = z.looseObject({
   }),
   report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
   comparison: comparisonSchema.nullable(),
+  association: z
+    .strictObject({
+      graphHash: digest,
+      sourceSnapshot: z.strictObject({
+        commit: z.string().regex(/^[a-f0-9]{40}$/),
+        configHash: digest,
+      }),
+      selectionHash: digest,
+      originalSelectionHash: digest,
+      originalHash: digest,
+    })
+    .optional(),
 });
 export type ComparisonResult = z.infer<typeof comparisonResultSchema>;
 export const comparisonContract = {
@@ -44,9 +56,19 @@ export const comparisonContract = {
   parse: (value: unknown) => comparisonResultSchema.parse(value),
   unitId: (result: ComparisonResult) =>
     hash(JSON.stringify(result.sources.map((source) => source.id))),
+  binding: comparisonBinding,
 };
 type Rows = ReturnType<AssessmentStore<ComparisonResult>['snapshot']>;
 type Context = ReturnType<typeof prepareComparisonCohort>;
+
+export function originalComparison(result: ComparisonResult) {
+  const { association: _association, ...original } = result;
+  return original;
+}
+
+export function comparisonBinding(result: ComparisonResult) {
+  return result.association ? { ...result, graphHash: result.association.graphHash } : result;
+}
 
 function createContext(options: ReturnType<typeof assessmentArguments>) {
   const context = createReviewContext(options);
@@ -102,13 +124,36 @@ function prepare(context: Context, id: string) {
   return prepareComparison(context.context, sources);
 }
 
-function validateResult(result: ComparisonResult, prepared: ReturnType<typeof prepareComparison>) {
+function validateResult(
+  result: ComparisonResult,
+  prepared: ReturnType<typeof prepareComparison>,
+  selectionHash: string,
+) {
+  if (
+    result.association &&
+    (result.association.selectionHash !== selectionHash ||
+      result.association.originalHash !==
+        hash(
+          JSON.stringify({
+            result: originalComparison(result),
+            selectionHash: result.association.originalSelectionHash,
+          }),
+        ) ||
+      result.contract.promptHash !== hash(prepared.prompt))
+  )
+    throw new HivexError({
+      code: 'INVALID_COMPARISON_STORE',
+      message: 'The original comparison or its complete inputs differ from the reused evidence',
+    });
   if (
     !isDeepStrictEqual(
       result.sources,
       prepared.sources.map((source) => source.packet.source),
     ) ||
-    !isDeepStrictEqual(result.sourceSnapshot, prepared.context.input.graph.sourceSnapshot) ||
+    !isDeepStrictEqual(
+      result.association?.sourceSnapshot ?? result.sourceSnapshot,
+      prepared.context.input.graph.sourceSnapshot,
+    ) ||
     !isDeepStrictEqual(result.model, knowledgeModel) ||
     !isDeepStrictEqual(result.sourceBindings, Object.fromEntries(prepared.bindings))
   )
@@ -164,7 +209,9 @@ function validateHashes(result: ComparisonResult, prepared: ReturnType<typeof pr
 }
 
 export function validateComparisons(rows: Rows, context: Context) {
-  for (const row of rows) if (row.result) validateResult(row.result, prepare(context, row.id));
+  for (const row of rows)
+    if (row.result)
+      validateResult(row.result, prepare(context, row.id), context.selection.planHash);
 }
 
 function inspect(rows: Rows, context: Context, options: ReturnType<typeof assessmentArguments>) {
@@ -229,6 +276,10 @@ export async function comparisonCohortCommand(args: string[]) {
     const rows = AssessmentStore.read(options.store, context.plan, comparisonContract);
     validateComparisons(rows, context);
     return inspect(rows, context, options);
+  }
+  if (options.reuse && options.from) {
+    const { reuseComparisons } = await import('./comparison-reuse.ts');
+    reuseComparisons(options, context);
   }
   using store = new AssessmentStore(options.store, context.plan, comparisonContract);
   const previous = store.snapshot();

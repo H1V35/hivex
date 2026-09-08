@@ -84,6 +84,8 @@ async function main(args: string[]) {
             'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728] [--neighbors 0..8]',
           comparisonRetirement:
             'graph compare --discard <plan-hash> [--root <repo>] [--store <file>]',
+          comparisonReuse:
+            'graph compare --all --input <new-graph> --from <old-graph> --reuse <complete-comparison-export> [--root <repo>] [--store <file>] [--neighbors 0..8] [--max-units 0..2048]',
           comparisonPlan:
             'graph compare-plan --input <file> [--root <repo>] [--against <commit>] [--max-bytes 1024..8388608] [--neighbors 0..8]',
           modelCalls:

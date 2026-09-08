@@ -584,6 +584,30 @@ retirement; it clears retained results and enables reuse of the same file. Retir
 unresolved invocations. A completed cohort still reports `accepted: false`: it covers the selected
 pairs, and does not establish full graph consistency, admission or implementation grounding.
 
+Preserve the old graph and its complete comparison export before transitioning the working store:
+
+```sh
+bun hivex graph compare --all --input /tmp/new-graph.json --from /tmp/old-graph.json --reuse /tmp/old-comparisons.json --neighbors 4 --max-units 0
+bun hivex graph compare --all --input /tmp/new-graph.json --neighbors 4 --max-units 20
+```
+
+Use the project's `--root` and existing `--store` as needed. The old export supplies its original
+selection settings; `--neighbors` selects the new cohort and must match subsequent inspection and
+admission. Reuse requires an identical complete pair request, source descriptors and processing
+contract, and membership in the new selection. Changed or new pairs stay pending. Selection ranks
+and other graph changes do not themselves change a pair's model input.
+
+The original receipt, verdict, usage and selection identity remain intact; `association` records the
+current graph and selection. Repeating the transition preserves progress without another model call.
+The full original selection remains in the caller-owned old export. Adverse results stay negative,
+and unresolved invocations block replacement. This operation does not retry failed assessments or
+complete the whole update workflow.
+
+Transfer the store that retains the old cohort. Do not initialize a separate destination first.
+The atomic transition records its archive binding in assessment-store format 2; a repeated transfer
+must supply that same archive. Existing format-1 stores remain readable and resumable; their first
+new transition upgrades them. A destination without that transition record is rejected before calls.
+
 To also discover unlinked sources with shared documentary vocabulary, choose a bounded number of
 lexical neighbors per source:
 

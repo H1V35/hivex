@@ -36,6 +36,10 @@ Reused source assessments retain their complete original result and an explicit 
 this graph. Validate both the current binding and equality of the original source-review inputs,
 preserving the original prompt/graph identities and invocation usage. Reuse is not a new model call.
 
+Reused pair comparisons similarly retain their original receipt and selection identity. Validate
+their association to the current graph and comparison selection, plus equality of complete pair
+inputs and source/claim bindings. Selection changes never extend an assessment beyond its two sources.
+
 Every read revalidates integrity, source evidence and the embedded semantic assessments, rather than
 trusting an `accepted` flag or checksum alone. Freshness is evaluated against the requested project
 revision. A historical snapshot can be inspected against its original revision; changed documentary

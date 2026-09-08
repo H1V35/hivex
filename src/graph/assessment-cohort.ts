@@ -37,17 +37,14 @@ function input(args: string[]) {
   }
 }
 
-function validateInspectionFlags(
-  values: ReturnType<typeof input>,
-  operation: 'review' | 'compare',
-) {
+function validateInspectionFlags(values: ReturnType<typeof input>) {
   if (
     (values.reuse !== undefined || values.from !== undefined) &&
-    (operation !== 'review' || !values.all || !values.reuse || !values.from)
+    (!values.all || !values.reuse || !values.from)
   )
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
-      message: '--reuse and --from belong together to source review --all',
+      message: '--reuse and --from belong together to cohort --all',
     });
 
   if (
@@ -90,7 +87,7 @@ export function assessmentArguments(args: string[], operation: 'review' | 'compa
       message:
         'Choose --all, --show, --export or --discard; non-discard operations require --input',
     });
-  validateInspectionFlags(values, operation);
+  validateInspectionFlags(values);
   const root = values.root ?? process.cwd();
   return {
     root,
@@ -163,4 +160,24 @@ export function validateCompletedInvocation(report: { outcome: string; [key: str
       code: 'INVALID_REVIEW_STORE',
       message: 'A completed review lacks its admitted native invocation evidence',
     });
+}
+
+export function unresolvedInvocation(report: { outcome: string; [key: string]: unknown }) {
+  if (
+    report.turnAccepted === 'unknown' ||
+    report.cleanup === 'failed' ||
+    report.interruption === 'unconfirmed'
+  )
+    return true;
+  if (report.turnAccepted !== 'confirmed')
+    return !(
+      report.turnAccepted === undefined &&
+      report.code === 'MODEL_ADMISSION_FAILED' &&
+      ['confirmed', 'not-observed'].includes(String(report.cleanup))
+    );
+  return (
+    report.cleanup !== 'confirmed' ||
+    (!['completed', 'invalid-output'].includes(report.outcome) &&
+      report.interruption !== 'confirmed')
+  );
 }

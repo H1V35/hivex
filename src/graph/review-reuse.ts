@@ -6,6 +6,7 @@ import { hash } from '../sources/markdown.ts';
 import { readGraph, parseGraphDocument } from './verify.ts';
 import { createReviewContext, prepareSourceReview, sourceReviewPrompt } from './source-review.ts';
 import { AssessmentStore, validateAssessmentBinding } from './assessment-store.ts';
+import { unresolvedInvocation } from './assessment-cohort.ts';
 import {
   originalReview,
   reviewBinding,
@@ -85,26 +86,6 @@ function readArchive(path: string, context: Context) {
       message: 'Resolve uncertain starts, interruptions and cleanup before replacing this cohort',
     });
   return { plan, rows: archive.reviews };
-}
-
-function unresolvedInvocation(report: ReviewResult['report']) {
-  if (
-    report.turnAccepted === 'unknown' ||
-    report.cleanup === 'failed' ||
-    report.interruption === 'unconfirmed'
-  )
-    return true;
-  if (report.turnAccepted !== 'confirmed')
-    return !(
-      report.turnAccepted === undefined &&
-      report.code === 'MODEL_ADMISSION_FAILED' &&
-      ['confirmed', 'not-observed'].includes(String(report.cleanup))
-    );
-  return (
-    report.cleanup !== 'confirmed' ||
-    (!['completed', 'invalid-output'].includes(report.outcome) &&
-      report.interruption !== 'confirmed')
-  );
 }
 
 function compatibleReviews(previous: ReturnType<typeof readArchive>, context: Context) {
