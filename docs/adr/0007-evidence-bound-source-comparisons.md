@@ -63,3 +63,30 @@ Bound discovery to 10,000 link definitions/links per document, 10,000 inspected 
 32,768 pairs and an 8 MiB working/output budget. A requested smaller output budget either returns
 the complete plan or fails explicitly. Planning makes no model calls, modifies no graph and creates
 no per-plan files. A caller may retain the complete result when it is needed for later review.
+
+## Retain and resume the selected comparison cohort
+
+Execute the authored-link selection through the same comparison contract, with one local
+`.hivex/comparisons.sqlite` working store. Bind it to the graph, the complete selection hash and every
+pair's prompt and processing contract. Recompute and validate the selection before execution or
+inspection. An empty selection or unresolved link plan cannot become a successful cohort.
+
+Source-fidelity and pair-comparison cohorts share the atomic claim, capacity reservation and retention
+implementation. Their database application identities remain distinct; opening one as the other fails.
+The existing source-review format remains compatible. A comparison cohort supports at most 2,048
+pairs and a 1 MiB processing plan; the authored discovery plan retains its separate 8 MiB limit.
+The database is bounded to 128 MiB, each complete result to 8 MiB, and each active/new claim reserves
+16 MiB before a model request. Source texts are loaded once per command; complete pair prompts are
+prepared before opening the store, without retaining all prompts in memory.
+
+Resume pending pairs without repeating retained results. Stop the current invocation loop after a
+negative or failed result. A later command may process other pending pairs, but does not retry or
+approve the negative result. Unknown outcomes remain unresolved. Inspection/export revalidates
+coverage, original citations, source bindings, expanded/normalized comparison hashes and completed
+native invocation evidence. A complete export must fit the requested budget; it is never truncated.
+
+Retirement requires the exact processing-plan hash and rejects unresolved invocations. Preserve needed
+evidence before retiring: it clears the retained comparisons transactionally and allows reuse of the
+same bounded file. There is no automatic rotation, per-pair file tree or implicit retry. This working
+cohort still covers only the selected authored-link pairs; completing it does not establish full
+semantic coverage, graph admission or implementation grounding.

@@ -194,6 +194,13 @@ class ComparisonPlan {
 export function comparisonPlanCommand(args: string[]) {
   const options = argumentsFor(args);
   const context = createReviewContext(options);
+  return buildComparisonPlan(context, options.maxBytes);
+}
+
+export function buildComparisonPlan(
+  context: ReturnType<typeof createReviewContext>,
+  maxBytes = 8 * 1024 * 1024,
+) {
   const sources = [...context.sources.values()];
   const plan = new ComparisonPlan(context);
   for (const source of sources)
@@ -225,7 +232,7 @@ export function comparisonPlanCommand(args: string[]) {
     status: plan.unresolved.length ? 'failed' : 'planned',
     planHash: hash(JSON.stringify(content)),
   };
-  if (Buffer.byteLength(JSON.stringify(result)) + 1 > options.maxBytes)
+  if (Buffer.byteLength(JSON.stringify(result)) + 1 > maxBytes)
     throw new HivexError({
       code: 'COMPARISON_PLAN_BUDGET',
       message: 'The complete plan exceeds the requested output budget',

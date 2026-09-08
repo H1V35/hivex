@@ -61,7 +61,7 @@ const shortEvidence = z
   .array(citation.extend({ source: z.enum(['s1', 's2']) }))
   .min(1)
   .max(16);
-const modelComparisonSchema = comparisonSchema.extend({
+export const modelComparisonSchema = comparisonSchema.extend({
   assessments: z
     .array(
       comparisonSchema.shape.assessments.element.extend({
@@ -150,9 +150,8 @@ function argumentsFor(args: string[]) {
   };
 }
 
-function prepare(options: ReturnType<typeof argumentsFor>) {
-  const context = createReviewContext(options);
-  const sources = options.ids.map((id) => prepareSourceReview(context, id));
+export function prepareComparison(context: ReturnType<typeof createReviewContext>, ids: string[]) {
+  const sources = [...ids].sort().map((id) => prepareSourceReview(context, id));
   if (sources.some((source) => source.nodes.length === 0))
     throw new HivexError({
       code: 'COMPARISON_REQUIRES_CLAIMS',
@@ -209,7 +208,7 @@ function invalid(message: string): never {
 
 function expandComparison(
   value: z.infer<typeof modelComparisonSchema>,
-  prepared: ReturnType<typeof prepare>,
+  prepared: ReturnType<typeof prepareComparison>,
 ): Comparison {
   const claim = (id: string) =>
     prepared.claimBindings.get(id) ??
@@ -239,7 +238,7 @@ function expandComparison(
 
 function validateCitations(
   entries: z.infer<typeof evidence>,
-  prepared: ReturnType<typeof prepare>,
+  prepared: ReturnType<typeof prepareComparison>,
 ) {
   const grouped = Map.groupBy(entries, (entry) => entry.source);
   for (const [id, quotes] of grouped) {
@@ -251,7 +250,7 @@ function validateCitations(
   }
 }
 
-function validateRelations(comparison: Comparison, prepared: ReturnType<typeof prepare>) {
+function validateRelations(comparison: Comparison, prepared: ReturnType<typeof prepareComparison>) {
   const relations = new Map<string, Comparison['relations'][number]>();
   for (const relation of comparison.relations) {
     const from = prepared.nodes.get(relation.from);
@@ -267,7 +266,10 @@ function validateRelations(comparison: Comparison, prepared: ReturnType<typeof p
   return relations;
 }
 
-function validateComparison(comparison: Comparison, prepared: ReturnType<typeof prepare>) {
+export function validateComparison(
+  comparison: Comparison,
+  prepared: ReturnType<typeof prepareComparison>,
+) {
   const relations = validateRelations(comparison, prepared);
   const assessed = new Set<string>();
   for (const assessment of comparison.assessments) {
@@ -292,7 +294,7 @@ function validateComparison(comparison: Comparison, prepared: ReturnType<typeof 
   if (assessed.size !== prepared.nodes.size) invalid('The comparison omitted a supplied claim');
 }
 
-function satisfactory(comparison: Comparison) {
+export function satisfactoryComparison(comparison: Comparison) {
   return (
     comparison.coverage.complete &&
     comparison.context.verdict === 'sufficient' &&
@@ -305,7 +307,14 @@ function satisfactory(comparison: Comparison) {
 
 export async function comparisonCommand(args: string[]) {
   const options = argumentsFor(args);
-  const prepared = prepare(options);
+  const prepared = prepareComparison(createReviewContext(options), options.ids);
+  return runComparison(prepared, options);
+}
+
+export async function runComparison(
+  prepared: ReturnType<typeof prepareComparison>,
+  options: { binary: string; deadlineMilliseconds: number; prepare?: boolean },
+) {
   const schema = z.toJSONSchema(modelComparisonSchema);
   const envelope = {
     command: 'graph',
@@ -339,7 +348,7 @@ export async function comparisonCommand(args: string[]) {
     validateComparison(comparison, prepared);
     return {
       ...envelope,
-      status: satisfactory(comparison) ? 'reviewed' : 'failed',
+      status: satisfactoryComparison(comparison) ? 'reviewed' : 'failed',
       report: result.report,
       modelOutputHash: hash(JSON.stringify(modelComparison)),
       comparisonHash: hash(JSON.stringify(comparison)),

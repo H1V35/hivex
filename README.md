@@ -503,3 +503,32 @@ that one claim supports, contradicts or supersedes another.
 The plan reports the selected pairs and total possible pairs, but does not certify the unselected
 pairs as unrelated. It remains `accepted: false` and creates no files or model requests. Its complete
 output must fit `--max-bytes` (16 KiB by default, maximum 8 MiB); it is never silently truncated.
+
+### Retain and resume selected source comparisons
+
+```sh
+bun run cli graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 20
+bun run cli graph compare --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 0
+bun run cli graph compare --show <pair-id> --input /tmp/candidate-graph.json --root /path/to/project
+bun run cli graph compare --export --input /tmp/candidate-graph.json --root /path/to/project --max-bytes 134217728
+bun run cli graph compare --discard <plan-hash> --root /path/to/project
+```
+
+The cohort recomputes the authored-link plan from the exact fresh graph. Resolve that plan's missing
+links first; an empty selection does not count as successful coverage. Pair IDs come from
+`graph compare-plan`. The processing `planHash` returned by the cohort is the hash needed for
+retirement; `selectionHash` identifies the authored-link selection it covers.
+
+The default store is `.hivex/comparisons.sqlite`; `--store` selects another local path. It shares the
+bounded transactional implementation used for source-fidelity reviews, with a distinct format identity.
+The limit is 2,048 pairs per cohort, a 1 MiB processing plan, 8 MiB per result and 128 MiB per store.
+All pair inputs must fit before any store or model invocation. `--max-units 0` initializes or inspects
+progress without calling a model. Retained completed pairs are reused; failed comparisons are retained
+without automatic retry, and interrupted claims stay unresolved. Execution stops at the first failure
+in that command. `--codex` and `--deadline-ms` have the same meaning as for a single comparison.
+
+Show/export perform no model calls or writes and return complete validated evidence within the
+requested byte budget (default 16 KiB, maximum 128 MiB). Preserve needed evidence before explicit
+retirement; it clears retained results and enables reuse of the same file. Retirement rejects
+unresolved invocations. A completed cohort still reports `accepted: false`: it covers the selected
+pairs, and does not establish full graph consistency, admission or implementation grounding.
