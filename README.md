@@ -481,8 +481,9 @@ only the graph-hash marker may differ in the prepared source request. A matching
 does not qualify. Reused results retain their original `graphHash`, `sourceSnapshot`, `contract`,
 verdict, report and usage; `association` identifies the current graph and binds that unchanged result.
 Admission revalidates both. Negative reviews remain negative and are not automatically rerun.
-The caller retains the old graph/export according to the project's audit policy. This operation
-does not yet reuse ingestion candidates across changed plans or reuse source-pair comparisons.
+The caller retains the old graph/export according to the project's audit policy. Candidate transfers
+use `ingest --reuse`; source-pair transfers use `graph compare --all --reuse`. The whole update/resume
+cycle is not yet automated.
 
 ### Compare source decisions
 

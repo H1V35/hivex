@@ -10,7 +10,7 @@ import {
   originalExtractionResult,
   parseIngestionPlan,
   summarizeRows,
-  unresolvedInvocation,
+  assertTransferSafe,
   validateResultForPlan,
   validateRows,
   type IngestionCohort,
@@ -95,18 +95,7 @@ function readArchive(path: string) {
     !isDeepStrictEqual(summary.attempts, archive.attempts)
   )
     invalid('The archived ingestion summary differs from its complete rows');
-  if (
-    rows.some(
-      (row) =>
-        row.state === 'running' ||
-        row.checkpoint.active !== null ||
-        row.checkpoint.reports.some((report) => unresolvedInvocation(report)),
-    )
-  )
-    throw new HivexError({
-      code: 'INGESTION_UNRESOLVED',
-      message: 'Resolve every claimed or uncertain invocation before replacing this cohort',
-    });
+  assertTransferSafe(rows);
   return { plan, rows };
 }
 

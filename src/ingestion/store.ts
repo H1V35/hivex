@@ -450,7 +450,7 @@ function transitionDigest(previous: { plan: Plan; rows: IngestionRow[] }) {
   return hash(JSON.stringify(previous));
 }
 
-function assertTransferSafe(rows: IngestionRow[]) {
+export function assertTransferSafe(rows: IngestionRow[]) {
   if (
     rows.some(
       (row) =>
