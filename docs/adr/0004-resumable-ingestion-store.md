@@ -31,6 +31,18 @@ on failure. A crash or failed persistence leaves an explicit unresolved invocati
 time nor a missing process proves that no model request occurred, so such work is never retried
 automatically. A completed candidate is still not an admitted graph or a successful grounding.
 
+Explicitly retry a retained failed source only when the previous invocation ended safely: a failed
+admission without an accepted turn, an invalid output after confirmed completion/cleanup, or an
+acknowledged interruption with confirmed cleanup. Unconfirmed starts, failed cleanup, successful
+candidates and unresolved claims cannot be retried through this operation. Repeating ordinary
+ingestion never implicitly retries failures.
+
+Retain previous attempt reports and consumption when retrying; do not reset the attempt count or
+re-extract completed sources. The caller's attempt limit is a total budget for that source in the
+cohort, including earlier invocations, with at most three attempts. Atomically claim the failed source
+and reserve result capacity before requesting the model. Retry uses the original frozen source;
+only an invalid extraction supplies correction feedback, not a failure to start or finish a turn.
+
 ## Lifecycle
 
 Read-only retrieval continues to create no artifacts. Ingestion is an explicitly mutating command.

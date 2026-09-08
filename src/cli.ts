@@ -60,6 +60,8 @@ async function main(args: string[]) {
           inspection:
             'ingest --show <source-id> [--root <repo>] [--store <file>] [--max-bytes 1024..8388608]',
           discard: 'ingest --discard <exact-plan-hash> [--root <repo>] [--store <file>]',
+          retry:
+            'ingest --retry-failed <source-id> [--root <repo>] [--store <file>] [--attempts 1..3]',
           modelCalls:
             'Persists unaccepted candidates through native Codex; inspection and discard make no model calls.',
         },

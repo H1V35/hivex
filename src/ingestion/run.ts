@@ -2,7 +2,7 @@ import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { HivexError } from '../errors.ts';
 import { parseLimit } from '../cli/arguments.ts';
-import { loadSnapshot } from '../workspace/snapshot.ts';
+import { loadSnapshot, type Snapshot } from '../workspace/snapshot.ts';
 import { createPlan } from './plan.ts';
 import { extractSource } from './command.ts';
 import { IngestionStore } from './store.ts';
@@ -23,6 +23,7 @@ function input(args: string[]) {
         'deadline-ms': { type: 'string' },
         show: { type: 'string' },
         discard: { type: 'string' },
+        'retry-failed': { type: 'string' },
         'max-bytes': { type: 'string' },
       },
     }).values;
@@ -55,6 +56,7 @@ function argumentsFor(args: string[]) {
       values['max-units'],
       values.attempts,
       values['deadline-ms'],
+      values['retry-failed'],
     ].some((value) => value !== undefined)
   )
     throw new HivexError({
@@ -67,13 +69,20 @@ function argumentsFor(args: string[]) {
       message: '--max-bytes belongs to result inspection',
     });
   const root = values.root ?? process.cwd();
+  const maxUnits = parseLimit(values['max-units'], { fallback: 20, minimum: 0, maximum: 2048 });
+  if (values['retry-failed'] !== undefined && maxUnits === 0)
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'A retry requires at least one processing slot',
+    });
   return {
     root,
     ref: values.ref,
     collection: values.collection,
     store: values.store ?? resolve(root, '.hivex/ingestion.sqlite'),
     binary: values.codex ?? 'codex',
-    maxUnits: parseLimit(values['max-units'], { fallback: 20, minimum: 0, maximum: 2048 }),
+    maxUnits,
+    retry: values['retry-failed'],
     attempts: parseLimit(values.attempts, { fallback: 3, minimum: 1, maximum: 3 }),
     deadlineMilliseconds: parseLimit(values['deadline-ms'], {
       fallback: 600_000,
@@ -96,6 +105,11 @@ export async function ingestCommand(args: string[]) {
   if (options.show !== undefined)
     return IngestionStore.result(options.store, options.show, options.maxBytes);
   const previous = IngestionStore.selection(options.store);
+  if (options.retry && !previous)
+    throw new HivexError({
+      code: 'INGESTION_RETRY_NOT_ALLOWED',
+      message: 'Retry requires an existing retained cohort',
+    });
   const collection = options.collection ?? previous?.collection ?? undefined;
   const snapshot = loadSnapshot({
     root: options.root,
@@ -103,7 +117,6 @@ export async function ingestCommand(args: string[]) {
     selection: { collection },
   });
   const plan = createPlan(snapshot, collection ?? null);
-  const sources = new Map(snapshot.sources.map((source) => [source.id, source]));
   if (plan.summary.oversizedSources)
     throw new HivexError({
       code: 'INGESTION_REQUIRES_SECTIONS',
@@ -111,10 +124,32 @@ export async function ingestCommand(args: string[]) {
     });
   using store = new IngestionStore(options.store, plan);
   const reused = store.progress().completed;
+  const processed = await processSources(options, snapshot, store);
+  return {
+    command: 'ingest',
+    accepted: false,
+    planHash: plan.planHash,
+    snapshot: plan.snapshot,
+    processed,
+    reused,
+    ...store.progress(),
+  };
+}
+
+async function processSources(
+  options: ReturnType<typeof argumentsFor>,
+  snapshot: Snapshot,
+  store: IngestionStore,
+) {
+  const sources = new Map(snapshot.sources.map((source) => [source.id, source]));
   const owner = crypto.randomUUID();
+  const previousAttempts = options.retry
+    ? store.retryFailed(options.retry, owner, options.attempts)
+    : undefined;
   let processed = 0;
   while (processed < options.maxUnits) {
-    const id = store.claim(owner);
+    const retrying = processed === 0 && options.retry !== undefined;
+    const id = retrying ? (options.retry ?? null) : store.claim(owner);
     if (id === null) break;
     const source = sources.get(id);
     if (!source)
@@ -129,6 +164,7 @@ export async function ingestCommand(args: string[]) {
         binary: options.binary,
         attempts: options.attempts,
         deadlineMilliseconds: options.deadlineMilliseconds,
+        previousAttempts: retrying ? previousAttempts : undefined,
       },
       (event) => store.checkpoint(id, owner, event),
     );
@@ -136,13 +172,5 @@ export async function ingestCommand(args: string[]) {
     processed += 1;
     if (result.status === 'failed') break;
   }
-  return {
-    command: 'ingest',
-    accepted: false,
-    planHash: plan.planHash,
-    snapshot: plan.snapshot,
-    processed,
-    reused,
-    ...store.progress(),
-  };
+  return processed;
 }

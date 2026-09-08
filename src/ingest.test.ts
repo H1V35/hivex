@@ -93,6 +93,159 @@ test('resumes a fixed cohort without invoking the model again for completed sour
   });
 });
 
+test('explicitly retries a failed admission without losing attempts or repeating completed sources', async () => {
+  await fixture((paths) => {
+    expect(ingest(paths).status).toBe(0);
+    writeFileSync(paths.scenario, 'changed-effort');
+    const failed = ingest(paths, ['--attempts', '1']);
+    expect(failed.status).toBe(1);
+    expect(JSON.parse(failed.stdout)).toMatchObject({
+      completed: 1,
+      failed: 1,
+      attempts: { recorded: 2, unknownUsage: 1, knownTotalTokens: 150 },
+    });
+    expect(readFileSync(paths.calls, 'utf8')).toBe('called\n');
+    rmSync(paths.scenario);
+    const retried = ingest(paths, ['--retry-failed', 'second.md']);
+    expect(retried.stderr).toBe('');
+    expect(retried.status).toBe(0);
+    expect(JSON.parse(retried.stdout)).toMatchObject({
+      status: 'candidates-ready',
+      completed: 2,
+      failed: 0,
+      reused: 1,
+      attempts: { recorded: 3, unknownUsage: 1, knownTotalTokens: 300 },
+    });
+    const inspected = ingest(paths, ['--show', 'second.md', '--max-bytes', '65536']);
+    expect(inspected.status).toBe(0);
+    expect(JSON.parse(inspected.stdout)).toMatchObject({
+      result: {
+        status: 'candidate',
+        candidateAttempt: 2,
+        attempts: [
+          { outcome: 'failed', code: 'MODEL_ADMISSION_FAILED', usage: null },
+          { outcome: 'completed', usage: { totalTokens: 150 } },
+        ],
+      },
+    });
+    expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\n');
+  });
+});
+
+test('refuses retrying a successful source or an unconfirmed model start', async () => {
+  await fixture((paths) => {
+    expect(ingest(paths).status).toBe(0);
+    const before = ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']).stdout;
+    const complete = ingest(paths, ['--retry-failed', 'first.md']);
+    expect(complete.status).toBe(1);
+    expect(JSON.parse(complete.stderr)).toMatchObject({
+      error: { code: 'INGESTION_RETRY_NOT_ALLOWED' },
+    });
+    expect(ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']).stdout).toBe(before);
+    writeFileSync(paths.scenario, 'start-unconfirmed');
+    const failed = ingest(paths, ['--attempts', '1', '--deadline-ms', '100']);
+    expect(failed.status).toBe(1);
+    const calls = readFileSync(paths.calls, 'utf8');
+    const unchanged = ingest(paths, ['--show', 'second.md', '--max-bytes', '65536']).stdout;
+    rmSync(paths.scenario);
+    const unsafe = ingest(paths, ['--retry-failed', 'second.md']);
+    expect(unsafe.status).toBe(1);
+    expect(JSON.parse(unsafe.stderr)).toMatchObject({ error: { code: 'INGESTION_RETRY_UNSAFE' } });
+    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+    expect(ingest(paths, ['--show', 'second.md', '--max-bytes', '65536']).stdout).toBe(unchanged);
+  });
+});
+
+test('keeps the total attempt budget across explicit retries instead of resetting it', async () => {
+  await fixture((paths) => {
+    writeFileSync(paths.scenario, 'changed-effort');
+    expect(ingest(paths, ['--attempts', '1']).status).toBe(1);
+    for (const limit of [2, 3]) {
+      const failed = ingest(paths, ['--retry-failed', 'first.md', '--attempts', String(limit)]);
+      expect(failed.status).toBe(1);
+      expect(JSON.parse(failed.stdout)).toMatchObject({
+        failed: 1,
+        attempts: { recorded: limit, unknownUsage: limit },
+      });
+    }
+    const before = ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']).stdout;
+    rmSync(paths.scenario);
+    const exhausted = ingest(paths, ['--retry-failed', 'first.md']);
+    expect(exhausted.status).toBe(1);
+    expect(JSON.parse(exhausted.stderr)).toMatchObject({
+      error: { code: 'INGESTION_ATTEMPTS_EXHAUSTED' },
+    });
+    expect(ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']).stdout).toBe(before);
+    expect(readFileSync(paths.calls, 'utf8')).toBe('');
+  });
+});
+
+test('retries a confirmed interrupted turn with the original prompt and retained consumption', async () => {
+  await fixture((paths) => {
+    writeFileSync(paths.scenario, 'timeout');
+    expect(ingest(paths, ['--attempts', '1', '--deadline-ms', '100']).status).toBe(1);
+    rmSync(paths.scenario);
+    const retried = ingest(paths, ['--retry-failed', 'first.md', '--attempts', '2']);
+    expect(retried.status).toBe(0);
+    expect(JSON.parse(retried.stdout)).toMatchObject({
+      completed: 1,
+      failed: 0,
+      attempts: { recorded: 2, knownTotalTokens: 275, unknownUsage: 0 },
+    });
+    const inspected = ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']);
+    expect(inspected.status).toBe(0);
+    const result: { result: { attempts: { promptHash: string }[] } } = JSON.parse(inspected.stdout);
+    expect(result.result.attempts[0]?.promptHash).toBe(result.result.attempts[1]?.promptHash);
+    expect(JSON.parse(inspected.stdout)).toMatchObject({
+      result: {
+        attempts: [
+          { outcome: 'timeout', interruption: 'confirmed', usage: { totalTokens: 125 } },
+          { outcome: 'completed', usage: { totalTokens: 150 } },
+        ],
+      },
+    });
+    expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\n');
+  });
+});
+
+test('preserves corrective feedback when explicitly retrying an invalid extraction', async () => {
+  await fixture((paths) => {
+    writeFileSync(paths.scenario, 'retry-success');
+    expect(ingest(paths, ['--attempts', '1']).status).toBe(1);
+    const retried = ingest(paths, ['--retry-failed', 'first.md', '--attempts', '2']);
+    expect(retried.status).toBe(0);
+    expect(JSON.parse(retried.stdout)).toMatchObject({
+      completed: 1,
+      failed: 0,
+      attempts: { recorded: 2, knownTotalTokens: 300 },
+    });
+    const inspected = ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']);
+    expect(JSON.parse(inspected.stdout)).toMatchObject({
+      result: {
+        candidateAttempt: 2,
+        attempts: [
+          { outcome: 'invalid-output', code: 'INVALID_MODEL_EVIDENCE' },
+          { outcome: 'completed' },
+        ],
+      },
+    });
+    expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\n');
+  });
+});
+
+test('rejects retry without retained history or a processing slot before creating state', async () => {
+  await fixture((paths) => {
+    const absent = ingest(paths, ['--retry-failed', 'first.md']);
+    expect(absent.status).toBe(1);
+    expect(existsSync(paths.store)).toBe(false);
+    const idle = ingest(paths, ['--retry-failed', 'first.md', '--max-units', '0']);
+    expect(idle.status).toBe(1);
+    expect(JSON.parse(idle.stderr)).toMatchObject({ error: { code: 'INVALID_ARGUMENT' } });
+    expect(existsSync(paths.store)).toBe(false);
+    expect(readFileSync(paths.calls, 'utf8')).toBe('');
+  });
+});
+
 test('refuses an existing unrelated database without modifying it or invoking a model', async () => {
   await fixture((paths) => {
     const database = new Database(paths.store);

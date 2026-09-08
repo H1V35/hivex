@@ -466,3 +466,20 @@ for four synthetic pairs: a partial exception, an explicit contradiction, disjoi
 conditions and missing context. One preceding native admission timeout is preserved separately;
 only that transport failure was retried. The completed comparisons reported 35,625 tokens. This is
 a small agent-authored experiment, not human gold or validation of the real documentation graph.
+
+### Retry a failed extraction
+
+After inspecting and addressing a failed source, use
+`hivex ingest --retry-failed <source-id>` with the same store and source cohort. It retries that source
+first, then continues pending sources within `--max-units`. Completed sources are reused. Ordinary
+`ingest` never retries failed sources implicitly.
+
+The previous invocation must have ended safely: a failed admission without an accepted turn, invalid
+output after confirmed cleanup, or an acknowledged interruption with confirmed cleanup. Unconfirmed
+starts, failed cleanup, unresolved claims and already successful candidates are rejected. This does
+not rerun an adverse semantic review or resolve a contradiction.
+
+`--attempts` is the total source budget, including prior invocations, and remains limited to three.
+Earlier reports and known/unknown consumption remain visible through `ingest --show`. Retrying a
+startup failure or interrupted turn reuses the original prompt; correction feedback is reserved for
+invalid extraction output. A retry cannot use `--max-units 0` or create a new cohort without history.
