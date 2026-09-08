@@ -12,6 +12,7 @@
 - [Source comparisons](adr/0007-evidence-bound-source-comparisons.md): scoped relationships with evidence from both sources.
 
 - [Reviewed graph admission](adr/0008-reviewed-graph-admission.md): complete evidence, scoped relationships and historical inspection.
+- [Implementation claim grounding](adr/0009-implementation-claim-grounding.md): exact code snapshots, scoped precedence and reusable review evidence.
 
 The [CLI guide](../README.md) describes current executable interfaces. Historical evidence under
 `evidence/` records a bounded experiment at its cited revision, not a standing quality verdict.

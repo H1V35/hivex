@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { groundingCommand } from './grounding/command.ts';
 import { admitCommand } from './graph/admission.ts';
 import { diagnostic } from './cli/diagnostic.ts';
 import { argumentsFor } from './cli/arguments.ts';
@@ -39,6 +40,7 @@ function dispatchGraph(args: string[]) {
 }
 
 async function main(args: string[]) {
+  if (args[0] === 'ground') return groundingCommand(args.slice(1));
   if (args[0] === 'graph') return dispatchGraph(args.slice(1));
   if (args[0] === 'ingest') return ingestCommand(args.slice(1));
   if (args[0] === 'plan') return planCommand(args.slice(1));
@@ -48,6 +50,15 @@ async function main(args: string[]) {
       application: 'hivex',
       configuration: 'hivex.json',
       commands: [
+        {
+          name: 'ground',
+          usage:
+            'ground <review-claim> --input <admitted-graph> --base <revision> [--root <repo>] [--source <source-id>] [--prepare] [--codex <binary>] [--deadline-ms 100..900000]',
+          inspection: 'ground --check <retained-result> --input <admitted-graph> [--root <repo>]',
+          scope:
+            'Grounds the supplied review claim against complete committed changed files and selected documentary evidence; never approves the whole implementation.',
+          modelCalls: 'Native Luna/max for execution; --prepare and --check make no model calls.',
+        },
         {
           name: 'graph',
           usage: 'graph build [--root <repo>] [--store <file>] [--export]',

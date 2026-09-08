@@ -2,7 +2,10 @@ import type { Source } from './markdown.ts';
 
 type Citation = { quote: string; lineStart: number; lineEnd: number };
 
-export function invalidCitationIndexes(source: Source, entries: Citation[]) {
+export function invalidCitationIndexes(
+  source: Pick<Source, 'content' | 'section'>,
+  entries: Citation[],
+) {
   const lines = source.content.split('\n');
   const firstLine = source.section?.lineStart ?? 1;
   return entries.flatMap((entry, index) => {
