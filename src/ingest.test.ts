@@ -594,3 +594,25 @@ test('applies a finite invocation deadline and retry budget while retaining fail
     expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\n');
   });
 });
+
+test('does not commit an in-flight result after the stored cohort changes', async () => {
+  await fixture(async (paths) => {
+    writeFileSync(paths.hold, 'hold native responses');
+    const active = start(paths);
+    try {
+      await waitForCalls(paths.calls, 1);
+      const changed = new Database(paths.store);
+      changed.run("UPDATE cohort SET value=json_set(value, '$.planHash', ?)", ['0'.repeat(64)]);
+      changed.close();
+      rmSync(paths.hold);
+      expect(await active.exited).toBe(1);
+      expect(JSON.parse(await new Response(active.stderr).text())).toMatchObject({
+        error: { code: 'INGESTION_PLAN_MISMATCH' },
+      });
+      expect(readFileSync(paths.calls, 'utf8')).toBe('called\n');
+    } finally {
+      active.kill('SIGKILL');
+      await active.exited;
+    }
+  });
+});

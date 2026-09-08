@@ -170,6 +170,8 @@ function openFile(path: string) {
 
 export class IngestionStore {
   private readonly db: Database;
+  private readonly plan: Plan;
+  private readonly planText: string;
 
   static selection(path: string) {
     validateDirectory(path);
@@ -294,6 +296,8 @@ export class IngestionStore {
   }
 
   constructor(path: string, plan: Plan) {
+    this.plan = plan;
+    this.planText = JSON.stringify(plan);
     this.db = openFile(path);
     try {
       this.initialize(plan);
@@ -301,6 +305,14 @@ export class IngestionStore {
       this.db.close();
       throw error;
     }
+  }
+
+  private assertPlan() {
+    const current = this.db
+      .query<{ value: string }, []>('SELECT value FROM cohort WHERE id=1')
+      .get();
+    if (current?.value !== this.planText)
+      failure('INGESTION_PLAN_MISMATCH', "The store no longer contains this invocation's cohort");
   }
 
   private initialize(plan: Plan) {
@@ -327,7 +339,7 @@ export class IngestionStore {
         attempts TEXT NOT NULL, attempts_hash TEXT NOT NULL
       ) STRICT`);
         const previous = this.db.query<{ value: string }, []>('SELECT value FROM cohort').get();
-        const value = JSON.stringify(plan);
+        const value = this.planText;
         if (Buffer.byteLength(value) > 8 * 1024 * 1024)
           failure('INGESTION_PLAN_TOO_LARGE', 'The complete ingestion plan exceeds 8 MiB');
         if (previous && previous.value !== value)
@@ -368,6 +380,7 @@ export class IngestionStore {
   claim(owner: string) {
     return this.db
       .transaction(() => {
+        this.assertPlan();
         const next = this.db
           .query<
             { id: string },
@@ -411,6 +424,7 @@ export class IngestionStore {
       );
     this.db
       .transaction(() => {
+        this.assertPlan();
         const updated = this.db.run(
           "UPDATE units SET state=?, result=?, result_hash=?, owner=NULL WHERE id=? AND owner=? AND state='running'",
           [result.status, value, hash(value), id, owner],
@@ -424,6 +438,7 @@ export class IngestionStore {
   checkpoint(id: string, owner: string, event: ExtractionCheckpoint) {
     this.db
       .transaction(() => {
+        this.assertPlan();
         const row = this.db
           .query<
             { attempts: string },
@@ -456,7 +471,7 @@ export class IngestionStore {
       .immediate();
   }
 
-  attempts() {
+  private attempts() {
     const summary = { recorded: 0, unresolved: 0, unknownUsage: 0, knownTotalTokens: 0 };
     const rows = this.db.query<{ attempts: string }, []>('SELECT attempts FROM units').all();
     for (const row of rows) {
@@ -474,7 +489,7 @@ export class IngestionStore {
     return summary;
   }
 
-  counts() {
+  private counts() {
     const counts = { completed: 0, failed: 0, pending: 0, unresolved: 0 };
     const rows = this.db
       .query<
@@ -489,6 +504,18 @@ export class IngestionStore {
       if (row.state === 'running') counts.unresolved = row.count;
     }
     return counts;
+  }
+
+  progress() {
+    return this.db.transaction(() => {
+      this.assertPlan();
+      this.validate(this.plan);
+      const counts = this.counts();
+      let status = 'partial';
+      if (counts.failed) status = 'failed';
+      else if (!counts.pending && !counts.unresolved) status = 'candidates-ready';
+      return { ...counts, status, attempts: this.attempts() };
+    })();
   }
 
   [Symbol.dispose]() {

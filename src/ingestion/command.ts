@@ -1,6 +1,6 @@
 import { HivexError } from '../errors.ts';
-import { hash } from '../sources/markdown.ts';
-import { loadSnapshot } from '../workspace/snapshot.ts';
+import { hash, type Source } from '../sources/markdown.ts';
+import { loadSnapshot, type Snapshot } from '../workspace/snapshot.ts';
 import { extractionArguments } from './arguments.ts';
 import { extractAttempt, type ExtractionAttempt } from './attempt.ts';
 import { maximumSourceBytes, prepareExtraction, processingContract } from './preparation.ts';
@@ -26,6 +26,20 @@ export async function extractCommand(
       code: 'SOURCE_NOT_FOUND',
       message: 'Extraction requires a declared source',
     });
+  return extractSource({ ...options, source, snapshot }, checkpoint);
+}
+
+export async function extractSource(
+  options: {
+    source: Source;
+    snapshot: Pick<Snapshot, 'commit' | 'configHash'>;
+    binary: string;
+    attempts: number;
+    deadlineMilliseconds: number;
+  },
+  checkpoint?: (event: ExtractionCheckpoint) => void,
+) {
+  const { source, snapshot } = options;
   const sourceBytes = Buffer.byteLength(source.content);
   if (sourceBytes > maximumSourceBytes)
     throw new HivexError({
@@ -64,7 +78,12 @@ export async function extractCommand(
       promptHash: hash(requestedPrompt),
       deadlineMilliseconds: options.deadlineMilliseconds,
     });
-    const result = await extractAttempt({ ...options, prompt: requestedPrompt, source });
+    const result = await extractAttempt({
+      binary: options.binary,
+      deadlineMilliseconds: options.deadlineMilliseconds,
+      prompt: requestedPrompt,
+      source,
+    });
     checkpoint?.({ state: 'recorded', attempt: index + 1, report: result.report });
     attempts.push(result.report);
     if (result.candidate)
