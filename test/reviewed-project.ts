@@ -6,7 +6,12 @@ import { nativeProject } from './native-project.ts';
 import type { GraphSnapshot } from '../src/graph/snapshot.ts';
 const cli = join(import.meta.dirname, '../src/cli.ts');
 export function invoke(root: string, args: string[]) {
-  return spawnSync(process.execPath, [cli, ...args, '--root', root], {
+  const separator = args.indexOf('--');
+  const forwarded =
+    separator < 0
+      ? [...args, '--root', root]
+      : [...args.slice(0, separator), '--root', root, ...args.slice(separator)];
+  return spawnSync(process.execPath, [cli, ...forwarded], {
     encoding: 'utf8',
     timeout: 15000,
     maxBuffer: 4 * 1024 * 1024,

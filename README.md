@@ -603,6 +603,9 @@ bun hivex ground "The API cache lifetime violates the accepted policy" --input h
 bun hivex ground --check /tmp/grounding.json --input hivex.graph.json
 ```
 
+A claim is literal text. If it begins with a hyphen or resembles an option, put all options first and
+place the claim after `--`; saved-result checking preserves the original text.
+
 `--prepare` shows the complete request without a model call. Execution uses native Luna/max;
 `--codex` and `--deadline-ms` follow the existing model-operation conventions. `--root` selects the
 project. Repeat `--source <source-id>` to add documentary sources to lexical retrieval.

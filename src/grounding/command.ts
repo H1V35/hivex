@@ -339,7 +339,9 @@ function envelopeFor(
   };
 }
 export async function groundingCommand(args: string[]) {
-  if (args.some((arg) => arg.split('=')[0] === '--check')) return checkResult(args);
+  const separator = args.indexOf('--');
+  const flags = separator < 0 ? args : args.slice(0, separator);
+  if (flags.some((arg) => arg.split('=')[0] === '--check')) return checkResult(args);
   const options = argumentsFor(args);
   const prepared = prepare(options);
   const schema = z.toJSONSchema(schemaForContext(prepared.contextFiles.length > 0));
@@ -463,7 +465,6 @@ function checkResult(args: string[]) {
   const selection = checkArguments(args);
   const { result, originalReport } = readResult(selection.check);
   const options = argumentsFor([
-    result.claim,
     '--root',
     selection.root,
     '--input',
@@ -472,6 +473,8 @@ function checkResult(args: string[]) {
     result.codeSnapshot.requestedBase,
     ...result.selection.additionalSources.flatMap((id) => ['--source', id]),
     ...(result.contextFiles ?? []).flatMap((file) => ['--context-file', file.request]),
+    '--',
+    result.claim,
   ]);
   const prepared = prepare(options);
   const prompt =
