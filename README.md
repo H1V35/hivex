@@ -470,7 +470,7 @@ a small agent-authored experiment, not human gold or validation of the real docu
 ### Retry a failed extraction
 
 After inspecting and addressing a failed source, use
-`hivex ingest --retry-failed <source-id>` with the same store and source cohort. It retries that source
+`bun run cli ingest --retry-failed <source-id>` with the same store and source cohort. It retries that source
 first, then continues pending sources within `--max-units`. Completed sources are reused. Ordinary
 `ingest` never retries failed sources implicitly.
 
