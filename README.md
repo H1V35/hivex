@@ -416,6 +416,13 @@ failed` with exit code 1; model usage remains in the report. Failed transport/sc
 returns no review. A completed semantic assessment remains available even when its findings prevent
 success.
 
+The ordinary and feedback requests use source-local `c1`, `c2`, … and `r1`, `r2`, … identifiers;
+the schema states the exact allowed IDs and counts for that source. Results expand those IDs back to
+the graph's 64-character identities and retain their binding plus `modelOutputHash`. Evidence quotes
+are copied byte-for-byte from the supplied Markdown; multiline quotes preserve their newlines and
+single-line quotes are preferred. A fidelity plan keeps its global schema contract and may carry the
+effective schema hash on each source; a result under another contract is blocked and is not adapted.
+
 Results identify the graph hash, original source snapshot, compared revision and prompt/schema
 contract. `--against <commit>` makes the comparison explicit for a historical source snapshot; it
 does not declare that snapshot current at HEAD. The command writes no per-review artifacts and

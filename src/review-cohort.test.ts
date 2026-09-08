@@ -47,7 +47,7 @@ test('resumes a graph review cohort without repeating completed model work', asy
         JSON.stringify({
           coverage: { verdict: 'complete', reason: 'All knowledge is represented.', evidence },
           claims: [
-            { id: node.id, verdict: 'faithful', reason: 'The prohibition is preserved.', evidence },
+            { id: 'c1', verdict: 'faithful', reason: 'The prohibition is preserved.', evidence },
           ],
           relations: [],
           omissions: [],
@@ -408,7 +408,7 @@ test('detects missing retained assessments even if their storage checksum is rec
       JSON.stringify({
         coverage: { verdict: 'complete', reason: 'The source is covered.', evidence },
         claims: [
-          { id: node.id, verdict: 'faithful', reason: 'The prohibition is preserved.', evidence },
+          { id: 'c1', verdict: 'faithful', reason: 'The prohibition is preserved.', evidence },
         ],
         relations: [],
         omissions: [],

@@ -372,7 +372,7 @@ test('revises a reused candidate with its original usage and revision budget int
         JSON.stringify({
           coverage: { verdict: 'incomplete', reason: 'The retention rule was omitted.', evidence },
           claims: [
-            { id: node.id, verdict: 'faithful', reason: 'The prohibition is preserved.', evidence },
+            { id: 'c1', verdict: 'faithful', reason: 'The prohibition is preserved.', evidence },
           ],
           relations: [],
           omissions: [{ text: 'Preserve the original source.', evidence: omitted }],
@@ -389,6 +389,10 @@ test('revises a reused candidate with its original usage and revision budget int
         paths.binary,
       ]);
       expect(reviewed.status).toBe(1);
+      expect(JSON.parse(reviewed.stdout)).toMatchObject({
+        report: { outcome: 'completed' },
+        review: { claims: [{ id: node.id, verdict: 'faithful' }] },
+      });
       writeFileSync(feedback, reviewed.stdout);
       const replacement = {
         ...original.candidate,

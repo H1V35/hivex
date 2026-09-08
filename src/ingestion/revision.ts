@@ -13,7 +13,7 @@ import {
   validateSourceReviews,
   reviewBinding,
 } from '../graph/review-cohort.ts';
-import { validateAssessmentBinding } from '../graph/assessment-store.ts';
+import { assessmentSchemaHash, validateAssessmentBinding } from '../graph/assessment-store.ts';
 import { createPlan } from './plan.ts';
 import { IngestionStore } from './store.ts';
 import { extractSource } from './command.ts';
@@ -21,7 +21,7 @@ import { extractionSchema } from './claims.ts';
 import { prepareExtraction } from './preparation.ts';
 import { revisionSchema } from './history.ts';
 import { inputUnitSchema } from '../graph/snapshot.ts';
-import { prepareFeedbackReview, feedbackReviewSchema } from '../graph/source-feedback.ts';
+import { prepareFeedbackReview } from '../graph/source-feedback.ts';
 
 function invalid(message: string): never {
   throw new HivexError({ code: 'INGESTION_REVISION_INVALID', message });
@@ -127,11 +127,16 @@ function validateRevisionFeedback(
     ? prepareFeedbackReview(context, prepared.source.id, feedback.feedback)
     : prepared;
   const plan = sourceReviewPlan(context);
-  if (feedback.feedback)
-    plan.contract.schemaHash = hash(JSON.stringify(z.toJSONSchema(feedbackReviewSchema(reviewed))));
+  const source = plan.sources.find((entry) => entry.id === prepared.source.id);
+  if (!source) invalid('The source is not present in the fidelity plan');
   validateAssessmentBinding(
     reviewBinding(feedback),
-    { id: prepared.source.id, actualId: feedback.source.id, promptHash: hash(reviewed.prompt) },
+    {
+      id: prepared.source.id,
+      actualId: feedback.source.id,
+      promptHash: hash(reviewed.prompt),
+      schemaHash: assessmentSchemaHash(plan, source.id),
+    },
     plan,
   );
   validateSourceReviews(

@@ -81,8 +81,8 @@ function prepare(paths: Paths) {
       coverage: { verdict: 'incomplete', reason: 'The retention rule was omitted.', evidence },
       claims: graph.nodes
         .filter((node) => node.source === 'first.md')
-        .map((node) => ({
-          id: node.id,
+        .map(() => ({
+          id: 'c1',
           verdict: 'faithful',
           reason: 'The prohibition is preserved.',
           evidence,
@@ -286,8 +286,8 @@ test('rejects a valid graph whose source differs from the frozen cohort even whe
           coverage: { verdict: 'incomplete', reason: 'The retention rule is missing.', evidence },
           claims: changed.nodes
             .filter((node) => node.source === 'first.md')
-            .map((node) => ({
-              id: node.id,
+            .map(() => ({
+              id: 'c1',
               verdict: 'faithful',
               reason: 'The cache prohibition is preserved.',
               evidence,

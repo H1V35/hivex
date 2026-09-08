@@ -4,8 +4,17 @@ import { z } from 'zod';
 import { HivexError } from '../errors.ts';
 import { hash } from '../sources/markdown.ts';
 import { readGraph, parseGraphDocument } from './verify.ts';
-import { createReviewContext, prepareSourceReview, sourceReviewPrompt } from './source-review.ts';
-import { AssessmentStore, validateAssessmentBinding } from './assessment-store.ts';
+import {
+  compactReviewPacket,
+  createReviewContext,
+  prepareSourceReview,
+  sourceReviewPrompt,
+} from './source-review.ts';
+import {
+  AssessmentStore,
+  assessmentSchemaHash,
+  validateAssessmentBinding,
+} from './assessment-store.ts';
 import { unresolvedInvocation } from './assessment-cohort.ts';
 import {
   originalReview,
@@ -77,7 +86,12 @@ function readArchive(path: string, context: Context) {
       invalid('The archive verdict differs from its source state');
     validateAssessmentBinding(
       reviewBinding(row.result),
-      { id: row.id, actualId: row.result.source.id, promptHash: source.promptHash },
+      {
+        id: row.id,
+        actualId: row.result.source.id,
+        promptHash: source.promptHash,
+        schemaHash: assessmentSchemaHash(plan, row.id),
+      },
       plan,
     );
   }
@@ -101,7 +115,7 @@ function compatibleReviews(previous: ReturnType<typeof readArchive>, context: Co
     const original = originalReview(row.result);
     const prepared = prepareSourceReview(context, row.id);
     const originalPrompt = sourceReviewPrompt({
-      ...prepared.packet,
+      ...compactReviewPacket(prepared),
       graphHash: original.graphHash,
     });
     if (hash(originalPrompt) !== original.contract.promptHash) continue;

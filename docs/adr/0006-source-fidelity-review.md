@@ -6,6 +6,11 @@ date: 2026-09-08
 
 # Review extraction fidelity against complete versioned sources
 
+Coverage concerns substantive project assertions, not a second transcription of the source.
+Provenance labels or illustrative examples already preserved by the source identity or literal
+evidence do not require standalone claims unless they add a distinct rule, requirement, exception,
+rationale or behavior. Material conditions and quantitative requirements still belong in the claims.
+
 Before admission, review whether the extracted claims and relationships preserve their source's
 meaning. Literal citation checks establish provenance, not semantic fidelity. Use the admitted
 Luna/max native route with a separate structured review of the complete source and extraction.
@@ -29,6 +34,13 @@ profile and measured usage. Preserve failed invocation accounting. Reject stale 
 before requesting the model; never truncate a source to make the review fit. The prepare operation
 exposes the exact bounded request without a model invocation. Normal execution returns one result
 on stdout and creates no per-review files.
+
+Ordinary and feedback fidelity use the same compact model contract: source-local `c1`/`r1` IDs with
+exact per-source schema membership and counts, literal byte-for-byte evidence quotes with exact
+newlines, and no text normalization. The retained result expands IDs back to graph identities and
+validates `reviewBindings` and `modelOutputHash`. `AssessmentPlan.contract.schemaHash` remains the
+global fallback; a source may carry the effective override. A different contract blocks reuse and
+retention validation; no compatibility adapter or receipt relabelling is defined.
 
 This is a source-fidelity check. It does not establish cross-source consistency, effective authority,
 graph admission or implementation grounding. Those remain required under
@@ -168,9 +180,10 @@ must fit 256 KiB, as must the complete source-and-concern prompt. Preserve the f
 and its hash in the resulting source review, including invocation usage. The request hash binds that
 receipt identity and the exact selected feedback. This mode uses short `c1`/`r1` identifiers with the
 exact allowed IDs and counts in its model schema. Expand results back to the original graph IDs,
-retaining and revalidating the bindings and normalized model-output hash. Other-source IDs and
+retaining and revalidating the bindings and model-output hash. Other-source IDs and
 comparison relationships are not extra fidelity coverage items. The ordinary fidelity model request
-and schema, native profile, citation checks and invocation limits remain unchanged. Preparation makes no model call.
+and schema use the same compact contract, native profile, citation checks and invocation limits.
+Preparation makes no model call.
 
 This is a new evidenced assessment with different inputs, not a retry or replacement of an existing
 cohort row. Keep original source reviews and comparisons unchanged. A completed adverse fidelity

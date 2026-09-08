@@ -12,15 +12,23 @@ import { HivexError } from '../errors.ts';
 import { hash } from '../sources/markdown.ts';
 import { knowledgeModel, nativeVersion, requestedPolicyHash } from '../model/profile.ts';
 import {
+  compactReviewPacket,
   createReviewContext,
   prepareSourceReview,
+  reviewBindingsSchema,
+  reviewSchemaHash,
   runSourceReview,
   sourceReviewSchema,
   satisfactory,
   validateReview,
+  validateReviewOutput,
   sourceReviewPrompt,
 } from './source-review.ts';
-import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
+import {
+  AssessmentStore,
+  validateAssessmentContract,
+  type AssessmentPlan,
+} from './assessment-store.ts';
 import { usageSchema } from '../model/transcript.ts';
 import { digest } from './snapshot.ts';
 import {
@@ -43,6 +51,8 @@ export const reviewResultSchema = z.looseObject({
     requestedPolicyHash: digest,
   }),
   report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
+  reviewBindings: reviewBindingsSchema,
+  modelOutputHash: digest.optional(),
   review: sourceReviewSchema.nullable(),
   feedback: comparisonFeedbackSchema.optional(),
   rejectedOutput: rejectedOutputSchema.nullable().optional(),
@@ -86,6 +96,11 @@ function validateReviewProvenance(
   result: ReviewResult,
   prepared: ReturnType<typeof prepareSourceReview>,
 ) {
+  validateAssessmentContract(result, {
+    nativeVersion,
+    requestedPolicyHash: requestedPolicyHash(),
+    schemaHash: reviewSchemaHash(prepared),
+  });
   if (
     result.feedback &&
     (result.association || result.contract.promptHash !== hash(prepared.prompt))
@@ -96,11 +111,14 @@ function validateReviewProvenance(
     });
   if (result.feedback) validateFeedbackReview(result, prepared);
   validateRejectedOutput(result.rejectedOutput, result.report.outcome, result.review);
+  if (!result.feedback) validateReviewOutput(result, prepared);
+  const promptHash = (graphHash: string) =>
+    hash(sourceReviewPrompt({ ...compactReviewPacket(prepared), graphHash }));
   if (
-    result.association &&
-    (result.association.originalHash !== hash(JSON.stringify(originalReview(result))) ||
-      result.contract.promptHash !==
-        hash(sourceReviewPrompt({ ...prepared.packet, graphHash: result.graphHash })))
+    (!result.feedback && result.contract.promptHash !== promptHash(result.graphHash)) ||
+    (result.association &&
+      (result.association.originalHash !== hash(JSON.stringify(originalReview(result))) ||
+        result.association.promptHash !== promptHash(result.association.graphHash)))
   )
     throw new HivexError({
       code: 'INVALID_REVIEW_STORE',
@@ -109,10 +127,6 @@ function validateReviewProvenance(
     });
   if (
     !isDeepStrictEqual(result.source, prepared.packet.source) ||
-    !isDeepStrictEqual(
-      result.association?.sourceSnapshot ?? result.sourceSnapshot,
-      prepared.input.graph.sourceSnapshot,
-    ) ||
     !isDeepStrictEqual(result.model, knowledgeModel)
   )
     throw new HivexError({
@@ -121,30 +135,54 @@ function validateReviewProvenance(
     });
 }
 
+function validateSourceReviewResult(
+  result: ReviewResult,
+  prepared: ReturnType<typeof prepareSourceReview>,
+  historical = false,
+) {
+  if (historical && (!retryableAssessment(result) || result.review !== null))
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message: 'Previous attempts must preserve safe failures without an assessment',
+    });
+  if (
+    !historical &&
+    !isDeepStrictEqual(
+      result.association?.sourceSnapshot ?? result.sourceSnapshot,
+      prepared.input.graph.sourceSnapshot,
+    )
+  )
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message: 'Review provenance differs from its source snapshot',
+    });
+  validateReviewProvenance(result, prepared);
+  validateCompletedInvocation(result.report);
+  if (result.review) validateReview(result.review, prepared);
+  const passed =
+    result.review !== null && satisfactory(result.review) && result.report.outcome === 'completed';
+  if ((result.status === 'reviewed') !== passed)
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message: 'A retained verdict is inconsistent with its assessment',
+    });
+}
+
 export function validateSourceReviews(
   rows: ReturnType<AssessmentStore<ReviewResult>['snapshot']>,
   context: ReturnType<typeof createReviewContext>,
 ) {
   for (const row of rows) {
+    if (!row.result && !row.previousAttempts?.length) continue;
+    const source = prepareSourceReview(context, row.id);
     for (const previous of row.previousAttempts ?? [])
-      validateRejectedOutput(previous.rejectedOutput, previous.report.outcome, previous.review);
+      validateSourceReviewResult(previous, source, true);
     const result = row.result;
     if (!result) continue;
     const prepared = result.feedback
       ? prepareFeedbackReview(context, row.id, result.feedback)
-      : prepareSourceReview(context, row.id);
-    validateReviewProvenance(result, prepared);
-    validateCompletedInvocation(result.report);
-    if (result.review) validateReview(result.review, prepared);
-    const passed =
-      result.review !== null &&
-      satisfactory(result.review) &&
-      result.report.outcome === 'completed';
-    if ((result.status === 'reviewed') !== passed)
-      throw new HivexError({
-        code: 'INVALID_REVIEW_STORE',
-        message: 'A retained verdict is inconsistent with its assessment',
-      });
+      : source;
+    validateSourceReviewResult(result, prepared);
   }
 }
 
@@ -229,6 +267,14 @@ export async function reviewCohortCommand(args: string[]) {
 }
 
 export function sourceReviewPlan(context: ReturnType<typeof createReviewContext>) {
+  const sources = context.input.graph.sources.map((source) => {
+    const prepared = prepareSourceReview(context, source.id);
+    return {
+      id: source.id,
+      promptHash: hash(prepared.prompt),
+      schemaHash: reviewSchemaHash(prepared),
+    };
+  });
   return {
     graphHash: context.input.graph.hash,
     contract: {
@@ -236,9 +282,6 @@ export function sourceReviewPlan(context: ReturnType<typeof createReviewContext>
       requestedPolicyHash: requestedPolicyHash(),
       schemaHash: hash(JSON.stringify(z.toJSONSchema(sourceReviewSchema))),
     },
-    sources: context.input.graph.sources.map((source) => ({
-      id: source.id,
-      promptHash: hash(prepareSourceReview(context, source.id).prompt),
-    })),
+    sources,
   } satisfies AssessmentPlan;
 }

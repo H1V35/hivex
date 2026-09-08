@@ -83,7 +83,7 @@ export async function projectWithReviews(
             },
             claims: [
               {
-                id: node.id,
+                id: 'c1',
                 verdict: 'faithful',
                 reason: 'The complete prohibition is preserved.',
                 evidence,

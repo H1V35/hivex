@@ -194,7 +194,7 @@ test('keeps an unchanged adverse review negative after reassociation and does no
           },
           claims: [
             {
-              id: node.id,
+              id: 'c1',
               verdict: 'faithful',
               reason: 'The cache prohibition is preserved.',
               evidence,
