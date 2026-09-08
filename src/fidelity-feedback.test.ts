@@ -381,7 +381,7 @@ test('retains rejected feedback-review output without treating it as fidelity ev
         '--prepare',
       ]);
       expect(rejected.status).toBe(1);
-      expect(rejected.stderr).toContain('Rejected fidelity output is altered');
+      expect(rejected.stderr).toContain('Rejected model output is altered');
       expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
     },
     2,

@@ -46,10 +46,20 @@ unchanged parts, conditions and exceptions. Reserve `contradicts` for incompatib
 unresolved; do not add a redundant contradiction solely because the former and amended rules differ.
 Authored evidence must establish that resolution; dates, IDs and status labels alone remain insufficient.
 
+Consistent scope repeated in a statement and its conditions or exceptions is not an ambiguity by
+itself. A fidelity objection must identify changed meaning or conflicting applicability in the actual
+supplied claim; it cannot invent metadata that the claim does not contain.
+
 These clarifications address two observed comparison failures in [Hivex #19](https://github.com/H1V35/hivex/issues/19).
 They change the comparison request hash. Earlier assessments and consumption remain in their complete
 archives and cannot be silently relabelled as results of the clarified request. Graph admission retains
 its existing requirement to reject unresolved contradictions, incomplete coverage and insufficient context.
+
+Quotes remain byte-for-byte source evidence, including newlines. Prefer separate single-line quotes
+when spanning Markdown lines. Invalid model output is retained with its hash as untrusted diagnostics,
+never as a partial comparison. Inspection verifies that hash and its invalid-output status, including
+previous attempts after recovery. Existing result/history bounds apply; older discarded text cannot
+be reconstructed from its error message or treated as an assessment.
 
 This operation covers the selected pair only and always returns `accepted: false`. It does not
 establish graph-wide relationship coverage, effective authority, admission or code grounding. Those

@@ -88,7 +88,9 @@ const instructions = [
   'Use the supplied short claim and source identifiers. The caller binds them to the original graph and source identities.',
   'Report only relationships between claims from different supplied sources. Use local relation IDs r1, r2, etc.',
   'Every relation needs literal evidence from both endpoint sources, at their original inclusive line ranges.',
+  'Copy quotes byte-for-byte from Markdown. Prefer separate single-line quotes; preserve every newline in multiline quotes, never replacing it with a space.',
   'Preserve conditions, exceptions, negation and scope. A scoped compatible exception is not an unconditional contradiction.',
+  'Consistent repetition of scope in a statement and its conditions or exceptions is not ambiguity or distortion. Flag a changed meaning or conflicting applicability, not redundancy alone; do not invent metadata absent from the supplied claim.',
   'When explicit amendment text replaces or extends an earlier rule, use supersedes or exception-to for the affected scope. Reserve contradicts for incompatible claims that remain unresolved; do not add a redundant contradiction merely because the prior and amended rules differ.',
   'Supersession or exception precedence requires explicit documentary evidence. Dates, IDs, serialization order and status labels alone never prove it.',
   'The two sources are serialized by ID for reproducibility; this is not authored order. Use original line positions within the same document.',
@@ -341,6 +343,8 @@ export async function runComparison(
         error instanceof HivexError
           ? error.message
           : 'Comparison does not match the required schema',
+      rejectedOutput:
+        typeof result.value === 'string' ? { text: result.value, hash: hash(result.value) } : null,
     };
   }
 }
