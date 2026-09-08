@@ -53,7 +53,7 @@ async function main(args: string[]) {
         {
           name: 'ground',
           usage:
-            'ground <review-claim> --input <admitted-graph> --base <revision> [--root <repo>] [--source <source-id>] [--prepare] [--codex <binary>] [--deadline-ms 100..900000]',
+            'ground <review-claim> --input <admitted-graph> --base <revision> [--root <repo>] [--source <source-id>] [--context-file <revision>:<path>] [--prepare] [--codex <binary>] [--deadline-ms 100..900000]',
           inspection: 'ground --check <retained-result> --input <admitted-graph> [--root <repo>]',
           scope:
             'Grounds the supplied review claim against complete committed changed files and selected documentary evidence; never approves the whole implementation.',

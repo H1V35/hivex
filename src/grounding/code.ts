@@ -8,6 +8,64 @@ export type CodeFile = {
   before: { oid: string; mode: string; text: string } | null;
   after: { oid: string; mode: string; text: string } | null;
 };
+export type CodeContext = {
+  id: string;
+  request: string;
+  ref: string;
+  commit: string;
+  path: string;
+  oid: string;
+  mode: string;
+  text: string;
+};
+
+export function readCodeContext(root: string, requests: string[]): CodeContext[] {
+  const unique = [...new Set(requests)].sort();
+  if (unique.length > 16)
+    throw new HivexError({
+      code: 'GROUND_CONTEXT_CODE_LIMIT',
+      message: 'Select at most 16 complete contextual code files',
+    });
+  const trees = new Map<string, Map<string, GitFile>>();
+  const files = unique.map((request) => {
+    const separator = request.indexOf(':');
+    if (separator <= 0 || separator === request.length - 1)
+      throw new HivexError({
+        code: 'INVALID_ARGUMENT',
+        message: 'Context files use <revision>:<repository-path>',
+      });
+    const ref = request.slice(0, separator);
+    const commit = resolveCommit(root, ref);
+    const path = request.slice(separator + 1);
+    let tree = trees.get(commit);
+    if (!tree) {
+      tree = new Map(trackedFiles(root, commit).map((file) => [file.path, file]));
+      trees.set(commit, tree);
+    }
+    const file = tree.get(path);
+    if (!file || !['100644', '100755'].includes(file.mode))
+      throw new HivexError({
+        code: 'GROUND_CONTEXT_CODE_INVALID',
+        message: 'Every contextual file must be a regular tracked file at its requested revision',
+      });
+    return { request, ref, commit, ...file };
+  });
+  const identities = files.map((file) => JSON.stringify([file.commit, file.path]));
+  if (new Set(identities).size !== files.length)
+    throw new HivexError({
+      code: 'GROUND_CONTEXT_CODE_DUPLICATE',
+      message: 'Different references selected the same contextual file revision',
+    });
+  const text = blobs(
+    root,
+    files.map((file) => ({ ...file, path: file.request })),
+  );
+  return files.map((file, index) => {
+    const content = source({ ...file, path: file.request }, text);
+    if (!content) throw new Error('Missing contextual file');
+    return { ...file, id: `e${index + 1}`, text: content.text };
+  });
+}
 
 function clean(root: string) {
   const status = git(root, [
@@ -27,10 +85,13 @@ function clean(root: string) {
       message: 'Grounding requires a clean checkout of the committed implementation being reviewed',
     });
 }
-export function isCurrent(root: string, head: string) {
+export function isCurrent(root: string, head: string, context: CodeContext[] = []) {
   try {
     clean(root);
-    return resolveCommit(root, 'HEAD') === head;
+    return (
+      resolveCommit(root, 'HEAD') === head &&
+      context.every((file) => resolveCommit(root, file.ref) === file.commit)
+    );
   } catch {
     return false;
   }

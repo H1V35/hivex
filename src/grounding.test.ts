@@ -384,3 +384,119 @@ test('rechecks retained grounding without a model call and invalidates changed c
     expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
   });
 });
+
+test('adds exact historical code context without changing the reviewed implementation', async () => {
+  await implementation((paths, fixture) => {
+    const head = paths.git(['rev-parse', 'HEAD']);
+    paths.git(['switch', '-qc', 'approved-prototype', fixture.base]);
+    writeFileSync(
+      join(paths.root, 'prototype.ts'),
+      'export const approvedCacheLifetimeMinutes = 1440;\n',
+    );
+    commit(paths);
+    const prototype = paths.git(['rev-parse', 'HEAD']);
+    paths.git(['switch', '-q', 'main']);
+    const before = readFileSync(paths.calls, 'utf8');
+    const prepared = invoke(paths.root, [
+      ...command(fixture),
+      '--context-file',
+      'approved-prototype:prototype.ts',
+      '--prepare',
+    ]);
+    expect(prepared.stderr).toBe('');
+    expect(prepared.status).toBe(0);
+    const result = JSON.parse(prepared.stdout);
+    expect(result.codeSnapshot.head).toBe(head);
+    expect(result.contextFiles).toEqual([
+      expect.objectContaining({ id: 'e1', path: 'prototype.ts', commit: prototype }),
+    ]);
+    expect(result.prompt).toContain('export const approvedCacheLifetimeMinutes = 1440;');
+    expect(result.files).toHaveLength(1);
+    expect(readFileSync(paths.calls, 'utf8')).toBe(before);
+    expect(paths.git(['rev-parse', 'HEAD'])).toBe(head);
+  });
+});
+
+test('checks contextual code citations and invalidates a moved reference without a model call', async () => {
+  await implementation((paths, fixture) => {
+    paths.git(['switch', '-qc', 'approved-prototype', fixture.base]);
+    const text = 'export const approvedCacheLifetimeMinutes = 1440;';
+    writeFileSync(join(paths.root, 'prototype.ts'), text + '\n');
+    commit(paths);
+    paths.git(['switch', '-q', 'main']);
+    const response = assessment();
+    response.coverage.code.push({
+      id: 'e1',
+      relevance: 'relevant',
+      reason: 'Provides the approved reference.',
+    });
+    response.code.push({ file: 'e1', revision: 'context', quote: text, lineStart: 1, lineEnd: 1 });
+    writeFileSync(paths.candidate, JSON.stringify(response));
+    const args = [
+      ...command(fixture),
+      '--context-file',
+      'approved-prototype:prototype.ts',
+      '--codex',
+      paths.binary,
+    ];
+    const result = invoke(paths.root, args);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    const saved = join(dirname(paths.store), 'context-grounding.json');
+    writeFileSync(saved, result.stdout);
+    const check = ['ground', '--check', saved, '--input', fixture.admitted];
+    expect(invoke(paths.root, check).status).toBe(0);
+    response.code[1]!.revision = 'after';
+    writeFileSync(paths.candidate, JSON.stringify(response));
+    expect(invoke(paths.root, args).status).toBe(1);
+    const calls = readFileSync(paths.calls, 'utf8');
+    paths.git(['branch', '-f', 'approved-prototype', 'HEAD']);
+    expect(invoke(paths.root, check).status).toBe(1);
+    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+  });
+});
+
+test('rejects missing, untracked and excessive contextual selections before a model call', async () => {
+  await implementation((paths, fixture) => {
+    const calls = readFileSync(paths.calls, 'utf8');
+    for (const request of [
+      'HEAD:',
+      'HEAD:missing.ts',
+      'HEAD:../outside.ts',
+      'missing-ref:cache.ts',
+    ]) {
+      expect(invoke(paths.root, [...command(fixture), '--context-file', request]).status).toBe(1);
+    }
+    const excessive = Array.from({ length: 17 }, (_, index) => [
+      '--context-file',
+      `HEAD:file-${index}.ts`,
+    ]).flat();
+    expect(invoke(paths.root, [...command(fixture), ...excessive]).status).toBe(1);
+    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+  });
+});
+
+test('preserves malformed model output for diagnosis and checks its integrity', async () => {
+  await implementation((paths, fixture) => {
+    writeFileSync(paths.scenario, 'invalid-json');
+    const result = invoke(paths.root, [...command(fixture), '--codex', paths.binary]);
+    expect(result.status).toBe(1);
+    const value = JSON.parse(result.stdout);
+    expect(value.rejectedOutput.text).toBe('{broken');
+    expect(value.assessment).toBeNull();
+    const saved = join(dirname(paths.store), 'rejected-grounding.json');
+    writeFileSync(saved, result.stdout);
+    const checked = invoke(paths.root, ['ground', '--check', saved, '--input', fixture.admitted]);
+    expect(checked.stderr).toBe('');
+    expect(JSON.parse(checked.stdout)).toMatchObject({
+      status: 'failed',
+      checked: true,
+      rejectedOutput: { text: '{broken' },
+    });
+    value.rejectedOutput.text = 'replaced';
+    writeFileSync(saved, JSON.stringify(value));
+    expect(
+      invoke(paths.root, ['ground', '--check', saved, '--input', fixture.admitted]).status,
+    ).toBe(1);
+  });
+});

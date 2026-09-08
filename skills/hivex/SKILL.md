@@ -94,7 +94,10 @@ Admission covers its declared selection; it does not prove exhaustive consistenc
 Before accepting an implementation, check its exact code/diff against applicable decisions and the
 exact admitted manifest, explicitly applying amendments, conditions and exceptions. Use `ground <review-claim> --input <admitted-graph> --base <revision>` when available.
 Use `--prepare` to inspect the complete request without invoking a model and repeat `--source` to add
-needed documentary context. The checkout must contain the clean, committed implementation.
+needed documentary context. Use `--context-file <revision>:<path>` when an approved prototype or
+unchanged dependency is needed; select exact Git evidence rather than copying code into Markdown.
+Prefer immutable commits and keep the complete request within its budget. Context code does not
+replace evidence of the changed implementation. The checkout must contain the clean, committed implementation.
 A supported or contradicted claim is not approval of the entire change. Preserve unresolved evidence
 and invocation usage; use `ground --check <result> --input <admitted-graph>` to revalidate saved evidence
 without another model call. Changed inputs require a new corresponding assessment. If that capability or sufficient evidence is absent, report the

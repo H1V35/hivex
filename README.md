@@ -605,7 +605,13 @@ bun hivex ground --check /tmp/grounding.json --input hivex.graph.json
 
 `--prepare` shows the complete request without a model call. Execution uses native Luna/max;
 `--codex` and `--deadline-ms` follow the existing model-operation conventions. `--root` selects the
-project. Repeat `--source <source-id>` to add documentary sources to lexical retrieval. Hivex expands
+project. Repeat `--source <source-id>` to add documentary sources to lexical retrieval.
+Use `--context-file <revision>:<repository-path>` for explicitly selected code outside the diff, such
+as a prototype or unchanged dependency. Up to 16 complete contextual Git files are allowed within the
+same request budget. Their `e1`, `e2`, etc. citations use `revision: context`; they do not replace
+citations of the changed implementation. Prefer a commit ID; moving a named reference invalidates
+corresponding saved evidence. Files must be tracked regular UTF-8 blobs; symlinks and duplicate resolved
+selections are rejected. Hivex expands
 supersessions, exceptions and requirements, and discloses other unexpanded links. Missing context
 stays unresolved; it does not imply an independent or approved implementation.
 
@@ -625,7 +631,10 @@ during the call yields `status: failed` and exit 1, retaining the assessment and
 Store the complete stdout result through the project's existing review workflow. `--check` revalidates
 a retained result (maximum 8 MiB) against current code, the graph, citations and processing contract
 without another model call. Changes invalidate corresponding evidence. Both commands create no
-persistent grounding files; the caller chooses whether to retain an artifact. Failed invocation or
+persistent grounding files; the caller chooses whether to retain an artifact. Rejected model text is
+retained with its own hash for diagnosis and remains untrusted. The original prompt and its endpoint-
+citation clarification share an explicitly compatible validation contract for requests without extra
+code context, so a valid earlier assessment can be checked without another model call. Failed invocation or
 negative evidence is never automatically retried or converted to implementation approval.
 
 Tests, code review and coverage beyond the supplied claim remain the harness's responsibility.
