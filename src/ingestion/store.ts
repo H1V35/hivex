@@ -118,6 +118,19 @@ function failure(code: string, message: string): never {
   throw new HivexError({ code, message });
 }
 
+function readCohort(db: Database) {
+  const row = db
+    .query<
+      { value: string; value_hash: string },
+      []
+    >('SELECT value, value_hash FROM cohort WHERE id=1')
+    .get();
+  if (!row) return null;
+  if (Buffer.byteLength(row.value) > 8 * 1024 * 1024 || hash(row.value) !== row.value_hash)
+    failure('INVALID_INGESTION_STORE', 'The recorded cohort is oversized or altered');
+  return row.value;
+}
+
 function validateDirectory(path: string) {
   try {
     const directory = lstatSync(dirname(path));
@@ -189,31 +202,31 @@ export class IngestionStore {
     }
     using db = new Database(path, { readonly: true, strict: true });
     db.run('PRAGMA busy_timeout=1000');
-    if (!validateIdentity(db)) return null;
-    const row = db.query<{ value: string }, []>('SELECT value FROM cohort WHERE id=1').get();
-    if (!row) {
-      const remaining = db
-        .query<{ count: number }, []>('SELECT count(*) AS count FROM units')
-        .get();
-      if (remaining?.count === 0) return null;
-      failure('INVALID_INGESTION_STORE', 'The recorded cohort is missing');
-    }
-    if (Buffer.byteLength(row.value) > 8 * 1024 * 1024)
-      failure('INVALID_INGESTION_STORE', 'The recorded ingestion plan is missing or too large');
-    const parsed = z
-      .object({
-        snapshot: z.object({ commit: z.string().regex(/^[a-f0-9]{40}$/) }),
-        selection: z.object({
-          collection: z
-            .string()
-            .regex(/^[a-z][a-z0-9-]{0,47}$/)
-            .nullable(),
-        }),
-      })
-      .safeParse(JSON.parse(row.value));
-    if (!parsed.success)
-      failure('INVALID_INGESTION_STORE', 'The recorded source selection is invalid');
-    return { ref: parsed.data.snapshot.commit, collection: parsed.data.selection.collection };
+    return db.transaction(() => {
+      if (!validateIdentity(db)) return null;
+      const value = readCohort(db);
+      if (value === null) {
+        const remaining = db
+          .query<{ count: number }, []>('SELECT count(*) AS count FROM units')
+          .get();
+        if (remaining?.count === 0) return null;
+        failure('INVALID_INGESTION_STORE', 'The recorded cohort is missing');
+      }
+      const parsed = z
+        .object({
+          snapshot: z.object({ commit: z.string().regex(/^[a-f0-9]{40}$/) }),
+          selection: z.object({
+            collection: z
+              .string()
+              .regex(/^[a-z][a-z0-9-]{0,47}$/)
+              .nullable(),
+          }),
+        })
+        .safeParse(JSON.parse(value));
+      if (!parsed.success)
+        failure('INVALID_INGESTION_STORE', 'The recorded source selection is invalid');
+      return { ref: parsed.data.snapshot.commit, collection: parsed.data.selection.collection };
+    })();
   }
 
   static result(path: string, id: string, maxBytes: number) {
@@ -223,11 +236,11 @@ export class IngestionStore {
     db.run('PRAGMA busy_timeout=1000');
     return db.transaction(() => {
       validateIdentity(db);
-      const cohort = db.query<{ value: string }, []>('SELECT value FROM cohort WHERE id=1').get();
-      if (!cohort) failure('INVALID_INGESTION_STORE', 'The recorded cohort is missing');
+      const cohort = readCohort(db);
+      if (cohort === null) failure('INVALID_INGESTION_STORE', 'The recorded cohort is missing');
       const plan = z
         .object({ planHash: z.string().regex(/^[a-f0-9]{64}$/) })
-        .parse(JSON.parse(cohort.value));
+        .parse(JSON.parse(cohort));
       const row = db
         .query<
           StoredUnit,
@@ -268,8 +281,10 @@ export class IngestionStore {
     db.run('PRAGMA secure_delete=ON');
     db.transaction(() => {
       validateIdentity(db);
-      const row = db.query<{ value: string }, []>('SELECT value FROM cohort WHERE id=1').get();
-      const plan = z.object({ planHash: z.string() }).safeParse(row ? JSON.parse(row.value) : null);
+      const value = readCohort(db);
+      const plan = z
+        .object({ planHash: z.string() })
+        .safeParse(value === null ? null : JSON.parse(value));
       if (!plan.success || plan.data.planHash !== expectedHash)
         failure('INGESTION_PLAN_MISMATCH', 'Discard must identify the exact recorded cohort');
       const unresolved = db
@@ -309,15 +324,18 @@ export class IngestionStore {
 
   private assertPlan() {
     const current = this.db
-      .query<{ value: string }, []>('SELECT value FROM cohort WHERE id=1')
+      .query<
+        { value: string; value_hash: string },
+        []
+      >('SELECT value, value_hash FROM cohort WHERE id=1')
       .get();
-    if (current?.value !== this.planText)
+    if (current?.value !== this.planText || current.value_hash !== hash(this.planText))
       failure('INGESTION_PLAN_MISMATCH', "The store no longer contains this invocation's cohort");
   }
 
   private initialize(plan: Plan) {
     this.db.run('PRAGMA busy_timeout=1000');
-    validateIdentity(this.db);
+    this.db.transaction(() => validateIdentity(this.db))();
     this.db.run('PRAGMA trusted_schema=OFF');
     this.db.run('PRAGMA journal_mode=DELETE');
     this.db.run('PRAGMA synchronous=FULL');
@@ -330,7 +348,7 @@ export class IngestionStore {
       .transaction(() => {
         validateIdentity(this.db);
         this.db.run(`CREATE TABLE IF NOT EXISTS cohort (
-        id INTEGER PRIMARY KEY CHECK (id=1), value TEXT NOT NULL
+        id INTEGER PRIMARY KEY CHECK (id=1), value TEXT NOT NULL, value_hash TEXT NOT NULL
       ) STRICT`);
         this.db.run(`CREATE TABLE IF NOT EXISTS units (
         id TEXT PRIMARY KEY, ordinal INTEGER NOT NULL UNIQUE,
@@ -338,17 +356,17 @@ export class IngestionStore {
         owner TEXT, result TEXT, result_hash TEXT,
         attempts TEXT NOT NULL, attempts_hash TEXT NOT NULL
       ) STRICT`);
-        const previous = this.db.query<{ value: string }, []>('SELECT value FROM cohort').get();
+        const previous = readCohort(this.db);
         const value = this.planText;
         if (Buffer.byteLength(value) > 8 * 1024 * 1024)
           failure('INGESTION_PLAN_TOO_LARGE', 'The complete ingestion plan exceeds 8 MiB');
-        if (previous && previous.value !== value)
+        if (previous !== null && previous !== value)
           failure(
             'INGESTION_PLAN_MISMATCH',
             'Resume the same committed cohort and processing contract',
           );
-        if (!previous) {
-          this.db.run('INSERT INTO cohort VALUES (1, ?)', [value]);
+        if (previous === null) {
+          this.db.run('INSERT INTO cohort VALUES (1, ?, ?)', [value, hash(value)]);
           for (const [ordinal, unit] of plan.units.entries())
             this.db.run(
               "INSERT INTO units (id, ordinal, state, attempts, attempts_hash) VALUES (?, ?, 'pending', ?, ?)",

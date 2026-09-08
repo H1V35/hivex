@@ -616,3 +616,29 @@ test('does not commit an in-flight result after the stored cohort changes', asyn
     }
   });
 });
+
+test.each([
+  ['$.planHash', '0'.repeat(64)],
+  ['$.snapshot.commit', '0'.repeat(40)],
+])('inspection and discard reject altered cohort metadata: %s', async (field, value) => {
+  await fixture((paths) => {
+    const completed = ingest(paths, ['--max-units', '2']);
+    expect(completed.status).toBe(0);
+    const planHash = JSON.parse(completed.stdout).planHash;
+    const damaged = new Database(paths.store);
+    damaged.run('UPDATE cohort SET value=json_set(value, ?, ?)', [field, value]);
+    damaged.close();
+    const before = readFileSync(paths.store);
+    const opened = ingest(paths, ['--show', 'first.md']);
+    expect(opened.status).toBe(1);
+    expect(JSON.parse(opened.stderr)).toMatchObject({ error: { code: 'INVALID_INGESTION_STORE' } });
+    const requestedHash = field === '$.planHash' ? value : planHash;
+    const discarded = ingest(paths, ['--discard', requestedHash]);
+    expect(discarded.status).toBe(1);
+    expect(JSON.parse(discarded.stderr)).toMatchObject({
+      error: { code: 'INVALID_INGESTION_STORE' },
+    });
+    expect(readFileSync(paths.store)).toEqual(before);
+    expect(readFileSync(paths.calls, 'utf8')).toBe('called\ncalled\n');
+  });
+});
