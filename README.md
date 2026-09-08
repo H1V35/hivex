@@ -275,7 +275,7 @@ complete sections before starting any source. This is candidate production, not 
 
 `--max-units` defaults to 20 and accepts 0–2048; zero checks progress without calling a model.
 Only pending sources are claimed. `--attempts` accepts 1–3 (default 3); `--deadline-ms` accepts
-100–900,000 (default 600,000) per invocation. Each report retains its effective deadline and the
+100–1,800,000 (default 600,000) per invocation. Each report retains its effective deadline and the
 admitted Luna/max profile. Changing these execution limits does not reopen failed or unresolved
 sources or reset their attempt history. Two CLI processes
 can process distinct sources; no transaction stays open during a model call. Each attempt is
@@ -381,7 +381,7 @@ The first command exposes the exact prompt and structured output schema without 
 The second reviews the complete versioned source, its claims and source-local relationships through
 the admitted Codex/Luna/max profile. The full request must fit 256 KiB; exceeding the limit fails
 before a model call. Use `--codex <binary>` for the native executable and `--deadline-ms` (default
-600000, maximum 900000) to bound the invocation. No automatic retry is performed by this operation.
+600000, maximum 1800000) to bound the invocation. No automatic retry is performed by this operation.
 
 Every claim and relation needs one assessment with literal source evidence. The review also records
 omissions, source coverage and missing context. `status: reviewed` requires faithful assessments,
@@ -637,7 +637,7 @@ bun hivex graph compare --all --retry-failed <pair-id> --input /tmp/candidate-gr
 
 Supply the project's `--root` and existing `--store` as needed. `--attempts 2` allows the second
 attempt, counting the first retained failure; the maximum total is three. Each explicit retry makes
-one attempt, with the same prepared model request. `--deadline-ms` retains its supported 100–900000
+one attempt, with the same prepared model request. `--deadline-ms` retains its supported 100–1,800,000
 range. Ordinary resume does not retry failed rows, and retry cannot be mixed with a graph transition.
 
 Only safely ended invocation failures qualify: preflight admission failure, malformed output after

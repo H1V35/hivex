@@ -53,7 +53,7 @@ async function main(args: string[]) {
         {
           name: 'ground',
           usage:
-            'ground <review-claim> --input <admitted-graph> --base <revision> [--root <repo>] [--source <source-id>] [--context-file <revision>:<path>] [--prepare] [--codex <binary>] [--deadline-ms 100..900000]',
+            'ground <review-claim> --input <admitted-graph> --base <revision> [--root <repo>] [--source <source-id>] [--context-file <revision>:<path>] [--prepare] [--codex <binary>] [--deadline-ms 100..1800000]',
           inspection: 'ground --check <retained-result> --input <admitted-graph> [--root <repo>]',
           scope:
             'Grounds the supplied review claim against complete committed changed files and selected documentary evidence; never approves the whole implementation.',
@@ -69,9 +69,9 @@ async function main(args: string[]) {
             'graph <search|read|neighbors> <query-or-id> --input <file> [--root <repo>] [--against <commit>] [--limit 1..20] [--max-bytes 1024..524288]',
           continuation: 'graph neighbors <id> --input <file> [--cursor <continuation>]',
           review:
-            'graph review <source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
+            'graph review <source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..1800000] [--prepare]',
           reviewCohort:
-            'graph review --all --input <file> [--store <file>] [--root <repo>] [--max-units 0..2048] [--codex <binary>] [--deadline-ms 100..900000]',
+            'graph review --all --input <file> [--store <file>] [--root <repo>] [--max-units 0..2048] [--codex <binary>] [--deadline-ms 100..1800000]',
           reviewReuse:
             'graph review --all --input <new-graph> --from <old-graph> --reuse <complete-review-export> [--store <file>] [--root <repo>] [--max-units 0..2048]',
           reviewEvidence:
@@ -79,15 +79,15 @@ async function main(args: string[]) {
           reviewRetirement:
             'graph review --discard <exact-plan-hash> [--store <file>] [--root <repo>]',
           reviewRecovery:
-            'graph review --all --retry-failed <source-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--root <repo>] [--store <file>] [--deadline-ms 100..900000]',
+            'graph review --all --retry-failed <source-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--root <repo>] [--store <file>] [--deadline-ms 100..1800000]',
           comparison:
-            'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..900000] [--prepare]',
+            'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..1800000] [--prepare]',
           comparisonCohort:
             'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728] [--neighbors 0..8]',
           comparisonRetirement:
             'graph compare --discard <plan-hash> [--root <repo>] [--store <file>]',
           comparisonRecovery:
-            'graph compare --all --retry-failed <pair-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--neighbors 0..8] [--root <repo>] [--store <file>] [--deadline-ms 100..900000]',
+            'graph compare --all --retry-failed <pair-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--neighbors 0..8] [--root <repo>] [--store <file>] [--deadline-ms 100..1800000]',
           comparisonReuse:
             'graph compare --all --input <new-graph> --from <old-graph> --reuse <complete-comparison-export> [--root <repo>] [--store <file>] [--neighbors 0..8] [--max-units 0..2048]',
           comparisonPlan:
@@ -98,14 +98,14 @@ async function main(args: string[]) {
         {
           name: 'ingest',
           usage:
-            'ingest [--root <repo>] [--store <file>] [--ref <commit>] [--collection <id>] [--codex <binary>] [--max-units 0..2048] [--attempts 1..3] [--deadline-ms 100..900000]',
+            'ingest [--root <repo>] [--store <file>] [--ref <commit>] [--collection <id>] [--codex <binary>] [--max-units 0..2048] [--attempts 1..3] [--deadline-ms 100..1800000]',
           inspection:
             'ingest --show <source-id> [--root <repo>] [--store <file>] [--max-bytes 1024..8388608]',
           discard: 'ingest --discard <exact-plan-hash> [--root <repo>] [--store <file>]',
           retry:
             'ingest --retry-failed <source-id> [--root <repo>] [--store <file>] [--attempts 1..3]',
           revise:
-            'ingest --revise <source-id> --input <candidate-graph> --feedback <review-result-or-export> [--root <repo>] [--store <file>] [--codex <binary>] [--prepare] [--attempts 1..3] [--deadline-ms 100..900000]',
+            'ingest --revise <source-id> --input <candidate-graph> --feedback <review-result-or-export> [--root <repo>] [--store <file>] [--codex <binary>] [--prepare] [--attempts 1..3] [--deadline-ms 100..1800000]',
           modelCalls:
             'Persists unaccepted candidates through native Codex; inspection and discard make no model calls.',
         },
@@ -119,7 +119,7 @@ async function main(args: string[]) {
         {
           name: 'extract',
           usage:
-            'extract <source-id> [--root <repo>] [--ref <commit>] [--codex <binary>] [--attempts 1..3] [--deadline-ms 100..900000]',
+            'extract <source-id> [--root <repo>] [--ref <commit>] [--codex <binary>] [--attempts 1..3] [--deadline-ms 100..1800000]',
           modelCalls:
             'Uses the existing Codex ChatGPT subscription and returns an unaccepted candidate.',
         },
