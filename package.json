@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Versioned project knowledge for people and agents.",
   "scripts": {
-    "cli": "bun src/cli.ts",
+    "hivex": "bun src/cli.ts",
     "test": "bun test ./src",
     "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
     "lint": "eslint src test tooling eslint.config.js eslint.base.config.js",

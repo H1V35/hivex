@@ -99,7 +99,9 @@ evidence needed by supported historical/recovery operations; it must not invent 
 
 ## Documentation is maintained authority
 
-Documentation records intent, constraints, decisions and reasons that code cannot explain.
+Code must be self-explanatory through clear names, structure and behavior. Repository Markdown is
+the source of truth for intent, constraints, decisions and reasons that code cannot explain. Do not
+write a parallel implementation manual or use documentation to compensate for unclear code.
 Accepted source history and Markdown retain authority; caches, model output and search hits do not.
 An accepted status alone does not settle amendments, exceptions or contradictions. Keep unresolved
 evidence explicit. Never promote a historical agent's description of an owner ruling without
