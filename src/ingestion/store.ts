@@ -894,7 +894,7 @@ export class IngestionStore {
             'INGESTION_ATTEMPTS_EXHAUSTED',
             'The source has exhausted its total attempt budget',
           );
-        this.reserve(0);
+        this.reserve(1);
         this.db.run(
           "UPDATE units SET state='running', owner=?, result=NULL, result_hash=NULL WHERE id=?",
           [owner, id],
