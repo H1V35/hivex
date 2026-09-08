@@ -434,7 +434,7 @@ export class AssessmentStore<T extends AssessmentResult> {
       );
   }
 
-  retryFailed(id: string, owner: string, attempts: number) {
+  retryFailed(id: string, owner: string, maximumAttempts: number) {
     return this.db
       .transaction(() => {
         assertPlan(this.db, this.plan, this.contract.applicationId);
@@ -448,7 +448,7 @@ export class AssessmentStore<T extends AssessmentResult> {
             'Only confirmed safe invocation failures can be retried',
           );
         const previous = [...(retained.previousAttempts ?? []), retained.result];
-        if (previous.length >= attempts || attempts > 3)
+        if (previous.length >= maximumAttempts || maximumAttempts > 3)
           fail(
             'ASSESSMENT_RETRY_EXHAUSTED',
             'The total attempt budget is exhausted; at most three attempts are allowed',

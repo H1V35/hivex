@@ -110,7 +110,7 @@ export function assessmentArguments(args: string[], operation: 'review' | 'compa
     reuse: values.reuse,
     from: values.from,
     retry: values['retry-failed'],
-    attempts: parseLimit(values.attempts, { fallback: 3, minimum: 1, maximum: 3 }),
+    maximumAttempts: parseLimit(values.attempts, { fallback: 3, minimum: 1, maximum: 3 }),
     neighbors: parseLimit(values.neighbors, { fallback: 0, minimum: 0, maximum: 8 }),
     input: values.input ?? '',
     against: values.against,

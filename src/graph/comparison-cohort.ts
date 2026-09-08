@@ -260,7 +260,9 @@ async function comparePending(
   store: AssessmentStore<ComparisonResult>,
 ) {
   const owner = crypto.randomUUID();
-  const retry = options.retry ? store.retryFailed(options.retry, owner, options.attempts) : null;
+  const retry = options.retry
+    ? store.retryFailed(options.retry, owner, options.maximumAttempts)
+    : null;
   let processed = 0;
   while (processed < options.maxUnits) {
     const id = processed === 0 && retry !== null ? retry : store.claim(owner);
