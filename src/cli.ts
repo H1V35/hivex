@@ -83,7 +83,7 @@ async function main(args: string[]) {
           comparison:
             'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..1800000] [--prepare]',
           comparisonCohort:
-            'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728] [--neighbors 0..8]',
+            'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728] [--neighbors 0..8] [--deadline-ms 100..1800000]',
           comparisonRetirement:
             'graph compare --discard <plan-hash> [--root <repo>] [--store <file>]',
           comparisonRecovery:

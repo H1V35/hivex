@@ -228,7 +228,7 @@ bun hivex extract docs/adr/0001-versioned-project-knowledge.md --ref <commit> --
 The source must be declared in the selected commit's `hivex.json` and contain at most 32,768 UTF-8
 bytes. For a larger document, declare and extract a complete heading section. `--codex` selects the
 native executable; it defaults to `codex` on PATH. The default deadline is 600,000 milliseconds;
-accepted values are 100–900,000. Each invocation, including an interrupted attempt, is recorded.
+accepted values are 100–1,800,000. Each invocation, including an interrupted attempt, is recorded.
 Missing usage is `null`; reasoning output and cached input are subsets of the reported output/input
 counters, not additional tokens to add again.
 
