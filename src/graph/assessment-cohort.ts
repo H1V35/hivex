@@ -130,7 +130,7 @@ export function assessmentArguments(args: string[], operation: 'review' | 'compa
     deadlineMilliseconds: parseLimit(values['deadline-ms'], {
       fallback: 600000,
       minimum: 100,
-      maximum: 900000,
+      maximum: 1_800_000,
     }),
   };
 }
