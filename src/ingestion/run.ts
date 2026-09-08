@@ -7,6 +7,7 @@ import { createPlan } from './plan.ts';
 import { extractSource } from './command.ts';
 import { IngestionStore } from './store.ts';
 import { reviseCommand } from './revision.ts';
+import { reuseIngestion } from './reuse.ts';
 
 function input(args: string[]) {
   try {
@@ -26,6 +27,8 @@ function input(args: string[]) {
         discard: { type: 'string' },
         'retry-failed': { type: 'string' },
         'max-bytes': { type: 'string' },
+        export: { type: 'boolean' },
+        reuse: { type: 'string' },
       },
     }).values;
   } catch (error) {
@@ -36,20 +39,25 @@ function input(args: string[]) {
   }
 }
 
-function argumentsFor(args: string[]) {
-  const values = input(args);
-  if (Object.values(values).some((value) => value === ''))
+type IngestionValues = ReturnType<typeof input>;
+
+function assertMode(values: IngestionValues) {
+  const modes = [
+    values.show !== undefined,
+    values.discard !== undefined,
+    values.export === true,
+    values.reuse !== undefined,
+  ].filter(Boolean).length;
+  if (modes > 1)
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
-      message: 'Ingestion options cannot be empty',
+      message: 'Choose one ingestion operation at a time',
     });
-  if (values.show !== undefined && values.discard !== undefined)
-    throw new HivexError({
-      code: 'INVALID_ARGUMENT',
-      message: 'Inspection and discard are separate commands',
-    });
+}
+
+function assertReadOnlyOptions(values: IngestionValues) {
   if (
-    (values.show !== undefined || values.discard !== undefined) &&
+    (values.show !== undefined || values.discard !== undefined || values.export === true) &&
     [
       values.ref,
       values.collection,
@@ -58,16 +66,55 @@ function argumentsFor(args: string[]) {
       values.attempts,
       values['deadline-ms'],
       values['retry-failed'],
+      values.reuse,
     ].some((value) => value !== undefined)
   )
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
       message: 'Do not combine inspection or discard with execution options',
     });
-  if (values.show === undefined && values['max-bytes'] !== undefined)
+}
+
+function assertReuseOptions(values: IngestionValues, maxUnits: number) {
+  if (values.reuse === undefined) return;
+  if (values.ref === undefined)
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
-      message: '--max-bytes belongs to result inspection',
+      message: 'Reuse requires an explicit --ref destination snapshot',
+    });
+  if (
+    [
+      values.collection,
+      values.codex,
+      values.attempts,
+      values['deadline-ms'],
+      values['retry-failed'],
+    ].some((value) => value !== undefined)
+  )
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Reuse accepts only --root, --store, --reuse, --ref and --max-units 0',
+    });
+  if (maxUnits !== 0)
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Reuse is a no-model-call transition and requires --max-units 0',
+    });
+}
+
+function argumentsFor(args: string[]) {
+  const values = input(args);
+  if (Object.values(values).some((value) => value === ''))
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Ingestion options cannot be empty',
+    });
+  assertMode(values);
+  assertReadOnlyOptions(values);
+  if (values.show === undefined && values.export !== true && values['max-bytes'] !== undefined)
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: '--max-bytes belongs to result inspection or export',
     });
   const root = values.root ?? process.cwd();
   const maxUnits = parseLimit(values['max-units'], { fallback: 20, minimum: 0, maximum: 2048 });
@@ -76,6 +123,7 @@ function argumentsFor(args: string[]) {
       code: 'INVALID_ARGUMENT',
       message: 'A retry requires at least one processing slot',
     });
+  assertReuseOptions(values, maxUnits);
   return {
     root,
     ref: values.ref,
@@ -92,10 +140,12 @@ function argumentsFor(args: string[]) {
     }),
     show: values.show,
     discard: values.discard,
+    export: values.export ?? false,
+    archive: values.reuse,
     maxBytes: parseLimit(values['max-bytes'], {
       fallback: 16_384,
       minimum: 1024,
-      maximum: 8 * 1024 * 1024,
+      maximum: values.export === true ? 128 * 1024 * 1024 : 8 * 1024 * 1024,
     }),
   };
 }
@@ -105,8 +155,16 @@ export async function ingestCommand(args: string[]) {
     return reviseCommand(args);
   const options = argumentsFor(args);
   if (options.discard !== undefined) return IngestionStore.discard(options.store, options.discard);
+  if (options.export) return IngestionStore.export(options.store, options.maxBytes);
   if (options.show !== undefined)
     return IngestionStore.result(options.store, options.show, options.maxBytes);
+  if (options.archive !== undefined)
+    return reuseIngestion({
+      root: options.root,
+      store: options.store,
+      archive: options.archive,
+      ref: options.ref ?? 'HEAD',
+    });
   const previous = IngestionStore.selection(options.store);
   if (options.retry && !previous)
     throw new HivexError({

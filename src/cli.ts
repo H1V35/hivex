@@ -100,8 +100,10 @@ async function main(args: string[]) {
           usage:
             'ingest [--root <repo>] [--store <file>] [--ref <commit>] [--collection <id>] [--codex <binary>] [--max-units 0..2048] [--attempts 1..3] [--deadline-ms 100..1800000]',
           inspection:
-            'ingest --show <source-id> [--root <repo>] [--store <file>] [--max-bytes 1024..8388608]',
+            'ingest --show <source-id> | --export [--root <repo>] [--store <file>] [--max-bytes 1024..134217728]',
           discard: 'ingest --discard <exact-plan-hash> [--root <repo>] [--store <file>]',
+          reuse:
+            'ingest --reuse <complete-export> --ref <commit> --max-units 0 [--root <repo>] [--store <file>]',
           retry:
             'ingest --retry-failed <source-id> [--root <repo>] [--store <file>] [--attempts 1..3]',
           revise:

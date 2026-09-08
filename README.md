@@ -266,6 +266,8 @@ bun hivex ingest --collection hivex --max-units 1
 bun hivex ingest --max-units 20
 bun hivex ingest --max-units 0
 bun hivex ingest --show docs/adr/0001-versioned-project-knowledge.md
+bun hivex ingest --export --max-bytes 134217728 > /tmp/ingestion.json
+bun hivex ingest --reuse /tmp/ingestion.json --ref <new-commit> --max-units 0
 ```
 
 The first command freezes the complete plan. Later commands resume its original commit and
@@ -293,6 +295,29 @@ exits with code 1.
 without mutating the store. Its default output budget is 16,384 bytes; `--max-bytes` accepts
 1,024–8,388,608. A result that does not fit produces an explicit error with the required size, never
 a shortened candidate. Inspection and discard cannot be mixed with extraction options.
+
+`--export` produces the complete current plan, every unit row and its retained result or checkpoint
+without a model call. Its output budget accepts 1,024–134,217,728 bytes; the caller owns the saved
+export. It is the complete evidence needed for an explicit snapshot transition, so ordinary resume
+continues to freeze the original plan.
+
+When a new commit changes the plan, reuse compatible extraction evidence in the same store:
+
+```sh
+bun hivex ingest --reuse /tmp/ingestion.json --ref <new-commit> --max-units 0
+bun hivex ingest --max-units 20
+```
+
+The transition requires the explicit destination `--ref` and `--max-units 0`, validates the archived
+plan and every current store row, and makes no model calls. It reuses a result only when the complete
+processing contract and complete unit (`id`, path, collection, content, section, authority, prompt
+hash and limits) are identical. Candidates and safely retained failures keep their original result,
+attempt reports, revision history and usage; changed or new units remain pending and are not retried.
+Running, active or uncertain invocations abort the transition atomically. Repeating the same
+transition requires the same archive even after the destination plan has been initialized. Reused
+records carry only a current plan/snapshot association and the original result hash; `graph build`
+revalidates that binding while keeping the full receipt hash. A later `--revise` starts a new
+extraction origin with the reused candidate's existing budgets and history.
 
 The database is limited to 128 MiB and reserves space before invoking a model. Plans/results are
 bounded to 8 MiB each, and attempt details to 4 MiB per source. An individual report over 1 MiB
@@ -456,8 +481,9 @@ only the graph-hash marker may differ in the prepared source request. A matching
 does not qualify. Reused results retain their original `graphHash`, `sourceSnapshot`, `contract`,
 verdict, report and usage; `association` identifies the current graph and binds that unchanged result.
 Admission revalidates both. Negative reviews remain negative and are not automatically rerun.
-The caller retains the old graph/export according to the project's audit policy. This operation
-does not yet reuse ingestion candidates across changed plans or reuse source-pair comparisons.
+The caller retains the old graph/export according to the project's audit policy. Candidate transfers
+use `ingest --reuse`; source-pair transfers use `graph compare --all --reuse`. The whole update/resume
+cycle is not yet automated.
 
 ### Compare source decisions
 
