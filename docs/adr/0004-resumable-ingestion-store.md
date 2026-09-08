@@ -94,11 +94,15 @@ the model.
 
 Revise only the selected source in the existing cohort. Preserve its earlier candidate, original
 result hash, full negative review, request and all attempt reports in the same checkpoint. Each
-revision begins a new round of at most three attempts, with at most three revisions and twelve
-extraction invocations across the source's lifetime in this cohort. These limits do not reset after
-a failure or restart. Existing size/reservation limits also apply to this history. Failed or unchanged
-replacement output leaves an explicit failed source; an unchanged candidate is not sent through
-another fidelity review. A safe explicit retry preserves the revision request and prior consumption.
+revision begins a new round of at most three attempts. Three revisions remain the default; an
+explicit `ingest --revise --max-revisions 4` (value 1–4) authorizes a fourth and the history reads
+all four entries. The source still has an absolute limit of twelve extraction invocations across
+its lifetime in this cohort. These limits do not reset after a failure or restart. Check the global
+budget before claiming the source and clamp the round before invoking the model, so exhaustion
+cannot leave a running claim or create attempt 13. Existing size/reservation limits also apply to
+this history. Failed or unchanged replacement output leaves an explicit failed source; an unchanged
+candidate is not sent through another fidelity review. A safe explicit retry preserves the revision
+request, its origin and prior consumption.
 The retained review's usage remains in its original receipt; ingestion attempt totals count extraction
 calls only, so copying review evidence does not charge it as a new invocation.
 

@@ -95,6 +95,9 @@ fidelity context. Inspect its exact request with `--prepare`; preserve the origi
 This operation changes one candidate, never the source's authority or the review's verdict. A passing,
 uncertain or insufficient-context review cannot justify revision. A replacement still needs fidelity
 review and admission; unchanged output is a failure, not a reason to repeat the same adverse review.
+Three semantic revisions are the default. `ingest --revise --max-revisions 4` is the explicit opt-in
+for a fourth, with a value limited to 1–4; each round remains limited to three extraction attempts
+and the source history remains capped at twelve total extraction calls.
 
 When the declared source snapshot changes, preserve the complete candidate cohort with
 `ingest --export`, then use the same store for the explicit transition:

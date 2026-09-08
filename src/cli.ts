@@ -107,7 +107,7 @@ async function main(args: string[]) {
           retry:
             'ingest --retry-failed <source-id> [--root <repo>] [--store <file>] [--attempts 1..3]',
           revise:
-            'ingest --revise <source-id> --input <candidate-graph> --feedback <review-result-or-export> [--root <repo>] [--store <file>] [--codex <binary>] [--prepare] [--attempts 1..3] [--deadline-ms 100..1800000]',
+            'ingest --revise <source-id> --input <candidate-graph> --feedback <review-result-or-export> [--root <repo>] [--store <file>] [--codex <binary>] [--prepare] [--attempts 1..3] [--max-revisions 1..4] [--deadline-ms 100..1800000]',
           modelCalls:
             'Persists unaccepted candidates through native Codex; inspection and discard make no model calls.',
         },
