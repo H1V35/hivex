@@ -400,3 +400,36 @@ The [recorded native evaluation](evidence/source-review-1427.json) covers four a
 synthetic examples: preserved/reversed negation and preserved/omitted conditions. Luna/max produced
 the expected distinction in all four, using 30,496 reported tokens including 11,776 cached input
 tokens. This small experiment is not human gold, a corpus evaluation or evidence of graph admission.
+
+### Resume a source-review cohort
+
+```sh
+bun run cli graph review --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 20
+bun run cli graph review --all --input /tmp/candidate-graph.json --root /path/to/project --max-units 0
+bun run cli graph review --show 'docs/decisions.md' --input /tmp/candidate-graph.json --root /path/to/project
+bun run cli graph review --export --input /tmp/candidate-graph.json --root /path/to/project --max-bytes 134217728
+```
+
+The working store defaults to `.hivex/reviews.sqlite`; `--store` selects another local path. A cohort
+contains the review of every source in one exact graph. Requests are preflighted completely before
+creating the store or invoking a model. Repeating `--all` continues pending work and reuses retained
+results. `--max-units 0` reports progress without a model call. `--against <commit>` explicitly selects
+a historical comparison; omission compares with HEAD. A different graph or processing contract fails
+before another invocation, and does not repurpose earlier assessments.
+
+The summary reports completed, pending, failed and unresolved counts, plus reported tokens and
+results with unknown usage. Only a complete cohort without failed or unresolved work has `status:
+reviewed`; all responses remain `accepted: false`. A failure or unresolved invocation returns exit
+code 1. Negative assessments remain available and are never automatically rerun to obtain approval.
+A crashed claimant's source remains unresolved, even if its process is no longer present.
+
+`--show` returns a retained source result; `--export` returns the complete cohort and its manifest.
+These operations make no model calls and never shorten evidence to meet a byte budget. The database
+is capped at 128 MiB, its plan at 1 MiB and each full result at 8 MiB. The next request requires 16 MiB
+of available database capacity; a full store fails before asking the model. SQLite may temporarily
+create its ordinary rollback journal.
+
+After preserving evidence needed for admission or investigation, explicitly retire the cohort with
+`graph review --discard <exact-plan-hash>`. This removes its retained reviews transactionally and
+allows the same file to serve another cohort. A wrong hash or unresolved claim prevents retirement.
+No per-source files, automatic history rotation or automatic disposal of uncertain work are created.
