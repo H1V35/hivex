@@ -12,8 +12,11 @@ Luna/max native route with a separate structured review of the complete source a
 
 The review assesses every supplied claim and relationship exactly once, identifies omissions and
 states whether the supplied context is sufficient. It considers negation, conditions, exceptions,
-scope, proposals and authored order. A source that needs another document or surrounding sections
-remains unresolved until that context is reviewed. Neither IDs nor serialization order imply
+scope, proposals and authored order. Context sufficiency concerns fidelity to the supplied source. A represented link or prerequisite to
+consult another document does not by itself require that document in this phase; assess whether the
+reference is faithfully preserved, without inventing the target content. Missing context remains
+unresolved when it prevents assessing that fidelity. Cross-source comparison determines relationships
+and applicable exception scope; source fidelity must not silently take over that separate decision. Neither IDs nor serialization order imply
 precedence.
 
 Hivex derives the result from the complete validated assessment. Missing assessments, invented

@@ -283,3 +283,25 @@ test('checks the embedded candidate size before expanding its source evidence', 
     });
   });
 });
+
+test('reads an admitted snapshot whose comparison plan includes inline Markdown links', async () => {
+  await projectWithReviews(
+    (paths, fixture) => {
+      expect(compare(paths, fixture).status).toBe(0);
+      const admitted = admit(paths, fixture);
+      expect(admitted.status).toBe(0);
+      const result = invoke(paths.root, [
+        'graph',
+        'check',
+        '--input',
+        retained(paths, admitted.stdout),
+      ]);
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout).accepted).toBe(true);
+    },
+    2,
+    false,
+    '# Cache\n\nNever treat a cache as authority.\n\nSee [the other source](second.md).\n',
+  );
+});

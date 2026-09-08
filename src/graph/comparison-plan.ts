@@ -135,7 +135,7 @@ class ComparisonPlan {
       url: reference.url,
       reason,
       evidence: reference.evidence,
-      definition: reference.definition,
+      ...(reference.definition ? { definition: reference.definition } : {}),
     };
     this.reserve(value);
     this.unresolved.push(value);
@@ -156,7 +156,7 @@ class ComparisonPlan {
       document: source.path,
       target: destination.id,
       evidence: reference.evidence,
-      definition: reference.definition,
+      ...(reference.definition ? { definition: reference.definition } : {}),
     };
     this.retainPair([source.id, destination.id].sort(), reason);
   }
