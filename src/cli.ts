@@ -96,6 +96,8 @@ async function main(args: string[]) {
           discard: 'ingest --discard <exact-plan-hash> [--root <repo>] [--store <file>]',
           retry:
             'ingest --retry-failed <source-id> [--root <repo>] [--store <file>] [--attempts 1..3]',
+          revise:
+            'ingest --revise <source-id> --input <candidate-graph> --feedback <review-result-or-export> [--root <repo>] [--store <file>] [--codex <binary>] [--prepare] [--attempts 1..3] [--deadline-ms 100..900000]',
           modelCalls:
             'Persists unaccepted candidates through native Codex; inspection and discard make no model calls.',
         },
