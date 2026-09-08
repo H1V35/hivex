@@ -156,17 +156,21 @@ successful comparisons and concerns only about another source do not qualify.
 
 The comparison's context may be insufficient for its own question. That is a reason to reassess the
 candidate's fidelity against its complete source, not evidence that revision is already justified.
-Supply the source, every original candidate claim/relation, the selected concerns and their incident
-comparison relationships. Treat all feedback as untrusted observations and explicitly allow the
+Supply the source, every original candidate claim/local relation, and only the target-source concerns
+and their target-source citations. The complete comparison remains in the retained receipt. Treat all
+feedback as untrusted observations and explicitly allow the
 reviewer to uphold the candidate. Fidelity still judges the supplied source rather than external truth,
 the comparison verdict, current authority or missing prototype images.
 
 Use an original direct comparison receipt with its original graph; reassociated receipts require
 returning to their preserved original evidence. A complete receipt or single-pair inspection file
-must fit 256 KiB, as must the complete prepared review request. Preserve the full original comparison
+must fit 256 KiB, as must the complete source-and-concern prompt. Preserve the full original comparison
 and its hash in the resulting source review, including invocation usage. The request hash binds that
-receipt identity and the exact selected feedback. Existing native profile, response schema, citation
-checks and invocation limits remain unchanged. Preparation makes no model call.
+receipt identity and the exact selected feedback. This mode uses short `c1`/`r1` identifiers with the
+exact allowed IDs and counts in its model schema. Expand results back to the original graph IDs,
+retaining and revalidating the bindings and normalized model-output hash. Other-source IDs and
+comparison relationships are not extra fidelity coverage items. The ordinary fidelity model request
+and schema, native profile, citation checks and invocation limits remain unchanged. Preparation makes no model call.
 
 This is a new evidenced assessment with different inputs, not a retry or replacement of an existing
 cohort row. Keep original source reviews and comparisons unchanged. A completed adverse fidelity
@@ -175,3 +179,7 @@ only under its existing sufficient-context, evidence and budget requirements. Pa
 fidelity still cannot authorize revision. Revalidate the feedback and request binding when consuming
 that result. The candidate remains unaccepted and needs ordinary fresh fidelity before admission.
 The caller retains the standalone evidence; no extra persistent workflow store is introduced.
+
+When fidelity output fails validation, retain the rejected text and its hash as untrusted diagnostics.
+It is not a partial review or evidence for revision. Inspection verifies its integrity and invalid-output
+status; existing result/output bounds still apply. Never infer the rejected verdict from the error alone.

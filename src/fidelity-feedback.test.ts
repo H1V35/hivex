@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { nativeSource } from '../test/native-project.ts';
+import { nativeSource, nativeProject } from '../test/native-project.ts';
 import {
   invoke,
   projectWithReviews,
@@ -68,14 +68,12 @@ function concern(paths: Paths, fixture: Fixture) {
   return { path, raw: pair.result };
 }
 
-function adverseFidelity(fixture: Fixture) {
-  const node = fixture.graph.nodes.find((entry) => entry.source === 'first.md');
-  if (!node) throw new Error('Expected claim');
+function adverseFidelity() {
   return {
     coverage: { verdict: 'incomplete', reason: 'The retention rule is absent.', evidence },
     claims: [
       {
-        id: node.id,
+        id: 'c1',
         verdict: 'faithful',
         reason: 'The cache prohibition is preserved.',
         evidence: [{ quote: 'Never treat a cache as authority.', lineStart: 3, lineEnd: 3 }],
@@ -112,7 +110,7 @@ test('reassesses fidelity against concrete comparison feedback and revises a can
       );
       expect(JSON.parse(prepared.stdout).prompt).toContain(JSON.stringify(source));
       expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
-      writeFileSync(paths.candidate, JSON.stringify(adverseFidelity(fixture)));
+      writeFileSync(paths.candidate, JSON.stringify(adverseFidelity()));
       const reviewed = invoke(paths.root, [...args, '--codex', paths.binary]);
       expect(reviewed.stderr).toBe('');
       expect(reviewed.status).toBe(1);
@@ -187,7 +185,7 @@ test('a fidelity reassessment may uphold the candidate and still cannot authoriz
   await projectWithReviews(
     (paths, fixture) => {
       const feedback = concern(paths, fixture);
-      const review = adverseFidelity(fixture);
+      const review = adverseFidelity();
       review.coverage = {
         verdict: 'complete',
         reason: 'The comparison concern is not supported as an omission.',
@@ -287,7 +285,7 @@ test('binds the complete comparison receipt and feedback prompt when admitting f
   await projectWithReviews(
     (paths, fixture) => {
       const feedback = concern(paths, fixture);
-      writeFileSync(paths.candidate, JSON.stringify(adverseFidelity(fixture)));
+      writeFileSync(paths.candidate, JSON.stringify(adverseFidelity()));
       const reviewed = invoke(paths.root, [
         'graph',
         'review',
@@ -324,10 +322,179 @@ test('binds the complete comparison receipt and feedback prompt when admitting f
         .digest('hex');
       writeFileSync(retained, JSON.stringify(altered));
       expect(invoke(paths.root, args).status).toBe(1);
+      for (const field of ['bindings', 'model-output']) {
+        const changed = JSON.parse(reviewed.stdout);
+        if (field === 'bindings') changed.reviewBindings.claims.c1 = '0'.repeat(64);
+        if (field === 'model-output') changed.modelOutputHash = '0'.repeat(64);
+        writeFileSync(retained, JSON.stringify(changed));
+        expect(invoke(paths.root, args).status).toBe(1);
+      }
       expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
     },
     2,
     false,
     source,
+  );
+});
+
+test('retains rejected feedback-review output without treating it as fidelity evidence', async () => {
+  await projectWithReviews(
+    (paths, fixture) => {
+      const feedback = concern(paths, fixture);
+      const response = adverseFidelity();
+      response.claims = response.claims.map((claim) => ({ ...claim, id: 'c9' }));
+      const raw = JSON.stringify(response);
+      writeFileSync(paths.candidate, raw);
+      const reviewed = invoke(paths.root, [
+        'graph',
+        'review',
+        'first.md',
+        '--input',
+        fixture.input,
+        '--feedback',
+        feedback.path,
+        '--codex',
+        paths.binary,
+      ]);
+      expect(reviewed.status).toBe(1);
+      const result = JSON.parse(reviewed.stdout);
+      expect(result.report.outcome).toBe('invalid-output');
+      expect(result.review).toBeNull();
+      expect(result.rejectedOutput).toEqual({
+        text: raw,
+        hash: new Bun.CryptoHasher('sha256').update(raw).digest('hex'),
+      });
+      result.rejectedOutput.text += 'altered';
+      const path = join(dirname(paths.store), 'rejected-fidelity.json');
+      writeFileSync(path, JSON.stringify(result));
+      const calls = readFileSync(paths.calls, 'utf8');
+      const rejected = invoke(paths.root, [
+        'ingest',
+        '--revise',
+        'first.md',
+        '--input',
+        fixture.input,
+        '--store',
+        paths.store,
+        '--feedback',
+        path,
+        '--prepare',
+      ]);
+      expect(rejected.status).toBe(1);
+      expect(rejected.stderr).toContain('Rejected fidelity output is altered');
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+    },
+    2,
+    false,
+    source,
+  );
+});
+
+test('uses short source-local IDs and rebinds local relationships to their original graph identities', async () => {
+  await nativeProject(
+    (paths) => {
+      const quotes = [
+        { quote: 'Never treat a cache as authority.', lineStart: 3, lineEnd: 3 },
+        ...evidence,
+      ];
+      const candidate = {
+        claims: quotes.map((quote, index) => ({
+          id: `c${index + 1}`,
+          text: quote.quote,
+          kind: 'constraint',
+          conditions: [],
+          exceptions: [],
+          evidence: [quote],
+        })),
+        relations: [{ from: 'c1', to: 'c2', type: 'requires', evidence: quotes }],
+      };
+      writeFileSync(paths.candidate, JSON.stringify(candidate));
+      expect(
+        invoke(paths.root, ['ingest', '--store', paths.store, '--codex', paths.binary]).status,
+      ).toBe(0);
+      const built = invoke(paths.root, ['graph', 'build', '--store', paths.store, '--export']);
+      expect(built.status).toBe(0);
+      const graph: Fixture['graph'] = JSON.parse(built.stdout);
+      const input = join(dirname(paths.store), 'graph.json');
+      writeFileSync(input, built.stdout);
+      writeFileSync(
+        paths.candidate,
+        JSON.stringify({
+          assessments: ['s1', 's2'].flatMap((source) =>
+            ['c1', 'c2'].map((claim) => ({
+              id: `${source}:${claim}`,
+              verdict: source === 's1' && claim === 'c1' ? 'unresolved' : 'reviewed',
+              reason: 'Independently verify source fidelity.',
+              relations: [],
+              evidence: quotes.map((quote) => ({ ...quote, source })),
+            })),
+          ),
+          relations: [],
+          coverage: { complete: true, reason: 'Every supplied claim is assessed.' },
+          context: { verdict: 'sufficient', reason: 'Both complete sources are available.' },
+        }),
+      );
+      const comparison = invoke(paths.root, [
+        'graph',
+        'compare',
+        'first.md',
+        'second.md',
+        '--input',
+        input,
+        '--codex',
+        paths.binary,
+      ]);
+      expect(comparison.stderr).toBe('');
+      expect(comparison.status).toBe(1);
+      const feedback = join(dirname(paths.store), 'comparison.json');
+      writeFileSync(feedback, comparison.stdout);
+      const args = ['graph', 'review', 'first.md', '--input', input, '--feedback', feedback];
+      const prepared = invoke(paths.root, [...args, '--prepare']);
+      expect(prepared.stderr).toBe('');
+      const request: {
+        prompt: string;
+        reviewBindings: { claims: Record<string, string>; relations: Record<string, string> };
+      } = JSON.parse(prepared.stdout);
+      const localNodes = graph.nodes.filter((node) => node.source === 'first.md');
+      const localEdge = graph.edges.find((edge) => edge.source === 'first.md');
+      expect(Object.values(request.reviewBindings.claims)).toEqual(
+        localNodes.map((node) => node.id),
+      );
+      expect(request.reviewBindings.relations.r1).toBe(localEdge?.id);
+      for (const node of localNodes) expect(request.prompt).not.toContain(node.id);
+      writeFileSync(
+        paths.candidate,
+        JSON.stringify({
+          coverage: {
+            verdict: 'complete',
+            reason: 'Both source rules are represented.',
+            evidence: quotes,
+          },
+          claims: ['c1', 'c2'].map((id) => ({
+            id,
+            verdict: 'faithful',
+            reason: 'The source preserves this rule.',
+            evidence: quotes,
+          })),
+          relations: [
+            {
+              id: 'r1',
+              verdict: 'distorted',
+              reason: 'The source states both rules without that dependency.',
+              evidence: quotes,
+            },
+          ],
+          omissions: [],
+          context: { verdict: 'sufficient', reason: 'The full source is available.' },
+        }),
+      );
+      const reviewed = invoke(paths.root, [...args, '--codex', paths.binary]);
+      expect(reviewed.stderr).toBe('');
+      const result = JSON.parse(reviewed.stdout);
+      expect(result.report.outcome).toBe('completed');
+      expect(result.review.relations[0].id).toBe(localEdge?.id);
+      expect(result.reviewBindings).toEqual(request.reviewBindings);
+    },
+    { source },
   );
 });

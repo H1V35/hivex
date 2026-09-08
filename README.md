@@ -671,7 +671,10 @@ comparison result (or `--show` envelope) of at most 256 KiB, from the same graph
 unresolved candidate claim from this source. For a reused comparison, return to its preserved original
 graph/receipt. The complete source and feedback request must also fit 256 KiB.
 
-The reviewer independently assesses all source claims and may uphold the extraction. A comparison's
+The reviewer independently assesses all source claims and may uphold the extraction. This mode uses
+short local IDs and exact coverage counts; the returned review preserves original graph identities and
+the checked mapping. Rejected output is retained as hashed diagnostic text, never as a partial review.
+A comparison's
 insufficient context does not itself prove a fidelity defect. The resulting review retains the full
 comparison receipt and hash; it changes neither working cohort. Only valid adverse fidelity with
 sufficient context and concrete omissions/distortions can justify revision. Preparation and validation
