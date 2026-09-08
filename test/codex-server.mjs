@@ -138,7 +138,11 @@ const handlers = {
       throw new Error('wrong turn controls');
     if (!params.input[0].text.includes('Never treat a cache as authority.'))
       throw new Error('source not supplied');
-    const responseCandidate = structuredClone(candidate);
+    const candidatePath = process.env.HIVEX_TEST_CANDIDATE_PATH;
+    const responseCandidate =
+      candidatePath && existsSync(candidatePath)
+        ? JSON.parse(readFileSync(candidatePath, 'utf8'))
+        : structuredClone(candidate);
     if (
       process.env.HIVEX_TEST_SCENARIO === 'retry-success' &&
       !params.input[0].text.includes('Correct the previous invalid extraction')

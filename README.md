@@ -309,6 +309,46 @@ or any claimed/unresolved source. There is no automatic rotation or pruning of u
 See the [persistence decision](docs/adr/0004-resumable-ingestion-store.md). Full rebuild admission,
 historical graph queries and implementation grounding remain required work.
 
+## Inspect a candidate graph
+
+After every source in a cohort has a retained candidate, build its graph without another model call:
+
+```sh
+bun src/cli.ts graph build
+bun src/cli.ts graph build --export > .hivex/candidate.graph.json
+bun src/cli.ts graph check --input .hivex/candidate.graph.json
+bun src/cli.ts graph search "cache authority" --input .hivex/candidate.graph.json
+bun src/cli.ts graph read <claim-id> --input .hivex/candidate.graph.json
+bun src/cli.ts graph neighbors <claim-id> --input .hivex/candidate.graph.json
+```
+
+The default build response is a small summary. `--export` writes the complete candidate snapshot to
+stdout, capped at 64 MiB; reuse one candidate file when redirecting it. Assembly and inspection do
+not modify the ingestion store or replace an accepted graph. Partial or failed cohorts are rejected.
+
+Content-derived claim IDs distinguish sources. Exact duplicate statements within a source share a
+claim node while retaining all model-local aliases. Original claim and relation order is retained
+as provenance, so the source candidate can be reconstructed and checked. That order, previews and
+serialization order never decide precedence. The snapshot retains input hashes, source revisions,
+literal citations and bounded execution summaries; full native diagnostics remain in the local store.
+
+`check` verifies snapshot integrity, source-local claim/relation coverage and literal evidence against
+the original Git snapshot. It compares current declared inputs independently of unrelated code
+commits. Changed documentation, configuration or processing inputs return `freshness.status: "stale"`
+and exit with code 1. `--against <commit>` compares against an explicit historical source revision.
+
+Search uses the same deterministic FTS5/BM25 machinery as Markdown retrieval. Previews do not imply
+complete evidence: use `read` to open the complete claim with conditions, exceptions and citations.
+Neighbors return complete relation records and previews of the related claims; follow those IDs to
+open their evidence. A neighbor cursor is bound to its seed and graph hash. The default query budget
+is 16,384 bytes and the default result limit is eight; a complete claim or relation that does not fit
+fails explicitly rather than losing part of its evidence.
+
+These snapshots remain `accepted: false`, and their relationships currently come from source-local
+extraction. Source freshness and structural integrity do not establish semantic faithfulness, resolve
+cross-source precedence or admit an implementation. Semantic evaluation, graph admission and grounding
+remain required work. See the [snapshot decision](docs/adr/0005-source-bound-graph-snapshots.md).
+
 ## Development
 
 ```sh
