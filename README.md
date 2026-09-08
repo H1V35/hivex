@@ -611,7 +611,7 @@ as a prototype or unchanged dependency. Up to 16 complete contextual Git files a
 same request budget. Their `e1`, `e2`, etc. citations use `revision: context`; they do not replace
 citations of the changed implementation. Prefer a commit ID; moving a named reference invalidates
 corresponding saved evidence. Files must be tracked regular UTF-8 blobs; symlinks and duplicate resolved
-selections are rejected. Hivex expands
+selections through different references are rejected. Identical repeated arguments are coalesced. Hivex expands
 supersessions, exceptions and requirements, and discloses other unexpanded links. Missing context
 stays unresolved; it does not imply an independent or approved implementation.
 

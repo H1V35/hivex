@@ -412,6 +412,26 @@ test('adds exact historical code context without changing the reviewed implement
     ]);
     expect(result.prompt).toContain('export const approvedCacheLifetimeMinutes = 1440;');
     expect(result.files).toHaveLength(1);
+    const duplicate = invoke(paths.root, [
+      ...command(fixture),
+      '--context-file',
+      'approved-prototype:prototype.ts',
+      '--context-file',
+      'approved-prototype:prototype.ts',
+      '--prepare',
+    ]);
+    expect(duplicate.status).toBe(0);
+    expect(JSON.parse(duplicate.stdout).contextFiles).toHaveLength(1);
+    const alias = invoke(paths.root, [
+      ...command(fixture),
+      '--context-file',
+      'approved-prototype:prototype.ts',
+      '--context-file',
+      `${prototype}:prototype.ts`,
+      '--prepare',
+    ]);
+    expect(alias.status).toBe(1);
+    expect(JSON.parse(alias.stderr).error.code).toBe('GROUND_CONTEXT_CODE_DUPLICATE');
     expect(readFileSync(paths.calls, 'utf8')).toBe(before);
     expect(paths.git(['rev-parse', 'HEAD'])).toBe(head);
   });

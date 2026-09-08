@@ -31,8 +31,8 @@ The caller may supply up to 16 contextual code files as explicit Git revision/pa
 approved prototype or an unchanged dependency. Read complete regular UTF-8 blobs from those commits;
 never follow filesystem symlinks or infer extra files. Retain the requested reference, resolved commit,
 path, mode and blob ID. Prefer a commit ID for immutable reference evidence; moving a named reference
-invalidates corresponding evidence during execution or revalidation. Duplicate resolved selections
-are rejected. Context files use separate `e` identifiers and the `context` citation revision, while
+invalidates corresponding evidence during execution or revalidation. Identical request arguments are coalesced. Different references resolving to the same file revision
+are rejected so one reference cannot silently hide the other reference's lifecycle. Context files use separate `e` identifiers and the `context` citation revision, while
 changed implementation uses `f` identifiers with `before`/`after`. Reference code cannot substitute for
 citing the changed implementation when resolving the claim or precedence.
 
