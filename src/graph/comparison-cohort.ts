@@ -20,6 +20,8 @@ import {
   summarize,
   validateCompletedInvocation,
   retryableAssessment,
+  rejectedOutputSchema,
+  validateRejectedOutput,
 } from './assessment-cohort.ts';
 import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
 
@@ -38,6 +40,7 @@ export const comparisonResultSchema = z.looseObject({
   }),
   report: z.looseObject({ outcome: z.string(), usage: usageSchema.nullable() }),
   comparison: comparisonSchema.nullable(),
+  rejectedOutput: rejectedOutputSchema.nullable().optional(),
   association: z
     .strictObject({
       graphHash: digest,
@@ -131,6 +134,7 @@ export function validateComparisonResult(
   prepared: ReturnType<typeof prepareComparison>,
   selectionHash?: string,
 ) {
+  validateRejectedOutput(result.rejectedOutput, result.report.outcome, result.comparison);
   if (
     result.association &&
     (result.association.selectionHash !== selectionHash ||
@@ -211,9 +215,12 @@ function validateHashes(result: ComparisonResult, prepared: ReturnType<typeof pr
 }
 
 export function validateComparisons(rows: Rows, context: Context) {
-  for (const row of rows)
+  for (const row of rows) {
+    for (const previous of row.previousAttempts ?? [])
+      validateRejectedOutput(previous.rejectedOutput, previous.report.outcome, previous.comparison);
     if (row.result)
       validateComparisonResult(row.result, prepare(context, row.id), context.selection.planHash);
+  }
 }
 
 function inspect(rows: Rows, context: Context, options: ReturnType<typeof assessmentArguments>) {

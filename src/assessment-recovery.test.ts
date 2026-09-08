@@ -405,38 +405,41 @@ test('recovers a preflight failure without counting it as another model call', a
   }, 0);
 });
 
-test('rejects altered historical fidelity diagnostics after a successful retry', async () => {
-  await projectWithReviews((paths, fixture) => {
-    const task = cohort(paths, fixture, 'review');
-    writeFileSync(paths.candidate, '{}');
-    expect(task.run([]).status).toBe(1);
-    const failed = JSON.parse(task.show().stdout).result;
-    expect(failed.rejectedOutput).toEqual({ text: '{}', hash: hash('{}') });
-    writeFileSync(paths.candidate, JSON.stringify(task.response));
-    expect(task.run(['--retry-failed', task.id, '--attempts', '2']).status).toBe(0);
-    expect(JSON.parse(task.show().stdout).previousAttempts).toEqual([failed]);
-    const calls = readFileSync(paths.calls, 'utf8');
-    const db = new Database(fixture.reviews);
-    try {
-      for (const field of ['text', 'outcome']) {
-        const altered = structuredClone(failed);
-        if (field === 'text') altered.rejectedOutput.text += 'altered';
-        else altered.report.outcome = 'timeout';
-        const history = JSON.stringify([altered]);
-        db.run('UPDATE reviews SET previous_attempts=?, previous_attempts_hash=? WHERE id=?', [
-          history,
-          hash(history),
-          task.id,
-        ]);
-        const inspected = task.show();
-        expect(inspected.status).toBe(1);
-        expect(inspected.stderr).toContain('INVALID_REVIEW_STORE');
-        if (field === 'text')
-          expect(inspected.stderr).toContain('Rejected fidelity output is altered');
+test.each<Operation>(['review', 'compare'])(
+  'rejects altered historical %s diagnostics after a successful retry',
+  async (operation) => {
+    await projectWithReviews((paths, fixture) => {
+      const task = cohort(paths, fixture, operation);
+      writeFileSync(paths.candidate, '{}');
+      expect(task.run([]).status).toBe(1);
+      const failed = JSON.parse(task.show().stdout).result;
+      expect(failed.rejectedOutput).toEqual({ text: '{}', hash: hash('{}') });
+      writeFileSync(paths.candidate, JSON.stringify(task.response));
+      expect(task.run(['--retry-failed', task.id, '--attempts', '2']).status).toBe(0);
+      expect(JSON.parse(task.show().stdout).previousAttempts).toEqual([failed]);
+      const calls = readFileSync(paths.calls, 'utf8');
+      const db = new Database(operation === 'compare' ? fixture.comparisons : fixture.reviews);
+      try {
+        for (const field of ['text', 'outcome']) {
+          const altered = structuredClone(failed);
+          if (field === 'text') altered.rejectedOutput.text += 'altered';
+          else altered.report.outcome = 'timeout';
+          const history = JSON.stringify([altered]);
+          db.run('UPDATE reviews SET previous_attempts=?, previous_attempts_hash=? WHERE id=?', [
+            history,
+            hash(history),
+            task.id,
+          ]);
+          const inspected = task.show();
+          expect(inspected.status).toBe(1);
+          expect(inspected.stderr).toContain('INVALID_REVIEW_STORE');
+          if (field === 'text')
+            expect(inspected.stderr).toContain('Rejected model output is altered');
+        }
+        expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+      } finally {
+        db.close();
       }
-      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
-    } finally {
-      db.close();
-    }
-  }, 0);
-});
+    }, 0);
+  },
+);

@@ -4,7 +4,28 @@ import { z } from 'zod';
 import { parseLimit } from '../cli/arguments.ts';
 import { HivexError } from '../errors.ts';
 import { knowledgeModel } from '../model/profile.ts';
-import { reportedProfileSchema } from './snapshot.ts';
+import { reportedProfileSchema, digest } from './snapshot.ts';
+import { hash } from '../sources/markdown.ts';
+
+export const rejectedOutputSchema = z.strictObject({
+  text: z.string().max(8 * 1024 * 1024),
+  hash: digest,
+});
+
+export function validateRejectedOutput(
+  rejected: z.infer<typeof rejectedOutputSchema> | null | undefined,
+  outcome: string,
+  assessment: unknown,
+) {
+  if (
+    rejected &&
+    (assessment !== null || outcome !== 'invalid-output' || hash(rejected.text) !== rejected.hash)
+  )
+    throw new HivexError({
+      code: 'INVALID_REVIEW_STORE',
+      message: 'Rejected model output is altered or presented as an assessment',
+    });
+}
 
 function input(args: string[]) {
   try {
