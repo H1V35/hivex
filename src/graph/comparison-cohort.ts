@@ -23,7 +23,11 @@ import {
   rejectedOutputSchema,
   validateRejectedOutput,
 } from './assessment-cohort.ts';
-import { AssessmentStore, type AssessmentPlan } from './assessment-store.ts';
+import {
+  AssessmentStore,
+  validateAssessmentContract,
+  type AssessmentPlan,
+} from './assessment-store.ts';
 
 export const comparisonResultSchema = z.looseObject({
   command: z.literal('graph'),
@@ -129,23 +133,26 @@ function prepare(context: Context, id: string) {
   return prepareComparison(context.context, sources);
 }
 
-export function validateComparisonResult(
+function validateComparisonProvenance(
   result: ComparisonResult,
   prepared: ReturnType<typeof prepareComparison>,
-  selectionHash?: string,
 ) {
+  validateAssessmentContract(result, {
+    nativeVersion,
+    requestedPolicyHash: requestedPolicyHash(),
+    schemaHash: hash(JSON.stringify(z.toJSONSchema(modelComparisonSchema))),
+  });
   validateRejectedOutput(result.rejectedOutput, result.report.outcome, result.comparison);
   if (
-    result.association &&
-    (result.association.selectionHash !== selectionHash ||
+    result.contract.promptHash !== hash(prepared.prompt) ||
+    (result.association &&
       result.association.originalHash !==
         hash(
           JSON.stringify({
             result: originalComparison(result),
             selectionHash: result.association.originalSelectionHash,
           }),
-        ) ||
-      result.contract.promptHash !== hash(prepared.prompt))
+        ))
   )
     throw new HivexError({
       code: 'INVALID_COMPARISON_STORE',
@@ -156,10 +163,6 @@ export function validateComparisonResult(
       result.sources,
       prepared.sources.map((source) => source.packet.source),
     ) ||
-    !isDeepStrictEqual(
-      result.association?.sourceSnapshot ?? result.sourceSnapshot,
-      prepared.context.input.graph.sourceSnapshot,
-    ) ||
     !isDeepStrictEqual(result.model, knowledgeModel) ||
     !isDeepStrictEqual(result.sourceBindings, Object.fromEntries(prepared.bindings))
   )
@@ -167,11 +170,35 @@ export function validateComparisonResult(
       code: 'INVALID_COMPARISON_STORE',
       message: 'Comparison provenance differs from its planned sources or model',
     });
+}
+
+export function validateComparisonResult(
+  result: ComparisonResult,
+  prepared: ReturnType<typeof prepareComparison>,
+  selectionHash?: string,
+  historical = false,
+) {
+  if (historical && (!retryableAssessment(result) || result.comparison !== null))
+    throw new HivexError({
+      code: 'INVALID_COMPARISON_STORE',
+      message: 'Previous attempts must preserve safe failures without an assessment',
+    });
+  if (
+    !historical &&
+    ((result.association && result.association.selectionHash !== selectionHash) ||
+      !isDeepStrictEqual(
+        result.association?.sourceSnapshot ?? result.sourceSnapshot,
+        prepared.context.input.graph.sourceSnapshot,
+      ))
+  )
+    throw new HivexError({
+      code: 'INVALID_COMPARISON_STORE',
+      message: 'Comparison provenance differs from its planned snapshot or selection',
+    });
+  validateComparisonProvenance(result, prepared);
   validateCompletedInvocation(result.report);
-  if (result.comparison) {
-    validateComparison(result.comparison, prepared);
-    validateHashes(result, prepared);
-  }
+  if (result.comparison) validateComparison(result.comparison, prepared);
+  validateHashes(result, prepared);
   const passed =
     result.comparison !== null &&
     satisfactoryComparison(result.comparison) &&
@@ -185,7 +212,14 @@ export function validateComparisonResult(
 
 function validateHashes(result: ComparisonResult, prepared: ReturnType<typeof prepareComparison>) {
   const comparison = result.comparison;
-  if (!comparison) return;
+  if (!comparison) {
+    if (result.modelOutputHash !== undefined || result.comparisonHash !== undefined)
+      throw new HivexError({
+        code: 'INVALID_COMPARISON_STORE',
+        message: 'A comparison without model output cannot retain output hashes',
+      });
+    return;
+  }
   const names = new Map([...prepared.claimBindings].map(([name, id]) => [id, name]));
   const sources = new Map([...prepared.bindings].map(([name, id]) => [id, name]));
   const evidence = (entries: (typeof comparison.assessments)[number]['evidence']) =>
@@ -216,10 +250,11 @@ function validateHashes(result: ComparisonResult, prepared: ReturnType<typeof pr
 
 export function validateComparisons(rows: Rows, context: Context) {
   for (const row of rows) {
+    if (!row.result && !row.previousAttempts?.length) continue;
+    const prepared = prepare(context, row.id);
     for (const previous of row.previousAttempts ?? [])
-      validateRejectedOutput(previous.rejectedOutput, previous.report.outcome, previous.comparison);
-    if (row.result)
-      validateComparisonResult(row.result, prepare(context, row.id), context.selection.planHash);
+      validateComparisonResult(previous, prepared, undefined, true);
+    if (row.result) validateComparisonResult(row.result, prepared, context.selection.planHash);
   }
 }
 

@@ -130,7 +130,11 @@ function initializePlan(db: Database, plan: AssessmentPlan) {
     );
 }
 
-function previousAttempts<T extends AssessmentResult>(row: Row, contract: AssessmentContract<T>) {
+function previousAttempts<T extends AssessmentResult>(
+  row: Row,
+  contract: AssessmentContract<T>,
+  plan: AssessmentPlan,
+) {
   if (row.previous_attempts === undefined && row.previous_attempts_hash === undefined) return [];
   const value = row.previous_attempts;
   if (
@@ -144,6 +148,10 @@ function previousAttempts<T extends AssessmentResult>(row: Row, contract: Assess
     fail('INVALID_REVIEW_STORE', 'An assessment retains at most two previous attempts');
   return parsed.map((entry: unknown) => {
     const result = contract.parse(entry);
+    validateAssessmentContract(result, {
+      ...plan.contract,
+      schemaHash: assessmentSchemaHash(plan, row.id),
+    });
     if (
       Buffer.byteLength(JSON.stringify(result)) > resultLimit ||
       result.status !== 'failed' ||
@@ -166,7 +174,7 @@ function decode<T extends AssessmentResult>(
   const source = plan.sources[row.ordinal];
   if (!source || source.id !== row.id)
     fail('INVALID_REVIEW_STORE', 'Assessment sources differ from the retained plan');
-  const attempts = previousAttempts(row, contract);
+  const attempts = previousAttempts(row, contract, plan);
   const history = attempts.length ? { previousAttempts: attempts } : {};
   if (row.state === 'pending' && attempts.length)
     fail('INVALID_REVIEW_STORE', 'A pending assessment cannot conceal earlier attempts');
@@ -537,13 +545,23 @@ export function validateAssessmentBinding(
   binding: { actualId: string; id: string; promptHash: string; schemaHash: string },
   plan: AssessmentPlan,
 ) {
+  validateAssessmentContract(result, { ...plan.contract, schemaHash: binding.schemaHash });
   if (
     binding.actualId !== binding.id ||
     result.graphHash !== plan.graphHash ||
-    result.contract.promptHash !== binding.promptHash ||
-    result.contract.schemaHash !== binding.schemaHash ||
-    result.contract.nativeVersion !== plan.contract.nativeVersion ||
-    result.contract.requestedPolicyHash !== plan.contract.requestedPolicyHash
+    result.contract.promptHash !== binding.promptHash
   )
     fail('INVALID_REVIEW_STORE', 'An assessment result differs from its planned inputs');
+}
+
+export function validateAssessmentContract(
+  result: AssessmentResult,
+  contract: AssessmentPlan['contract'],
+) {
+  if (
+    result.contract.schemaHash !== contract.schemaHash ||
+    result.contract.nativeVersion !== contract.nativeVersion ||
+    result.contract.requestedPolicyHash !== contract.requestedPolicyHash
+  )
+    fail('INVALID_REVIEW_STORE', 'An assessment result differs from its processing contract');
 }

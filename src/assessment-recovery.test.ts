@@ -1,6 +1,9 @@
 import { expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { hash } from './sources/markdown.ts';
+import { AssessmentStore, type AssessmentPlan } from './graph/assessment-store.ts';
+import { reviewContract } from './graph/review-cohort.ts';
+import { comparisonContract } from './graph/comparison-cohort.ts';
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
@@ -12,7 +15,7 @@ import {
 } from '../test/reviewed-project.ts';
 
 type Operation = 'review' | 'compare';
-function cohort(paths: Paths, fixture: Fixture, operation: Operation) {
+function cohort(paths: Paths, fixture: Fixture, operation: Operation, neighbors = 1) {
   let id: string;
   let response: object;
   if (operation === 'compare') {
@@ -22,7 +25,7 @@ function cohort(paths: Paths, fixture: Fixture, operation: Operation) {
       '--input',
       fixture.input,
       '--neighbors',
-      '1',
+      String(neighbors),
     ]);
     const selected: { pairs: { id: string }[] } = JSON.parse(plan.stdout);
     id = selected.pairs[0]?.id ?? '';
@@ -50,11 +53,13 @@ function cohort(paths: Paths, fixture: Fixture, operation: Operation) {
     fixture.input,
     '--store',
     operation === 'compare' ? fixture.comparisons : fixture.reviews,
-    ...(operation === 'compare' ? ['--neighbors', '1'] : []),
+    ...(operation === 'compare' ? ['--neighbors', String(neighbors)] : []),
   ];
   return {
     id,
     response,
+    args,
+    export: () => invoke(paths.root, [...args, '--export', '--max-bytes', '1048576']),
     run: (extra: string[]) =>
       invoke(paths.root, [...args, '--all', '--codex', paths.binary, '--max-units', '1', ...extra]),
     show: () => invoke(paths.root, [...args, '--show', id, '--max-bytes', '1048576']),
@@ -190,128 +195,163 @@ test.each<Operation>(['review', 'compare'])(
   },
 );
 
-test('preserves failed comparison history and its remaining budget across a graph transition', async () => {
-  await projectWithReviews((paths, fixture) => {
-    const task = cohort(paths, fixture, 'compare');
-    writeFileSync(paths.scenario, 'timeout-unmeasured');
-    expect(task.run(['--deadline-ms', '100']).status).toBe(1);
-    const first = JSON.parse(task.show().stdout).result;
-    expect(
-      task.run(['--retry-failed', task.id, '--attempts', '2', '--deadline-ms', '100']).status,
-    ).toBe(1);
-    const second = JSON.parse(task.show().stdout).result;
-    const archived = invoke(paths.root, [
-      'graph',
-      'compare',
-      '--export',
-      '--input',
-      fixture.input,
-      '--store',
-      fixture.comparisons,
-      '--neighbors',
-      '1',
-      '--max-bytes',
-      '1048576',
-    ]);
-    expect(archived.stderr).toBe('');
-    const archive = join(dirname(paths.store), 'comparison-history.json');
-    writeFileSync(archive, archived.stdout);
-    rmSync(paths.scenario);
-    rmSync(paths.candidate);
-    writeFileSync(join(paths.root, 'implementation.ts'), 'export const value = 1;\n');
-    paths.git(['add', 'implementation.ts']);
-    paths.git([
-      '-c',
-      'user.name=Test',
-      '-c',
-      'user.email=test@example.invalid',
-      'commit',
-      '-qm',
-      'Add unrelated implementation',
-    ]);
-    const store = join(dirname(paths.store), 'new-ingestion.sqlite');
-    expect(invoke(paths.root, ['ingest', '--store', store, '--codex', paths.binary]).status).toBe(
-      0,
-    );
-    const built = invoke(paths.root, ['graph', 'build', '--store', store, '--export']);
-    expect(built.status).toBe(0);
-    const input = join(dirname(paths.store), 'new-graph.json');
-    writeFileSync(input, built.stdout);
-    const args = [
-      'graph',
-      'compare',
-      '--all',
-      '--input',
-      input,
-      '--store',
-      fixture.comparisons,
-      '--neighbors',
-      '1',
-    ];
-    const transition = [...args, '--from', fixture.input, '--reuse', archive, '--max-units', '0'];
-    const calls = readFileSync(paths.calls, 'utf8');
-    const transferred = invoke(paths.root, transition);
-    expect(transferred.stderr).toBe('');
-    expect(JSON.parse(transferred.stdout)).toMatchObject({
-      failed: 1,
-      processed: 0,
-      recordedAttempts: 2,
-      unmeasuredResults: 2,
-    });
-    const exhausted = invoke(paths.root, [
-      ...args,
-      '--retry-failed',
-      task.id,
-      '--attempts',
-      '2',
-      '--max-units',
-      '1',
-      '--codex',
-      paths.binary,
-    ]);
-    expect(exhausted.status).toBe(1);
-    expect(exhausted.stderr).toContain('ASSESSMENT_RETRY_EXHAUSTED');
-    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
-    writeFileSync(paths.candidate, JSON.stringify(comparisonResponse()));
-    const recovered = invoke(paths.root, [
-      ...args,
-      '--retry-failed',
-      task.id,
-      '--attempts',
-      '3',
-      '--max-units',
-      '1',
-      '--codex',
-      paths.binary,
-    ]);
-    expect(recovered.stderr).toBe('');
-    expect(JSON.parse(recovered.stdout)).toMatchObject({
-      completed: 1,
-      recordedAttempts: 3,
-      reportedTokens: 150,
-      unmeasuredResults: 2,
-    });
-    const shown = invoke(paths.root, [
-      'graph',
-      'compare',
-      '--show',
-      task.id,
-      '--input',
-      input,
-      '--store',
-      fixture.comparisons,
-      '--neighbors',
-      '1',
-      '--max-bytes',
-      '1048576',
-    ]);
-    const retained = JSON.parse(shown.stdout);
-    expect(retained.previousAttempts[0]).toEqual(first);
-    expect(retained.previousAttempts[1].report).toEqual(second.report);
-    expect(invoke(paths.root, transition).status).toBe(0);
-    expect(readFileSync(paths.calls, 'utf8')).toBe(calls + 'called\n');
-  }, 0);
-});
+function rebuildSnapshot(
+  paths: Paths,
+  fixture: Fixture,
+  name: string,
+  candidate?: object,
+): Fixture {
+  if (candidate) writeFileSync(paths.candidate, JSON.stringify(candidate));
+  else rmSync(paths.candidate, { force: true });
+  writeFileSync(join(paths.root, 'implementation.ts'), `export const revision = '${name}';\n`);
+  paths.git(['add', 'implementation.ts']);
+  paths.git([
+    '-c',
+    'user.name=Test',
+    '-c',
+    'user.email=test@example.invalid',
+    'commit',
+    '-qm',
+    name,
+  ]);
+  const store = join(dirname(paths.store), `${name}-ingestion.sqlite`);
+  expect(invoke(paths.root, ['ingest', '--store', store, '--codex', paths.binary]).status).toBe(0);
+  const built = invoke(paths.root, ['graph', 'build', '--store', store, '--export']);
+  expect(built.status).toBe(0);
+  const input = join(dirname(paths.store), `${name}-graph.json`);
+  writeFileSync(input, built.stdout);
+  return { ...fixture, input, graph: JSON.parse(built.stdout), built: built.stdout };
+}
+
+test.each<Operation>(['review', 'compare'])(
+  'preserves original %s history across reuse, retry and another snapshot transition',
+  async (operation) => {
+    await projectWithReviews((paths, fixture) => {
+      const task = cohort(paths, fixture, operation);
+      expect(task.run(['--codex', join(paths.root, 'missing-codex')]).status).toBe(1);
+      const first = JSON.parse(task.show().stdout).result;
+      writeFileSync(paths.candidate, '{}');
+      expect(task.run(['--retry-failed', task.id, '--attempts', '2']).status).toBe(1);
+      const second = JSON.parse(task.show().stdout).result;
+      const archive = join(dirname(paths.store), 'history.json');
+      writeFileSync(archive, task.export().stdout);
+
+      const next = rebuildSnapshot(paths, fixture, 'next');
+      expect(next.graph.sourceSnapshot.commit).not.toBe(fixture.graph.sourceSnapshot.commit);
+      const current = cohort(paths, next, operation, 2);
+      const transition = ['--from', fixture.input, '--reuse', archive, '--max-units', '0'];
+      const calls = readFileSync(paths.calls, 'utf8');
+      const transferred = current.run(transition);
+      expect(transferred.stderr).toBe('');
+      expect(JSON.parse(transferred.stdout)).toMatchObject({
+        failed: 1,
+        processed: 0,
+        recordedAttempts: 2,
+        reportedTokens: 150,
+        unmeasuredResults: 1,
+      });
+      const associated = JSON.parse(current.show().stdout).result;
+      const { association, ...original } = associated;
+      expect(original).toEqual(second);
+      expect(association.graphHash).toBe(next.graph.hash);
+      expect(current.run(['--retry-failed', task.id, '--attempts', '2']).stderr).toContain(
+        'ASSESSMENT_RETRY_EXHAUSTED',
+      );
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+
+      const recovered = current.run(['--retry-failed', task.id, '--attempts', '3']);
+      expect(recovered.stderr).toBe('');
+      expect(recovered.status).toBe(0);
+      expect(JSON.parse(recovered.stdout)).toMatchObject({
+        completed: 1,
+        recordedAttempts: 3,
+        reportedTokens: 300,
+        unmeasuredResults: 1,
+      });
+      const retained = JSON.parse(current.show().stdout);
+      expect(retained.previousAttempts).toEqual([first, associated]);
+      const nextArchive = join(dirname(paths.store), 'next-history.json');
+      writeFileSync(nextArchive, current.export().stdout);
+
+      const last = rebuildSnapshot(paths, next, 'last');
+      const final = cohort(paths, last, operation);
+      const before = readFileSync(paths.calls, 'utf8');
+      const reused = final.run(['--from', next.input, '--reuse', nextArchive, '--max-units', '0']);
+      expect(reused.stderr).toBe('');
+      expect(reused.status).toBe(0);
+      expect(JSON.parse(reused.stdout)).toMatchObject({
+        completed: 1,
+        processed: 0,
+        recordedAttempts: 3,
+        reportedTokens: 300,
+        unmeasuredResults: 1,
+      });
+      expect(JSON.parse(final.show().stdout).previousAttempts).toEqual([first, associated]);
+      const exported = JSON.parse(final.export().stdout);
+      const rows = operation === 'review' ? exported.reviews : exported.comparisons;
+      expect(rows[0].previousAttempts).toEqual([first, associated]);
+      expect(rows[0].result.graphHash).toBe(next.graph.hash);
+      expect(rows[0].result.association.graphHash).toBe(last.graph.hash);
+      expect(final.run(['--max-units', '0']).status).toBe(0);
+      expect(readFileSync(paths.calls, 'utf8')).toBe(before);
+      expect(first.sourceSnapshot.commit).not.toBe(last.graph.sourceSnapshot.commit);
+      expect(associated.association.sourceSnapshot.commit).not.toBe(
+        last.graph.sourceSnapshot.commit,
+      );
+
+      const archiveText = final.export().stdout;
+      const finalArchive = join(dirname(paths.store), 'final-history.json');
+      writeFileSync(finalArchive, archiveText);
+      using db = new Database(operation === 'review' ? fixture.reviews : fixture.comparisons);
+      const altered = structuredClone(associated);
+      altered.association.originalHash = '0'.repeat(64);
+      const history = JSON.stringify([first, altered]);
+      db.run('UPDATE reviews SET previous_attempts=?, previous_attempts_hash=? WHERE id=?', [
+        history,
+        hash(history),
+        task.id,
+      ]);
+      expect(final.show().stderr).toContain('original');
+      expect(final.export().stderr).toContain('original');
+      const originalHistory = JSON.stringify([first, associated]);
+      db.run('UPDATE reviews SET previous_attempts=?, previous_attempts_hash=? WHERE id=?', [
+        originalHistory,
+        hash(originalHistory),
+        task.id,
+      ]);
+
+      const extraction = invoke(paths.root, [
+        'ingest',
+        '--show',
+        'first.md',
+        '--store',
+        paths.store,
+      ]);
+      const candidate = JSON.parse(extraction.stdout).result.candidate;
+      candidate.claims[0].text = 'Cached content does not establish authority.';
+      const changed = rebuildSnapshot(paths, last, 'changed-candidate', candidate);
+      const changedTask = cohort(paths, changed, operation);
+      const changedCalls = readFileSync(paths.calls, 'utf8');
+      const pending = changedTask.run([
+        '--from',
+        last.input,
+        '--reuse',
+        finalArchive,
+        '--max-units',
+        '0',
+      ]);
+      expect(pending.stderr).toBe('');
+      expect(JSON.parse(pending.stdout)).toMatchObject({ completed: 0, recordedAttempts: 0 });
+      expect(JSON.parse(changedTask.show().stdout)).toMatchObject({
+        state: 'pending',
+        result: null,
+      });
+      expect(JSON.parse(changedTask.show().stdout).previousAttempts).toBeUndefined();
+      expect(readFileSync(paths.calls, 'utf8')).toBe(changedCalls);
+      expect(readFileSync(finalArchive, 'utf8')).toBe(archiveText);
+    }, 0);
+  },
+);
 
 test('a killed retry retains its previous receipt and cannot be retried or retired', async () => {
   await projectWithReviews(async (paths, fixture) => {
@@ -442,4 +482,93 @@ test.each<Operation>(['review', 'compare'])(
       }
     }, 0);
   },
+);
+
+test.each<[Operation, boolean]>([
+  ['review', false],
+  ['review', true],
+  ['compare', false],
+  ['compare', true],
+])(
+  'rejects incompatible %s history with consistent outer checksums (running retry: %s)',
+  async (operation, running) => {
+    await projectWithReviews((paths, fixture) => {
+      const task = cohort(paths, fixture, operation);
+      writeFileSync(paths.candidate, '{}');
+      expect(task.run([]).status).toBe(1);
+      expect(task.run(['--retry-failed', task.id, '--attempts', '2']).status).toBe(1);
+      const path = operation === 'compare' ? fixture.comparisons : fixture.reviews;
+      const originalExport = JSON.parse(task.export().stdout);
+      const plan: AssessmentPlan = originalExport.plan;
+      const archive = join(dirname(paths.store), 'altered-history.json');
+      const calls = readFileSync(paths.calls, 'utf8');
+      const edits: Record<string, (receipt: any) => void> = {
+        schema: (receipt) => {
+          receipt.contract.schemaHash =
+            operation === 'review' ? plan.contract.schemaHash : '0'.repeat(64);
+        },
+        native: (receipt) => {
+          receipt.contract.nativeVersion = 'incompatible';
+        },
+        policy: (receipt) => {
+          receipt.contract.requestedPolicyHash = '0'.repeat(64);
+        },
+        prompt: (receipt) => {
+          receipt.contract.promptHash = '0'.repeat(64);
+        },
+        bindings: (receipt) => {
+          if (operation === 'review') receipt.reviewBindings.claims.c1 = '0'.repeat(64);
+          else receipt.sourceBindings.s1 = 'second.md';
+        },
+        output: (receipt) => {
+          receipt.modelOutputHash = '0'.repeat(64);
+        },
+      };
+      using db = new Database(path);
+      if (running) {
+        using store =
+          operation === 'compare'
+            ? new AssessmentStore(path, plan, comparisonContract)
+            : new AssessmentStore(path, plan, reviewContract);
+        expect(store.retryFailed(task.id, 'fixture-owner', 3)).toBe(task.id);
+      }
+      const exported = JSON.parse(task.export().stdout);
+      const rows = operation === 'review' ? exported.reviews : exported.comparisons;
+      const original = JSON.stringify(rows[0].previousAttempts);
+      expect(rows[0].state).toBe(running ? 'running' : 'failed');
+      if (running) expect(rows[0].result).toBeNull();
+      for (const [field, edit] of Object.entries(edits)) {
+        const changed = structuredClone(exported);
+        const changedRows = operation === 'review' ? changed.reviews : changed.comparisons;
+        edit(changedRows[0].previousAttempts[0]);
+        const history = JSON.stringify(changedRows[0].previousAttempts);
+        db.run('UPDATE reviews SET previous_attempts=?, previous_attempts_hash=? WHERE id=?', [
+          history,
+          hash(history),
+          task.id,
+        ]);
+        writeFileSync(archive, JSON.stringify(changed));
+        const before = readFileSync(path);
+        const checks = [
+          task.show(),
+          task.export(),
+          task.run(['--max-units', '0']),
+          task.run(['--from', fixture.input, '--reuse', archive, '--max-units', '0']),
+        ];
+        for (const result of checks) {
+          expect(result.status, `${operation}/${running}/${field}`).toBe(1);
+          expect(result.stderr).toMatch(/INVALID_(REVIEW_STORE|REVIEW_OUTPUT|COMPARISON_STORE)/);
+        }
+        expect(readFileSync(path)).toEqual(before);
+      }
+      db.run('UPDATE reviews SET previous_attempts=?, previous_attempts_hash=? WHERE id=?', [
+        original,
+        hash(original),
+        task.id,
+      ]);
+      expect(task.show().stderr).toBe('');
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+    }, 0);
+  },
+  15000,
 );
