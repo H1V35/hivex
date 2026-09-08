@@ -355,6 +355,15 @@ exports. `retention-required` means the caller must move that one transition dir
 transition can begin. The managed admitted file is replaced atomically only after the new snapshot
 has passed the same complete admission inspection.
 
+Before reporting `unchanged`, update reconciles an interrupted publication and checks the requested
+collection/neighbors, current extraction receipts and candidate against the verified admission.
+Output and its pending file cannot alias reserved runtime paths. Pending checkpoints must match
+their frozen inputs and graph before promotion. Once a transition is active its archive is fixed;
+an intermediate correction requiring another archive returns `retention-required`. Incompatible
+processing contracts remain intact. Review and comparison resume against the frozen revision;
+admission still requires matching documentary inputs at HEAD (ADR 8), otherwise it reports a blocker
+at the admission phase while retaining the completed work.
+
 ## Inspect a candidate graph
 
 After every source in a cohort has a retained candidate, build its graph without another model call:

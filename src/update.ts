@@ -1,4 +1,4 @@
-import { parseArgs } from 'node:util';
+import { isDeepStrictEqual, parseArgs } from 'node:util';
 import {
   closeSync,
   existsSync,
@@ -7,11 +7,12 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { parseLimit } from './cli/arguments.ts';
 import { HivexError } from './errors.ts';
@@ -20,7 +21,7 @@ import { unresolvedInvocation as unresolvedAssessment } from './graph/assessment
 import { comparisonCohortCommand } from './graph/comparison-cohort.ts';
 import { graphCommand } from './graph/command.ts';
 import { reviewCohortCommand } from './graph/review-cohort.ts';
-import { inputHash } from './graph/build.ts';
+import { buildGraph, inputHash } from './graph/build.ts';
 import { ingestCommand } from './ingestion/run.ts';
 import { IngestionStore, unresolvedInvocation as unresolvedExtraction } from './ingestion/store.ts';
 import { createPlan } from './ingestion/plan.ts';
@@ -186,6 +187,45 @@ function pathsFor(options: UpdateOptions): Paths {
   };
 }
 
+function canonicalPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+    return join(canonicalPath(dirname(path)), basename(path));
+  }
+}
+
+function validateOutputPath(paths: Paths) {
+  const reserved = [paths.checkpoint, paths.candidate, paths.lock];
+  for (const store of [paths.ingestion, paths.reviews, paths.comparisons])
+    reserved.push(store, ...['-journal', '-wal', '-shm'].map((suffix) => store + suffix));
+  reserved.push(...reserved.map((path) => `${path}.pending`));
+  // Reserve case variants as well, including filenames not yet created on case-insensitive disks.
+  const key = (path: string) => canonicalPath(path).normalize('NFC').toLowerCase();
+  const names = new Set(reserved.map(key));
+  const directory = key(paths.transition);
+  for (const path of [paths.output, `${paths.output}.pending`]) {
+    const name = key(path);
+    const stat = existsSync(path) ? lstatSync(path) : null;
+    const alias =
+      stat &&
+      reserved.some((file) => {
+        if (!existsSync(file)) return false;
+        const other = lstatSync(file);
+        return stat.dev === other.dev && stat.ino === other.ino;
+      });
+    if (
+      names.has(name) ||
+      name === key(paths.runtime) ||
+      name === directory ||
+      name.startsWith(directory + '/') ||
+      alias
+    )
+      invalid(`Output collides with a reserved update path: ${path}`, 'UPDATE_PATH_COLLISION');
+  }
+}
+
 function ensureDirectory(path: string) {
   try {
     const stat = lstatSync(path);
@@ -266,15 +306,64 @@ function readJson(path: string, maximumBytes: number) {
   }
 }
 
-function readCheckpoint(path: string) {
-  const pending = `${path}.pending`;
-  const value = readJson(path, 8 * 1024 * 1024) ?? readJson(pending, 8 * 1024 * 1024);
-  if (!regularFile(path) && value !== null) {
-    const checkpoint = checkpointSchema.parse(value);
-    renameSync(pending, path);
-    return checkpoint;
+function readCheckpoint(options: UpdateOptions, paths: Paths) {
+  const value = readJson(paths.checkpoint, 8 * 1024 * 1024);
+  const current = value === null ? null : checkpointSchema.parse(value);
+  if (current) validateCheckpoint(options, paths, current);
+  const pending = `${paths.checkpoint}.pending`;
+  const next = readJson(pending, 8 * 1024 * 1024);
+  if (next === null) return current;
+  const checkpoint = checkpointSchema.parse(next);
+  validateCheckpoint(options, paths, checkpoint);
+  validatePendingCheckpoint(paths, checkpoint, current);
+  renameSync(pending, paths.checkpoint);
+  return checkpoint;
+}
+
+function validatePendingCheckpoint(
+  paths: Paths,
+  checkpoint: Checkpoint,
+  current: Checkpoint | null,
+) {
+  const { target } = checkpoint;
+  if (
+    current &&
+    !isDeepStrictEqual(
+      [current.target.collection, current.target.neighbors],
+      [target.collection, target.neighbors],
+    )
+  )
+    invalid('The pending checkpoint changes the frozen selection', 'UPDATE_ARTIFACT_PENDING');
+  if (
+    current &&
+    !isDeepStrictEqual(current.target, target) &&
+    !(current.phase === 'admitted' && checkpoint.phase === 'ingest')
+  )
+    invalid('The pending checkpoint changes an active target', 'UPDATE_ARTIFACT_PENDING');
+  const plan = createPlan(
+    loadSnapshot({
+      root: checkpoint.root,
+      ref: target.commit,
+      selection: { collection: target.collection ?? undefined },
+    }),
+    target.collection,
+  );
+  if (inputHash(plan) !== target.inputHash)
+    invalid('The pending checkpoint differs from its processing inputs', 'UPDATE_ARTIFACT_PENDING');
+  if (['review', 'compare', 'admit', 'admitted'].includes(checkpoint.phase)) {
+    const candidate = candidateInfo(paths, checkpoint.root);
+    if (
+      !candidate ||
+      candidate.hash !== checkpoint.candidateHash ||
+      candidate.inputHash !== target.inputHash
+    )
+      invalid('The pending checkpoint differs from its candidate', 'UPDATE_ARTIFACT_PENDING');
   }
-  return value === null ? null : checkpointSchema.parse(value);
+  if (checkpoint.phase === 'admitted') {
+    const admitted = outputProjection(paths.output, checkpoint.root, target.commit);
+    if (!admitted || !admittedFresh(admitted) || admitted.check.hash !== checkpoint.admittedHash)
+      invalid('The pending checkpoint lacks its verified admission', 'UPDATE_ARTIFACT_PENDING');
+  }
 }
 
 function writeCheckpoint(path: string, checkpoint: Checkpoint) {
@@ -602,6 +691,7 @@ async function prepareTransition(
     return {
       response: retention(paths, 'A previous transition still owns the single retention directory'),
     };
+  if (transition.state === 'active') return { transition };
   transition = archivePreviousFiles(paths, transition, inputs);
   writeTransition(paths, transition);
   return archiveStores(options, paths, transition, inputs.oldCandidate);
@@ -737,23 +827,10 @@ function selectionMatches(selection: ReturnType<typeof IngestionStore.selection>
 function ingestionBlockers(path: string): Blocker[] {
   if (!regularFile(path)) return [];
   try {
-    const exported = IngestionStore.export(path, maximumExportBytes) as {
-      units: {
-        id: string;
-        state: string;
-        result: { attempts?: { outcome: string }[] } | null;
-        checkpoint: { active: unknown; reports: { outcome: string }[] };
-      }[];
-    };
+    const exported = IngestionStore.export(path, maximumExportBytes);
     return exported.units.flatMap((unit): Blocker[] => {
-      const reports = [...unit.checkpoint.reports, ...(unit.result?.attempts ?? [])];
-      if (
-        unit.state === 'running' ||
-        unit.checkpoint.active ||
-        reports.some((report) =>
-          unresolvedExtraction(report as Parameters<typeof unresolvedExtraction>[0]),
-        )
-      )
+      const reports = unit.result?.attempts ?? unit.checkpoint.reports;
+      if (unit.state === 'running' || unit.checkpoint.active || reports.some(unresolvedExtraction))
         return [
           {
             id: unit.id,
@@ -836,6 +913,11 @@ async function runIngestion(
     const retainedBlockers = ingestionBlockers(paths.ingestion);
     if (retainedBlockers.length)
       return { ready: false, response: blocked('ingest', retainedBlockers) };
+    if (
+      regularFile(paths.ingestion)?.size &&
+      IngestionStore.export(paths.ingestion, maximumExportBytes).pending === 0
+    )
+      return { ready: true };
     const args = [
       '--ref',
       target.snapshot.commit,
@@ -914,15 +996,20 @@ async function runReview(
   paths: Paths,
   transition: Transition | null,
 ): Promise<PhaseResult> {
+  const common = [
+    '--input',
+    paths.candidate,
+    '--root',
+    options.root,
+    '--against',
+    options.ref ?? 'HEAD',
+    '--store',
+    paths.reviews,
+  ];
   const inspect = async () => {
     const result = (await reviewCohortCommand([
       '--export',
-      '--input',
-      paths.candidate,
-      '--root',
-      options.root,
-      '--store',
-      paths.reviews,
+      ...common,
       '--max-bytes',
       String(maximumExportBytes),
     ])) as { status: string; reviews: AssessmentRows };
@@ -932,17 +1019,7 @@ async function runReview(
     name: 'review',
     prepare: async () => {
       if (!regularFile(paths.reviews)?.size) {
-        await reviewCohortCommand([
-          '--all',
-          '--input',
-          paths.candidate,
-          '--root',
-          options.root,
-          '--store',
-          paths.reviews,
-          '--max-units',
-          '0',
-        ]);
+        await reviewCohortCommand(['--all', ...common, '--max-units', '0']);
         return;
       }
       try {
@@ -951,16 +1028,11 @@ async function runReview(
         if (!transition || !isContractError(error)) throw error;
         await reviewCohortCommand([
           '--all',
-          '--input',
-          paths.candidate,
+          ...common,
           '--from',
           archivePath(paths, transition, 'candidate'),
           '--reuse',
           archivePath(paths, transition, 'reviews'),
-          '--root',
-          options.root,
-          '--store',
-          paths.reviews,
           '--max-units',
           '0',
         ]);
@@ -970,12 +1042,7 @@ async function runReview(
     execute: () =>
       reviewCohortCommand([
         '--all',
-        '--input',
-        paths.candidate,
-        '--root',
-        options.root,
-        '--store',
-        paths.reviews,
+        ...common,
         '--codex',
         options.binary,
         '--deadline-ms',
@@ -995,17 +1062,22 @@ async function runComparison(
   const graph = readProjection(paths.candidate, options.root, target.snapshot.commit).input;
   if (new Set([...graph.nodes.values()].map((node) => node.source)).size <= 1)
     return { ready: true };
+  const common = [
+    '--input',
+    paths.candidate,
+    '--root',
+    options.root,
+    '--against',
+    target.snapshot.commit,
+    '--store',
+    paths.comparisons,
+    '--neighbors',
+    String(options.neighbors),
+  ];
   const inspect = async () => {
     const result = (await comparisonCohortCommand([
       '--export',
-      '--input',
-      paths.candidate,
-      '--root',
-      options.root,
-      '--store',
-      paths.comparisons,
-      '--neighbors',
-      String(options.neighbors),
+      ...common,
       '--max-bytes',
       String(maximumExportBytes),
     ])) as { status: string; comparisons: AssessmentRows };
@@ -1015,19 +1087,7 @@ async function runComparison(
     name: 'compare',
     prepare: async () => {
       if (!regularFile(paths.comparisons)?.size) {
-        await comparisonCohortCommand([
-          '--all',
-          '--input',
-          paths.candidate,
-          '--root',
-          options.root,
-          '--store',
-          paths.comparisons,
-          '--neighbors',
-          String(options.neighbors),
-          '--max-units',
-          '0',
-        ]);
+        await comparisonCohortCommand(['--all', ...common, '--max-units', '0']);
         return;
       }
       try {
@@ -1036,18 +1096,11 @@ async function runComparison(
         if (!transition || !isContractError(error)) throw error;
         await comparisonCohortCommand([
           '--all',
-          '--input',
-          paths.candidate,
+          ...common,
           '--from',
           archivePath(paths, transition, 'candidate'),
           '--reuse',
           archivePath(paths, transition, 'comparisons'),
-          '--root',
-          options.root,
-          '--store',
-          paths.comparisons,
-          '--neighbors',
-          String(options.neighbors),
           '--max-units',
           '0',
         ]);
@@ -1057,14 +1110,7 @@ async function runComparison(
     execute: () =>
       comparisonCohortCommand([
         '--all',
-        '--input',
-        paths.candidate,
-        '--root',
-        options.root,
-        '--store',
-        paths.comparisons,
-        '--neighbors',
-        String(options.neighbors),
+        ...common,
         '--codex',
         options.binary,
         '--deadline-ms',
@@ -1093,12 +1139,64 @@ function failureResponse(paths: Paths, phase: string, error: unknown) {
 }
 
 function readCycleCheckpoint(options: UpdateOptions, paths: Paths) {
-  const checkpoint = readCheckpoint(paths.checkpoint);
+  const checkpoint = readCheckpoint(options, paths);
   if (!checkpoint) return null;
   validateCheckpoint(options, paths, checkpoint);
   if (!options.neighborsExplicit) options.neighbors = checkpoint.target.neighbors;
   if (!options.collectionExplicit) options.collection = checkpoint.target.collection ?? undefined;
-  return checkpoint;
+  return reconcileAdmission(options, paths, checkpoint);
+}
+
+function retainedCandidateMatches(paths: Paths, root: string, graphHash: string) {
+  const candidate = candidateInfo(paths, root);
+  if (candidate && candidate.hash !== graphHash) return false;
+  if (!regularFile(paths.ingestion)) return true;
+  const cohort = IngestionStore.read(paths.ingestion);
+  if (cohort.rows.some((row) => row.state !== 'candidate')) return false;
+  return buildGraph(root, paths.ingestion).hash === graphHash;
+}
+
+function admissionMatchesTarget(
+  projection: ReturnType<typeof readProjection>,
+  target: Checkpoint['target'],
+) {
+  return (
+    admittedFresh(projection) &&
+    projection.input.graph.inputHash === target.inputHash &&
+    projection.input.graph.selection.collection === target.collection &&
+    'admission' in projection.check &&
+    projection.check.admission.coverage.neighbors === target.neighbors
+  );
+}
+
+function reconcileAdmission(options: UpdateOptions, paths: Paths, checkpoint: Checkpoint) {
+  const admitted = outputProjection(paths.output, options.root, checkpoint.target.commit);
+  if (
+    !admitted ||
+    !admissionMatchesTarget(admitted, checkpoint.target) ||
+    !retainedCandidateMatches(paths, options.root, admitted.input.graph.hash)
+  )
+    return checkpoint;
+  const transition = readTransition(paths);
+  if (transition && transition.state !== 'complete') {
+    if (
+      !sameTarget(transition.target, checkpoint.target) ||
+      transition.expectedAcceptedHash !== admitted.check.hash
+    )
+      invalid(
+        'The published admission does not match the active transition',
+        'UPDATE_RETENTION_REQUIRED',
+      );
+    writeTransition(paths, { ...transition, state: 'complete' });
+  }
+  const reconciled: Checkpoint = {
+    ...checkpoint,
+    phase: 'admitted',
+    candidateHash: admitted.input.graph.hash,
+    admittedHash: admitted.check.hash,
+  };
+  if (!isDeepStrictEqual(checkpoint, reconciled)) writeCheckpoint(paths.checkpoint, reconciled);
+  return reconciled;
 }
 
 function continueCompletedCheckpoint(
@@ -1127,7 +1225,13 @@ function unchangedResponse(
   const current = outputProjection(paths.output, options.root, target.snapshot.commit);
   if (
     current &&
-    admittedFresh(current) &&
+    admissionMatchesTarget(current, {
+      commit: target.snapshot.commit,
+      inputHash: inputHash(target.plan),
+      collection: target.plan.selection.collection,
+      neighbors: options.neighbors,
+    }) &&
+    retainedCandidateMatches(paths, options.root, current.input.graph.hash) &&
     (!checkpoint || checkpoint.target.commit === target.snapshot.commit)
   )
     return {
@@ -1153,6 +1257,14 @@ async function transitionForCycle(
     Boolean(selection && !selectionMatches(selection, target));
   let transition = readTransition(paths);
   if (!changed && !transition) return { transition: null };
+  if (
+    transition?.state === 'active' &&
+    sameTarget(transition.target, {
+      commit: target.snapshot.commit,
+      inputHash: inputHash(target.plan),
+    })
+  )
+    return { transition };
   const prepared = await prepareTransition(options, paths, target, {
     oldAccepted: state.old,
     oldCandidate: state.candidate,
@@ -1165,6 +1277,15 @@ async function transitionForCycle(
 async function prepareCycle(options: UpdateOptions, paths: Paths): Promise<PrepareResult> {
   let checkpoint = readCycleCheckpoint(options, paths);
   const target = targetFor(options, checkpoint);
+  options.ref = target.snapshot.commit;
+  if (
+    regularFile(paths.ingestion)?.size &&
+    !isDeepStrictEqual(IngestionStore.read(paths.ingestion).plan.processing, target.plan.processing)
+  )
+    invalid(
+      'The retained ingestion processing contract is incompatible; preserve the store',
+      'INGESTION_PLAN_MISMATCH',
+    );
   const continued = continueCompletedCheckpoint(paths, checkpoint, target);
   if ('response' in continued) return continued;
   checkpoint = continued.checkpoint;
@@ -1211,6 +1332,13 @@ async function buildCandidate(context: CycleContext): Promise<BuildResult> {
   const currentCandidate = candidateInfo(paths, options.root);
   let transition = context.transition;
   if (currentCandidate && currentCandidate.hash !== built.hash) {
+    if (transition && transition.previous.candidateHash !== currentCandidate.hash)
+      return {
+        response: retention(
+          paths,
+          'The occupied bundle does not preserve the intermediate candidate and its assessments',
+        ),
+      };
     const prepared = await prepareTransition(options, paths, context.target, {
       oldAccepted: context.old,
       oldCandidate: currentCandidate,
@@ -1299,6 +1427,24 @@ async function runCycle(context: CycleContext) {
     phase: 'admit',
     candidateHash: candidate?.hash ?? null,
   });
+  if (readProjection(paths.candidate, options.root).check.freshness.status !== 'fresh')
+    return blocked(
+      'admit',
+      [
+        {
+          id: null,
+          kind: 'invalid',
+          message: 'Admission requires current HEAD documentary inputs (ADR 8)',
+        },
+      ],
+      {
+        target: target.snapshot.commit,
+        actions: [
+          `Inspect the retained graph: bun hivex graph check --root ${options.root} --input ${paths.candidate} --against ${target.snapshot.commit}`,
+          'Restore the frozen documentary inputs at HEAD, or preserve this cycle before explicitly transitioning to current inputs.',
+        ],
+      },
+    );
   const snapshot = admitCommand([
     '--input',
     paths.candidate,
@@ -1318,6 +1464,7 @@ async function runCycle(context: CycleContext) {
 export async function updateCommand(args: string[]) {
   const options = parseUpdateArguments(args);
   const paths = pathsFor(options);
+  validateOutputPath(paths);
   ensureDirectory(paths.runtime);
   const lock = acquireLock(paths.lock);
   if ('response' in lock) return lock.response;
