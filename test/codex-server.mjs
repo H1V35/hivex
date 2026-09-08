@@ -146,6 +146,24 @@ function updateResponse(prompt) {
   if (prompt.startsWith('Compare project-knowledge')) return updateComparison(prompt);
   return null;
 }
+
+function responseForPrompt(prompt) {
+  const candidatePath = process.env.HIVEX_TEST_CANDIDATE_PATH;
+  const specialized = process.env.HIVEX_TEST_SCENARIO?.startsWith('update')
+    ? updateResponse(prompt)
+    : null;
+  const responseCandidate =
+    specialized ??
+    (candidatePath && existsSync(candidatePath)
+      ? JSON.parse(readFileSync(candidatePath, 'utf8'))
+      : structuredClone(candidate));
+  if (
+    process.env.HIVEX_TEST_SCENARIO === 'retry-success' &&
+    !prompt.includes('Correct the previous invalid extraction')
+  )
+    responseCandidate.claims[0].evidence[0].quote = 'An absent source statement.';
+  return responseCandidate;
+}
 if (process.env.HIVEX_TEST_SCENARIO === 'invented-evidence')
   candidate.claims[0].evidence[0].quote = 'An absent source statement.';
 const emit = (frame) => process.stdout.write(JSON.stringify(frame) + '\n');
@@ -224,20 +242,7 @@ const handlers = {
       throw new Error('wrong turn controls');
     if (typeof params.input[0]?.text !== 'string' || !params.input[0].text.trim())
       throw new Error('prompt not supplied');
-    const candidatePath = process.env.HIVEX_TEST_CANDIDATE_PATH;
-    const specialized = process.env.HIVEX_TEST_SCENARIO?.startsWith('update')
-      ? updateResponse(params.input[0].text)
-      : null;
-    const responseCandidate =
-      specialized ??
-      (candidatePath && existsSync(candidatePath)
-        ? JSON.parse(readFileSync(candidatePath, 'utf8'))
-        : structuredClone(candidate));
-    if (
-      process.env.HIVEX_TEST_SCENARIO === 'retry-success' &&
-      !params.input[0].text.includes('Correct the previous invalid extraction')
-    )
-      responseCandidate.claims[0].evidence[0].quote = 'An absent source statement.';
+    const responseCandidate = responseForPrompt(params.input[0].text);
     if (['start-unconfirmed', 'update-uncertain'].includes(process.env.HIVEX_TEST_SCENARIO))
       return undefined;
     if (process.env.HIVEX_TEST_SCENARIO === 'oversized-frame')
