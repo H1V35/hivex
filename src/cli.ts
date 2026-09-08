@@ -51,7 +51,7 @@ async function main(args: string[]) {
           name: 'graph',
           usage: 'graph build [--root <repo>] [--store <file>] [--export]',
           admission:
-            'graph admit --input <file> [--root <repo>] [--reviews <store>] [--comparisons <store>] [--neighbors 0..8] [--against <commit>] [--export] [--max-bytes 1024..268435456]',
+            'graph admit --input <file> [--root <repo>] [--reviews <store>] [--comparisons <store>] [--neighbors 0..8] [--export] [--max-bytes 1024..268435456]',
           inspection: 'graph check --input <file> [--root <repo>] [--against <commit>]',
           query:
             'graph <search|read|neighbors> <query-or-id> --input <file> [--root <repo>] [--against <commit>] [--limit 1..20] [--max-bytes 1024..524288]',

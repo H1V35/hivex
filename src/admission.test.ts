@@ -329,6 +329,9 @@ test('an admitted snapshot remains historical evidence but cannot approve change
       freshness: { status: 'fresh' },
     });
     expect(admit(paths, fixture).status).toBe(1);
+    expect(admit(paths, fixture, ['--against', fixture.graph.sourceSnapshot.commit]).status).toBe(
+      1,
+    );
     expect(readFileSync(input, 'utf8')).toBe(result.stdout);
   });
 });
@@ -396,6 +399,44 @@ test('an empty extraction graph cannot become accepted knowledge', async () => {
     expect(result.status).toBe(1);
     expect(JSON.parse(result.stderr)).toMatchObject({
       error: { code: 'GRAPH_ADMISSION_INVALID', message: 'An empty graph cannot be admitted' },
+    });
+  });
+});
+
+test.each(['sourceReviews', 'comparisons'])(
+  'reapplies the retained assessment limit to embedded %s',
+  async (field) => {
+    await projectWithReviews((paths, fixture) => {
+      expect(compare(paths, fixture).status).toBe(0);
+      const result = admit(paths, fixture);
+      expect(result.status).toBe(0);
+      const snapshot = JSON.parse(result.stdout);
+      snapshot[field][0].extraPayload = 'x'.repeat(8 * 1024 * 1024);
+      const { hash: _hash, ...content } = snapshot;
+      snapshot.hash = createHash('sha256').update(JSON.stringify(content)).digest('hex');
+      const input = retained(paths, JSON.stringify(snapshot));
+      const checked = invoke(paths.root, ['graph', 'check', '--input', input]);
+      expect(checked.status).toBe(1);
+      expect(JSON.parse(checked.stderr)).toMatchObject({
+        error: { code: 'GRAPH_ADMISSION_INVALID' },
+      });
+    });
+  },
+);
+
+test('checks the embedded candidate size before expanding its source evidence', async () => {
+  await projectWithReviews((paths, fixture) => {
+    expect(compare(paths, fixture).status).toBe(0);
+    const result = admit(paths, fixture);
+    const snapshot = JSON.parse(result.stdout);
+    snapshot.graph.sources[0].authority.basis = 'x'.repeat(65 * 1024 * 1024);
+    const { hash: _hash, ...content } = snapshot;
+    snapshot.hash = createHash('sha256').update(JSON.stringify(content)).digest('hex');
+    const input = retained(paths, JSON.stringify(snapshot));
+    const checked = invoke(paths.root, ['graph', 'check', '--input', input]);
+    expect(checked.status).toBe(1);
+    expect(JSON.parse(checked.stderr)).toMatchObject({
+      error: { code: 'GRAPH_INVALID', details: { maximumBytes: 64 * 1024 * 1024 } },
     });
   });
 });

@@ -63,6 +63,8 @@ function records<T extends AssessmentResult>(
   if (values.length !== plan.sources.length)
     invalid('Admission requires every planned assessment exactly once');
   return values.map((result, index) => {
+    if (Buffer.byteLength(JSON.stringify(result)) > 8 * 1024 * 1024)
+      invalid('An embedded assessment exceeds its 8 MiB retention limit');
     const source = plan.sources[index];
     if (!source || result.status !== 'reviewed')
       invalid('Admission requires complete successful assessments');
@@ -244,7 +246,6 @@ function argumentsFor(args: string[]) {
       options: {
         root: { type: 'string' },
         input: { type: 'string' },
-        against: { type: 'string' },
         reviews: { type: 'string' },
         comparisons: { type: 'string' },
         neighbors: { type: 'string' },

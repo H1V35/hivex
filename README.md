@@ -577,7 +577,8 @@ candidate and admitted snapshots; admitted neighbor cursors bind to the full adm
 
 Admission makes no model calls and creates no files. Without `--export` it returns a summary;
 `--export` returns the complete snapshot. Retain that artifact and commit it with the project's
-knowledge configuration so Git preserves previous versions. The complete snapshot must fit 256 MiB;
+knowledge configuration so Git preserves previous versions. Admission requires current `HEAD`; `--against` is reserved for inspection. The complete snapshot
+must fit 256 MiB, its embedded candidate 64 MiB, and each assessment 8 MiB;
 `--max-bytes 1024..268435456` may set a smaller bound. Failure never returns a partial accepted export.
 
 Readers revalidate the embedded assessments and current source evidence, not only the checksum or

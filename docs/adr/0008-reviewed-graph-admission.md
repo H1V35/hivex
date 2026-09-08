@@ -6,6 +6,7 @@ date: 2026-09-08
 
 # Admit graph projections with complete review evidence
 
+Admission compares against current `HEAD`; `--against` belongs only to historical inspection.
 Admission combines an exact fresh candidate graph with its complete successful source-fidelity
 cohort and complete successful comparison cohort. Every source and selected pair must be covered
 once under the recorded processing contract. Pending, interrupted, negative, malformed, stale or
@@ -23,7 +24,9 @@ Admission is deterministic and makes no model calls. It exports one complete art
 normal checking and querying create no files. The caller retains the artifact and commits it with the
 project's knowledge configuration so Git preserves its previous versions. Hivex does not create a
 new file per claim, comparison, admission attempt or query. The full snapshot must fit 256 MiB and
-the requested output budget; failure never yields a partial accepted artifact.
+the requested output budget; failure never yields a partial accepted artifact. The embedded candidate
+still must fit 64 MiB, and each embedded assessment retains its original 8 MiB limit. Revalidation
+applies those component limits in addition to the outer artifact limit.
 
 Every read revalidates integrity, source evidence and the embedded semantic assessments, rather than
 trusting an `accepted` flag or checksum alone. Freshness is evaluated against the requested project
