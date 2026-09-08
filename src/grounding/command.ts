@@ -301,23 +301,28 @@ export async function groundingCommand(args: string[]) {
   if (options.prepare) return { ...envelope, status: 'prepared', prompt: prepared.prompt, schema };
   const result = await invokeModel({ ...options, prompt: prepared.prompt, schema });
   if (result.report.outcome !== 'completed')
-    return { ...envelope, status: 'failed', assessment: null, report: result.report };
+    return bindInvocation({
+      ...envelope,
+      status: 'failed',
+      assessment: null,
+      report: result.report,
+    });
   try {
     const assessment = groundingSchema.parse(
       JSON.parse(typeof result.value === 'string' ? result.value : 'null'),
     );
     validate(assessment, prepared);
     const current = isCurrent(options.root, prepared.code.head);
-    return {
+    return bindInvocation({
       ...envelope,
       status: current && assessment.verdict !== 'unresolved' ? 'reviewed' : 'failed',
       assessment,
       assessmentHash: hash(JSON.stringify(assessment)),
       currentAtCompletion: current,
       report: result.report,
-    };
+    });
   } catch (error) {
-    return {
+    return bindInvocation({
       ...envelope,
       status: 'failed',
       assessment: null,
@@ -326,8 +331,12 @@ export async function groundingCommand(args: string[]) {
         error instanceof HivexError
           ? error.message
           : 'Grounding does not match its required schema',
-    };
+    });
   }
+}
+
+function bindInvocation<T extends { report: unknown }>(result: T) {
+  return { ...result, invocationHash: hash(JSON.stringify(result.report)) };
 }
 
 const retainedSchema = z.looseObject({
@@ -374,15 +383,18 @@ function readResult(path: string) {
     invalid('Retained grounding must be a regular file within 8 MiB');
   const bytes = readFileSync(path);
   if (bytes.length > 8388608) invalid('Retained grounding exceeds 8 MiB');
-  const parsed = retainedSchema.safeParse(
-    JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-  );
+  const raw = z
+    .record(z.string(), z.unknown())
+    .parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
+  if (raw.invocationHash !== hash(JSON.stringify(raw.report)))
+    invalid('Retained invocation evidence or usage was altered');
+  const parsed = retainedSchema.safeParse(raw);
   if (!parsed.success) invalid('Retained grounding does not match its required format');
-  return parsed.data;
+  return { result: parsed.data, originalReport: raw.report };
 }
 function checkResult(args: string[]) {
   const selection = checkArguments(args);
-  const result = readResult(selection.check);
+  const { result, originalReport } = readResult(selection.check);
   const options = argumentsFor([
     result.claim,
     '--root',
@@ -418,5 +430,5 @@ function checkResult(args: string[]) {
     result.currentAtCompletion === true;
   if ((result.status === 'reviewed') !== reviewed)
     invalid('Retained status is inconsistent with its evidence');
-  return { ...result, operation: 'check', checked: true };
+  return { ...result, report: originalReport, operation: 'check', checked: true };
 }

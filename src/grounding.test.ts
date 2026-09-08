@@ -362,10 +362,19 @@ test('rechecks retained grounding without a model call and invalidates changed c
       status: 'reviewed',
       implementationAccepted: false,
     });
+    writeFileSync(saved, checked.stdout);
+    expect(invoke(paths.root, args).status).toBe(0);
     const forged = JSON.parse(assessed.stdout);
     forged.contract.promptHash = '0'.repeat(64);
     writeFileSync(saved, JSON.stringify(forged));
     expect(invoke(paths.root, args).status).toBe(1);
+    for (const field of ['usage', 'threadId', 'turnId']) {
+      const changed = JSON.parse(assessed.stdout);
+      if (field === 'usage') changed.report.usage.totalTokens = 0;
+      else changed.report[field] = 'substituted-id';
+      writeFileSync(saved, JSON.stringify(changed));
+      expect(invoke(paths.root, args).status).toBe(1);
+    }
     writeFileSync(saved, assessed.stdout);
     writeFileSync(join(paths.root, 'cache.ts'), 'export const cacheIsAuthority = true;\n');
     commit(paths);

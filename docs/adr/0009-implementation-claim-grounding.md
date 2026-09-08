@@ -40,7 +40,8 @@ do not prove that the model interpreted a valid quote correctly.
 
 Use the admitted native Luna/max route. Retain positive, negative and unresolved assessments with
 actual invocation evidence, usage and unmeasured failures. The result binds the admitted graph hash,
-code snapshot, source/relationship aliases, selection, prompt/schema/policy hashes and assessment hash.
+code snapshot, source/relationship aliases, selection, prompt/schema/policy hashes, assessment hash and invocation hash. The invocation hash binds the full
+original receipt, including usage and transport identities, before schema normalization during a check.
 It is one stdout artifact owned by the caller, with no per-finding files or persistent grounding store.
 Preserve needed evidence in the project's review workflow. A deterministic check reconstructs the
 request against the current checkout and revalidates those bindings, citations, coverage, invocation
