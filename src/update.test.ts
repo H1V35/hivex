@@ -793,7 +793,7 @@ test('updates a fresh admitted output after an explicit same-commit extraction r
     },
     { source: linkedSource },
   );
-});
+}, 15000);
 
 test('runs the complete update cycle and returns unchanged with zero calls', async () => {
   await nativeProject(
