@@ -13,6 +13,16 @@ import {
   type Fixture,
 } from '../test/reviewed-project.ts';
 
+type PromptVersion = {
+  path?: string;
+  lines?: [number, string][];
+  text?: string;
+};
+type PromptPacket = {
+  code: { path: string; before: PromptVersion | null; after: PromptVersion | null }[];
+  contextFiles?: PromptVersion[];
+};
+
 test('prepares a claim review against committed code and an admitted manifest without invoking a model', async () => {
   await projectWithReviews((paths, fixture) => {
     expect(compare(paths, fixture).status).toBe(0);
@@ -55,6 +65,73 @@ test('prepares a claim review against committed code and an admitted manifest wi
     expect(result.prompt).toContain('export const cacheIsAuthority = false;');
     expect(result.prompt).toContain('Never treat a cache as authority.');
     expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+  });
+});
+
+test('numbers complete code versions and context without changing their bytes', async () => {
+  await projectWithReviews((paths, fixture) => {
+    const beforeText = 'const version = "antes 🧭";\r\n\r\n';
+    const afterText = 'const version = "después λ";\r\n\r\n';
+    const contextText = 'const context = "雪";\r\n\r\n';
+    expect(compare(paths, fixture).status).toBe(0);
+    const admittedResult = admit(paths, fixture);
+    expect(admittedResult.status).toBe(0);
+    const admitted = retained(paths, admittedResult.stdout);
+    writeFileSync(join(paths.root, 'cache.ts'), beforeText);
+    commit(paths);
+    const base = paths.git(['rev-parse', 'HEAD']);
+    paths.git(['switch', '-qc', 'numbered-context', base]);
+    writeFileSync(join(paths.root, 'prototype.ts'), contextText);
+    writeFileSync(join(paths.root, 'empty.ts'), '');
+    commit(paths);
+    paths.git(['switch', '-q', 'main']);
+    writeFileSync(join(paths.root, 'cache.ts'), afterText);
+    commit(paths);
+
+    const prepared = invoke(paths.root, [
+      ...command({ admitted, base }),
+      '--context-file',
+      'numbered-context:prototype.ts',
+      '--context-file',
+      'numbered-context:empty.ts',
+      '--prepare',
+    ]);
+    expect(prepared.status).toBe(0);
+    const result = JSON.parse(prepared.stdout) as { prompt: string };
+    const packet = JSON.parse(
+      result.prompt.slice(result.prompt.indexOf('\n\n') + 2),
+    ) as PromptPacket;
+    const file = packet.code.find((entry: { path: string }) => entry.path === 'cache.ts');
+    if (!file?.before?.lines || !file.after?.lines) throw new Error('Expected code versions');
+    const context = packet.contextFiles?.find((entry) => entry.path === 'prototype.ts');
+    const emptyContext = packet.contextFiles?.find((entry) => entry.path === 'empty.ts');
+    if (!context?.lines) throw new Error('Expected contextual code');
+    if (!emptyContext?.lines) throw new Error('Expected empty contextual code');
+    const reconstruct = (lines: [number, string][]) => lines.map(([, text]) => text).join('\n');
+
+    expect(file.before.text).toBeUndefined();
+    expect(file.after.text).toBeUndefined();
+    expect(file.before.lines).toEqual([
+      [1, 'const version = "antes 🧭";\r'],
+      [2, '\r'],
+      [3, ''],
+    ]);
+    expect(file.after.lines).toEqual([
+      [1, 'const version = "después λ";\r'],
+      [2, '\r'],
+      [3, ''],
+    ]);
+    expect(context.text).toBeUndefined();
+    expect(context.lines).toEqual([
+      [1, 'const context = "雪";\r'],
+      [2, '\r'],
+      [3, ''],
+    ]);
+    expect(reconstruct(file.before.lines)).toBe(beforeText);
+    expect(reconstruct(file.after.lines)).toBe(afterText);
+    expect(reconstruct(context.lines)).toBe(contextText);
+    expect(emptyContext.lines).toEqual([[1, '']]);
+    expect(reconstruct(emptyContext.lines)).toBe('');
   });
 });
 
@@ -392,6 +469,128 @@ test('rechecks retained grounding without a model call and invalidates changed c
   });
 });
 
+test('checks current and historical prompt hashes against complete original inputs', async () => {
+  await implementation((paths, fixture) => {
+    writeFileSync(paths.scenario, 'invalid-json');
+    const args = [...command(fixture), '--codex', paths.binary];
+    const prepared = invoke(paths.root, [...command(fixture), '--prepare']);
+    const run = invoke(paths.root, args);
+    expect(prepared.status).toBe(0);
+    expect(run.status).toBe(1);
+    const rawPacket = (prompt: string) => {
+      const separator = prompt.indexOf('\n\n');
+      const packet = JSON.parse(prompt.slice(separator + 2)) as PromptPacket;
+      for (const file of packet.code) {
+        for (const revision of ['before', 'after'] as const) {
+          const version = file[revision];
+          if (!version) continue;
+          if (!version.lines) throw new Error('Expected numbered code');
+          version.text = version.lines.map(([, text]) => text).join('\n');
+          delete version.lines;
+        }
+      }
+      for (const file of packet.contextFiles ?? []) {
+        if (!file.lines) throw new Error('Expected numbered context');
+        file.text = file.lines.map(([, text]) => text).join('\n');
+        delete file.lines;
+      }
+      return { packet, guidance: prompt.slice(0, separator) };
+    };
+    const preparedOutput = JSON.parse(prepared.stdout);
+    const original = rawPacket(preparedOutput.prompt);
+    const rawInput = '\n\n' + JSON.stringify(original.packet);
+    const legacySuffix =
+      '\nEvery precedence entry must cite each distinct endpoint source of that relation, including inapplicable relations. A local relation with both endpoints in one source needs that one source; a cross-source relation needs quotes from both.';
+    const oldHashes = [
+      hash(original.guidance + rawInput),
+      hash(original.guidance.slice(0, -legacySuffix.length) + rawInput),
+    ];
+    const receipt = JSON.parse(run.stdout);
+    const saved = join(dirname(paths.store), 'historical-failed.json');
+    const check = ['ground', '--check', saved, '--input', fixture.admitted];
+    const calls = readFileSync(paths.calls, 'utf8');
+    for (const promptHash of oldHashes) {
+      const historical = {
+        ...receipt,
+        contract: { ...receipt.contract, promptHash },
+      };
+      const bytes = JSON.stringify(historical);
+      writeFileSync(saved, bytes);
+      const checked = invoke(paths.root, check);
+      expect(checked.stderr).toBe('');
+      expect(checked.status).toBe(1);
+      expect(JSON.parse(checked.stdout)).toMatchObject({
+        checked: true,
+        operation: 'check',
+        status: 'failed',
+        assessment: null,
+      });
+      expect(readFileSync(saved, 'utf8')).toBe(bytes);
+    }
+    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+
+    paths.git(['switch', '-qc', 'historical-context', 'HEAD']);
+    writeFileSync(join(paths.root, 'prototype.ts'), 'const context = "雪";\r\n\r\n');
+    commit(paths);
+    paths.git(['switch', '-q', 'main']);
+    const contextArgs = [
+      ...command(fixture),
+      '--context-file',
+      'historical-context:prototype.ts',
+      '--codex',
+      paths.binary,
+    ];
+    const contextPrepared = invoke(paths.root, [
+      ...command(fixture),
+      '--context-file',
+      'historical-context:prototype.ts',
+      '--prepare',
+    ]);
+    const contextRun = invoke(paths.root, contextArgs);
+    expect(contextPrepared.status).toBe(0);
+    expect(contextRun.status).toBe(1);
+    const contextOriginal = rawPacket(JSON.parse(contextPrepared.stdout).prompt);
+    const contextReceipt = JSON.parse(contextRun.stdout);
+    const contextHistorical = {
+      ...contextReceipt,
+      contract: {
+        ...contextReceipt.contract,
+        promptHash: hash(
+          contextOriginal.guidance + '\n\n' + JSON.stringify(contextOriginal.packet),
+        ),
+      },
+    };
+    const contextBytes = JSON.stringify(contextHistorical);
+    writeFileSync(saved, contextBytes);
+    const contextCheck = invoke(paths.root, [
+      'ground',
+      '--check',
+      saved,
+      '--input',
+      fixture.admitted,
+    ]);
+    expect(contextCheck.stderr).toBe('');
+    expect(contextCheck.status).toBe(1);
+    expect(JSON.parse(contextCheck.stdout)).toMatchObject({
+      checked: true,
+      operation: 'check',
+      status: 'failed',
+    });
+    expect(readFileSync(saved, 'utf8')).toBe(contextBytes);
+
+    writeFileSync(
+      saved,
+      JSON.stringify({
+        ...contextReceipt,
+        contract: { ...contextReceipt.contract, promptHash: '0'.repeat(64) },
+      }),
+    );
+    const arbitrary = invoke(paths.root, ['ground', '--check', saved, '--input', fixture.admitted]);
+    expect(arbitrary.status).toBe(1);
+    expect(JSON.parse(arbitrary.stderr).error.code).toBe('GROUND_RESULT_MISMATCH');
+  });
+});
+
 test('adds exact historical code context without changing the reviewed implementation', async () => {
   await implementation((paths, fixture) => {
     const head = paths.git(['rev-parse', 'HEAD']);
@@ -525,6 +724,27 @@ test('preserves malformed model output for diagnosis and checks its integrity', 
     expect(
       invoke(paths.root, ['ground', '--check', saved, '--input', fixture.admitted]).status,
     ).toBe(1);
+  });
+});
+
+test('rejects code citations outside exact line ranges without repairing them', async () => {
+  await implementation((paths, fixture) => {
+    for (const [lineStart, lineEnd] of [
+      [2, 2],
+      [1, 3],
+    ] as [number, number][]) {
+      const response = assessment();
+      response.code[0]!.lineStart = lineStart;
+      response.code[0]!.lineEnd = lineEnd;
+      const result = runAssessment(paths, fixture, response);
+      expect(result.status).toBe(1);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        status: 'failed',
+        assessment: null,
+        issue: 'Code citations must match the supplied file version and range',
+        rejectedOutput: { text: JSON.stringify(response) },
+      });
+    }
   });
 });
 

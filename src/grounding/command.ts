@@ -93,6 +93,12 @@ const instructions =
   legacyInstructions +
   '\nEvery precedence entry must cite each distinct endpoint source of that relation, including inapplicable relations. A local relation with both endpoints in one source needs that one source; a cross-source relation needs quotes from both.';
 
+function numberedCode<T extends { text: string }>(file: T) {
+  const { text, ...metadata } = file;
+  const lines = text.split('\n').map((line, index) => [index + 1, line] as [number, string]);
+  return { ...metadata, lines };
+}
+
 function argumentsFor(args: string[]) {
   let parsed;
   try {
@@ -165,24 +171,33 @@ function prepare(options: ReturnType<typeof argumentsFor>) {
     claim: options.claim,
     ...(contextFiles.length ? { contextFiles } : {}),
   };
+  const presentedPacket = {
+    ...packet,
+    code: packet.code.map((file) => ({
+      ...file,
+      before: file.before && numberedCode(file.before),
+      after: file.after && numberedCode(file.after),
+    })),
+    ...(contextFiles.length
+      ? { contextFiles: contextFiles.map((file) => numberedCode(file)) }
+      : {}),
+  };
   const guidance = contextFiles.length
     ? instructions +
       '\nContext files e1, e2, etc. are explicitly supplied immutable Git evidence, not changed implementation files. Cite them with revision context; still cite the changed implementation when resolving the claim or applying precedence. An approved prototype or dependency alone does not prove what the changed implementation does. After versions describe current HEAD; before versions explain changes.'
     : instructions;
-  const prompt = guidance + '\n\n' + JSON.stringify(packet);
-  if (Buffer.byteLength(prompt) > 262144)
-    throw new HivexError({
-      code: 'GROUND_INPUT_TOO_LARGE',
-      message:
-        'The complete grounding request exceeds 256 KiB; no code or documentary evidence was truncated',
-    });
+  const prompt = guidance + '\n\n' + JSON.stringify(presentedPacket);
+  const rawInput = '\n\n' + JSON.stringify(packet);
   return {
     context,
     code,
     contextFiles,
     prompt,
     packet,
-    legacyPrompt: contextFiles.length ? null : legacyInstructions + '\n\n' + JSON.stringify(packet),
+    previousPrompts: [
+      guidance + rawInput,
+      ...(contextFiles.length ? [] : [legacyInstructions + rawInput]),
+    ],
   };
 }
 function invalid(message: string): never {
@@ -300,6 +315,12 @@ function envelopeFor(
   prepared: ReturnType<typeof prepare>,
   prompt = prepared.prompt,
 ) {
+  if (Buffer.byteLength(prompt) > 262144)
+    throw new HivexError({
+      code: 'GROUND_INPUT_TOO_LARGE',
+      message:
+        'The complete grounding request exceeds 256 KiB; no code or documentary evidence was truncated',
+    });
   const schema = z.toJSONSchema(schemaForContext(prepared.contextFiles.length > 0));
   const { files, ...codeManifest } = prepared.code;
   return {
@@ -480,10 +501,14 @@ function checkResult(args: string[]) {
     result.claim,
   ]);
   const prepared = prepare(options);
-  const prompt =
-    prepared.legacyPrompt && result.contract.promptHash === hash(prepared.legacyPrompt)
-      ? prepared.legacyPrompt
-      : prepared.prompt;
+  const prompt = [prepared.prompt, ...prepared.previousPrompts].find(
+    (candidate) => result.contract.promptHash === hash(candidate),
+  );
+  if (!prompt)
+    throw new HivexError({
+      code: 'GROUND_RESULT_MISMATCH',
+      message: 'Grounding differs from the current code, graph, selection or processing contract',
+    });
   const envelope = envelopeFor(options, prepared, prompt);
   for (const [key, value] of Object.entries(envelope)) {
     if (!isDeepStrictEqual(result[key], value))
