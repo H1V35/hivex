@@ -18,7 +18,19 @@ import { parseLimit } from './cli/arguments.ts';
 import { HivexError } from './errors.ts';
 import { admitCommand, readProjection } from './graph/admission.ts';
 import { unresolvedInvocation as unresolvedAssessment } from './graph/assessment-cohort.ts';
-import { comparisonCohortCommand } from './graph/comparison-cohort.ts';
+import {
+  comparisonCohortCommand,
+  comparisonContract,
+  prepareComparisonCohort,
+  validateComparisons,
+} from './graph/comparison-cohort.ts';
+import {
+  comparisonContextSchema,
+  readComparisonContext,
+  type ComparisonContext,
+} from './graph/context.ts';
+import { AssessmentStore } from './graph/assessment-store.ts';
+import { createReviewContext } from './graph/source-review.ts';
 import { graphCommand } from './graph/command.ts';
 import { reviewCohortCommand } from './graph/review-cohort.ts';
 import { buildGraph, inputHash } from './graph/build.ts';
@@ -43,7 +55,11 @@ const transitionSchema = z.strictObject({
   format: z.literal('hivex-update-transition'),
   version: z.literal(1),
   state: z.enum(['archiving', 'active', 'complete']),
-  target: z.strictObject({ commit, inputHash: digest }),
+  target: z.strictObject({
+    commit,
+    inputHash: digest,
+    comparisonContext: comparisonContextSchema.optional(),
+  }),
   previous: z.strictObject({
     admittedHash: digest.nullable(),
     candidateHash: digest.nullable(),
@@ -76,6 +92,7 @@ const checkpointSchema = z.strictObject({
     collection: z.string().nullable(),
     neighbors: z.number().int().min(0).max(8),
     inputHash: digest,
+    comparisonContext: comparisonContextSchema.optional(),
   }),
   phase: z.enum(['ingest', 'build', 'review', 'compare', 'admit', 'admitted']),
   candidateHash: digest.nullable(),
@@ -95,6 +112,8 @@ type UpdateOptions = {
   maxUnits: number;
   binary: string;
   deadlineMilliseconds: number;
+  comparisonContextFile?: string;
+  comparisonContext?: ComparisonContext;
 };
 
 type Paths = {
@@ -145,6 +164,7 @@ function parseUpdateArguments(args: string[]): UpdateOptions {
         'max-units': { type: 'string' },
         codex: { type: 'string' },
         'deadline-ms': { type: 'string' },
+        'comparison-context': { type: 'string' },
       },
     }).values;
   } catch (error) {
@@ -164,6 +184,10 @@ function parseUpdateArguments(args: string[]): UpdateOptions {
     neighborsExplicit: values.neighbors !== undefined,
     maxUnits: parseLimit(values['max-units'], { fallback: 20, minimum: 0, maximum: 2048 }),
     binary: values.codex ?? 'codex',
+    comparisonContextFile:
+      values['comparison-context'] === undefined
+        ? undefined
+        : resolve(root, values['comparison-context']),
     deadlineMilliseconds: parseLimit(values['deadline-ms'], {
       fallback: 600_000,
       minimum: 100,
@@ -223,6 +247,21 @@ function validateOutputPath(paths: Paths) {
       alias
     )
       invalid(`Output collides with a reserved update path: ${path}`, 'UPDATE_PATH_COLLISION');
+  }
+}
+
+function validateContextPath(paths: Paths, path?: string) {
+  if (path === undefined) return;
+  validateOutputPath({ ...paths, output: path });
+  const key = (value: string) => canonicalPath(value).normalize('NFC').toLowerCase();
+  const stat = lstatSync(path);
+  for (const output of [paths.output, `${paths.output}.pending`]) {
+    const other = existsSync(output) ? lstatSync(output) : null;
+    if (key(path) === key(output) || (other && stat.dev === other.dev && stat.ino === other.ino))
+      invalid(
+        'Comparison context must not alias the managed output or its pending file',
+        'UPDATE_PATH_COLLISION',
+      );
   }
 }
 
@@ -325,21 +364,8 @@ function validatePendingCheckpoint(
   checkpoint: Checkpoint,
   current: Checkpoint | null,
 ) {
+  validatePendingTarget(paths, checkpoint, current);
   const { target } = checkpoint;
-  if (
-    current &&
-    !isDeepStrictEqual(
-      [current.target.collection, current.target.neighbors],
-      [target.collection, target.neighbors],
-    )
-  )
-    invalid('The pending checkpoint changes the frozen selection', 'UPDATE_ARTIFACT_PENDING');
-  if (
-    current &&
-    !isDeepStrictEqual(current.target, target) &&
-    !(current.phase === 'admitted' && checkpoint.phase === 'ingest')
-  )
-    invalid('The pending checkpoint changes an active target', 'UPDATE_ARTIFACT_PENDING');
   const plan = createPlan(
     loadSnapshot({
       root: checkpoint.root,
@@ -363,6 +389,29 @@ function validatePendingCheckpoint(
     const admitted = outputProjection(paths.output, checkpoint.root, target.commit);
     if (!admitted || !admittedFresh(admitted) || admitted.check.hash !== checkpoint.admittedHash)
       invalid('The pending checkpoint lacks its verified admission', 'UPDATE_ARTIFACT_PENDING');
+  }
+}
+
+function validatePendingTarget(paths: Paths, checkpoint: Checkpoint, current: Checkpoint | null) {
+  const { target } = checkpoint;
+  if (
+    current &&
+    !isDeepStrictEqual(
+      [current.target.collection, current.target.neighbors],
+      [target.collection, target.neighbors],
+    )
+  )
+    invalid('The pending checkpoint changes the frozen selection', 'UPDATE_ARTIFACT_PENDING');
+  if (
+    current &&
+    !isDeepStrictEqual(current.target, target) &&
+    !(current.phase === 'admitted' && checkpoint.phase === 'ingest')
+  ) {
+    const { comparisonContext: _previous, ...oldTarget } = current.target;
+    const { comparisonContext: _next, ...nextTarget } = target;
+    if (!isDeepStrictEqual(oldTarget, nextTarget))
+      invalid('The pending checkpoint changes an active target', 'UPDATE_ARTIFACT_PENDING');
+    validatePreparedComparisons(paths, checkpoint, current);
   }
 }
 
@@ -634,6 +683,7 @@ function checkpointFor(
       collection: target.plan.selection.collection,
       neighbors: options.neighbors,
       inputHash: inputHash(target.plan),
+      ...(options.comparisonContext ? { comparisonContext: options.comparisonContext } : {}),
     },
     ...state,
   });
@@ -677,6 +727,7 @@ type OldAccepted = {
   sourceCommit: string;
   graphInputHash: string;
   text: string;
+  comparisonContext?: ComparisonContext;
 };
 type CandidateInfo = { hash: string; inputHash: string; sourceCommit: string };
 
@@ -692,6 +743,7 @@ function readOldAccepted(paths: Paths, root: string, targetCommit: string): OldA
     sourceCommit: current.input.graph.sourceSnapshot.commit,
     graphInputHash: current.input.graph.inputHash,
     text: readFileSync(paths.output, 'utf8'),
+    comparisonContext: 'comparisonContext' in current ? current.comparisonContext : undefined,
   };
 }
 
@@ -721,7 +773,11 @@ async function prepareTransition(
   target: Target,
   inputs: { oldAccepted: OldAccepted | null; oldCandidate: CandidateInfo | null },
 ) {
-  const targetIdentity = { commit: target.snapshot.commit, inputHash: inputHash(target.plan) };
+  const targetIdentity = {
+    commit: target.snapshot.commit,
+    inputHash: inputHash(target.plan),
+    ...(options.comparisonContext ? { comparisonContext: options.comparisonContext } : {}),
+  };
   let transition = readTransition(paths);
   if (transition && !sameTarget(transition.target, targetIdentity))
     return {
@@ -743,7 +799,11 @@ async function prepareTransition(
 }
 
 function sameTarget(left: Transition['target'], right: Transition['target']) {
-  return left.commit === right.commit && left.inputHash === right.inputHash;
+  return (
+    left.commit === right.commit &&
+    left.inputHash === right.inputHash &&
+    isDeepStrictEqual(left.comparisonContext, right.comparisonContext)
+  );
 }
 
 function startTransition(
@@ -818,7 +878,10 @@ async function exportStore(
     String(maximumExportBytes),
   ];
   if (name === 'reviews') return reviewCohortCommand(common);
-  return comparisonCohortCommand([...common, '--neighbors', String(options.neighbors)]);
+  return comparisonCohortCommand(
+    [...common, '--neighbors', String(options.neighbors)],
+    options.comparisonContext,
+  );
 }
 
 async function archiveStores(
@@ -1120,49 +1183,56 @@ async function runComparison(
     String(options.neighbors),
   ];
   const inspect = async () => {
-    const result = (await comparisonCohortCommand([
-      '--export',
-      ...common,
-      '--max-bytes',
-      String(maximumExportBytes),
-    ])) as { status: string; comparisons: AssessmentRows };
+    const result = (await comparisonCohortCommand(
+      ['--export', ...common, '--max-bytes', String(maximumExportBytes)],
+      options.comparisonContext,
+    )) as { status: string; comparisons: AssessmentRows };
     return { status: result.status, rows: result.comparisons };
   };
   return runAssessmentPhase(options, {
     name: 'compare',
     prepare: async () => {
       if (!regularFile(paths.comparisons)?.size) {
-        await comparisonCohortCommand(['--all', ...common, '--max-units', '0']);
+        await comparisonCohortCommand(
+          ['--all', ...common, '--max-units', '0'],
+          options.comparisonContext,
+        );
         return;
       }
       try {
         await inspect();
       } catch (error) {
         if (!transition || !isContractError(error)) throw error;
-        await comparisonCohortCommand([
-          '--all',
-          ...common,
-          '--from',
-          archivePath(paths, transition, 'candidate'),
-          '--reuse',
-          archivePath(paths, transition, 'comparisons'),
-          '--max-units',
-          '0',
-        ]);
+        await comparisonCohortCommand(
+          [
+            '--all',
+            ...common,
+            '--from',
+            archivePath(paths, transition, 'candidate'),
+            '--reuse',
+            archivePath(paths, transition, 'comparisons'),
+            '--max-units',
+            '0',
+          ],
+          options.comparisonContext,
+        );
       }
     },
     inspect,
     execute: () =>
-      comparisonCohortCommand([
-        '--all',
-        ...common,
-        '--codex',
-        options.binary,
-        '--deadline-ms',
-        String(options.deadlineMilliseconds),
-        '--max-units',
-        String(options.maxUnits),
-      ]).then(() => undefined),
+      comparisonCohortCommand(
+        [
+          '--all',
+          ...common,
+          '--codex',
+          options.binary,
+          '--deadline-ms',
+          String(options.deadlineMilliseconds),
+          '--max-units',
+          String(options.maxUnits),
+        ],
+        options.comparisonContext,
+      ).then(() => undefined),
   });
 }
 
@@ -1184,12 +1254,51 @@ function failureResponse(paths: Paths, phase: string, error: unknown) {
 }
 
 function readCycleCheckpoint(options: UpdateOptions, paths: Paths) {
-  const checkpoint = readCheckpoint(options, paths);
+  let checkpoint = readCheckpoint(options, paths);
   if (!checkpoint) return null;
   validateCheckpoint(options, paths, checkpoint);
   if (!options.neighborsExplicit) options.neighbors = checkpoint.target.neighbors;
   if (!options.collectionExplicit) options.collection = checkpoint.target.collection ?? undefined;
+  if (options.comparisonContextFile === undefined)
+    options.comparisonContext = checkpoint.target.comparisonContext;
+  if (!isDeepStrictEqual(options.comparisonContext, checkpoint.target.comparisonContext)) {
+    const next = checkpointSchema.parse({
+      ...checkpoint,
+      phase: 'compare',
+      target: { ...checkpoint.target, comparisonContext: options.comparisonContext },
+    });
+    validatePreparedComparisons(paths, next, checkpoint);
+    writeCheckpoint(paths.checkpoint, next);
+    checkpoint = next;
+  }
   return reconcileAdmission(options, paths, resumeIncomingTransition(options, paths, checkpoint));
+}
+
+function validatePreparedComparisons(paths: Paths, checkpoint: Checkpoint, previous: Checkpoint) {
+  const context = createReviewContext({
+    input: paths.candidate,
+    root: checkpoint.root,
+    against: checkpoint.target.commit,
+  });
+  const prepared = prepareComparisonCohort(
+    context,
+    checkpoint.target.neighbors,
+    checkpoint.target.comparisonContext,
+  );
+  const prior = prepareComparisonCohort(
+    context,
+    previous.target.neighbors,
+    previous.target.comparisonContext,
+  );
+  const rows = AssessmentStore.readRefreshed(
+    paths.comparisons,
+    prepared.plan,
+    prior.plan,
+    comparisonContract,
+  );
+  validateComparisons(rows, prepared);
+  if (rows.some((row) => row.state === 'running'))
+    invalid('A comparison invocation is unresolved; preserve its context', 'REVIEW_UNRESOLVED');
 }
 
 function resumeIncomingTransition(options: UpdateOptions, paths: Paths, checkpoint: Checkpoint) {
@@ -1245,6 +1354,10 @@ function admissionMatchesTarget(
     admittedFresh(projection) &&
     projection.input.graph.inputHash === target.inputHash &&
     projection.input.graph.selection.collection === target.collection &&
+    isDeepStrictEqual(
+      'comparisonContext' in projection ? projection.comparisonContext : undefined,
+      target.comparisonContext,
+    ) &&
     'admission' in projection.check &&
     projection.check.admission.coverage.neighbors === target.neighbors
   );
@@ -1311,6 +1424,7 @@ function unchangedResponse(
       inputHash: inputHash(target.plan),
       collection: target.plan.selection.collection,
       neighbors: options.neighbors,
+      comparisonContext: options.comparisonContext,
     }) &&
     retainedCandidateMatches(paths, options.root, current.input.graph.hash) &&
     admittedFresh(readProjection(paths.output, options.root)) &&
@@ -1335,8 +1449,11 @@ async function transitionForCycle(
 ): Promise<TransitionResult> {
   const selection = IngestionStore.selection(paths.ingestion);
   const changed =
-    Boolean(state.old && state.old.graphInputHash !== inputHash(target.plan)) ||
-    Boolean(selection && !selectionMatches(selection, target));
+    Boolean(
+      state.old &&
+      (state.old.graphInputHash !== inputHash(target.plan) ||
+        !isDeepStrictEqual(state.old.comparisonContext, options.comparisonContext)),
+    ) || Boolean(selection && !selectionMatches(selection, target));
   let transition = readTransition(paths);
   if (!changed && !transition) return { transition: null };
   if (
@@ -1344,6 +1461,7 @@ async function transitionForCycle(
     sameTarget(transition.target, {
       commit: target.snapshot.commit,
       inputHash: inputHash(target.plan),
+      comparisonContext: options.comparisonContext,
     })
   )
     return { transition };
@@ -1361,6 +1479,7 @@ async function prepareCycle(options: UpdateOptions, paths: Paths): Promise<Prepa
   const target = targetFor(options, checkpoint);
   options.ref = target.snapshot.commit;
   validateIngestionTarget(paths, target);
+  if (options.comparisonContext) validateContextCandidate(options, paths, target);
   const continued = continueCompletedCheckpoint(paths, checkpoint, target);
   if ('response' in continued) return continued;
   checkpoint = continued.checkpoint;
@@ -1400,6 +1519,41 @@ function validateIngestionTarget(paths: Paths, target: Target) {
       'The retained ingestion processing contract is incompatible; preserve the store',
       'INGESTION_PLAN_MISMATCH',
     );
+}
+
+function validateContextCandidate(options: UpdateOptions, paths: Paths, target: Target) {
+  if (!regularFile(paths.candidate) || !regularFile(paths.ingestion))
+    invalid(
+      'Comparison context requires an existing verified managed candidate and its ingestion store',
+      'COMPARISON_CONTEXT_REQUIRES_GRAPH',
+    );
+  const context = createReviewContext({
+    input: paths.candidate,
+    root: options.root,
+    against: target.snapshot.commit,
+  });
+  if (buildGraph(options.root, paths.ingestion).hash !== context.input.graph.hash)
+    invalid(
+      'Comparison context requires the current retained candidate',
+      'COMPARISON_CONTEXT_REQUIRES_GRAPH',
+    );
+  prepareComparisonCohort(context, options.neighbors, options.comparisonContext);
+}
+
+function preflightContextFile(options: UpdateOptions, paths: Paths) {
+  if (options.comparisonContextFile === undefined) return;
+  const value =
+    readJson(paths.checkpoint, 8 * 1024 * 1024) ??
+    readJson(`${paths.checkpoint}.pending`, 8 * 1024 * 1024);
+  const checkpoint = value === null ? null : checkpointSchema.parse(value);
+  const scoped = {
+    ...options,
+    neighbors: options.neighborsExplicit
+      ? options.neighbors
+      : (checkpoint?.target.neighbors ?? options.neighbors),
+  };
+  if (checkpoint) validateCheckpoint(scoped, paths, checkpoint);
+  validateContextCandidate(scoped, paths, targetFor(scoped, checkpoint));
 }
 
 type BuildResult =
@@ -1535,19 +1689,22 @@ async function runCycle(context: CycleContext) {
         ],
       },
     );
-  const snapshot = admitCommand([
-    '--input',
-    paths.candidate,
-    '--root',
-    options.root,
-    '--reviews',
-    paths.reviews,
-    '--comparisons',
-    paths.comparisons,
-    '--neighbors',
-    String(options.neighbors),
-    '--export',
-  ]) as { hash: string };
+  const snapshot = admitCommand(
+    [
+      '--input',
+      paths.candidate,
+      '--root',
+      options.root,
+      '--reviews',
+      paths.reviews,
+      '--comparisons',
+      paths.comparisons,
+      '--neighbors',
+      String(options.neighbors),
+      '--export',
+    ],
+    options.comparisonContext,
+  ) as { hash: string };
   return publishAdmission(active, candidate?.hash ?? null, snapshot);
 }
 
@@ -1555,6 +1712,9 @@ export async function updateCommand(args: string[]) {
   const options = parseUpdateArguments(args);
   const paths = pathsFor(options);
   validateOutputPath(paths);
+  validateContextPath(paths, options.comparisonContextFile);
+  options.comparisonContext = readComparisonContext(options.comparisonContextFile);
+  preflightContextFile(options, paths);
   ensureDirectory(paths.runtime);
   const lock = acquireLock(paths.lock);
   if ('response' in lock) return lock.response;

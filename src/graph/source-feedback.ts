@@ -15,7 +15,7 @@ import {
   sourceReviewPrompt,
   validateReviewOutput,
 } from './source-review.ts';
-import { modelComparisonSchema, prepareComparison } from './comparison.ts';
+import { comparisonModelSchema, prepareComparison } from './comparison.ts';
 import {
   comparisonContract,
   comparisonResultSchema,
@@ -89,7 +89,11 @@ export function prepareFeedbackReview(
     !result.comparison
   )
     invalid('Use a completed adverse comparison from its original graph that includes this source');
-  const pair = prepareComparison(context, ids);
+  const pair = prepareComparison(
+    context,
+    ids,
+    result.supportingSources?.map((source) => source.id),
+  );
   const pairId = hash(JSON.stringify(pair.sources.map((source) => source.source.id)));
   const promptHash = hash(pair.prompt);
   validateAssessmentBinding(
@@ -98,14 +102,18 @@ export function prepareFeedbackReview(
       id: pairId,
       actualId: comparisonContract.unitId(result),
       promptHash,
-      schemaHash: hash(JSON.stringify(z.toJSONSchema(modelComparisonSchema))),
+      schemaHash: hash(
+        JSON.stringify(z.toJSONSchema(comparisonModelSchema(pair.supporting.length))),
+      ),
     },
     {
       graphHash: context.input.graph.hash,
       contract: {
         nativeVersion,
         requestedPolicyHash: requestedPolicyHash(),
-        schemaHash: hash(JSON.stringify(z.toJSONSchema(modelComparisonSchema))),
+        schemaHash: hash(
+          JSON.stringify(z.toJSONSchema(comparisonModelSchema(pair.supporting.length))),
+        ),
       },
       sources: [{ id: pairId, promptHash }],
     },

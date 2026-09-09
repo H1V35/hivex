@@ -66,6 +66,37 @@ establish graph-wide relationship coverage, effective authority, admission or co
 remain required under [Compi #1631](https://github.com/H1V35/compi/issues/1631), including the historical
 composition and atomic-evaluation obligations in #1426/#1427/#1478.
 
+## Explicit supporting context for a selected pair (#41)
+
+A caller may attach at most two existing graph sources as supporting documentary context to a
+selected primary pair. A version-1 JSON mapping contains only source IDs, never source text, and must
+fit 128 KiB. Primary/supporting IDs and pairs are normalized in sorted order. Unknown IDs, duplicate
+pairs or sources, primary sources used as their own context, and unused configured pairs are rejected
+before comparison. A standalone comparison accepts context for that pair only; a cohort accepts
+entries for pairs in its selected plan.
+
+Supporting sources resolve from the same verified graph and source snapshot. Supply their complete
+Markdown, authority and original positions as `x1`/`x2`, without their extracted claims. The TWO
+primary sources remain the only claim targets and relationship endpoints. Literal supporting quotes
+may justify scoped precedence; every relationship still needs evidence from both primary endpoints.
+Supporting material establishes no automatic exception or doctrinal resolution. Existing context,
+contradiction, scope and admission checks remain in force.
+
+Without supporting context, the existing request bytes, model schema and global comparison contract
+remain unchanged. Contextual pairs use the existing per-unit schema override and bind their complete
+prompt, supporting descriptors and citation aliases. Selection exports embed normalized IDs and
+source hashes; admission and historical reuse reconstruct this selection from its original graph,
+never a mutable external configuration path. Only pairs with identical complete inputs reuse results.
+Changing context on the same graph requires the current full export, `--from/--reuse` and zero units
+before execution. Earlier adverse results and consumption remain in that archive. Unchanged results
+and their recovery history are retained; uncertain invocations still prevent replacement.
+
+`update` attaches context only to an existing verified managed candidate and matching ingestion
+store. It rejects a missing/stale candidate before calls or mutations. A context change requires the
+explicit comparison transition first; update verifies that cohort before adopting the new normalized
+mapping into its checkpoint. Omission on resume uses that frozen mapping. It never rereads an omitted
+configuration path or performs an implicit contextual reassessment.
+
 ## Plan comparisons from authored Markdown links
 
 Discover candidate source pairs deterministically from parsed Markdown links in the same graph

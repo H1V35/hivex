@@ -115,8 +115,8 @@ only pending sources within its explicit budget. Retained negative results conti
 no automatic retry fishes for approval. Source comparison reuse and ingestion across changed source
 plans remain separate requirements of the complete update workflow.
 
-The first transition upgrades a version-1 assessment store to version 2, recording one bounded hash
-of the complete previous plan and archived rows in its cohort. Repetition requires that same archive
+Format 2 introduced one bounded hash of the complete previous plan and archived rows in its cohort.
+Repetition requires that same archive
 binding; a separately initialized destination or an altered archive is rejected before any model call.
 Both versions remain readable without migration, and ordinary resume preserves their current work.
 Older transitions without this binding cannot retrospectively authenticate a repeated transfer;
@@ -147,6 +147,13 @@ store remains bounded to 128 MiB with existing reservation before invocation. Mi
 transition binding and every other row. All three formats remain readable without migration.
 After a crash during retry, the active claim and prior receipts remain visible; no process-age or
 elapsed-time inference makes it retryable.
+
+Format 4 also binds a transition to the exact previous plan hash. Update checks this receipt before
+adopting a changed comparison context; retiring and freshly initializing a cohort cannot substitute
+for `--from/--reuse`. A transition atomically upgrades formats 1–3 while preserving recovery history.
+Reauthenticating a format-2/3 transition against its complete original archive may add the predecessor
+binding; no active invocation may cross that upgrade. Existing formats remain readable without
+migration. Retirement and initialization clear both transition hashes.
 
 Inspection and complete cohort exports expose `previousAttempts`. Totals count each current and
 previous receipt once and preserve missing usage as unmeasured. Compatible graph transitions carry

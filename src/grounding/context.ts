@@ -44,12 +44,19 @@ function closeSources(
   const links = sourceDependencies(projection, edges);
   const queue = [...seeds];
   for (let index = 0; index < queue.length; index++) {
-    for (const source of links.get(queue[index] ?? '') ?? []) {
+    const required = [...(links.get(queue[index] ?? '') ?? [])];
+    const included = edges.filter(
+      (edge) =>
+        seeds.has(projection.input.nodes.get(edge.from)?.source ?? '') &&
+        seeds.has(projection.input.nodes.get(edge.to)?.source ?? ''),
+    );
+    for (const edge of included) required.push(...edge.evidence.map((entry) => entry.source));
+    for (const source of required) {
       if (seeds.has(source)) continue;
       seeds.add(source);
       queue.push(source);
       if (seeds.size > 16)
-        failure('The complete precedence and requirement context exceeds 16 sources');
+        failure('The complete relationship and evidence context exceeds 16 sources');
     }
   }
   return seeds;

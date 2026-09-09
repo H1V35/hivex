@@ -6,6 +6,7 @@ import { hash } from '../sources/markdown.ts';
 import { readGraph, parseGraphDocument } from './verify.ts';
 import { createReviewContext } from './source-review.ts';
 import { prepareComparison } from './comparison.ts';
+import { comparisonContextFromSelection, pairContext } from './context.ts';
 import { unresolvedInvocation } from './assessment-cohort.ts';
 import {
   AssessmentStore,
@@ -72,6 +73,7 @@ function readArchive(options: { reuse: string; from: string; root: string }) {
   const context = prepareComparisonCohort(
     createReviewContext({ input, root: options.root, against: input.graph.sourceSnapshot.commit }),
     settings.lexical?.neighbors ?? 0,
+    comparisonContextFromSelection(archive.selection),
   );
   const { plan, selection } = context;
   if (
@@ -119,7 +121,11 @@ function compatibleComparisons(previous: ReturnType<typeof readArchive>, context
     const ids = context.pairs.get(row.id);
     if (!row.result || !ids) continue;
     const original = originalComparison(row.result);
-    const prepared = prepareComparison(context.context, ids);
+    const prepared = prepareComparison(
+      context.context,
+      ids,
+      pairContext(context.comparisonContext, ids),
+    );
     if (
       hash(prepared.prompt) !== original.contract.promptHash ||
       !isDeepStrictEqual(
@@ -149,11 +155,20 @@ function compatibleComparisons(previous: ReturnType<typeof readArchive>, context
 }
 
 export function reuseComparisons(
-  options: { store: string; root: string; reuse?: string; from?: string },
+  options: { store: string; root: string; reuse?: string; from?: string; maxUnits?: number },
   context: Context,
 ) {
   if (!options.reuse || !options.from) invalid('Comparison reuse requires both --reuse and --from');
   const previous = readArchive({ ...options, reuse: options.reuse, from: options.from });
+  if (
+    previous.plan.graphHash === context.plan.graphHash &&
+    !isDeepStrictEqual(
+      comparisonContextFromSelection(previous.selection),
+      context.comparisonContext,
+    ) &&
+    options.maxUnits !== 0
+  )
+    invalid('A same-graph context transition requires --max-units 0 before execution');
   AssessmentStore.refresh(
     {
       path: options.store,

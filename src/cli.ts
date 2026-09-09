@@ -65,7 +65,7 @@ async function main(args: string[]) {
           name: 'graph',
           usage: 'graph build [--root <repo>] [--store <file>] [--export]',
           admission:
-            'graph admit --input <file> [--root <repo>] [--reviews <store>] [--comparisons <store>] [--neighbors 0..8] [--export] [--max-bytes 1024..268435456]',
+            'graph admit --input <file> [--root <repo>] [--reviews <store>] [--comparisons <store>] [--neighbors 0..8] [--comparison-context <json>] [--export] [--max-bytes 1024..268435456]',
           inspection: 'graph check --input <file> [--root <repo>] [--against <commit>]',
           query:
             'graph <search|read|neighbors> <query-or-id> --input <file> [--root <repo>] [--against <commit>] [--limit 1..20] [--max-bytes 1024..524288]',
@@ -83,17 +83,17 @@ async function main(args: string[]) {
           reviewRecovery:
             'graph review --all --retry-failed <source-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--root <repo>] [--store <file>] [--deadline-ms 100..1800000]',
           comparison:
-            'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--codex <binary>] [--deadline-ms 100..1800000] [--prepare]',
+            'graph compare <source-id> <other-source-id> --input <file> [--root <repo>] [--against <commit>] [--comparison-context <json>] [--codex <binary>] [--deadline-ms 100..1800000] [--prepare]',
           comparisonCohort:
-            'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728] [--neighbors 0..8] [--deadline-ms 100..1800000]',
+            'graph compare --all|--show <pair-id>|--export --input <file> [--root <repo>] [--store <file>] [--max-units 0..2048] [--max-bytes 1024..134217728] [--neighbors 0..8] [--comparison-context <json>] [--deadline-ms 100..1800000]',
           comparisonRetirement:
             'graph compare --discard <plan-hash> [--root <repo>] [--store <file>]',
           comparisonRecovery:
-            'graph compare --all --retry-failed <pair-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--neighbors 0..8] [--root <repo>] [--store <file>] [--deadline-ms 100..1800000]',
+            'graph compare --all --retry-failed <pair-id> --input <file> [--attempts 1..3] [--max-units 1..2048] [--neighbors 0..8] [--comparison-context <json>] [--root <repo>] [--store <file>] [--deadline-ms 100..1800000]',
           comparisonReuse:
-            'graph compare --all --input <new-graph> --from <old-graph> --reuse <complete-comparison-export> [--root <repo>] [--store <file>] [--neighbors 0..8] [--max-units 0..2048]',
+            'graph compare --all --input <new-graph> --from <old-graph> --reuse <complete-comparison-export> [--root <repo>] [--store <file>] [--neighbors 0..8] [--comparison-context <json>] [--max-units 0..2048]',
           comparisonPlan:
-            'graph compare-plan --input <file> [--root <repo>] [--against <commit>] [--max-bytes 1024..8388608] [--neighbors 0..8]',
+            'graph compare-plan --input <file> [--root <repo>] [--against <commit>] [--max-bytes 1024..8388608] [--neighbors 0..8] [--comparison-context <json>]',
           modelCalls:
             'Review and compare use native Luna/max; --prepare and deterministic graph operations make no model calls. Candidates remain unaccepted.',
         },
@@ -130,7 +130,7 @@ async function main(args: string[]) {
         {
           name: 'update',
           usage:
-            'update --output <admitted-graph> [--root <repo>] [--ref <commit>] [--collection <id>] [--neighbors 0..8] [--max-units 0..2048] [--codex <binary>] [--deadline-ms 100..1800000]',
+            'update --output <admitted-graph> [--root <repo>] [--ref <commit>] [--collection <id>] [--neighbors 0..8] [--comparison-context <json>] [--max-units 0..2048] [--codex <binary>] [--deadline-ms 100..1800000]',
           modelCalls:
             'Resumes the existing ingestion, review and comparison cohorts through admission; --max-units 0 makes no model calls.',
         },
