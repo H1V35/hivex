@@ -139,7 +139,7 @@ function configText(root: string) {
 function parseConfig(text: string): Config {
   let value: unknown;
   try {
-    value = JSON.parse(text);
+    value = JSON.parse(text.replace(/^\uFEFF/u, ''));
   } catch (error) {
     fail('INVALID_CONFIG', 'hivex.json must contain valid JSON', {
       reason: error instanceof Error ? error.message : 'invalid JSON',
