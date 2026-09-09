@@ -1,11 +1,3 @@
 {
-  "version": 1,
-  "collections": [
-    {
-      "id": "hivex",
-      "include": ["README.md", "docs/**/*.md"],
-      "default": true,
-      "kind": "documentation"
-    }
-  ]
+  "include": ["README.md", "docs/**/*.md", "skills/hivex/references/markdown.md"]
 }

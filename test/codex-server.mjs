@@ -47,19 +47,6 @@ const options = Object.fromEntries(
 const disabled = process.argv.flatMap((arg, index, args) =>
   arg === '--disable' ? [args[index + 1]] : [],
 );
-const candidate = {
-  claims: [
-    {
-      id: 'c1',
-      text: 'A cache must never be treated as authority.',
-      kind: 'constraint',
-      conditions: [],
-      exceptions: [],
-      evidence: [{ quote: 'Never treat a cache as authority.', lineStart: 3, lineEnd: 3 }],
-    },
-  ],
-  relations: [],
-};
 function payloadFromPrompt(prompt) {
   const marker = prompt.lastIndexOf('\n\n');
   if (marker < 0) return null;
@@ -70,102 +57,61 @@ function payloadFromPrompt(prompt) {
   }
 }
 
-function updateReview(prompt) {
-  const packet = payloadFromPrompt(prompt);
-  if (!packet?.claims) return null;
-  const evidence = [{ quote: 'Never treat a cache as authority.', lineStart: 3, lineEnd: 3 }];
-  const adverse = process.env.HIVEX_TEST_SCENARIO === 'update-adverse';
-  return {
-    coverage: {
-      verdict: adverse ? 'incomplete' : 'complete',
-      reason: adverse
-        ? 'The fixture preserves a negative finding.'
-        : 'All source knowledge is preserved.',
-      evidence,
-    },
-    claims: packet.claims.map((claim) => ({
-      id: claim.id,
-      verdict: adverse ? 'distorted' : 'faithful',
-      reason: adverse
-        ? 'The fixture reports an adverse fidelity finding.'
-        : 'The claim is preserved.',
-      evidence,
-    })),
-    relations: (packet.relations ?? []).map((relation) => ({
-      id: relation.id,
-      verdict: 'faithful',
-      reason: 'The relation is preserved.',
-      evidence,
-    })),
-    omissions: [],
-    context: { verdict: 'sufficient', reason: 'The fixture supplies the complete source.' },
-  };
-}
-
-function updateComparison(prompt) {
-  const packet = payloadFromPrompt(prompt);
-  if (!packet?.sources?.length) return null;
-  const evidence = (source) => ({
-    quote: 'Never treat a cache as authority.',
-    lineStart: 3,
-    lineEnd: 3,
-    source,
-  });
-  const claims = packet.sources.flatMap((source) => source.claims ?? []);
-  const first = claims[0];
-  const second = claims.find((claim) => claim.id?.startsWith('s2:'));
-  if (!first || !second) return null;
-  return {
-    assessments: claims.map((claim) => ({
-      id: claim.id,
-      verdict: 'reviewed',
-      reason: 'The claim is reviewed.',
-      relations: ['r1'],
-      evidence: [evidence(claim.id.startsWith('s1:') ? 's1' : 's2')],
-    })),
-    relations: [
-      {
-        id: 'r1',
-        from: first.id,
-        to: second.id,
-        type: 'equivalent',
-        scope: { extent: 'whole-claim', description: 'The claims express the same rule.' },
-        conditions: [],
-        exceptions: [],
-        evidence: [evidence('s1'), evidence('s2')],
-      },
-    ],
-    coverage: { complete: true, reason: 'Both claims are reviewed.' },
-    context: { verdict: 'sufficient', reason: 'Both complete sources are supplied.' },
-  };
-}
-
-function updateResponse(prompt) {
-  if (process.env.HIVEX_TEST_SCENARIO === 'update-uncertain') return undefined;
-  if (prompt.startsWith('Review whether')) return updateReview(prompt);
-  if (prompt.startsWith('Compare project-knowledge')) return updateComparison(prompt);
+function responseForPrompt(prompt) {
+  if (process.env.HIVEX_TEST_RESPONSES) {
+    const responses = JSON.parse(readFileSync(process.env.HIVEX_TEST_RESPONSES, 'utf8'));
+    const packet = payloadFromPrompt(prompt);
+    if (packet?.operation === 'extract' && responses.fromVisibleRules) {
+      const decisions = packet.documents
+        .filter((doc) => packet.targets.includes(doc.id))
+        .flatMap((doc) =>
+          doc.lines
+            .filter(
+              ([number, line]) =>
+                /^Rule \d+ requires/.test(line) &&
+                (!packet.units ||
+                  packet.units.some(
+                    (unit) =>
+                      unit.document === doc.id &&
+                      unit.lineStart <= number &&
+                      unit.lineEnd >= number,
+                  )),
+            )
+            .map(([number, line]) => ({
+              ...responses.extract.decisions[0],
+              id: 'c' + number,
+              document: doc.id,
+              text: line.split('. ')[0] + '.',
+              lineStart: number,
+              lineEnd: number,
+            })),
+        );
+      return { decisions, relationships: [], uncertainties: [] };
+    }
+    if (packet?.operation === 'extract' && responses.byDocument) {
+      const targets = packet.targets ?? packet.documents.map((document) => document.id);
+      const parts = targets.map(
+        (id) => responses.byDocument[id] ?? { decisions: [], relationships: [] },
+      );
+      const relationships = parts
+        .flatMap((part) => part.relationships)
+        .map((relationship) => ({
+          ...relationship,
+          to: relationship.to.startsWith('@existing:')
+            ? (packet.existing?.find((decision) => decision.document === relationship.to.slice(10))
+                ?.id ?? relationship.to)
+            : relationship.to,
+        }));
+      return {
+        decisions: parts.flatMap((part) => part.decisions),
+        relationships,
+        uncertainties: [],
+      };
+    }
+    return responses[packet?.operation];
+  }
   return null;
 }
-
-function responseForPrompt(prompt) {
-  const candidatePath = process.env.HIVEX_TEST_CANDIDATE_PATH;
-  const specialized = process.env.HIVEX_TEST_SCENARIO?.startsWith('update')
-    ? updateResponse(prompt)
-    : null;
-  const responseCandidate =
-    specialized ??
-    (candidatePath && existsSync(candidatePath)
-      ? JSON.parse(readFileSync(candidatePath, 'utf8'))
-      : structuredClone(candidate));
-  if (
-    process.env.HIVEX_TEST_SCENARIO === 'retry-success' &&
-    !prompt.includes('Correct the previous invalid extraction')
-  )
-    responseCandidate.claims[0].evidence[0].quote = 'An absent source statement.';
-  return responseCandidate;
-}
-if (process.env.HIVEX_TEST_SCENARIO === 'invented-evidence')
-  candidate.claims[0].evidence[0].quote = 'An absent source statement.';
 const emit = (frame) => process.stdout.write(JSON.stringify(frame) + '\n');
 const handlers = {
   initialize: () => ({ userAgent: 'fixture' }),
@@ -228,12 +174,17 @@ const handlers = {
       reasoningEffort: effort,
       cwd: process.cwd(),
       sandbox: { type: 'readOnly' },
-      instructionSources: [],
+      instructionSources:
+        process.env.HIVEX_TEST_SCENARIO === 'instruction-source-metadata'
+          ? ['/example/.codex/AGENTS.md']
+          : [],
     };
   },
   'configRequirements/read': () => ({ requirements: null }),
   'mcpServerStatus/list': () => ({ data: [], nextCursor: null }),
   'turn/start': (params) => {
+    if (process.env.HIVEX_TEST_CALLS_FILE)
+      appendFileSync(process.env.HIVEX_TEST_CALLS_FILE, 'called\n');
     if (
       params.model !== 'gpt-5.6-luna' ||
       params.effort !== 'max' ||
@@ -243,6 +194,10 @@ const handlers = {
     if (typeof params.input[0]?.text !== 'string' || !params.input[0].text.trim())
       throw new Error('prompt not supplied');
     const responseCandidate = responseForPrompt(params.input[0].text);
+    if (process.env.HIVEX_TEST_SCENARIO === 'unconfirmed-interrupt') {
+      setTimeout(() => process.exit(0), 20);
+      return { turn: { id: 'turn1', status: 'inProgress' } };
+    }
     if (['start-unconfirmed', 'update-uncertain'].includes(process.env.HIVEX_TEST_SCENARIO))
       return undefined;
     if (process.env.HIVEX_TEST_SCENARIO === 'oversized-frame')

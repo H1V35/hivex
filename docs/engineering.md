@@ -28,6 +28,12 @@ directly to main or force-push a shared branch. Apply review findings before acc
 review can be rerun, while an adverse finding must be resolved on its merits. Current explicit owner
 authorization governs whether the agent may merge.
 
+Independent code reviewers use the coordinating agent's current model and reasoning effort. Pass
+that profile explicitly when the subagent default differs, and verify the effective configuration
+after dispatch. Do not substitute the cheaper knowledge model for code review. Routine implementation subtasks may use an
+explicitly authorized cheaper model; Hivex's internal knowledge extraction/checking uses the user's
+knowledge-model configuration independently of the development and code-review model.
+
 Choose verification for the affected surfaces. Code changes require typechecking, lint, formatting
 and relevant behavior tests; documentation-only changes need formatting and checks of affected
 references or declared sources. Record the exact revision and the checks actually completed. A later
@@ -125,23 +131,20 @@ when the task needs it; Hivex does not impose the retired machinery's fixed toke
 Knowledge-model operations use the admitted Luna/max profile and record actual usage, including
 failed or interrupted attempts. Deterministic retrieval and maintenance do not require a model.
 
-The `update` command is the bounded coordinator for the complete local knowledge cycle. It reuses the
-three SQLite stores and owns only a small checkpoint, candidate and single transition directory.
-It archives and verifies the previous admitted artifact before atomic replacement, preserves adverse
-or uncertain evidence, and never retries or revises it automatically. A live or obsolete coordinator
-lock is an explicit operator blocker; Hivex does not reap it. A complete `.pending` artifact may be
-finalized only after its bytes pass the existing artifact validation; partial or different bytes stay
-blocked for inspection.
+The replacement workflow follows [ADR 0010](adr/0010-practical-knowledge-assistance.md). It processes
+bounded document batches with one additional knowledge check, keeps partial knowledge usable and
+preserves a work budget across phases and resumption. Avoid a new abstraction or protocol unless it
+protects a concrete requirement. The owner-authorized implementation can replace the earlier
+cohort/admission pipeline; its historical evidence remains unchanged.
 
-Grounding complements tests and code review. A claim that an implementation satisfies documented
-decisions requires evidence tied to its exact code/diff and the accepted knowledge manifest.
-Missing graph admission, unresolved contradictions or insufficient evidence remain unresolved;
-neither silence nor an unrelated earlier PASS establishes acceptance.
+Hivex assists the principal reviewer with decisions, dependencies, exceptions and possible conflicts.
+The reviewer verifies its findings. Missing context or uncertainty limits the conclusions it affects;
+a definitive finding must refer to the actual document and implementation versions reviewed.
 
 ## Retire mechanisms without losing knowledge
 
-Complete the Hivex cycle before resuming Compi feature development. Necessary Compi adoption and
-verification work belongs to that completion. Alternative model integrations are evolutionary work;
+Early use in Compi can support validation and recovery before full retirement. Necessary adoption
+and verification work belongs to Hivex completion. Alternative model integrations are evolutionary work;
 keep the current Codex/Luna route usable without spreading its assumptions into the knowledge model.
 
 After knowledge recovery, replacement validation and consumer migration, remove obsolete orchestration
@@ -150,10 +153,10 @@ legacy framework into Hivex under another name. Preserve useful decisions in the
 retain necessary historical evidence in Git or a bounded private archive outside the active worktree.
 Do not rewrite Git history or destroy the accepted Opus graph before its replacement is admitted.
 
-Candidate ingestion implements bounded checkpoints without admitting a graph. The separate admission
-operation validates complete retained reviews and exports a manifest for versioned retention. Real
-corpus reconstruction, semantic regression evaluation and implementation grounding remain required
-work. Release packages must exclude private project evidence and retired runtime material.
+Early use can precede complete legacy recovery. Complete closure requires useful historical knowledge
+in Markdown, Hivex demonstrated in Compi and the old active machinery retired with its consumers.
+Validate the new workflow against bounded real cases, not identity with an old model's graph or an
+exhaustive replay prerequisite. Release packages exclude private project evidence and retired runtime.
 
 ## Distribution
 

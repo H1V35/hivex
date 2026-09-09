@@ -1,186 +1,82 @@
 ---
 name: hivex
-description: Use Hivex to retrieve versioned project decisions, maintain repository Markdown, and run or inspect the knowledge-review workflow. Apply when Hivex is requested or a repository with hivex.json needs documentary context, graph review, or knowledge maintenance.
+description: Retrieve project decisions and their dependencies and exceptions with Hivex, support implementation and review, and maintain useful Markdown knowledge. Use when Hivex is requested or configured for a project.
 ---
 
 # Hivex
 
-Use the project's installed CLI and its declared sources. Hivex is a knowledge tool; the harness
-continues to own implementation, Git and code review.
+Hivex gives the implementing and reviewing agents project context. Markdown is documentary
+authority; the graph is derived assistance. The principal agent remains responsible for the work.
+Recover settled decisions before asking the owner to decide them again.
 
-## Establish the available interface
+## Start with the installed interface
 
-Read the repository's agent instructions, documentation map and `hivex.json`. Run `hivex --help` once
-for the installed version when its interface is unfamiliar. In a project installation, use
-`bun hivex`; Bun resolves the locally installed binary. The package is `@h1v35/hivex`. Do not fetch the unrelated unscoped `hivex`
-package. In Hivex's own checkout, `bun hivex` runs its development entry point.
-Use `bunx --no-install hivex` when a harness explicitly needs binary-only resolution.
+Read the project's agent instructions and source configuration. Run `hivex --help` when the installed
+interface is unfamiliar. In a Bun project, `bun hivex` resolves the installed CLI. The package is
+`@h1v35/hivex`; do not fetch the unrelated unscoped package.
 
-Use the installed version's help and package README for uncommon flags. Do not invent commands or
-report an unsupported stage as completed. Existing project authorization still applies; this skill
-does not require another confirmation for work already authorized.
+Use the capabilities advertised by that version. Do not invent commands, silently switch models or
+pretend a planned capability exists. Hivex's current validated knowledge profile is Luna/max through
+native Codex; the principal agent's model is independent of that choice.
 
-## Retrieve only the context the task needs
+## Before implementation
 
-Start with a specific question and a small `search` result set. Open the relevant `read` results,
-including the complete rule, conditions and exceptions. A preview or a `status: accepted` declaration
-alone does not establish current applicability. Follow replacements and amendments before resolving
-an apparent contradiction.
+For a coherent feature or behavior change, ask about the intended task and recover the relevant
+decisions. Read their evidence and follow relevant dependencies, exceptions and replacements,
+including indirect relationships. A search preview or accepted label alone does not settle scope.
 
-When an admitted graph is available, check its freshness, search its claims, open the selected claims
-and expand their neighbors. Return to the cited Markdown to settle meaning. Use IDs and continuation
-cursors returned by the CLI. Keep the same snapshot while continuing a read; do not combine evidence
-from different revisions silently. Increase a byte budget or follow the cursor when needed instead
-of treating truncated or missing evidence as a complete answer.
+Use Hivex's source/version references. Keep conditions with their rules; a partial exception does
+not revoke an entire document. If the evidence answers the question, apply it without asking the
+owner again. Ask only when information is missing, sources cannot resolve a real ambiguity or a
+new decision requires the owner's involvement. Present the sources, impact and your recommendation.
 
-| Need                                   | CLI operation                                                  |
-| -------------------------------------- | -------------------------------------------------------------- |
-| Find documentary context               | `search`, optionally scoped with `--collection`                |
-| Read complete authored evidence        | `read`, with `--cursor` for continuation                       |
-| Inspect an existing declared ADR index | `relations`; this is a compatibility projection, not admission |
-| Measure the declared rebuild inputs    | `plan`                                                         |
-| Inspect one model extraction           | `extract`; it produces a candidate                             |
-| Produce or resume a candidate cohort   | `ingest`; inspect retained work with `--show`                  |
-| Correct evidenced extraction omissions | `ingest --revise <source> --input <graph> --feedback <review>` |
-| Assemble/check a candidate snapshot    | `graph build`, `graph check`                                   |
-| Review extraction fidelity             | `graph review`, or `graph review --all` for the cohort         |
-| Reuse unchanged source reviews         | `graph review --all --from <old-graph> --reuse <old-export>`   |
-| Select and assess cross-source context | `graph compare-plan`, then `graph compare` or `--all`          |
-| Reuse unchanged pair assessments       | `graph compare --all --from <old-graph> --reuse <old-export>`  |
-| Admit complete reviewed evidence       | `graph admit`, when supported by the installed version         |
-| Ground a specific review claim         | `ground <claim>`; reuse current evidence with `ground --check` |
-| Query a graph's bounded evidence       | `graph search`, `graph read`, `graph neighbors`                |
+Queries should be focused. Reuse context that remains current rather than asking again per file or
+implementation step. Respect declared incomplete exploration and unavailable evidence.
 
-## Preserve the project's work history
+## During review
 
-Follow the project's spec/ticket process before implementation. In projects with issue tracking,
-identify the agreed spec and execution ticket in the owning repository; a cross-repository parent is
-coordination, not a replacement. Respect its declared blockers. Reuse an appropriate ticket for findings. Open another only when
-strictly necessary, with the reason recorded. Link changes and verification to that work item, and
-capture resulting decisions in the repository authority. Ordinary read-only retrieval creates no ticket.
+The principal reviewer directs the review. Where the installed CLI supports task/diff assistance,
+use it to identify relevant decisions and possible conflicts; it need not receive a predetermined
+list of suspicions. Check its findings against the actual implementation and Markdown. Tests, lint
+and general code review still address their own concerns.
 
-## Maintain Markdown where it belongs
+Resolve a demonstrated contradiction before closing the change, by correcting the implementation
+or recording an approved decision change. An uncertain finding needs investigation of the affected
+point, not an automatic rerun of the whole process. Do not present a partial result as complete.
+If this installed version lacks review assistance, report that limit rather than fabricating it.
 
-Keep documents with their project, workspace or module. Select those locations through `hivex.json`;
-do not move them into a Hivex-owned source tree. Compatible existing Markdown does not need wholesale
-reformatting.
+## Maintain knowledge
 
-For new decision documents, prefer concise frontmatter (`title`, truthful `status`, decision `date`),
-a clear purpose/scope, stable headings, the rule with its conditions/exceptions, and the reason and
-sources that settled it. Use relative Markdown links to related documents and precise headings for
-amendments. State which part is replaced and what remains applicable; a partial change is not a
-whole-document revocation.
+The implementing agent maintains the documents as part of the change. Hivex may identify affected
+documents or suggest a correction, but does not rewrite project decisions on its own. Correct an
+incorrect graph interpretation against its source; do not alter doctrine to satisfy the model.
 
-Update the existing authoritative document when it owns the topic. Link shared rules instead of
-copying them. Keep code self-explanatory through clear names, structure and behavior. Repository Markdown is the
-source of truth for intent, constraints, decisions and reasons that code cannot explain. Do not write
-a parallel manual describing the implementation or compensate for unclear code with documentation. Preserve useful decisions in the repository, not private
-agent memory. Historical agent assertions require provenance before becoming current doctrine.
+Keep documents at their monorepo, package or module authority. Follow the project's existing layout
+and format. When establishing or improving documentation, use the optional
+[Markdown convention](references/markdown.md); it is guidance, not an installation prerequisite.
 
-## Rebuild and review deliberately
+Detect new, changed or removed documents before relying on the graph. Use the installed update
+workflow within the same work budget. Working documents may be queried without a commit, but that
+state is not approval; preserve the exact versions used by a review. Pending or uncertain knowledge
+limits the conclusions that depend on it, without making unrelated context unusable.
 
-Use deterministic retrieval for ordinary implementation questions; a code-only change does not
-require model ingestion. A knowledge rebuild follows the available CLI stages: plan, ingest, build,
-source fidelity, comparison selection, comparison when needed, admission. One claim-bearing source
-needs no invented pair. Use the configured knowledge profile.
-`--prepare` on a source review or pair comparison exposes the request without a model call.
+## Control consumption
 
-For the complete local cycle, use `update --output <admitted-graph>`. It composes the existing
-ingestion, graph build, source-review, comparison and admission handlers over the three default
-SQLite stores. The candidate, checkpoint and one transition directory are bounded caller-owned
-artifacts; a transition archive contains the previous admitted snapshot and the complete exports
-needed for reuse. Omit `--neighbors` to keep the CLI default, and keep an explicit or resumed value
-unchanged. `--max-units 0` performs no model calls. Update resumes pending rows, reports adverse,
-failed or uncertain rows with their IDs, and never invokes `--retry-failed` or `--revise` itself.
-If it returns `retention-required`, preserve or move the existing transition directory before
-starting another transition; Hivex never deletes that evidence automatically. Historical review or
-comparison exports must be produced with `--against` for their archived graph, and a current handler
-contract mismatch blocks the transition without adapting or discarding the store.
-An active or obsolete coordinator lock is an operator blocker and is never reaped automatically.
-After an interruption, a complete pending artifact may be finalized only when its bytes and normal
-artifact validation match; partial or different pending data remains blocked for inspection.
+Large Markdown is ingested in bounded rounds. Inspect pending units and coverage, and resume the
+same work; do not wipe the store or resend the whole corpus when only a later round remains.
 
-Choose a bounded neighbor count appropriate to the corpus; four is a starting point, not a guarantee.
-Keep the same selection settings when resuming, inspecting and admitting that cohort. Reuse retained
-results. Investigate failed or interrupted work before an explicit retry; do not discard uncertain
-work to make the workflow appear green. Export needed evidence before an authorized retirement.
+A budget covers the complete work item, its phases and attempts. Resume retained progress with its
+original accounting; do not start a fresh counter to bypass an exhausted limit. Separate initial
+indexing, maintenance, consultation and review costs and report actual usage and unknown consumption.
+Deterministic reads do not require another model call, although the caller consumes context tokens.
 
-Use `ingest --revise` for a retained candidate with evidenced omissions or distortions and sufficient
-fidelity context. Inspect its exact request with `--prepare`; preserve the original review and usage.
-This operation changes one candidate, never the source's authority or the review's verdict. A passing,
-uncertain or insufficient-context review cannot justify revision. A replacement still needs fidelity
-review and admission; unchanged output is a failure, not a reason to repeat the same adverse review.
-Three semantic revisions are the default. `ingest --revise --max-revisions 4` is the explicit opt-in
-for a fourth, with a value limited to 1–4; each round remains limited to three extraction attempts
-and the source history remains capped at twelve total extraction calls.
+Do not automatically retry semantic disagreements or keep correcting until the model says green.
+After a crash, use `recover` to inspect retained work. It must not alter live owners or processes.
+An explicit `--acknowledge-uncertain` preserves uncertainty and cost; it does not certify a remote
+outcome or authorize an automatic retry. Resume only the intended work with its existing budget.
+Use `prune` for obsolete completed work and cached responses when needed; keep unfinished work and
+export evidence that must outlive cache retention.
 
-When the declared source snapshot changes, preserve the complete candidate cohort with
-`ingest --export`, then use the same store for the explicit transition:
-`ingest --reuse <export> --ref <new-commit> --max-units 0`. The export includes the previous plan,
-every unit row and its retained checkpoint. A transition compares the complete processing contract
-and unit descriptor; only identical units reuse candidate or failed evidence. Changed and new units
-stay pending, failed evidence is not retried, and the caller retains the old export. Running, active or
-uncertain invocations abort the transaction. Repeating a transition requires the same archive even
-after the destination has been initialized. Reused results expose a minimal current plan/snapshot
-association; their original receipt, history, usage and revision budgets remain intact, and
-`graph build` revalidates the association before using the candidate.
-
-When a graph changes, preserve its old graph and complete review export before using `--from` and
-`--reuse` with the new `--input`. Start with `--max-units 0` to transfer evidence without model calls.
-Only identical complete source-review inputs qualify; inspect `association` for the current binding
-while the original graph/prompt/verdict/usage remain intact. Changed sources need new review, retained
-negative results remain blockers and unresolved invocations prevent cohort replacement.
-
-For comparisons, preserve the old graph and complete comparison export, then use the same `--from`
-and `--reuse` transition with `graph compare --all --max-units 0`. Choose the new `--neighbors` setting
-and keep it for execution, inspection and admission; the old export retains its original settings.
-Only pairs selected in the new graph with identical complete comparison inputs qualify. Inspect the
-association's current and original selection identities, keep the old export's full provenance, and
-execute only pending pairs. Reuse preserves adverse results and never retries uncertain invocations.
-
-Use `--comparison-context <JSONfile>` when a selected pair needs supporting evidence from one or two
-other existing graph sources. The version-1 file has `pairs: [{sources: [a, b], context: [c]}]` and
-contains IDs only (maximum 128 KiB). Supporting sources supply complete Markdown and authority as
-`x1`/`x2`; only the two primary sources remain claim targets/endpoints. Preserve the complete old
-export and explicitly transition the comparison cohort with `--from/--reuse --max-units 0` before
-changing context on the same graph. Update requires the verified managed candidate and retained
-ingestion, verifies the transitioned cohort, and freezes normalized context IDs for subsequent runs.
-Omit the flag to resume that frozen context. Archives and admitted evidence do not depend on the
-external file's later contents. A supporting citation does not itself settle precedence.
-
-For a failed source review or comparison, inspect its complete report before an explicit
-`graph review|compare --all --retry-failed <source-or-pair-id> --attempts 2 --max-units 1` on the
-same input/store and selection. This permits only safely ended invocation failures, never a completed
-adverse assessment or uncertain start/interruption/cleanup. The attempt limit includes earlier work,
-with at most three attempts total. `previousAttempts` preserves the full earlier receipts and unknown
-consumption, including across compatible graph transitions. Retain complete cohort exports before
-retirement; admitted graphs carry current successful assessments, not the earlier failure history.
-
-If a later comparison questions a candidate claim that earlier fidelity missed, preserve the original
-results and use `graph review <source-id> --input <original-graph> --feedback <comparison-result-or-show>
---prepare`. The comparison must be safely completed and adverse, with a concrete unresolved claim
-from this source. Use its original receipt/graph, not a reassociated copy. Preparation validates the
-full evidence and exposes the new bounded request without a model call. An executed reassessment may
-uphold the candidate. Only a completed adverse fidelity result satisfying the usual sufficient-context
-and evidence rules can feed `ingest --revise`; the comparison itself cannot. Keep both old and new
-receipts and their usage. Ordinary and feedback model requests use short local IDs with exact
-per-source schema counts; the stored review preserves the graph bindings and model-output hash.
-Inspect `rejectedOutput` after validation failure before deciding on another explicit attempt;
-that text is untrusted diagnostics, not an assessed verdict. This standalone operation does not replace
-working review rows or admit a graph.
-
-Save full exports as artifacts rather than dumping them into model context. Retain and version the
-admitted snapshot according to the project workflow. Never hand-edit a projection to invent acceptance.
-Admission covers its declared selection; it does not prove exhaustive consistency or approve code.
-
-Before accepting an implementation, check its exact code/diff against applicable decisions and the
-exact admitted manifest, explicitly applying amendments, conditions and exceptions. Use `ground <review-claim> --input <admitted-graph> --base <revision>` when available.
-Use `--prepare` to inspect the complete request without invoking a model and repeat `--source` to add
-needed documentary context. Use `--context-file <revision>:<path>` when an approved prototype or
-unchanged dependency is needed; select exact Git evidence rather than copying code into Markdown.
-Prefer immutable commits and keep the complete request within its budget. Context code does not
-replace evidence of the changed implementation. The checkout must contain the clean, committed implementation.
-A supported or contradicted claim is not approval of the entire change. Preserve unresolved evidence
-and invocation usage; use `ground --check <result> --input <admitted-graph>` to revalidate saved evidence
-without another model call. Changed inputs require a new corresponding assessment. If that capability or sufficient evidence is absent, report the
-check as incomplete; tests or graph admission alone do not constitute implementation grounding.
+Preserve useful results and their limits. At a budget boundary, explain what remains and obtain an
+authorized extension before spending more. Existing user authorization remains valid; the skill does
+not require another permission question for already authorized work.
