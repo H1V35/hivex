@@ -39,6 +39,8 @@ The principal reviewer directs the review. Run `hivex review "<task>" --base <gi
 Git project root. It examines tracked and untracked working changes, recovers relevant documentary
 context and makes one review call after at most one update/check batch. The default total budget is
 three calls; resume the same task/base with the intended total limit to continue retained work.
+Expanding a partial report keeps its work identity and consumed budget; a larger context does not
+create another allowance.
 
 Check each finding against its cited before/after code and Markdown versions, including dependencies,
 conditions and exceptions. Resolve a demonstrated contradiction before closing the change, by

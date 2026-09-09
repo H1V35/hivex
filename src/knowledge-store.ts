@@ -70,6 +70,16 @@ const workSchema = z.object({
 });
 export type Work = z.infer<typeof workSchema>;
 
+type BeginWork = {
+  kind: Work['kind'];
+  key: string;
+  snapshot: string;
+  maxCalls?: number;
+  maxInputBytes?: number;
+  remaining: string[];
+  resultKey?: string;
+};
+
 export type RecoveryReport = {
   status: 'clean' | 'recovered' | 'blocked';
   lock: 'absent' | 'released' | 'held' | 'unreadable' | 'changed';
@@ -242,15 +252,7 @@ export class KnowledgeStore implements Disposable {
     ]);
   }
 
-  begin(options: {
-    kind: Work['kind'];
-    key: string;
-    snapshot: string;
-    maxCalls?: number;
-    maxInputBytes?: number;
-    remaining: string[];
-    resultKey?: string;
-  }): Work {
+  begin(options: BeginWork): Work {
     const defaultMaxCalls = options.kind === 'update' ? 2 : 3;
     return this.db
       .transaction(() => {
@@ -265,18 +267,8 @@ export class KnowledgeStore implements Disposable {
           options.kind !== 'update'
             ? previous?.resultKey === options.resultKey
             : options.remaining.length === 0;
-        if (previous && (previous.status !== 'done' || reusable)) {
-          const work = previous;
-          if (work.status === 'done') return work;
-          if (work.status === 'running')
-            throw new HivexError({
-              code: 'WORK_RUNNING',
-              message: `Work ${work.id} has an unfinished invocation; inspect it before retrying`,
-            });
-          if (options.maxCalls !== undefined) work.maxCalls = options.maxCalls;
-          if (options.maxInputBytes !== undefined) work.maxInputBytes = options.maxInputBytes;
-          this.save(work);
-          return work;
+        if (previous && (options.kind !== 'update' || previous.status !== 'done' || reusable)) {
+          return this.resume(previous, options, reusable);
         }
         const work: Work = {
           id: randomUUID(),
@@ -297,6 +289,23 @@ export class KnowledgeStore implements Disposable {
         return work;
       })
       .immediate();
+  }
+
+  private resume(work: Work, options: BeginWork, reusable: boolean) {
+    if (work.status === 'done' && reusable) return work;
+    if (work.status === 'done') {
+      work.status = 'pending';
+      delete work.result;
+    }
+    if (work.status === 'running')
+      throw new HivexError({
+        code: 'WORK_RUNNING',
+        message: `Work ${work.id} has an unfinished invocation; inspect it before retrying`,
+      });
+    if (options.maxCalls !== undefined) work.maxCalls = options.maxCalls;
+    if (options.maxInputBytes !== undefined) work.maxInputBytes = options.maxInputBytes;
+    this.save(work);
+    return work;
   }
 
   save(work: Work) {

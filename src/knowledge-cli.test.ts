@@ -1307,3 +1307,86 @@ test('review rejects oversized implementation before spending and exposes unsupp
     expect(JSON.stringify(partial.value.warnings)).toContain('Unsupported binary');
   });
 });
+
+test('expanding a partial review keeps the original work and its consumed budget', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n\n' +
+        'Supporting rationale. '.repeat(270) +
+        '\n',
+    );
+    const binary = reviewProject(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const first = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '1',
+      '--max-context-bytes',
+      '5000',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value).toMatchObject({
+      status: 'partial',
+      omittedUnits: 1,
+      work: { calls: 1, maxCalls: 1 },
+    });
+    const expanded = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '1',
+      '--max-context-bytes',
+      '30000',
+      '--codex',
+      binary,
+    ]);
+    expect(expanded.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { id: first.value.work.id, calls: 1, maxCalls: 1 },
+    });
+    const continued = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '2',
+      '--max-context-bytes',
+      '30000',
+      '--codex',
+      binary,
+    ]);
+    expect(continued.value).toMatchObject({
+      status: 'ready',
+      omittedUnits: 0,
+      work: { id: first.value.work.id, calls: 2, maxCalls: 2 },
+    });
+  });
+});
+
+test('review retrieves decisions from new file content without hints in the task or filename', () => {
+  project((root) => {
+    const binary = reviewProject(root);
+    writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = true;\n');
+    writeFileSync(join(root, 'worker.ts'), 'export const cache = { expiresAfterDays: 90 };\n');
+    const result = invoke(root, [
+      'review',
+      'Implement worker',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '0',
+      '--codex',
+      binary,
+    ]);
+    expect(result.value.status).toBe('budget-exhausted');
+    expect(result.value.documents).toContainEqual(expect.objectContaining({ id: 'cache.md' }));
+  });
+});

@@ -1139,7 +1139,12 @@ export async function knowledgeCommand(args: string[]) {
       ' ' +
       options.implementation.files.map((file) => file.path).join(' ') +
       ' ' +
-      options.implementation.diff;
+      options.implementation.diff +
+      ' ' +
+      options.implementation.files
+        .filter((file) => !file.before)
+        .flatMap((file) => file.after?.lines.map(([, text]) => text) ?? [])
+        .join(' ');
     return ask(project, options);
   }
   if (options.command === 'ask') return ask(project, options);
