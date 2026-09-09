@@ -44,6 +44,9 @@ Markdown. It preserves source authority and does not resolve a genuine policy co
 
 **Context**: The decisions, related evidence and remaining uncertainties relevant to a particular task.
 
+**Implementation version**: The captured change against a particular base together with the exact
+contents of the affected files. Later code changes are outside that review.
+
 **Finding**: A possible conflict between an implementation and project knowledge. The principal
 reviewer verifies it and retains responsibility for the implementation review.
 

@@ -35,7 +35,7 @@ const attemptSchema = z.object({
 });
 const workSchema = z.object({
   id: z.string(),
-  kind: z.enum(['update', 'ask']),
+  kind: z.enum(['update', 'ask', 'review']),
   key: z.string(),
   snapshot: z.string(),
   calls: z.number().int().nonnegative(),
@@ -46,7 +46,7 @@ const workSchema = z.object({
   status: z.enum(['pending', 'running', 'budget-exhausted', 'context-limit', 'failed', 'done']),
   remaining: z.array(z.string()),
   plannedUnits: z.array(z.string()).default([]),
-  phase: z.enum(['update', 'ask']).default('update'),
+  phase: z.enum(['update', 'ask', 'review']).default('update'),
   contextLimit: z
     .object({ documents: z.array(z.string()), requiredBytes: z.number(), maxBytes: z.number() })
     .optional(),
@@ -251,7 +251,7 @@ export class KnowledgeStore implements Disposable {
     remaining: string[];
     resultKey?: string;
   }): Work {
-    const defaultMaxCalls = options.kind === 'ask' ? 3 : 2;
+    const defaultMaxCalls = options.kind === 'update' ? 2 : 3;
     return this.db
       .transaction(() => {
         const row = this.db
@@ -262,7 +262,7 @@ export class KnowledgeStore implements Disposable {
           .get(options.kind, options.key);
         const previous = row ? workSchema.parse(JSON.parse(row.data)) : null;
         const reusable =
-          options.kind === 'ask'
+          options.kind !== 'update'
             ? previous?.resultKey === options.resultKey
             : options.remaining.length === 0;
         if (previous && (previous.status !== 'done' || reusable)) {

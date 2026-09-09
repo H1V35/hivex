@@ -1,3 +1,11 @@
+import { captureImplementation, type Implementation } from './implementation.ts';
+import {
+  reviewSchema,
+  reviewInstructions,
+  materializeReview,
+  reviewBinding,
+  reviewFreshness,
+} from './review.ts';
 import { parseArgs } from 'node:util';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,6 +49,7 @@ function optionsFor(args: string[]) {
     strict: true,
     options: {
       source: { type: 'string', multiple: true },
+      base: { type: 'string' },
       repair: { type: 'string', multiple: true },
       reason: { type: 'string' },
       root: { type: 'string' },
@@ -55,9 +64,9 @@ function optionsFor(args: string[]) {
   });
   const [command, query] = parsed.positionals;
   const { reason = '' } = parsed.values;
-  const queryRequired = ['search', 'neighbors', 'ask'].includes(command ?? '');
+  const queryRequired = ['search', 'neighbors', 'ask', 'review'].includes(command ?? '');
   if (
-    !['update', 'search', 'neighbors', 'ask', 'status'].includes(command ?? '') ||
+    !['update', 'search', 'neighbors', 'ask', 'review', 'status'].includes(command ?? '') ||
     parsed.positionals.length !== (queryRequired ? 2 : 1) ||
     (queryRequired && !query?.trim())
   )
@@ -67,6 +76,7 @@ function optionsFor(args: string[]) {
     });
   return {
     command,
+    base: parsed.values.base,
     query: (query ?? '').trim(),
     sources: parsed.values.source ?? [],
     repair: parsed.values.repair ?? [],
@@ -81,7 +91,10 @@ function optionsFor(args: string[]) {
     deadlineMilliseconds: bounded(parsed.values['deadline-ms'], 100, 1800000) ?? 1800000,
   };
 }
-type Options = ReturnType<typeof optionsFor>;
+type Options = ReturnType<typeof optionsFor> & {
+  implementation?: Implementation;
+  retrievalQuery?: string;
+};
 
 const reportSummary = z.object({
   outcome: z.string(),
@@ -407,8 +420,8 @@ function finishRound(options: {
   }
   work.pending = null;
   if (work.remaining.length) return;
-  work.status = work.kind === 'ask' ? 'pending' : 'done';
-  if (work.kind === 'ask') work.phase = 'ask';
+  work.status = work.kind === 'update' ? 'done' : 'pending';
+  if (work.kind !== 'update') work.phase = work.kind;
 }
 
 function prepareUpdate(options: {
@@ -689,7 +702,7 @@ function queryGraph(project: Project, options: Options) {
       title: entry.document,
       content: [entry.text, entry.reason, ...entry.conditions, ...entry.exceptions].join(' '),
     })),
-    options.query,
+    options.retrievalQuery ?? options.query,
     options.limit,
   );
   const documentHits =
@@ -701,7 +714,7 @@ function queryGraph(project: Project, options: Options) {
             title: document.title,
             content: document.text,
           })),
-          options.query,
+          options.retrievalQuery ?? options.query,
           Math.min(options.limit, 6),
         );
   const documentIds = new Set([...documentHits.map((hit) => hit.id), ...options.sources]);
@@ -714,10 +727,9 @@ function queryGraph(project: Project, options: Options) {
       : [...new Set([...hits.map((hit) => hit.id), ...fromDocuments])].slice(0, options.limit);
   const selected = new Set(seeds);
 
-  const expanded =
-    options.command === 'neighbors' || options.command === 'ask'
-      ? neighborhood(graph, selected, options.limit)
-      : { ids: selected, pending: [] };
+  const expanded = ['neighbors', 'ask', 'review'].includes(options.command ?? '')
+    ? neighborhood(graph, selected, options.limit)
+    : { ids: selected, pending: [] };
   const relevantDocuments = new Set([
     ...documentIds,
     ...graph.decisions.filter((entry) => expanded.ids.has(entry.id)).map((entry) => entry.document),
@@ -792,7 +804,7 @@ function answerPacket(
       title: unit.document,
       content: unit.text,
     })),
-    runtime.query,
+    runtime.retrievalQuery ?? runtime.query,
     plan.units.length,
   );
   const byId = new Map(plan.units.map((unit) => [unit.id, unit]));
@@ -800,7 +812,8 @@ function answerPacket(
   const originals = documentPacket(project, documents);
   const ids = [...new Set([...hits.map((hit) => hit.id), ...plan.units.map((unit) => unit.id)])];
   const packet = {
-    operation: 'ask',
+    operation: runtime.command,
+    implementation: runtime.implementation,
     task: runtime.query,
     context,
     documents: documentPacket(project, []),
@@ -880,7 +893,7 @@ function beginConsultation(options: {
   const unavailable = new Set(packet.context.unavailableDocuments);
   const hits = rankLexically(
     changed.map((unit) => ({ id: unit.id, title: unit.document, content: unit.text })),
-    runtime.query,
+    runtime.retrievalQuery ?? runtime.query,
     64,
   );
   const order = [
@@ -894,10 +907,11 @@ function beginConsultation(options: {
   const byId = new Map(changed.map((unit) => [unit.id, unit]));
   const prioritized = order.flatMap((id) => byId.get(id) ?? []);
   const work = store.begin({
-    kind: 'ask',
+    kind: runtime.command === 'review' ? 'review' : 'ask',
     key: digest(
       JSON.stringify({
         task: runtime.query,
+        implementation: runtime.implementation?.fingerprint,
         sources: [...new Set(runtime.sources)].sort(),
         snapshot: project.snapshot,
         model: knowledgeModel,
@@ -916,13 +930,24 @@ function beginConsultation(options: {
   return work;
 }
 
+function assistanceRequest(runtime: Options) {
+  if (runtime.implementation)
+    return { stage: 'review', schema: reviewSchema, instruction: reviewInstructions };
+  return {
+    stage: 'ask',
+    schema: answerSchema,
+    instruction:
+      'Help the responsible agent with this task. Explain applicable decisions, dependencies and exceptions using the Markdown. Derived graph quality does not itself establish authority or applicability. Do not ask the owner to repeat decisions settled by the supplied evidence. State missing context and uncertainty, including omitted document units and relevant unexpanded dependencies. Do not approve an entire implementation. Cite only the supplied document ranges.',
+  };
+}
+
 async function ask(project: Project, runtime: Options) {
   let context = queryGraph(project, runtime);
   let documents = contextDocuments(context);
   if (!documents.length)
     return {
       ...context,
-      command: 'ask',
+      command: runtime.command,
       status: 'no-context',
       answer: null,
       guidance:
@@ -950,7 +975,7 @@ async function ask(project: Project, runtime: Options) {
   )
     return {
       ...context,
-      command: 'ask',
+      command: runtime.command,
       status: 'context-limit',
       answer: null,
       omittedUnits: packet.omittedUnits,
@@ -965,10 +990,7 @@ async function ask(project: Project, runtime: Options) {
           store,
           runtime,
           request: {
-            stage: 'ask',
-            schema: answerSchema,
-            instruction:
-              'Help the responsible agent with this task. Explain applicable decisions, dependencies and exceptions using the Markdown. Derived graph quality does not itself establish authority or applicability. Do not ask the owner to repeat decisions settled by the supplied evidence. State missing context and uncertainty, including omitted document units and relevant unexpanded dependencies. Do not approve an entire implementation. Cite only the supplied document ranges.',
+            ...assistanceRequest(runtime),
             packet,
           },
         });
@@ -980,6 +1002,20 @@ async function ask(project: Project, runtime: Options) {
       omittedUnits: packet.omittedUnits,
       work: workSummary(work),
     };
+  if (runtime.implementation) return finishReview({ project, runtime, work, store, packet, value });
+  return finishAnswer({ project, work, store, packet, value });
+}
+
+function finishAnswer(options: {
+  project: Project;
+  work: Work;
+  store: KnowledgeStore;
+  packet: ReturnType<typeof answerPacket>;
+  value: unknown;
+}) {
+  const { project, work, store, packet, value } = options;
+  const context = packet.context;
+  const documents = contextDocuments(context);
   const answer = answerSchema.parse(value);
   if (work.status !== 'done') {
     work.result = answer;
@@ -1025,8 +1061,64 @@ async function ask(project: Project, runtime: Options) {
   };
 }
 
+function finishReview(options: {
+  project: Project;
+  runtime: Options;
+  work: Work;
+  store: KnowledgeStore;
+  packet: ReturnType<typeof answerPacket>;
+  value: unknown;
+}) {
+  const { project, runtime, work, store, packet, value } = options;
+  const implementation = runtime.implementation!;
+  const review = materializeReview(project, implementation, value, packet.documents);
+  if (work.status !== 'done') {
+    work.result = value;
+    work.resultKey = digest(JSON.stringify(packet));
+    work.status = 'done';
+    store.save(work);
+  }
+  const binding = reviewBinding(project, implementation);
+  const freshness = reviewFreshness(project.root, binding);
+  const warnings = [...packet.context.warnings, ...packet.warnings, ...implementation.warnings];
+  const incomplete =
+    review.invalidReferences ||
+    review.uncertainties.length > 0 ||
+    packet.omittedUnits > 0 ||
+    warnings.length > 0 ||
+    packet.context.unexpandedDecisions.length > 0 ||
+    packet.context.unavailableDocuments.length > 0 ||
+    packet.context.decisions.some((entry) => entry.quality !== 'checked') ||
+    packet.context.relationships.some((entry) => entry.quality !== 'checked') ||
+    packet.context.pendingDocuments.some((id) => contextDocuments(packet.context).includes(id));
+  let status = 'ready';
+  if (incomplete) status = 'partial';
+  if (freshness.status === 'stale') status = 'stale';
+  return {
+    command: 'review',
+    status,
+    binding,
+    freshness,
+    findings: review.findings,
+    uncertainties: review.uncertainties,
+    warnings,
+    omittedUnits: packet.omittedUnits,
+    pendingDocuments: packet.context.pendingDocuments,
+    unavailableDocuments: packet.context.unavailableDocuments,
+    unexpandedDecisions: packet.context.unexpandedDecisions,
+    work: workSummary(work),
+    guidance:
+      'The principal reviewer must verify findings and resolve evidenced conflicts. This report does not approve the implementation.',
+  };
+}
+
 export async function knowledgeCommand(args: string[]) {
-  const options = optionsFor(args);
+  const options: Options = optionsFor(args);
+  if ((options.command === 'review') !== Boolean(options.base))
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Use review <task> --base <git-ref>; --base is only for review.',
+    });
   if (
     (options.repair.length &&
       (options.command !== 'update' ||
@@ -1049,6 +1141,16 @@ export async function knowledgeCommand(args: string[]) {
       message: 'An explicit source is not in the selected project documents',
     });
   if (options.command === 'update') return update(project, options);
+  if (options.command === 'review') {
+    options.implementation = captureImplementation(project.root, options.base!);
+    options.retrievalQuery =
+      options.query +
+      ' ' +
+      options.implementation.files.map((file) => file.path).join(' ') +
+      ' ' +
+      options.implementation.diff;
+    return ask(project, options);
+  }
   if (options.command === 'ask') return ask(project, options);
   if (options.command === 'status') {
     const graph = currentGraph(project);

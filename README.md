@@ -11,8 +11,8 @@ Model invocation is localized for future configuration; multiple providers are n
 ## Current delivery
 
 This release-in-development supplies initial updates and task consultation (#47), plus automatic
-incremental maintenance and interpretation repair (#48). Task/diff review assistance (#19) and
-publication/adoption (#21) are subsequent deliveries. It is not complete Compi adoption or legacy retirement.
+incremental maintenance and interpretation repair (#48), and task/diff review assistance (#19).
+Publication (#21) prepares early use; introduction in Compi is a separate step. It is not complete Compi adoption or legacy retirement.
 
 No installed command approves an implementation. The principal reviewer verifies findings, tests and
 the actual source evidence. See the [approved product decision](docs/adr/0010-practical-knowledge-assistance.md).
@@ -174,3 +174,20 @@ See the [engineering workflow](docs/engineering.md).
 Earlier candidate/fidelity/comparison/admission protocols and their tests are retired from the active
 CLI. Their code remains in Git history and historical evidence keeps its original results. They do
 not impose a requirement to reproduce an Opus graph or exhaustively replay an old gold suite.
+
+## Support an implementation review
+
+From the Git project root, supply the task and the base revision. Hivex captures the working change,
+including untracked files, and provides findings tied to code and Markdown versions:
+
+```sh
+hivex review "Change cache behavior" --base main --max-calls 3 > /tmp/hivex-review.json
+hivex review --check /tmp/hivex-review.json
+```
+
+Use the same task and base to resume or reuse retained work. Update, knowledge check and review share
+one budget. Context is bounded; large changes must be narrowed or split into coherent reviews.
+The principal reviewer verifies conflicts and exceptions and resolves supported contradictions before
+closing the change. A `ready` result means assistance is available, never that the implementation is
+approved. A saved report can be checked without a model; changed code or documents make it stale.
+Keep reports outside the project or in an ignored path so they do not become part of the change.

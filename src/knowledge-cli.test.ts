@@ -1086,3 +1086,224 @@ test('a changed known supporting document takes priority over unrelated pending 
     expect(answer.value.unavailableDocuments).not.toContain('z-scope.md');
   });
 });
+
+function reviewProject(root: string, response?: object) {
+  writeFileSync(
+    join(root, '.gitignore'),
+    '.hivex/\nresponses.json\ncodex\ncodex.mjs\nmodel-calls.log\nreport.json\n',
+  );
+  writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = true;\n');
+  for (const args of [
+    ['init', '-q'],
+    ['add', '.'],
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '-qm',
+      'Initial',
+    ],
+  ]) {
+    expect(spawnSync('git', args, { cwd: root }).status).toBe(0);
+  }
+  writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = false;\n');
+  const binary = model(root);
+  const file = join(root, 'responses.json');
+  const responses = JSON.parse(readFileSync(file, 'utf8'));
+  responses.review = response ?? {
+    findings: [
+      {
+        assessment: 'conflict',
+        explanation: 'Private cache survives access revocation, contradicting the purge rule.',
+        documents: [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }],
+        code: [{ path: 'cache.ts', side: 'after', lineStart: 1, lineEnd: 1 }],
+      },
+    ],
+    uncertainties: [],
+  };
+  writeFileSync(file, JSON.stringify(responses));
+  return binary;
+}
+
+test('review shares maintenance budget, cites current code and documents, and detects later changes', () => {
+  project((root) => {
+    const binary = reviewProject(root);
+    const first = invoke(root, [
+      'review',
+      'change cache behavior',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    expect(first.stderr).toBe('');
+    expect(first.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { calls: 2, maxCalls: 2 },
+    });
+    const final = invoke(root, [
+      'review',
+      'change cache behavior',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '3',
+      '--codex',
+      binary,
+    ]);
+    expect(final.value).toMatchObject({
+      command: 'review',
+      status: 'ready',
+      work: { id: first.value.work.id, calls: 3 },
+    });
+    expect(final.value.findings[0]).toMatchObject({
+      assessment: 'conflict',
+      code: [{ path: 'cache.ts', text: 'export const purgeOnRevocation = false;' }],
+    });
+    expect(final.value.findings[0].documents[0]).toMatchObject({
+      document: 'privacy.md',
+      text: 'Revoking access immediately removes cached private data.',
+    });
+    writeFileSync(join(root, 'report.json'), JSON.stringify(final.value));
+    expect(invoke(root, ['review', '--check', 'report.json']).value.status).toBe('current');
+    const repeat = invoke(root, [
+      'review',
+      'change cache behavior',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '0',
+      '--codex',
+      '/nonexistent-codex',
+    ]);
+    expect(repeat.value.work).toMatchObject({ id: final.value.work.id, calls: 3 });
+    writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = true;\n');
+    expect(invoke(root, ['review', '--check', 'report.json']).value).toMatchObject({
+      status: 'stale',
+      implementationChanged: true,
+      documentsChanged: false,
+    });
+    writeFileSync(
+      join(root, 'privacy.md'),
+      '# Access\n\nPrivate data must be purged before revocation completes.\n',
+    );
+    expect(invoke(root, ['review', '--check', 'report.json']).value.documentsChanged).toBe(true);
+  });
+});
+
+test('review keeps an unverifiable finding local while retaining a supported exception', () => {
+  project((root) => {
+    const documents = [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }];
+    const code = [{ path: 'cache.ts', side: 'after', lineStart: 1, lineEnd: 1 }];
+    const binary = reviewProject(root, {
+      findings: [
+        {
+          assessment: 'conflict',
+          explanation: 'A location that was not supplied.',
+          documents,
+          code: [{ ...code[0], lineEnd: 999 }],
+        },
+        {
+          assessment: 'exception',
+          explanation: 'Revocation overrides the normal expiry.',
+          documents,
+          code,
+        },
+      ],
+      uncertainties: ['The deployment size is not documented.'],
+    });
+    const result = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
+    expect(result.value.status).toBe('partial');
+    expect(result.value.findings[0]).toMatchObject({
+      assessment: 'uncertain',
+      referencesVerified: false,
+      code: [],
+    });
+    expect(result.value.findings[1]).toMatchObject({
+      assessment: 'exception',
+      referencesVerified: true,
+    });
+    expect(result.value.uncertainties).toContain('The deployment size is not documented.');
+  });
+});
+
+test('review binds deleted and untracked code and preserves an omitted resumed call limit', () => {
+  project((root) => {
+    const binary = reviewProject(root, {
+      findings: [
+        {
+          assessment: 'conflict',
+          explanation: 'The replacement drops immediate purge.',
+          documents: [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }],
+          code: [
+            { path: 'cache.ts', side: 'before', lineStart: 1, lineEnd: 1 },
+            { path: 'new cache.ts', side: 'after', lineStart: 1, lineEnd: 1 },
+          ],
+        },
+      ],
+      uncertainties: [],
+    });
+    rmSync(join(root, 'cache.ts'));
+    writeFileSync(join(root, 'new cache.ts'), 'export const purgeOnRevocation = false;\n');
+    const first = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '1',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value.work).toMatchObject({ calls: 1, maxCalls: 1 });
+    const held = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
+    expect(held.value.work).toMatchObject({ id: first.value.work.id, calls: 1, maxCalls: 1 });
+    const final = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '3',
+      '--codex',
+      binary,
+    ]);
+    expect(final.value.status).toBe('ready');
+    expect(final.value.findings[0].code).toEqual([
+      expect.objectContaining({
+        path: 'cache.ts',
+        side: 'before',
+        text: 'export const purgeOnRevocation = true;',
+      }),
+      expect.objectContaining({
+        path: 'new cache.ts',
+        side: 'after',
+        text: 'export const purgeOnRevocation = false;',
+      }),
+    ]);
+    writeFileSync(join(root, 'report.json'), JSON.stringify(final.value));
+    writeFileSync(join(root, 'new cache.ts'), 'export const purgeOnRevocation = true;\n');
+    expect(invoke(root, ['review', '--check', 'report.json']).value.implementationChanged).toBe(
+      true,
+    );
+  });
+});
+
+test('review rejects oversized implementation before spending and exposes unsupported binary scope', () => {
+  project((root) => {
+    const binary = reviewProject(root);
+    writeFileSync(join(root, 'cache.ts'), 'x'.repeat(262145));
+    const large = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
+    expect(JSON.parse(large.stderr).error.code).toBe('IMPLEMENTATION_TOO_LARGE');
+    expect(invoke(root, ['status']).value.availableDecisions).toBe(0);
+    writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = false;\n');
+    writeFileSync(join(root, 'asset.bin'), Buffer.from([0, 1, 2]));
+    const partial = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
+    expect(partial.value).toMatchObject({ status: 'partial', work: { calls: 3 } });
+    expect(JSON.stringify(partial.value.warnings)).toContain('Unsupported binary');
+  });
+});
