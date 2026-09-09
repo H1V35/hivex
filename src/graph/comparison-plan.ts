@@ -5,6 +5,7 @@ import { parseLimit } from '../cli/arguments.ts';
 import { hash, isMarkdownPath, type Source } from '../sources/markdown.ts';
 import { LexicalIndex } from '../retrieval/lexical.ts';
 import { createReviewContext } from './source-review.ts';
+import { bindComparisonContext, readComparisonContext, type ComparisonContext } from './context.ts';
 
 type MarkdownReason = {
   kind: 'markdown-link';
@@ -37,6 +38,7 @@ function argumentsFor(args: string[]) {
         against: { type: 'string' },
         'max-bytes': { type: 'string' },
         neighbors: { type: 'string' },
+        'comparison-context': { type: 'string' },
       },
     }).values;
   } catch (error) {
@@ -55,6 +57,7 @@ function argumentsFor(args: string[]) {
     root: parsed.root ?? process.cwd(),
     input: parsed.input,
     against: parsed.against,
+    comparisonContext: parsed['comparison-context'],
     maxBytes: parseLimit(parsed['max-bytes'], {
       fallback: 16384,
       minimum: 1024,
@@ -251,19 +254,26 @@ class ComparisonPlan {
 export function comparisonPlanCommand(args: string[]) {
   const options = argumentsFor(args);
   const context = createReviewContext(options);
-  return buildComparisonPlan(context, options.maxBytes, options.neighbors);
+  return buildComparisonPlan(
+    context,
+    options.maxBytes,
+    options.neighbors,
+    readComparisonContext(options.comparisonContext),
+  );
 }
 
 export function buildComparisonPlan(
   context: ReturnType<typeof createReviewContext>,
   maxBytes = 8 * 1024 * 1024,
   neighbors = 0,
+  comparisonContext?: ComparisonContext,
 ) {
   const sources = [...context.sources.values()];
   const plan = new ComparisonPlan(context);
   for (const source of sources)
     for (const reference of source.references) plan.add(source, reference);
   const lexical = neighbors > 0 ? plan.addNeighbors(neighbors) : null;
+  const boundContext = bindComparisonContext(context, comparisonContext, [...plan.pairs.values()]);
   const content = {
     format: 'hivex-comparison-plan',
     version: 1,
@@ -273,6 +283,7 @@ export function buildComparisonPlan(
     ...(lexical ? { lexical } : {}),
     sourceSnapshot: context.input.graph.sourceSnapshot,
     pairs: [...plan.pairs.values()].sort((a, b) => (a.id < b.id ? -1 : Number(a.id !== b.id))),
+    ...(boundContext ? { comparisonContext: boundContext } : {}),
     unresolved: plan.unresolved,
     coverage: {
       sources: sources.length,

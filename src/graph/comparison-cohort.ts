@@ -8,8 +8,16 @@ import { digest } from './snapshot.ts';
 import { createReviewContext } from './source-review.ts';
 import { buildComparisonPlan } from './comparison-plan.ts';
 import {
+  comparisonContextFromSelection,
+  pairContext,
+  readComparisonContext,
+  sourceDescriptor,
+  type ComparisonContext,
+} from './context.ts';
+import {
   comparisonSchema,
   modelComparisonSchema,
+  comparisonModelSchema,
   prepareComparison,
   runComparison,
   satisfactoryComparison,
@@ -36,6 +44,11 @@ export const comparisonResultSchema = z.looseObject({
   status: z.enum(['reviewed', 'failed']),
   graphHash: digest,
   sources: z.array(z.looseObject({ id: z.string() })).length(2),
+  supportingSources: z
+    .array(z.looseObject({ id: z.string() }))
+    .min(1)
+    .max(2)
+    .optional(),
   contract: z.looseObject({
     promptHash: digest,
     schemaHash: digest,
@@ -79,9 +92,16 @@ export function comparisonBinding(result: ComparisonResult) {
   return result.association ? { ...result, graphHash: result.association.graphHash } : result;
 }
 
-function createContext(options: ReturnType<typeof assessmentArguments>) {
+function createContext(
+  options: ReturnType<typeof assessmentArguments>,
+  comparisonContext?: ComparisonContext,
+) {
   const context = createReviewContext(options);
-  const prepared = prepareComparisonCohort(context, options.neighbors);
+  const prepared = prepareComparisonCohort(
+    context,
+    options.neighbors,
+    comparisonContext ?? readComparisonContext(options.comparisonContext),
+  );
   if (!prepared.selection.pairs.length)
     throw new HivexError({
       code: 'COMPARISON_PLAN_UNRESOLVED',
@@ -93,8 +113,9 @@ function createContext(options: ReturnType<typeof assessmentArguments>) {
 export function prepareComparisonCohort(
   context: ReturnType<typeof createReviewContext>,
   neighbors: number,
+  comparisonContext?: ComparisonContext,
 ) {
-  const selection = buildComparisonPlan(context, 8 * 1024 * 1024, neighbors);
+  const selection = buildComparisonPlan(context, 8 * 1024 * 1024, neighbors, comparisonContext);
   if (selection.status !== 'planned')
     throw new HivexError({
       code: 'COMPARISON_PLAN_UNRESOLVED',
@@ -115,12 +136,32 @@ export function prepareComparisonCohort(
       requestedPolicyHash: requestedPolicyHash(),
       schemaHash: hash(JSON.stringify(z.toJSONSchema(modelComparisonSchema))),
     },
-    sources: selection.pairs.map((pair) => ({
-      id: pair.id,
-      promptHash: hash(prepareComparison(context, pair.sources).prompt),
-    })),
+    sources: selection.pairs.map((pair) => {
+      const prepared = prepareComparison(
+        context,
+        pair.sources,
+        pairContext(comparisonContext, pair.sources),
+      );
+      return {
+        id: pair.id,
+        promptHash: hash(prepared.prompt),
+        ...(prepared.supporting.length
+          ? {
+              schemaHash: hash(
+                JSON.stringify(z.toJSONSchema(comparisonModelSchema(prepared.supporting.length))),
+              ),
+            }
+          : {}),
+      };
+    }),
   };
-  return { context, selection, pairs, plan };
+  return {
+    context,
+    selection,
+    pairs,
+    plan,
+    comparisonContext: comparisonContextFromSelection(selection),
+  };
 }
 
 function prepare(context: Context, id: string) {
@@ -130,7 +171,11 @@ function prepare(context: Context, id: string) {
       code: 'INVALID_COMPARISON_STORE',
       message: 'A retained pair is outside the selection',
     });
-  return prepareComparison(context.context, sources);
+  return prepareComparison(
+    context.context,
+    sources,
+    pairContext(context.comparisonContext, sources),
+  );
 }
 
 function validateComparisonProvenance(
@@ -140,7 +185,9 @@ function validateComparisonProvenance(
   validateAssessmentContract(result, {
     nativeVersion,
     requestedPolicyHash: requestedPolicyHash(),
-    schemaHash: hash(JSON.stringify(z.toJSONSchema(modelComparisonSchema))),
+    schemaHash: hash(
+      JSON.stringify(z.toJSONSchema(comparisonModelSchema(prepared.supporting.length))),
+    ),
   });
   validateRejectedOutput(result.rejectedOutput, result.report.outcome, result.comparison);
   if (
@@ -164,6 +211,10 @@ function validateComparisonProvenance(
       prepared.sources.map((source) => source.packet.source),
     ) ||
     !isDeepStrictEqual(result.model, knowledgeModel) ||
+    !isDeepStrictEqual(
+      result.supportingSources,
+      prepared.supporting.length ? prepared.supporting.map(sourceDescriptor) : undefined,
+    ) ||
     !isDeepStrictEqual(result.sourceBindings, Object.fromEntries(prepared.bindings))
   )
     throw new HivexError({
@@ -224,7 +275,7 @@ function validateHashes(result: ComparisonResult, prepared: ReturnType<typeof pr
   const sources = new Map([...prepared.bindings].map(([name, id]) => [id, name]));
   const evidence = (entries: (typeof comparison.assessments)[number]['evidence']) =>
     entries.map((entry) => ({ ...entry, source: sources.get(entry.source) }));
-  const normalized = modelComparisonSchema.parse({
+  const normalized = comparisonModelSchema(prepared.supporting.length).parse({
     ...comparison,
     assessments: comparison.assessments.map((entry) => ({
       ...entry,
@@ -317,14 +368,17 @@ async function comparePending(
   return processed;
 }
 
-export async function comparisonCohortCommand(args: string[]) {
+export async function comparisonCohortCommand(
+  args: string[],
+  comparisonContext?: ComparisonContext,
+) {
   const options = assessmentArguments(args, 'compare');
   if (options.discard !== undefined)
     return {
       ...AssessmentStore.discard(options.store, options.discard, comparisonContract.applicationId),
       operation: 'comparison-cohort',
     };
-  const context = createContext(options);
+  const context = createContext(options, comparisonContext);
   if (options.show !== undefined || options.export) {
     const rows = AssessmentStore.read(options.store, context.plan, comparisonContract);
     validateComparisons(rows, context);

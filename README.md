@@ -561,6 +561,46 @@ conditions and missing context. One preceding native admission timeout is preser
 only that transport failure was retried. The completed comparisons reported 35,625 tokens. This is
 a small agent-authored experiment, not human gold or validation of the real documentation graph.
 
+### Supporting context for one comparison
+
+When a selected pair needs an exception rule in another existing graph source, supply
+`--comparison-context <file>` to `graph compare-plan`, `graph compare` (including `--prepare`,
+cohort inspection/reuse/export), `graph admit`, or `update`. The regular JSON file is at most 128 KiB:
+
+```json
+{
+  "version": 1,
+  "pairs": [
+    {
+      "sources": ["docs/retention.md", "docs/temporary-records.md"],
+      "context": ["docs/approved-override.md"]
+    }
+  ]
+}
+```
+
+Each entry names one selected primary pair and one or two other source IDs. IDs are sorted;
+duplicates, unknown sources, self-context and unused pairs fail before calls. A standalone comparison
+accepts entries for its primary pair only. Supporting Markdown and authority are resolved from the
+same verified graph as `x1`/`x2`. They add citation evidence, never additional claim targets/endpoints;
+relations still require both primary sources. Without context the previous request/schema are intact.
+
+Preserve the complete old comparison export before changing context, then transition without calls:
+
+```sh
+bun hivex graph compare --all --input .hivex/update-candidate.json --from .hivex/update-candidate.json --reuse /tmp/old-comparisons.json --comparison-context /tmp/context.json --max-units 0
+bun hivex update --output hivex.graph.json --comparison-context /tmp/context.json --max-units 0
+bun hivex update --output hivex.graph.json
+```
+
+Use the old context configuration and matching `--neighbors` when exporting the prior cohort.
+Only affected pairs become pending; earlier findings and usage remain in the old full export.
+`update` requires an existing verified managed candidate and its ingestion store, matching the
+requested snapshot, before attaching context. A different context requires the explicit cohort
+transition first. Resume without the flag uses checkpointed IDs rather than rereading the external
+file. Archives/admissions embed normalized context IDs/hashes. Context paths cannot alias output,
+pending output or reserved stores. See [ADR 7](docs/adr/0007-evidence-bound-source-comparisons.md).
+
 ### Retry a failed extraction
 
 After inspecting and addressing a failed source, use

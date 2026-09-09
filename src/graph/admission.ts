@@ -30,6 +30,11 @@ import {
   type ComparisonResult,
 } from './comparison-cohort.ts';
 import { comparisonSchema } from './comparison.ts';
+import {
+  comparisonContextFromSelection,
+  readComparisonContext,
+  type ComparisonContext,
+} from './context.ts';
 
 const relationshipSchema = comparisonSchema.shape.relations.element.omit({ id: true }).extend({
   id: digest,
@@ -139,13 +144,13 @@ function checkPrecedence(edges: { from: string; to: string; type: string }[]) {
     invalid('Precedence contains a cycle whose applicability remains unresolved');
 }
 
-function evidence(context: Context, neighbors: number) {
+function evidence(context: Context, neighbors: number, comparisonContext?: ComparisonContext) {
   if (context.input.graph.nodes.length === 0) invalid('An empty graph cannot be admitted');
   const reviewPlan = sourceReviewPlan(context);
-  const comparisonContext = prepareComparisonCohort(context, neighbors);
-  if (!comparisonContext.selection.pairs.length && context.nodesBySource.size > 1)
+  const comparisons = prepareComparisonCohort(context, neighbors, comparisonContext);
+  if (!comparisons.selection.pairs.length && context.nodesBySource.size > 1)
     invalid('Multiple claim sources need a nonempty comparison selection before admission');
-  return { reviewPlan, comparisonContext };
+  return { reviewPlan, comparisonContext: comparisons };
 }
 
 function validateEvidence(
@@ -154,8 +159,15 @@ function validateEvidence(
     sourceReviews: z.infer<typeof reviewResultSchema>[];
     comparisons: ComparisonResult[];
     neighbors: number;
+    comparisonSelection?: unknown;
   },
-  prepared = evidence(context, values.neighbors),
+  prepared = evidence(
+    context,
+    values.neighbors,
+    values.comparisonSelection === undefined
+      ? undefined
+      : comparisonContextFromSelection(values.comparisonSelection),
+  ),
 ) {
   const reviews = records(values.sourceReviews, prepared.reviewPlan, reviewContract);
   const comparisons = records(
@@ -231,6 +243,7 @@ export function readProjection(path: string, root: string, against?: string) {
   const fresh = check.freshness.status === 'fresh';
   return {
     input: { ...input, relationships: validated.relationships },
+    comparisonContext: comparisonContextFromSelection(validated.selection),
     check: {
       ...check,
       accepted: fresh,
@@ -255,6 +268,7 @@ function argumentsFor(args: string[]) {
         reviews: { type: 'string' },
         comparisons: { type: 'string' },
         neighbors: { type: 'string' },
+        'comparison-context': { type: 'string' },
         export: { type: 'boolean' },
         'max-bytes': { type: 'string' },
       },
@@ -286,10 +300,14 @@ function argumentsFor(args: string[]) {
   };
 }
 
-export function admitCommand(args: string[]) {
+export function admitCommand(args: string[], comparisonContext?: ComparisonContext) {
   const options = argumentsFor(args);
   const context = createReviewContext(options);
-  const prepared = evidence(context, options.neighbors);
+  const prepared = evidence(
+    context,
+    options.neighbors,
+    comparisonContext ?? readComparisonContext(options['comparison-context']),
+  );
   const sourceReviews = completed(
     AssessmentStore.read(options.reviews, prepared.reviewPlan, reviewContract),
   );

@@ -138,6 +138,16 @@ Only pairs selected in the new graph with identical complete comparison inputs q
 association's current and original selection identities, keep the old export's full provenance, and
 execute only pending pairs. Reuse preserves adverse results and never retries uncertain invocations.
 
+Use `--comparison-context <JSONfile>` when a selected pair needs supporting evidence from one or two
+other existing graph sources. The version-1 file has `pairs: [{sources: [a, b], context: [c]}]` and
+contains IDs only (maximum 128 KiB). Supporting sources supply complete Markdown and authority as
+`x1`/`x2`; only the two primary sources remain claim targets/endpoints. Preserve the complete old
+export and explicitly transition the comparison cohort with `--from/--reuse --max-units 0` before
+changing context on the same graph. Update requires the verified managed candidate and retained
+ingestion, verifies the transitioned cohort, and freezes normalized context IDs for subsequent runs.
+Omit the flag to resume that frozen context. Archives and admitted evidence do not depend on the
+external file's later contents. A supporting citation does not itself settle precedence.
+
 For a failed source review or comparison, inspect its complete report before an explicit
 `graph review|compare --all --retry-failed <source-or-pair-id> --attempts 2 --max-units 1` on the
 same input/store and selection. This permits only safely ended invocation failures, never a completed
