@@ -42,6 +42,7 @@ const quality = z.enum(['unchecked', 'checked', 'uncertain']);
 const provenance = { version: z.string(), batch: z.string(), localId: z.string(), quality };
 export const graphSchema = z.object({
   version: z.literal(1),
+  lastExtraction: z.string().optional(),
   documents: z.record(z.string(), z.string()),
   units: z.record(z.string(), z.object({ document: z.string(), version: z.string() })).default({}),
   decisions: z.array(decisionSchema.extend(provenance)),
@@ -153,6 +154,7 @@ export function applyExtraction(options: ExtractionOptions) {
   const relationships = extractedRelationships({ options, decisions, ids, warnings });
   return {
     version: 1 as const,
+    lastExtraction: batch,
     documents: Object.fromEntries(
       Object.entries(graph.documents).filter(
         ([id, version]) =>

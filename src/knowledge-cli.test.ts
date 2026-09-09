@@ -449,7 +449,7 @@ test('invalidates a relationship when its independent supporting document change
   });
 });
 
-for (const initialBudget of [2, 16])
+for (const initialBudget of [1, 2, 16])
   test(`restores earlier rounds after an intervening document version (initial budget ${initialBudget})`, () => {
     project((root) => {
       rmSync(join(root, 'privacy.md'));
@@ -472,11 +472,19 @@ for (const initialBudget of [2, 16])
         '--codex',
         binary,
       ]);
-      expect(first.value.status).toBe(initialBudget === 2 ? 'budget-exhausted' : 'ready');
+      expect(first.value.status).toBe(initialBudget < 16 ? 'budget-exhausted' : 'ready');
       writeFileSync(join(root, 'cache.md'), original.replace('Rule 0', 'Rule zero'));
-      expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value.status).toBe(
-        'budget-exhausted',
-      );
+      expect(
+        invoke(root, [
+          'update',
+          '--max-calls',
+          initialBudget === 1 ? '16' : '2',
+          '--max-input-bytes',
+          '1048576',
+          '--codex',
+          binary,
+        ]).value.status,
+      ).toBe(initialBudget === 1 ? 'ready' : 'budget-exhausted');
       writeFileSync(join(root, 'cache.md'), original);
       const resumed = invoke(root, [
         'update',
@@ -488,7 +496,7 @@ for (const initialBudget of [2, 16])
         binary,
       ]);
       expect(resumed.value.status).toBe('ready');
-      if (initialBudget === 2) expect(resumed.value.work.id).toBe(first.value.work.id);
+      if (initialBudget < 16) expect(resumed.value.work.id).toBe(first.value.work.id);
       else expect(resumed.value.work.calls).toBe(0);
       expect(invoke(root, ['status']).value).toMatchObject({
         availableDecisions: 90,
@@ -497,35 +505,53 @@ for (const initialBudget of [2, 16])
     });
   });
 
-test('does not retry an accepted turn whose interruption is unconfirmed', () => {
-  project((root) => {
-    const binary = model(root, 'unconfirmed-interrupt');
-    const first = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
-    expect(first.value.work.lastAttempt).toMatchObject({
-      turnAccepted: 'confirmed',
-      interruption: 'unconfirmed',
-    });
-    model(root);
-    const retry = invoke(root, ['update', '--max-calls', '2', '--retry-failed', '--codex', binary]);
-    expect(retry.status).toBe(1);
-    expect(retry.stderr).toContain('WORK_UNCERTAIN');
-    expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(1);
-    const recovered = invoke(root, ['recover', '--acknowledge-uncertain']);
-    expect(recovered.status).toBe(0);
-    const resumed = invoke(root, [
-      'update',
-      '--max-calls',
-      '3',
-      '--retry-failed',
-      '--codex',
-      binary,
-    ]);
-    expect(resumed.value).toMatchObject({
-      status: 'ready',
-      work: { calls: 3, unmeasuredAttempts: 1 },
+for (const scenario of ['unconfirmed-interrupt', 'start-unconfirmed'])
+  test(`requires acknowledgement before retrying ${scenario}`, () => {
+    project((root) => {
+      const binary = model(root, scenario);
+      const first = invoke(root, [
+        'update',
+        '--max-calls',
+        '1',
+        '--deadline-ms',
+        '100',
+        '--codex',
+        binary,
+      ]);
+      expect(first.value.work.lastAttempt.turnAccepted).toBe(
+        scenario === 'start-unconfirmed' ? 'unknown' : 'confirmed',
+      );
+      model(root);
+      const retry = invoke(root, [
+        'update',
+        '--max-calls',
+        '2',
+        '--retry-failed',
+        '--codex',
+        binary,
+      ]);
+      expect(retry.status).toBe(1);
+      expect(retry.stderr).toContain('WORK_UNCERTAIN');
+      expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(
+        1,
+      );
+      const recovered = invoke(root, ['recover', '--acknowledge-uncertain']);
+      expect(recovered.status).toBe(0);
+      expect(recovered.value.acknowledgedWorks).toBe(1);
+      const resumed = invoke(root, [
+        'update',
+        '--max-calls',
+        '3',
+        '--retry-failed',
+        '--codex',
+        binary,
+      ]);
+      expect(resumed.value).toMatchObject({
+        status: 'ready',
+        work: { calls: 3, unmeasuredAttempts: 1 },
+      });
     });
   });
-});
 
 test('keeps original CR line numbers and separators in reads and evidence', () => {
   project((root) => {
@@ -574,5 +600,45 @@ test('runs maintenance through the CLI without calling the model or discarding g
     const after = invoke(root, ['search', 'seven days']);
     expect(after.value.decisions).toEqual(before.value.decisions);
     expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(2);
+  });
+});
+
+test('keeps an answer partial when its selected relationship was questioned', () => {
+  project((root) => {
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.check.findings = [
+      { target: 'r1', reason: 'The exception scope needs clarification.' },
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('partial');
+    const answer = invoke(root, ['ask', 'cache', '--codex', binary]);
+    expect(answer.value.status).toBe('partial');
+  });
+});
+
+test('supplies an independent source cited by a selected relationship', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'scope.md'),
+      '# Boundaries\n\nAmber overrides ordinary retention on authority withdrawal.\n',
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.relationships[0].evidence = [
+      { document: 'scope.md', lineStart: 3, lineEnd: 3 },
+    ];
+    responses.ask.evidence = responses.extract.relationships[0].evidence;
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const answer = invoke(root, ['ask', 'cache', '--codex', binary]);
+    expect(answer.value.evidence).toContainEqual(
+      expect.objectContaining({
+        document: 'scope.md',
+        text: 'Amber overrides ordinary retention on authority withdrawal.',
+      }),
+    );
   });
 });

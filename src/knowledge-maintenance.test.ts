@@ -91,6 +91,17 @@ test('recover marks a dead native invocation failed and preserves its work state
       type: 'uncertain-invocation',
       nativeProcessId: expect.any(Number),
     });
+    const second = knowledgeMaintenance(['recover', '--root', root]);
+    expect(second).toMatchObject({ modelCalls: 0, acknowledgedWorks: 0 });
+    writeFileSync(
+      join(root, '.hivex', 'knowledge.lock'),
+      JSON.stringify({ pid: deadPid(), id: 'later-dead-owner' }),
+    );
+    expect(knowledgeMaintenance(['recover', '--root', root])).toMatchObject({
+      status: 'recovered',
+      acknowledgedWorks: 0,
+    });
+    expect(existsSync(join(root, '.hivex', 'knowledge.lock'))).toBe(false);
     expect(work.attempts).toHaveLength(1);
     expect(work.attempts[0]?.result).toEqual({ retained: true });
     expect(work.attempts[0]?.report).toMatchObject({

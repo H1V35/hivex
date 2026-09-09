@@ -375,7 +375,11 @@ async function update(project: Project, runtime: Options) {
       ),
     )
     .map((unit) => unit.id);
-  if (remaining.some((id) => !work.remaining.includes(id))) work.pending = null;
+  if (
+    remaining.some((id) => !work.remaining.includes(id)) ||
+    graph.lastExtraction !== work.pending?.batch
+  )
+    work.pending = null;
   work.remaining = remaining;
   store.save(work);
   resumeFailed(work, store, runtime.retryFailed);
@@ -409,7 +413,7 @@ async function update(project: Project, runtime: Options) {
       });
       if (!value) break;
       const extraction = extractionSchema.parse(value);
-      const batch = digest(JSON.stringify(packet));
+      const batch = work.id + ':' + digest(JSON.stringify(packet));
       graph = applyExtraction({
         graph,
         extraction,
@@ -686,6 +690,9 @@ async function ask(project: Project, runtime: Options) {
   const documents = [
     ...new Set([
       ...context.decisions.map((decision) => decision.document),
+      ...context.relationships.flatMap((relationship) =>
+        relationship.evidence.map((citation) => citation.document),
+      ),
       ...context.documents.map((document) => document.id),
     ]),
   ];
@@ -764,6 +771,7 @@ async function ask(project: Project, runtime: Options) {
   const invalidReferences = evidence.length !== answer.evidence.length;
   const unreviewed =
     context.decisions.some((entry) => entry.quality !== 'checked') ||
+    context.relationships.some((entry) => entry.quality !== 'checked') ||
     context.pendingDocuments.some((id) => documents.includes(id));
   return {
     command: 'ask',

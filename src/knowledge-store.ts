@@ -414,9 +414,9 @@ export class KnowledgeStore implements Disposable {
 
   private uncertainFailedWorks() {
     return this.allWorks().flatMap((work) => {
-      if (work.status !== 'failed') return [];
+      if (work.status !== 'failed' || work.attempts.at(-1)?.recoveryAcknowledgement) return [];
       const report = recordValue(work.attempts.at(-1)?.report);
-      if (report?.interruption !== 'unconfirmed') return [];
+      if (report?.interruption !== 'unconfirmed' && report?.turnAccepted !== 'unknown') return [];
       const nativeProcessId = processIdSchema.safeParse(report.nativeProcessId);
       return [
         { work, nativeProcessId: nativeProcessId.success ? nativeProcessId.data : undefined },
