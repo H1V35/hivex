@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { hash } from './sources/markdown.ts';
 import {
   projectWithReviews,
   compare,
@@ -77,23 +78,29 @@ async function implementation(
     fixture: Fixture & { admitted: string; base: string },
   ) => void | Promise<void>,
   relation = 'equivalent',
+  source?: string,
 ) {
-  await projectWithReviews(async (paths, fixture) => {
-    const response = comparisonResponse();
-    const edge = response.relations[0];
-    if (!edge) throw new Error('Expected relation');
-    edge.type = relation;
-    edge.scope.extent = 'partial-claim';
-    edge.scope.description = 'A cache exception with limited scope.';
-    expect(compare(paths, fixture, response).status).toBe(0);
-    const result = admit(paths, fixture);
-    expect(result.status).toBe(0);
-    const admitted = retained(paths, result.stdout);
-    const base = paths.git(['rev-parse', 'HEAD']);
-    writeFileSync(join(paths.root, 'cache.ts'), code);
-    commit(paths);
-    await run(paths, { ...fixture, admitted, base });
-  });
+  await projectWithReviews(
+    async (paths, fixture) => {
+      const response = comparisonResponse();
+      const edge = response.relations[0];
+      if (!edge) throw new Error('Expected relation');
+      edge.type = relation;
+      edge.scope.extent = 'partial-claim';
+      edge.scope.description = 'A cache exception with limited scope.';
+      expect(compare(paths, fixture, response).status).toBe(0);
+      const result = admit(paths, fixture);
+      expect(result.status).toBe(0);
+      const admitted = retained(paths, result.stdout);
+      const base = paths.git(['rev-parse', 'HEAD']);
+      writeFileSync(join(paths.root, 'cache.ts'), code);
+      commit(paths);
+      await run(paths, { ...fixture, admitted, base });
+    },
+    2,
+    false,
+    source,
+  );
 }
 function command(fixture: { admitted: string; base: string }) {
   return ['ground', claim, '--input', fixture.admitted, '--base', fixture.base];
@@ -519,6 +526,71 @@ test('preserves malformed model output for diagnosis and checks its integrity', 
       invoke(paths.root, ['ground', '--check', saved, '--input', fixture.admitted]).status,
     ).toBe(1);
   });
+});
+
+test('checks joined documentary evidence without promoting an earlier failed receipt', async () => {
+  const source =
+    '# Cache\n\nNever treat a cache as authority.\nKeep records, unless exempt,\n  for 30 days.\n';
+  await implementation(
+    (paths, fixture) => {
+      const before = readFileSync(paths.calls, 'utf8');
+      const prepared = invoke(paths.root, [...command(fixture), '--prepare']);
+      expect(prepared.status).toBe(0);
+      const { prompt }: { prompt: string } = JSON.parse(prepared.stdout);
+      expect(hash(prompt.split('\n\n')[0]!)).toBe(
+        '72b6a7feee37062b5077a92b87478486b83c604c4c0353b0cfcf5f36ba4093ca',
+      );
+      expect(readFileSync(paths.calls, 'utf8')).toBe(before);
+      const response = assessment();
+      response.documents = [
+        {
+          source: 's1',
+          quote: 'Keep records, unless exempt,\nfor 30 days.',
+          lineStart: 4,
+          lineEnd: 5,
+        },
+      ];
+      const reviewed = runAssessment(paths, fixture, response);
+      expect(reviewed.status).toBe(0);
+      const result = JSON.parse(reviewed.stdout);
+      expect(result.assessment.documents).toEqual(response.documents);
+      const saved = join(dirname(paths.store), 'joined-grounding.json');
+      const check = ['ground', '--check', saved, '--input', fixture.admitted];
+      writeFileSync(saved, reviewed.stdout);
+      const calls = readFileSync(paths.calls, 'utf8');
+      expect(invoke(paths.root, check).status).toBe(0);
+      // Synthetic receipt from the earlier literal-only rejection of this same raw output.
+      const historical = {
+        ...result,
+        status: 'failed',
+        assessment: null,
+        report: { ...result.report, outcome: 'invalid-output', code: 'INVALID_GROUNDING_OUTPUT' },
+        rejectedOutput: { text: JSON.stringify(response), hash: hash(JSON.stringify(response)) },
+      };
+      delete historical.assessmentHash;
+      delete historical.currentAtCompletion;
+      historical.invocationHash = hash(JSON.stringify(historical.report));
+      const original = JSON.stringify(historical);
+      writeFileSync(saved, original);
+      const checked = invoke(paths.root, check);
+      expect(checked.stderr).toBe('');
+      expect(checked.status).toBe(1);
+      expect(JSON.parse(checked.stdout)).toMatchObject({ ...historical, checked: true });
+      expect(readFileSync(saved, 'utf8')).toBe(original);
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+      response.documents[0]!.quote = 'Keep records for 30 days.';
+      expect(runAssessment(paths, fixture, response).status).toBe(1);
+      writeFileSync(join(paths.root, 'cache.ts'), code + 'const ttl =\n  30;\n');
+      commit(paths);
+      const changed = assessment();
+      changed.code = [
+        { file: 'f1', revision: 'after', quote: 'const ttl = 30;', lineStart: 2, lineEnd: 3 },
+      ];
+      expect(runAssessment(paths, fixture, changed).status).toBe(1);
+    },
+    'equivalent',
+    source,
+  );
 });
 
 test('preserves literal Markdown and option-like review claims through execution and revalidation', async () => {
