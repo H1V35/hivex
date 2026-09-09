@@ -19,6 +19,12 @@ snippets. Reject empty changesets, binary/invalid UTF-8 content, symlink/submodu
 that cannot fit their declared bounds. A checkout changed during execution cannot produce current
 review evidence. Historical code inspection is not current implementation acceptance.
 
+In model requests, each code version uses `lines: [[number, text], ...]` with one-based original
+line numbers. Each line retains its exact text, including empty lines and CRLF carriage returns;
+joining the texts with LF reconstructs the original blob. This replaces the prompt's unnumbered
+text without duplicating it. It changes presentation and the prompt hash, not code, manifests or
+citation validation. The model must still return the correct original range and literal code.
+
 Select up to eight lexical claim matches and optional explicit source IDs. Expand the complete
 source neighborhood along supersedes, exception-to and requires relationships in both directions.
 Supply full selected Markdown with original line positions, declarations, extracted claims and
@@ -65,10 +71,11 @@ It is one stdout artifact owned by the caller, with no per-finding files or pers
 Preserve needed evidence in the project's review workflow. A deterministic check reconstructs the
 request against the current checkout and revalidates those bindings, citations, coverage, invocation
 and verdict without calling a model. Changed code, documentation, graph or processing contract requires
-a new corresponding assessment. The reader explicitly recognizes the original claim-grounding prompt
-and its clarification requiring citations from both precedence endpoints, under the same validator and
-schema. This bounded compatibility applies only without contextual code files and preserves the
-original prompt hash and receipt; it does not admit arbitrary historical contracts. A checksum is an integrity binding, not proof of authorship.
+a new corresponding assessment. The reader reconstructs the prior unnumbered requests with and
+without contextual code files, plus the earlier no-context prompt preceding the clarification
+requiring citations from both precedence endpoints. These known variants retain the same validator
+and response schema. Their original prompt hashes and receipts remain intact; arbitrary historical
+contracts are not admitted. A checksum is an integrity binding, not proof of authorship.
 
 Bound each operation to 32 complete changed text files plus 16 contextual code files, 16 complete
 sources, 512 claims, 256 selected

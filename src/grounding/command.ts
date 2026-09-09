@@ -95,7 +95,7 @@ const instructions =
 
 function numberedCode<T extends { text: string }>(file: T) {
   const { text, ...metadata } = file;
-  const lines = text.split('\n').map((line, index) => [index + 1, line] as [number, string]);
+  const lines = text.split('\n').map((line, index): [number, string] => [index + 1, line]);
   return { ...metadata, lines };
 }
 
