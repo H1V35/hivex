@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { loadProject, type Project } from './documents.ts';
+import { ingestionUnits, type IngestionUnit } from './ingestion-units.ts';
 import { HivexError } from './errors.ts';
 import { invokeModel } from './model/invoke.ts';
 import { knowledgeModel } from './model/profile.ts';
@@ -64,8 +65,8 @@ function optionsFor(args: string[]) {
     query: query ?? '',
     sources: parsed.values.source ?? [],
     root: parsed.values.root ?? process.cwd(),
-    maxCalls: bounded(parsed.values['max-calls'], 0, 64),
-    maxInputBytes: bounded(parsed.values['max-input-bytes'], 1024, 2097152),
+    maxCalls: bounded(parsed.values['max-calls'], 0, 4096),
+    maxInputBytes: bounded(parsed.values['max-input-bytes'], 1024, 1073741824),
     maxContextBytes: bounded(parsed.values['max-context-bytes'], 1024, 262144) ?? 65536,
     limit: bounded(parsed.values.limit, 1, 64) ?? 24,
     retryFailed: parsed.values['retry-failed'] ?? false,
@@ -89,6 +90,7 @@ function workSummary(work: Work) {
   return {
     id: work.id,
     calls: work.calls,
+    cacheHits: work.cacheHits,
     maxCalls: work.maxCalls,
     inputBytes: work.inputBytes,
     maxInputBytes: work.maxInputBytes,
@@ -146,6 +148,13 @@ async function runModel(options: {
   const retained = work.attempts.at(-1);
   if (retained?.inputHash === fingerprint && retained.result !== undefined)
     return request.schema.parse(retained.result);
+  const cached = request.schema.safeParse(store.cached(fingerprint));
+  if (request.stage !== 'ask' && cached.success) {
+    work.cacheHits += 1;
+    work.status = 'pending';
+    store.save(work);
+    return cached.data;
+  }
   if (work.calls >= work.maxCalls || work.inputBytes + bytes > work.maxInputBytes) {
     work.status = 'budget-exhausted';
     store.save(work);
@@ -173,6 +182,7 @@ async function runModel(options: {
   try {
     const value = request.schema.parse(JSON.parse(raw));
     attempt.result = value;
+    if (request.stage !== 'ask') store.cache(fingerprint, value);
     store.save(work);
     return value;
   } catch {
@@ -184,7 +194,7 @@ async function runModel(options: {
   }
 }
 
-function updateResponse(project: Project, work: Work, graph: Graph) {
+function updateResponse(project: Project, work: Work, graph: Graph, units: IngestionUnit[]) {
   let status: string = work.status;
   if (work.status === 'done')
     status = graph.warnings.length || project.warnings.length ? 'partial' : 'ready';
@@ -194,7 +204,12 @@ function updateResponse(project: Project, work: Work, graph: Graph) {
     snapshot: project.snapshot,
     model: knowledgeModel,
     work: workSummary(work),
-    pendingDocuments: work.remaining,
+    pendingDocuments: [
+      ...new Set(
+        units.filter((unit) => work.remaining.includes(unit.id)).map((unit) => unit.document),
+      ),
+    ],
+    pendingUnits: work.remaining,
     pendingCheck: work.pending?.documents ?? [],
     decisions: graph.decisions.length,
     relationships: graph.relationships.length,
@@ -202,18 +217,12 @@ function updateResponse(project: Project, work: Work, graph: Graph) {
   };
 }
 
-function batchContext(project: Project, graph: Graph, targets: string[]) {
-  const candidates = graph.decisions.filter(
-    (entry) =>
-      !targets.includes(entry.document) &&
-      project.documents.some(
-        (document) => document.id === entry.document && document.hash === entry.version,
-      ),
+function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
+  const candidates = graph.decisions.filter((entry) =>
+    project.documents.some(
+      (document) => document.id === entry.document && document.hash === entry.version,
+    ),
   );
-  const query = project.documents
-    .filter((document) => targets.includes(document.id))
-    .map((document) => document.text)
-    .join(' ');
   const hits = new Set(
     rankLexically(
       candidates.map((entry) => ({
@@ -221,13 +230,50 @@ function batchContext(project: Project, graph: Graph, targets: string[]) {
         title: entry.document,
         content: entry.text + ' ' + entry.reason,
       })),
-      query,
+      units.map((unit) => unit.text).join(' '),
       12,
     ).map((hit) => hit.id),
   );
-  const existing = candidates.filter((entry) => hits.has(entry.id));
-  const documents = [...new Set([...targets, ...existing.map((entry) => entry.document)])];
-  return { documents, existing };
+  const ranges = units.map(({ document, lineStart, lineEnd }) => ({
+    document,
+    lineStart,
+    lineEnd,
+  }));
+  const existing: Graph['decisions'] = [];
+  let contextBytes = 0;
+  for (const entry of candidates.filter((candidate) => hits.has(candidate.id))) {
+    const evidence = sourceEvidence(entry, project);
+    if (!evidence || contextBytes + Buffer.byteLength(evidence.text) > 8192) continue;
+    contextBytes += Buffer.byteLength(evidence.text);
+    existing.push(entry);
+    ranges.push({ document: entry.document, lineStart: entry.lineStart, lineEnd: entry.lineEnd });
+  }
+  const documents = documentPacket(project, [
+    ...new Set(ranges.map((range) => range.document)),
+  ]).map((document) => ({
+    ...document,
+    lines: document.lines.filter(([number]) =>
+      ranges.some(
+        (range) =>
+          range.document === document.id &&
+          Number(number) >= range.lineStart &&
+          Number(number) <= range.lineEnd,
+      ),
+    ),
+  }));
+  return { documents, existing: existing.map(({ batch: _batch, ...entry }) => entry) };
+}
+
+function nextUnits(units: IngestionUnit[], remaining: string[]) {
+  const selected: IngestionUnit[] = [];
+  let bytes = 0;
+  for (const unit of units.filter((entry) => remaining.includes(entry.id))) {
+    const size = Buffer.byteLength(unit.text);
+    if (selected.length === 4 || bytes + size > 16384) break;
+    selected.push(unit);
+    bytes += size;
+  }
+  return selected;
 }
 
 function resumeFailed(work: Work, store: KnowledgeStore, requested: boolean) {
@@ -242,28 +288,69 @@ function resumeFailed(work: Work, store: KnowledgeStore, requested: boolean) {
   store.save(work);
 }
 
+function finishRound(options: {
+  project: Project;
+  graph: Graph;
+  work: Work;
+  plan: ReturnType<typeof ingestionUnits>;
+  units: string[];
+}) {
+  const { project, graph, work, plan, units } = options;
+  work.remaining = work.remaining.filter((id) => !units.includes(id));
+  for (const unit of plan.units.filter((entry) => units.includes(entry.id))) {
+    const source = project.documents.find((document) => document.id === unit.document);
+    if (source) graph.units[unit.id] = { document: source.id, version: source.hash };
+  }
+  for (const source of project.documents) {
+    const complete = plan.units
+      .filter((unit) => unit.document === source.id)
+      .every((unit) => graph.units[unit.id]?.version === source.hash);
+    if (complete && !plan.warnings.some((warning) => warning.path === source.path))
+      graph.documents[source.id] = source.hash;
+  }
+}
+
 async function update(project: Project, runtime: Options) {
   using store = new KnowledgeStore(project.root);
   using _lease = store.updateLease();
   let graph = store.graph();
+  const plan = ingestionUnits(project.documents);
+  project.warnings.push(...plan.warnings);
   const changed = project.documents.filter(
     (document) => graph.documents[document.id] !== document.hash,
   );
   const work = store.begin({
     kind: 'update',
-    key: digest(JSON.stringify({ snapshot: project.snapshot, model: knowledgeModel, format: 1 })),
+    key: digest(JSON.stringify({ snapshot: project.snapshot, model: knowledgeModel, format: 2 })),
     snapshot: project.snapshot,
     maxCalls: runtime.maxCalls,
     maxInputBytes: runtime.maxInputBytes,
-    remaining: changed.map((document) => document.id),
+    remaining: plan.units
+      .filter((unit) =>
+        changed.some(
+          (document) =>
+            document.id === unit.document && graph.units[unit.id]?.version !== document.hash,
+        ),
+      )
+      .map((unit) => unit.id),
   });
   resumeFailed(work, store, runtime.retryFailed);
   if (work.status === 'done' || work.status === 'failed')
-    return updateResponse(project, work, graph);
+    return updateResponse(project, work, graph, plan.units);
   while (work.remaining.length || work.pending) {
     if (!work.pending) {
-      const documents = work.remaining.slice(0, 4);
-      const context = batchContext(project, graph, documents);
+      const units = nextUnits(plan.units, work.remaining);
+      const documents = [...new Set(units.map((unit) => unit.document))];
+      const context = batchContext(project, graph, units);
+      const packet = {
+        operation: 'extract',
+        targets: documents,
+        units: units.map(({ text: _text, ...unit }) => unit),
+        documents: context.documents,
+        existing: context.existing,
+        scope:
+          'Only the target line ranges are being ingested. Selected neighbors are context, not exhaustive coverage. Preserve uncertainty when conditions may lie outside these excerpts.',
+      };
       const value = await runModel({
         work,
         store,
@@ -272,33 +359,37 @@ async function update(project: Project, runtime: Options) {
           stage: 'extract',
           schema: extractionSchema,
           instruction:
-            'Extract meaningful decisions, constraints, definitions and lessons, not every sentence or incidental numeric value. Use c1,c2,... decision IDs and r1,r2,... relationship IDs. Discover supported semantic relationships even without authored links. Extract decisions only for targets. Existing decision IDs may be relationship endpoints. Cite each decision in its own document and relationships in the documents supporting their scope.',
-          packet: {
-            operation: 'extract',
-            targets: documents,
-            documents: documentPacket(project, context.documents),
-            existing: context.existing,
-            scope: 'Selected existing neighbors; not all possible project relationships.',
-          },
+            'Extract meaningful decisions, constraints, definitions and lessons, not every sentence or incidental numeric value. Use c1,c2,... decision IDs and r1,r2,... relationship IDs. Discover supported semantic relationships even without authored links. Extract decisions only within the target unit line ranges. Other ranges are context; do not duplicate their decisions. Existing decision IDs may be relationship endpoints. Cite each decision in its own document and relationships in the documents supporting their scope.',
+          packet,
         },
       });
       if (!value) break;
       const extraction = extractionSchema.parse(value);
-      const batch = work.id + ':' + work.calls;
+      const batch = digest(JSON.stringify(packet));
       graph = applyExtraction({
         graph,
         extraction,
         documents: project.documents.filter((document) => documents.includes(document.id)),
         contextDocuments: project.documents.filter((document) =>
-          context.documents.includes(document.id),
+          context.documents.some((entry) => entry.id === document.id),
         ),
         existingIds: context.existing.map((entry) => entry.id),
+        targetRanges: units,
+        contextRanges: context.documents.flatMap((document) =>
+          document.lines.map(([number]) => ({
+            document: document.id,
+            lineStart: Number(number),
+            lineEnd: Number(number),
+          })),
+        ),
         batch,
       });
       work.pending = {
         batch,
         documents,
-        context: context.documents,
+        units: units.map((unit) => unit.id),
+        packet: { ...packet, operation: 'check' },
+        context: context.documents.map((document) => document.id),
         existing: context.existing.map((entry) => entry.id),
         extraction,
       };
@@ -314,21 +405,12 @@ async function update(project: Project, runtime: Options) {
         schema: checkSchema,
         instruction:
           'Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.',
-        packet: {
-          operation: 'check',
-          targets: pending.documents,
-          documents: documentPacket(
-            project,
-            pending.context.length ? pending.context : pending.documents,
-          ),
-          existing: graph.decisions.filter((entry) => pending.existing.includes(entry.id)),
-          extraction: pending.extraction,
-        },
+        packet: { ...pending.packet, extraction: pending.extraction },
       },
     });
     if (!value) break;
     graph = applyCheck(graph, checkSchema.parse(value), pending.batch);
-    work.remaining = work.remaining.filter((id) => !pending.documents.includes(id));
+    finishRound({ project, graph, work, plan, units: pending.units });
     work.pending = null;
     store.commit(work, graph);
   }
@@ -336,7 +418,7 @@ async function update(project: Project, runtime: Options) {
     work.status = 'done';
     store.commit(work, graph);
   }
-  return updateResponse(project, work, graph);
+  return updateResponse(project, work, graph, plan.units);
 }
 
 type AvailableGraph = Graph & { unavailable: { from: string; to: string }[] };
@@ -471,6 +553,77 @@ const answerSchema = z.object({
   uncertainties: z.array(z.string().min(1).max(2048)).max(24),
 });
 
+function answerPacket(
+  project: Project,
+  runtime: Options,
+  context: ReturnType<typeof queryGraph>,
+  documents: string[],
+) {
+  const plan = ingestionUnits(
+    project.documents.filter((document) => documents.includes(document.id)),
+  );
+  const hits = rankLexically(
+    plan.units.map((unit) => ({
+      id: unit.id,
+      title: unit.document,
+      content: unit.text,
+    })),
+    runtime.query,
+    plan.units.length,
+  );
+  const byId = new Map(plan.units.map((unit) => [unit.id, unit]));
+  const selected: IngestionUnit[] = [];
+  const originals = documentPacket(project, documents);
+  const ids = [...new Set([...hits.map((hit) => hit.id), ...plan.units.map((unit) => unit.id)])];
+  const packet = {
+    operation: 'ask',
+    task: runtime.query,
+    context,
+    documents: documentPacket(project, []),
+    omittedUnits: plan.units.length,
+    warnings: plan.warnings,
+  };
+  for (const id of ids) {
+    const unit = byId.get(id);
+    if (!unit) continue;
+    const proposed = [...selected, unit];
+    const excerpts = originals
+      .map((document) => ({
+        ...document,
+        lines: document.lines.filter(([number]) =>
+          proposed.some(
+            (entry) =>
+              entry.document === document.id &&
+              entry.lineStart <= Number(number) &&
+              entry.lineEnd >= Number(number),
+          ),
+        ),
+      }))
+      .filter((document) => document.lines.length);
+    if (
+      Buffer.byteLength(JSON.stringify({ ...packet, documents: excerpts })) >
+      runtime.maxContextBytes
+    )
+      continue;
+    selected.push(unit);
+    packet.documents = excerpts;
+  }
+  packet.omittedUnits = plan.units.length - selected.length;
+  return packet;
+}
+
+function suppliedCitation(
+  entry: z.infer<typeof citationSchema>,
+  packet: ReturnType<typeof answerPacket>,
+) {
+  const document = packet.documents.find((item) => item.id === entry.document);
+  if (!document || entry.lineEnd < entry.lineStart) return false;
+  const lines = new Set(document.lines.map(([number]) => Number(number)));
+  for (let line = entry.lineStart; line <= entry.lineEnd; line += 1)
+    if (!lines.has(line)) return false;
+  return true;
+}
+
 async function ask(project: Project, runtime: Options) {
   const context = queryGraph(project, runtime);
   const documents = [
@@ -488,13 +641,11 @@ async function ask(project: Project, runtime: Options) {
       guidance:
         'Use project terminology, inspect sources, or select a document with --source; do not assume no decision exists.',
     };
-  const packet = {
-    operation: 'ask',
-    task: runtime.query,
-    context,
-    documents: documentPacket(project, documents),
-  };
-  if (Buffer.byteLength(JSON.stringify(packet)) > runtime.maxContextBytes)
+  const packet = answerPacket(project, runtime, context, documents);
+  if (
+    !packet.documents.length ||
+    Buffer.byteLength(JSON.stringify(packet)) > runtime.maxContextBytes
+  )
     return { ...context, command: 'ask', status: 'context-limit', answer: null };
   using store = new KnowledgeStore(project.root);
   const work = store.begin({
@@ -519,7 +670,7 @@ async function ask(project: Project, runtime: Options) {
             stage: 'ask',
             schema: answerSchema,
             instruction:
-              'Help the responsible agent with this task. Explain applicable decisions, dependencies and exceptions using the Markdown. Derived graph quality does not itself establish authority or applicability. Do not ask the owner to repeat decisions settled by the supplied evidence. State missing context and uncertainty, including relevant unexpanded dependencies. Do not approve an entire implementation. Cite only the supplied document ranges.',
+              'Help the responsible agent with this task. Explain applicable decisions, dependencies and exceptions using the Markdown. Derived graph quality does not itself establish authority or applicability. Do not ask the owner to repeat decisions settled by the supplied evidence. State missing context and uncertainty, including omitted document units and relevant unexpanded dependencies. Do not approve an entire implementation. Cite only the supplied document ranges.',
             packet,
           },
         });
@@ -531,7 +682,7 @@ async function ask(project: Project, runtime: Options) {
     store.save(work);
   }
   const evidence = answer.evidence
-    .map((entry) => (documents.includes(entry.document) ? sourceEvidence(entry, project) : null))
+    .map((entry) => (suppliedCitation(entry, packet) ? sourceEvidence(entry, project) : null))
     .filter((entry) => entry !== null);
   const invalidReferences = evidence.length !== answer.evidence.length;
   const unreviewed =
@@ -544,14 +695,18 @@ async function ask(project: Project, runtime: Options) {
     evidence,
     status:
       invalidReferences ||
+      packet.omittedUnits ||
+      packet.warnings.length ||
       unreviewed ||
       context.unexpandedDecisions.length ||
       answer.uncertainties.length
         ? 'partial'
         : 'ready',
     uncertainties: answer.uncertainties,
+    omittedUnits: packet.omittedUnits,
     warnings: [
       ...context.warnings,
+      ...packet.warnings,
       ...(invalidReferences
         ? ['Some model references could not be verified; they are omitted.']
         : []),

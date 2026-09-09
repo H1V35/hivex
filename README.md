@@ -71,7 +71,8 @@ presented as current evidence. `status` reports available knowledge and document
 
 `ask` makes a bounded Luna/max consultation over the selected decisions and original Markdown.
 It explains applicability and uncertainty. The evidence text in the result is read from the cited
-source ranges, not copied from a model-generated quotation. Identical retained consultations are
+source ranges, not copied from a model-generated quotation. Large sources are supplied as relevant units within the context limit; `omittedUnits` reports
+unread portions so a partial answer is not mistaken for complete coverage. Identical retained consultations are
 reused. A partial result remains useful within its declared limits.
 
 ## Update deliberately
@@ -80,10 +81,17 @@ reused. A partial result remains useful within its declared limits.
 bun hivex update --root /path/to/project --max-calls 2
 ```
 
-An update processes up to four target documents per batch, supplies bounded relevant existing
-knowledge, and performs one additional check of the batch. Relationships may cross documents that
-have no authored link. Meaningful decisions retain their conditions, exceptions, reasons and state;
-this is not exhaustive atomization of every sentence or numeric literal.
+An update splits large Markdown into line-preserving units of at most 8 KiB, preferring Markdown
+boundaries. Each round selects at most four units and 16 KiB of target text, with up to 8 KiB of
+relevant existing evidence, then performs one additional check. Original document IDs and line
+numbers survive splitting. Earlier rounds remain queryable while `pendingUnits` and `pendingDocuments`
+show unfinished coverage. A line too large to fit is explicitly reported as unread, never silently cut.
+
+Each extraction and check is checkpointed. Resuming continues the same work and never repeats its
+completed rounds. Successful structured model results are cached in the same store by the complete
+request, schema and model profile; an identical request can be reused without a call, even when
+reconstructing earlier knowledge. Changed context invalidates that cache entry. Cache hits are
+reported separately from calls and tokens; this is an optimization, not documentary authority.
 
 The default work budget is two invocation attempts and 131,072 input bytes. `--max-calls` and
 `--max-input-bytes` set totals for the complete work, including extraction, check and resumption.

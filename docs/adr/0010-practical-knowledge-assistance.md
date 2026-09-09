@@ -27,6 +27,11 @@ for accepting the implementation. A demonstrated contradiction must be corrected
 approved decision change. Hivex neither conducts every aspect of code review nor rewrites Markdown
 on its own. Genuine unanswered decisions go to the owner with sources, impact and a recommendation.
 
+An update splits oversized Markdown into source-bound units with original line provenance, processes
+bounded rounds, and checkpoints progress so resumption never discards completed ingestion. Reuse
+retained extraction results when their source and processing context still match; do not require the
+whole corpus or a large document to fit in one invocation. Caches optimize work and carry no authority.
+
 An update processes a bounded batch and makes one additional knowledge check against its documents
 and affected relationships. Do not review every node separately or every possible source pair.
 Do not automatically revise and retry until the model produces green output. Usable knowledge remains

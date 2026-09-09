@@ -342,3 +342,84 @@ test('can use an explicitly selected document when a task uses different vocabul
     expect(answer.value.work.calls).toBe(1);
   });
 });
+
+test('ingests a large document in resumable rounds without losing earlier decisions', () => {
+  project((root) => {
+    rmSync(join(root, 'privacy.md'));
+    const paragraphs = Array.from(
+      { length: 140 },
+      (_, index) =>
+        `## Rule ${index}\n\nRule ${index} requires cache expiry. ${'Detailed rationale. '.repeat(16)}\n`,
+    );
+    writeFileSync(join(root, 'cache.md'), paragraphs.join('\n'));
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.fromVisibleRules = true;
+    writeFileSync(file, JSON.stringify(responses));
+    const first = invoke(root, ['update', '--max-calls', '2', '--codex', binary]);
+    expect(first.value).toMatchObject({ status: 'budget-exhausted', work: { calls: 2 } });
+    expect(first.value.pendingUnits.length).toBeGreaterThan(0);
+    expect(first.value.pendingDocuments).toEqual(['cache.md']);
+    const early = invoke(root, ['search', 'Rule 0']);
+    expect(early.value.decisions).toContainEqual(
+      expect.objectContaining({ text: 'Rule 0 requires cache expiry.' }),
+    );
+    const resumed = invoke(root, [
+      'update',
+      '--max-calls',
+      '32',
+      '--max-input-bytes',
+      '1048576',
+      '--codex',
+      binary,
+    ]);
+    expect(resumed.value.status).toBe('ready');
+    expect(resumed.value.pendingUnits).toEqual([]);
+    const found = invoke(root, ['search', 'Rule 139']);
+    expect(found.value.decisions).toContainEqual(
+      expect.objectContaining({
+        text: 'Rule 139 requires cache expiry.',
+        evidence: expect.objectContaining({ lineStart: 559 }),
+      }),
+    );
+    expect(invoke(root, ['status']).value.availableDecisions).toBe(140);
+    responses.ask.evidence = [{ document: 'cache.md', lineStart: 559, lineEnd: 559 }];
+    responses.ask.answer = 'Rule 139 requires cache expiry.';
+    writeFileSync(file, JSON.stringify(responses));
+    const answer = invoke(root, ['ask', 'Rule 139', '--codex', binary]);
+    expect(answer.value.answer).toBe('Rule 139 requires cache expiry.');
+    expect(answer.value.evidence).toContainEqual(expect.objectContaining({ lineStart: 559 }));
+    expect(answer.value.omittedUnits).toBeGreaterThan(0);
+    expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(
+      resumed.value.work.calls + 1,
+    );
+  });
+});
+
+test('reuses retained model results when previously ingested Markdown is restored', () => {
+  project((root) => {
+    rmSync(join(root, 'privacy.md'));
+    const original = readFileSync(join(root, 'cache.md'), 'utf8');
+    const binary = model(root);
+    const responsePath = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(responsePath, 'utf8'));
+    responses.extract.decisions = [responses.extract.decisions[0]];
+    responses.extract.relationships = [];
+    writeFileSync(responsePath, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    writeFileSync(join(root, 'cache.md'), original + '\nA new explanation.\n');
+    expect(invoke(root, ['update', '--codex', binary]).value.work.calls).toBe(2);
+    writeFileSync(join(root, 'cache.md'), original);
+    const restored = invoke(root, ['update', '--max-calls', '0', '--codex', binary]);
+    expect(restored.value).toMatchObject({ status: 'ready', work: { calls: 0, cacheHits: 2 } });
+    expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(4);
+  });
+});
+
+test('accepts instruction-source metadata when native project instructions are disabled', () => {
+  project((root) => {
+    const binary = model(root, 'instruction-source-metadata');
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+  });
+});

@@ -9,7 +9,8 @@ const startedThread = z.looseObject({
   reasoningEffort: z.literal('max'),
   cwd: z.string(),
   sandbox: z.looseObject({ type: z.literal('readOnly') }),
-  instructionSources: z.array(z.unknown()).length(0),
+  // Discovery paths can be reported even with project_doc_max_bytes=0, verified at admission.
+  instructionSources: z.array(z.string()),
 });
 const mcpInventory = z.looseObject({
   data: z.array(

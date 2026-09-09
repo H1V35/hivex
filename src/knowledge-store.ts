@@ -36,16 +36,19 @@ const workSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
   status: z.enum(['pending', 'running', 'budget-exhausted', 'failed', 'done']),
   remaining: z.array(z.string()),
+  cacheHits: z.number().int().nonnegative().default(0),
   pending: z
     .object({
       batch: z.string(),
       documents: z.array(z.string()),
+      units: z.array(z.string()).default([]),
+      packet: z.record(z.string(), z.unknown()).optional(),
       context: z.array(z.string()).default([]),
       existing: z.array(z.string()).default([]),
       extraction: extractionSchema,
     })
     .nullable(),
-  attempts: z.array(attemptSchema).max(64),
+  attempts: z.array(attemptSchema).max(4096),
   result: z.unknown().optional(),
 });
 export type Work = z.infer<typeof workSchema>;
@@ -75,6 +78,9 @@ export class KnowledgeStore implements Disposable {
     );
     this.db.run(
       'CREATE TABLE IF NOT EXISTS work (id TEXT PRIMARY KEY, kind TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL)',
+    );
+    this.db.run(
+      'CREATE TABLE IF NOT EXISTS model_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
     );
     this.db.run('CREATE INDEX IF NOT EXISTS work_key ON work(kind,key)');
   }
@@ -152,6 +158,7 @@ export class KnowledgeStore implements Disposable {
           maxCalls: options.maxCalls ?? 2,
           maxInputBytes: options.maxInputBytes ?? 131072,
           calls: 0,
+          cacheHits: 0,
           inputBytes: 0,
           totalTokens: 0,
           status: 'pending',
@@ -176,6 +183,20 @@ export class KnowledgeStore implements Disposable {
       this.saveGraph(graph);
       this.save(work);
     })();
+  }
+
+  cached(key: string): unknown {
+    const row = this.db
+      .query<{ value: string }, [string]>('SELECT value FROM model_cache WHERE key=?')
+      .get(key);
+    return row ? JSON.parse(row.value) : undefined;
+  }
+
+  cache(key: string, value: unknown) {
+    this.db.run(
+      'INSERT INTO model_cache VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+      [key, JSON.stringify(value)],
+    );
   }
 
   reserve(work: Work, stage: string, inputHash: string, inputBytes: number) {

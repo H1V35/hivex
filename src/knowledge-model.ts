@@ -42,6 +42,7 @@ const provenance = { version: z.string(), batch: z.string(), localId: z.string()
 export const graphSchema = z.object({
   version: z.literal(1),
   documents: z.record(z.string(), z.string()),
+  units: z.record(z.string(), z.object({ document: z.string(), version: z.string() })).default({}),
   decisions: z.array(decisionSchema.extend(provenance)),
   relationships: z.array(
     relationshipSchema.extend({ batch: z.string(), localId: z.string(), quality }),
@@ -54,6 +55,7 @@ export type KnowledgeCheck = z.infer<typeof checkSchema>;
 export const emptyGraph = (): Graph => ({
   version: 1,
   documents: {},
+  units: {},
   decisions: [],
   relationships: [],
   warnings: [],
@@ -64,7 +66,12 @@ export function validCitation(entry: z.infer<typeof citationSchema>, documents: 
   return (
     document !== undefined &&
     entry.lineStart <= entry.lineEnd &&
-    entry.lineEnd <= document.text.split('\n').length
+    entry.lineEnd <= document.text.split('\n').length &&
+    document.text
+      .split('\n')
+      .slice(entry.lineStart - 1, entry.lineEnd)
+      .join('\n')
+      .trim().length > 0
   );
 }
 
@@ -81,6 +88,23 @@ export function sourceEvidence(entry: z.infer<typeof citationSchema>, project: P
   };
 }
 
+function inRanges(
+  entry: z.infer<typeof citationSchema>,
+  ranges?: z.infer<typeof citationSchema>[],
+) {
+  if (!ranges) return true;
+  for (let line = entry.lineStart; line <= entry.lineEnd; line += 1) {
+    if (
+      !ranges.some(
+        (range) =>
+          range.document === entry.document && range.lineStart <= line && range.lineEnd >= line,
+      )
+    )
+      return false;
+  }
+  return true;
+}
+
 export function applyExtraction(options: {
   graph: Graph;
   extraction: Extraction;
@@ -88,10 +112,14 @@ export function applyExtraction(options: {
   batch: string;
   contextDocuments?: Document[];
   existingIds?: string[];
+  targetRanges?: z.infer<typeof citationSchema>[];
+  contextRanges?: z.infer<typeof citationSchema>[];
 }) {
   const { graph, extraction, documents, batch } = options;
-  const targets = new Set(documents.map((document) => document.id));
-  const decisions = graph.decisions.filter((entry) => !targets.has(entry.document));
+  const decisions = graph.decisions.filter((entry) => {
+    const source = documents.find((document) => document.id === entry.document);
+    return !source || source.hash === entry.version;
+  });
   const ids = new Map(
     decisions
       .filter((entry) => options.existingIds?.includes(entry.id))
@@ -104,13 +132,14 @@ export function applyExtraction(options: {
       warnings.push(`Decision ${entry.id} has an unknown, duplicate or invalid source reference.`);
       continue;
     }
-    const located = validCitation(entry, documents);
+    const located = validCitation(entry, documents) && inRanges(entry, options.targetRanges);
     if (!located)
       warnings.push(
         `Decision ${entry.id} has an unverified line range; its document remains available.`,
       );
     const id = digest(JSON.stringify({ version: source.hash, ...entry }));
     ids.set(entry.id, id);
+    if (decisions.some((decision) => decision.id === id)) continue;
     decisions.push({
       ...entry,
       id,
@@ -132,7 +161,11 @@ export function applyExtraction(options: {
       !from ||
       !to ||
       seen.has(entry.id) ||
-      entry.evidence.some((item) => !validCitation(item, options.contextDocuments ?? documents))
+      entry.evidence.some(
+        (item) =>
+          !validCitation(item, options.contextDocuments ?? documents) ||
+          !inRanges(item, options.contextRanges),
+      )
     ) {
       warnings.push(
         `Relationship ${entry.id} has an unknown endpoint, duplicate ID or invalid reference.`,
@@ -145,10 +178,15 @@ export function applyExtraction(options: {
   }
   return {
     version: 1 as const,
-    documents: {
-      ...graph.documents,
-      ...Object.fromEntries(documents.map((document) => [document.id, document.hash])),
-    },
+    documents: graph.documents,
+    units: Object.fromEntries(
+      Object.entries(graph.units).filter(
+        ([, unit]) =>
+          !documents.some(
+            (document) => document.id === unit.document && document.hash !== unit.version,
+          ),
+      ),
+    ),
     decisions,
     relationships,
     warnings: [...graph.warnings, ...warnings],

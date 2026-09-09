@@ -61,6 +61,33 @@ function responseForPrompt(prompt) {
   if (process.env.HIVEX_TEST_RESPONSES) {
     const responses = JSON.parse(readFileSync(process.env.HIVEX_TEST_RESPONSES, 'utf8'));
     const packet = payloadFromPrompt(prompt);
+    if (packet?.operation === 'extract' && responses.fromVisibleRules) {
+      const decisions = packet.documents
+        .filter((doc) => packet.targets.includes(doc.id))
+        .flatMap((doc) =>
+          doc.lines
+            .filter(
+              ([number, line]) =>
+                /^Rule \d+ requires/.test(line) &&
+                (!packet.units ||
+                  packet.units.some(
+                    (unit) =>
+                      unit.document === doc.id &&
+                      unit.lineStart <= number &&
+                      unit.lineEnd >= number,
+                  )),
+            )
+            .map(([number, line]) => ({
+              ...responses.extract.decisions[0],
+              id: 'c' + number,
+              document: doc.id,
+              text: line.split('. ')[0] + '.',
+              lineStart: number,
+              lineEnd: number,
+            })),
+        );
+      return { decisions, relationships: [], uncertainties: [] };
+    }
     if (packet?.operation === 'extract' && responses.byDocument) {
       const targets = packet.targets ?? packet.documents.map((document) => document.id);
       const parts = targets.map(
@@ -147,7 +174,10 @@ const handlers = {
       reasoningEffort: effort,
       cwd: process.cwd(),
       sandbox: { type: 'readOnly' },
-      instructionSources: [],
+      instructionSources:
+        process.env.HIVEX_TEST_SCENARIO === 'instruction-source-metadata'
+          ? ['/example/.codex/AGENTS.md']
+          : [],
     };
   },
   'configRequirements/read': () => ({ requirements: null }),

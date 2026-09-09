@@ -62,6 +62,9 @@ limits the conclusions that depend on it, without making unrelated context unusa
 
 ## Control consumption
 
+Large Markdown is ingested in bounded rounds. Inspect pending units and coverage, and resume the
+same work; do not wipe the store or resend the whole corpus when only a later round remains.
+
 A budget covers the complete work item, its phases and attempts. Resume retained progress with its
 original accounting; do not start a fresh counter to bypass an exhausted limit. Separate initial
 indexing, maintenance, consultation and review costs and report actual usage and unknown consumption.
