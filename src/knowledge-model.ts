@@ -325,6 +325,7 @@ export function applyCheck(
   const targets = new Set(check.findings.map((finding) => finding.target));
   const known = new Set([
     'batch',
+    ...scope.map((entry) => entry.document),
     ...graph.decisions.map((entry) => entry.id),
     ...graph.relationships.map((entry) => entry.id),
     ...graph.decisions
@@ -395,5 +396,7 @@ function findingScope(
       ),
     ),
   ];
-  return scope.length ? scope : fallback;
+  const documentScope = fallback.filter((entry) => entry.document === target);
+  if (scope.length) return scope;
+  return documentScope.length ? documentScope : fallback;
 }

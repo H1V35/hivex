@@ -61,7 +61,7 @@ state is not approval; preserve the exact versions used by a review. Pending or 
 limits the conclusions that depend on it, without making unrelated context unusable.
 
 `ask` updates at most one relevant pending batch before answering, under the same total call/input
-budget. Its default is three calls. Repeat the same task to resume; changing its budget changes the
+budget. Its default is three calls. Omitted limits preserve a resumed work item's budget. Repeat the same task to resume; changing its budget changes the
 total ceiling, never the consumed count. Pending corpus coverage is explicit; use `update` when more
 rounds are needed, rather than issuing repeated identical questions to force indexing.
 
@@ -90,3 +90,7 @@ export evidence that must outlive cache retention.
 Preserve useful results and their limits. At a budget boundary, explain what remains and obtain an
 authorized extension before spending more. Existing user authorization remains valid; the skill does
 not require another permission question for already authorized work.
+
+If maintenance reports `context-limit`, inspect `work.contextLimit` for required documents and bytes.
+Restore missing evidence or adjust the context bound, then resume the same task. No extraction call
+is spent while its known relationship evidence is unavailable or exceeds that bound.

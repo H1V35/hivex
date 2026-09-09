@@ -101,6 +101,7 @@ function workSummary(work: Work) {
     cacheHits: work.cacheHits,
     maxCalls: work.maxCalls,
     phase: work.phase,
+    contextLimit: work.contextLimit ?? null,
     inputBytes: work.inputBytes,
     maxInputBytes: work.maxInputBytes,
     totalTokens: work.totalTokens,
@@ -140,6 +141,8 @@ function documentPacket(project: Project, ids: string[]) {
       id: document.id,
       title: document.title,
       status: document.status,
+      version: document.hash,
+      lineCount: rawMarkdownLines(document.text).length,
       lines: rawMarkdownLines(document.text).map((line, index) => [index + 1, lineContent(line)]),
     }));
 }
@@ -271,14 +274,27 @@ function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
   const targetNodes = new Set(
     graph.decisions.filter((entry) => targetDocuments.has(entry.document)).map((entry) => entry.id),
   );
-  const affected = graph.relationships
-    .filter(
-      (edge) =>
-        targetNodes.has(edge.from) ||
-        targetNodes.has(edge.to) ||
-        edge.evidence.some((citation) => targetDocuments.has(citation.document)),
-    )
-    .flatMap((edge) => [edge.from, edge.to]);
+  const affectedRelations = graph.relationships.filter(
+    (edge) =>
+      targetNodes.has(edge.from) ||
+      targetNodes.has(edge.to) ||
+      edge.evidence.some((citation) => targetDocuments.has(citation.document)),
+  );
+  const affected = affectedRelations.flatMap((edge) => [edge.from, edge.to]);
+  const missing = new Set<string>();
+  for (const citation of affectedRelations.flatMap((edge) => edge.evidence)) {
+    if (targetDocuments.has(citation.document)) continue;
+    const document = project.documents.find((source) => source.id === citation.document);
+    if (!document) {
+      missing.add(citation.document);
+      continue;
+    }
+    ranges.push(
+      citation.version === document.hash
+        ? citation
+        : { document: document.id, lineStart: 1, lineEnd: rawMarkdownLines(document.text).length },
+    );
+  }
   const priorities = [
     ...new Set([
       ...affected,
@@ -312,7 +328,28 @@ function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
       ),
     ),
   }));
-  return { documents, existing: existing.map(({ batch: _batch, ...entry }) => entry) };
+  return {
+    documents,
+    missing: [...missing],
+    previousRelationships: affectedRelations,
+    existing: existing.map(({ batch: _batch, ...entry }) => entry),
+  };
+}
+
+function batchContextLimit(
+  context: ReturnType<typeof batchContext>,
+  packet: unknown,
+  maxBytes: number,
+): Work['contextLimit'] {
+  const requiredBytes = Buffer.byteLength(JSON.stringify(packet));
+  if (!context.missing.length && requiredBytes <= maxBytes) return undefined;
+  return {
+    documents: [
+      ...new Set([...context.missing, ...context.documents.map((document) => document.id)]),
+    ],
+    requiredBytes,
+    maxBytes,
+  };
 }
 
 function nextUnits(units: IngestionUnit[], remaining: string[]) {
@@ -436,7 +473,7 @@ async function update(project: Project, runtime: Options, sharedWork?: Work) {
     Object.entries(graph.units).filter(([, unit]) => currentDocuments.has(unit.document)),
   );
   const { plan, work } = prepareUpdate({ project, runtime, store, graph, sharedWork });
-  if (work.status === 'done' || work.status === 'failed')
+  if (['done', 'failed'].includes(work.status))
     return updateResponse(project, work, graph, plan.units);
   while (work.remaining.length || work.pending) {
     if (!work.pending) {
@@ -450,9 +487,16 @@ async function update(project: Project, runtime: Options, sharedWork?: Work) {
         units: units.map(({ text: _text, ...unit }) => unit),
         documents: context.documents,
         existing: context.existing,
+        previousRelationships: context.previousRelationships,
         scope:
           'Only the target line ranges are being ingested. Selected neighbors are context, not exhaustive coverage. Preserve uncertainty when conditions may lie outside these excerpts.',
       };
+      work.contextLimit = batchContextLimit(context, packet, runtime.maxContextBytes);
+      if (work.contextLimit) {
+        work.status = 'context-limit';
+        store.save(work);
+        break;
+      }
       const value = await runModel({
         work,
         store,
@@ -807,6 +851,7 @@ function suppliedCitation(
 function contextDocuments(context: ReturnType<typeof queryGraph>) {
   return [
     ...new Set([
+      ...context.unavailableDocuments,
       ...context.decisions.map((decision) => decision.document),
       ...context.relationships.flatMap((relationship) =>
         relationship.evidence.map((citation) => citation.document),
@@ -832,6 +877,7 @@ function beginConsultation(options: {
       project.documents.find((document) => document.id === unit.document)?.hash,
   );
   const relevant = new Set(documents);
+  const unavailable = new Set(packet.context.unavailableDocuments);
   const hits = rankLexically(
     changed.map((unit) => ({ id: unit.id, title: unit.document, content: unit.text })),
     runtime.query,
@@ -839,6 +885,7 @@ function beginConsultation(options: {
   );
   const order = [
     ...new Set([
+      ...changed.filter((unit) => unavailable.has(unit.document)).map((unit) => unit.id),
       ...hits.map((hit) => hit.id),
       ...changed.filter((unit) => relevant.has(unit.document)).map((unit) => unit.id),
       ...changed.map((unit) => unit.id),
@@ -859,7 +906,7 @@ function beginConsultation(options: {
     ),
     resultKey: digest(JSON.stringify(packet)),
     snapshot: project.snapshot,
-    maxCalls: runtime.maxCalls ?? 3,
+    maxCalls: runtime.maxCalls,
     maxInputBytes: runtime.maxInputBytes,
     remaining: nextUnits(
       prioritized,

@@ -938,7 +938,7 @@ test('raising a context limit resumes the same work without resetting maintenanc
       '--max-calls',
       '2',
       '--max-context-bytes',
-      '1024',
+      '2048',
       '--codex',
       binary,
     ]);
@@ -957,5 +957,132 @@ test('raising a context limit resumes the same work without resetting maintenanc
       status: 'ready',
       work: { id: first.value.work.id, calls: 3 },
     });
+  });
+});
+
+test('an omitted call limit never raises the budget of an unfinished consultation', () => {
+  project((root) => {
+    const binary = model(root);
+    const first = invoke(root, ['ask', 'cache', '--max-calls', '1', '--codex', binary]);
+    expect(first.value.work).toMatchObject({ calls: 1, maxCalls: 1 });
+    const repeated = invoke(root, ['ask', 'cache', '--codex', binary]);
+    expect(repeated.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { id: first.value.work.id, calls: 1, maxCalls: 1 },
+    });
+    expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(1);
+  });
+});
+
+test('an endpoint update retains independent evidence and pauses before calls if that context cannot fit', () => {
+  project((root) => {
+    const supporting = 'The blue pulse condition governs this exception. '.repeat(3);
+    writeFileSync(
+      join(root, 'scope.md'),
+      '# Scope\n\n' + Array.from({ length: 70 }, () => supporting).join('\n') + '\n',
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.relationships[0].evidence = [
+      { document: 'scope.md', lineStart: 3, lineEnd: 72 },
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    writeFileSync(join(root, 'cache.md'), '# Cache\n\nCached data expires after two days.\n');
+    responses.byDocument = {
+      'cache.md': {
+        decisions: [
+          { ...responses.extract.decisions[0], text: 'Cached data expires after two days.' },
+        ],
+        relationships: [
+          {
+            ...responses.extract.relationships[0],
+            from: '@existing:privacy.md',
+            to: 'c1',
+            requiresEvidenceDocument: 'scope.md',
+          },
+        ],
+      },
+    };
+    writeFileSync(file, JSON.stringify(responses));
+    const first = invoke(root, [
+      'ask',
+      'cache',
+      '--max-calls',
+      '3',
+      '--max-context-bytes',
+      '4096',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value).toMatchObject({ status: 'context-limit', work: { calls: 0 } });
+    expect(first.value.work.contextLimit.documents).toContain('scope.md');
+    const resumed = invoke(root, [
+      'ask',
+      'cache',
+      '--max-calls',
+      '3',
+      '--max-context-bytes',
+      '65536',
+      '--codex',
+      binary,
+    ]);
+    expect(resumed.value).toMatchObject({
+      status: 'ready',
+      work: { id: first.value.work.id, calls: 3 },
+    });
+    expect(invoke(root, ['search', 'cache']).value.relationships).toHaveLength(1);
+  });
+});
+
+test('a document-level omission stays local even when no decision was extracted for that document', () => {
+  project((root) => {
+    writeFileSync(join(root, 'decoration.md'), '# Decoration\n\nAmber controls glyph colour.\n');
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.check.findings = [
+      { target: 'decoration.md', reason: 'The glyph decision was omitted.' },
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('partial');
+    const answer = invoke(root, ['ask', 'cache', '--codex', binary]);
+    expect(answer.value.status).toBe('ready');
+    expect(JSON.stringify(answer.value.warnings)).not.toContain('glyph decision');
+    expect(JSON.stringify(invoke(root, ['search', 'Amber']).value.warnings)).toContain(
+      'glyph decision',
+    );
+  });
+});
+
+test('a changed known supporting document takes priority over unrelated pending documents', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'z-scope.md'),
+      '# Scope\n\nThe blue pulse activates this exception.\n',
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.relationships[0].evidence = [
+      { document: 'z-scope.md', lineStart: 3, lineEnd: 3 },
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    for (const name of ['b', 'c', 'd', 'e']) {
+      writeFileSync(join(root, name + '.md'), '# Decoration\n\nAmber controls glyphs.\n');
+    }
+    writeFileSync(
+      join(root, 'z-scope.md'),
+      '# Scope\n\nThe blue pulse no longer activates this exception.\n',
+    );
+    responses.byDocument = { 'z-scope.md': { decisions: [], relationships: [] } };
+    writeFileSync(file, JSON.stringify(responses));
+    const answer = invoke(root, ['ask', 'cache', '--codex', binary]);
+    expect(answer.value.work).toMatchObject({ calls: 3 });
+    expect(answer.value.pendingDocuments).not.toContain('z-scope.md');
+    expect(answer.value.pendingDocuments.length).toBeGreaterThan(0);
+    expect(answer.value.unavailableDocuments).not.toContain('z-scope.md');
   });
 });

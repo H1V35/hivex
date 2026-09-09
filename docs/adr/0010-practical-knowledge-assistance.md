@@ -86,4 +86,7 @@ supplied context remains unchanged.
 Repair revisits selected source units with an explicit correction reason, without editing Markdown.
 It replaces their derived decisions and relationships and preserves prior attempts. Check findings
 carry source/version/range scope so an unrelated consultation does not inherit a local uncertainty.
-Removed sources remain identifiable when a dependency can no longer be verified.
+Removed sources remain identifiable when a dependency can no longer be verified. A changed known
+supporting source takes priority over unrelated pending documents. Endpoint updates include the
+source passages supporting their previous relationships; if that evidence is missing or cannot fit
+the context limit, retain pending work and report the limitation before spending a model call.

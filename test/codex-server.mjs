@@ -95,6 +95,13 @@ function responseForPrompt(prompt) {
       );
       const relationships = parts
         .flatMap((part) => part.relationships)
+        .filter(
+          (relationship) =>
+            !relationship.requiresEvidenceDocument ||
+            packet.documents.some(
+              (document) => document.id === relationship.requiresEvidenceDocument,
+            ),
+        )
         .map((relationship) => ({
           ...relationship,
           ...Object.fromEntries(
