@@ -7,7 +7,10 @@ test.each([
   ['Keep records\nfor 30 days.', 'Keep records for 30 days.'],
   ['Keep records \r\n  for 30 days.', 'Keep records for 30 days.'],
   ['- Keep records\n  for 30 days.', 'Keep records for 30 days.'],
+  ['- Keep records\n  for 30 days.', '- Keep records for 30 days.'],
   ['Keep **approved** records\nfor 30 days.', 'Keep **approved** records for 30 days.'],
+  ['Policy uses `daily` and\n  a fixed window.', 'Policy uses `daily` and a fixed window.'],
+  ['- Policy uses `daily` and\n  a fixed window.', '- Policy uses `daily` and a fixed window.'],
 ])('matches a joined soft wrap in one paragraph: %j', (content, quote) => {
   const source = { content, section: null };
   const entries = [{ quote, lineStart: 1, lineEnd: 2 }];
@@ -27,6 +30,11 @@ test.each([
   ['    Keep records\n    for 30 days.', 'Keep records for 30 days.'],
   ['```text\nKeep records\nfor 30 days.\n```', 'Keep records for 30 days.'],
   ['Keep `records\nfor 30 days`.', 'Keep `records for 30 days`.'],
+  [
+    'Policy uses `daily\n  window` and\n  fixed limits.',
+    'Policy uses `daily window` and fixed limits.',
+  ],
+  ['- Policy uses `daily`\n- A fixed window.', '- Policy uses `daily` - A fixed window.'],
   ['Keep records  \nfor 30 days.', 'Keep records for 30 days.'],
   ['Keep records\\\nfor 30 days.', 'Keep records for 30 days.'],
   ['<div>Keep records\nfor 30 days.</div>', '<div>Keep records for 30 days.</div>'],

@@ -12,13 +12,11 @@ function paragraphs(content: string) {
     )
       return [];
     const children = [...descendants(node)];
-    if (children.some((child) => ['inlineCode', 'html', 'break'].includes(child.type))) return [];
+    if (children.some((child) => ['html', 'break'].includes(child.type))) return [];
     return [
       {
         start: position.start.line - 1,
         end: position.end.line - 1,
-        offset: position.start.offset,
-        lines: content.slice(position.start.offset, position.end.offset).split('\n'),
         textRanges: children
           .filter((child) => child.type === 'text')
           .map((child) => child.position),
@@ -27,12 +25,11 @@ function paragraphs(content: string) {
   });
 }
 
-function joinedText(paragraph: ReturnType<typeof paragraphs>[number], start: number, end: number) {
-  const first = start - paragraph.start;
-  const offset =
-    paragraph.offset +
-    paragraph.lines.slice(0, first).reduce((sum, line) => sum + line.length + 1, 0);
-  const text = paragraph.lines.slice(first, end - paragraph.start + 1).join('\n');
+function joinedText(
+  paragraph: ReturnType<typeof paragraphs>[number],
+  text: string,
+  offset: number,
+) {
   return text.replace(/[ \t]*\r?\n[ \t]*/g, (wrap: string, index: number) => {
     const from = offset + index;
     const withinText = paragraph.textRanges.some(
@@ -64,6 +61,8 @@ export function invalidCitationIndexes(
     if (format === 'code') return [index];
     parsed ??= paragraphs(source.content);
     const paragraph = parsed.find((item) => start >= item.start && end <= item.end);
-    return paragraph && joinedText(paragraph, start, end).includes(entry.quote) ? [] : [index];
+    if (!paragraph) return [index];
+    const offset = lines.slice(0, start).reduce((sum, line) => sum + line.length + 1, 0);
+    return joinedText(paragraph, content, offset).includes(entry.quote) ? [] : [index];
   });
 }
