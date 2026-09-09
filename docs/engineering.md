@@ -133,7 +133,9 @@ failed or interrupted attempts. Deterministic retrieval and maintenance do not r
 
 The replacement workflow follows [ADR 0010](adr/0010-practical-knowledge-assistance.md). It processes
 bounded document batches with one additional knowledge check, keeps partial knowledge usable and
-preserves a work budget across phases and resumption. Avoid a new abstraction or protocol unless it
+preserves a work budget across phases and resumption. A consultation maintains one pending batch
+before answering, and a source-based repair replaces interpretations without changing doctrine.
+Keep check warnings scoped and public evidence limited to source coordinates, version and text. Avoid a new abstraction or protocol unless it
 protects a concrete requirement. The owner-authorized implementation can replace the earlier
 cohort/admission pipeline; its historical evidence remains unchanged.
 

@@ -60,6 +60,16 @@ workflow within the same work budget. Working documents may be queried without a
 state is not approval; preserve the exact versions used by a review. Pending or uncertain knowledge
 limits the conclusions that depend on it, without making unrelated context unusable.
 
+`ask` updates at most one relevant pending batch before answering, under the same total call/input
+budget. Its default is three calls. Repeat the same task to resume; changing its budget changes the
+total ceiling, never the consumed count. Pending corpus coverage is explicit; use `update` when more
+rounds are needed, rather than issuing repeated identical questions to force indexing.
+
+Repair a demonstrably wrong interpretation with `update --repair <document> --reason <correction>`.
+Check the Markdown first. This revises derived knowledge and its relationships without changing the
+document or authorizing new policy. Do not use it to suppress a genuine contradiction. Review source-local
+warnings in their stated scope and inspect `unavailableDocuments` for changed or removed dependencies.
+
 ## Control consumption
 
 Large Markdown is ingested in bounded rounds. Inspect pending units and coverage, and resume the

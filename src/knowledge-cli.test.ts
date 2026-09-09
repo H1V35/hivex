@@ -663,3 +663,299 @@ test('checks a retained decision when another snapshot re-extracts the same unit
     expect(invoke(root, ['status']).value.uncheckedDecisions).toEqual([]);
   });
 });
+
+test('ask updates knowledge and resumes its answer under one total work budget', () => {
+  project((root) => {
+    const binary = model(root);
+    const first = invoke(root, ['ask', 'cache', '--max-calls', '2', '--codex', binary]);
+    expect(first.value).toMatchObject({ status: 'budget-exhausted', work: { calls: 2 } });
+    expect(invoke(root, ['status']).value.availableDecisions).toBe(2);
+    const resumed = invoke(root, ['ask', 'cache', '--max-calls', '3', '--codex', binary]);
+    expect(resumed.value).toMatchObject({
+      status: 'ready',
+      work: { id: first.value.work.id, calls: 3 },
+    });
+    const repeated = invoke(root, ['ask', 'cache', '--max-calls', '0', '--codex', binary]);
+    expect(repeated.value).toEqual(resumed.value);
+    expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(3);
+  });
+});
+
+test('refreshes a changed decision and its known incoming dependency beyond lexical or recent matches', () => {
+  project((root) => {
+    rmSync(join(root, 'cache.md'));
+    rmSync(join(root, 'privacy.md'));
+    writeFileSync(join(root, '01-cache.md'), '# Cache\n\nCached data expires after seven days.\n');
+    writeFileSync(
+      join(root, '02-privacy.md'),
+      '# Access\n\nRevoking access immediately removes cached private data.\n',
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(
+      readFileSync(file, 'utf8')
+        .replaceAll('cache.md', '01-cache.md')
+        .replaceAll('privacy.md', '02-privacy.md'),
+    );
+    responses.byDocument = {
+      '01-cache.md': { decisions: [responses.extract.decisions[0]], relationships: [] },
+      '02-privacy.md': {
+        decisions: [responses.extract.decisions[1]],
+        relationships: responses.extract.relationships,
+      },
+    };
+    for (let i = 3; i <= 8; i++) {
+      const document = `0${i}-note.md`;
+      const text = `Amber ${i} controls decorative glyphs.`;
+      writeFileSync(join(root, document), `# Decoration ${i}\n\n${text}\n`);
+      responses.byDocument[document] = {
+        decisions: [{ ...responses.extract.decisions[0], id: 'c' + i, document, text }],
+        relationships: [],
+      };
+    }
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--max-calls', '4', '--codex', binary]).value.status).toBe(
+      'ready',
+    );
+    const before = invoke(root, ['search', 'revocation']).value.decisions[0];
+    writeFileSync(join(root, '01-cache.md'), '# Timer\n\nFreshness renews every second sunrise.\n');
+    responses.byDocument['01-cache.md'].decisions[0].text =
+      'Freshness renews every second sunrise.';
+    responses.byDocument['01-cache.md'].relationships = [
+      { ...responses.extract.relationships[0], from: '@existing:02-privacy.md', to: 'c1' },
+    ];
+    responses.ask.answer = 'Freshness renews every second sunrise; revocation takes priority.';
+    writeFileSync(file, JSON.stringify(responses));
+    const updated = invoke(root, ['ask', 'Freshness', '--codex', binary]);
+    expect(updated.value).toMatchObject({ status: 'ready', work: { calls: 3 } });
+    const neighbors = invoke(root, ['neighbors', before.id]);
+    expect(neighbors.value.relationships).toHaveLength(1);
+    expect(neighbors.value.decisions).toContainEqual(
+      expect.objectContaining({
+        document: '01-cache.md',
+        text: 'Freshness renews every second sunrise.',
+      }),
+    );
+    expect(neighbors.value.decisions).toContainEqual(expect.objectContaining({ id: before.id }));
+  });
+});
+
+test('acknowledges document deletion without model extraction and names the unavailable dependency', () => {
+  project((root) => {
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    rmSync(join(root, 'cache.md'));
+    const answer = invoke(root, ['ask', 'revocation', '--codex', binary]);
+    expect(answer.value).toMatchObject({
+      status: 'partial',
+      pendingDocuments: [],
+      work: { calls: 1 },
+    });
+    expect(answer.value.unavailableDocuments).toContain('cache.md');
+  });
+});
+
+test('repairs a wrong interpretation without changing Markdown or repeating an identical repair', () => {
+  project((root) => {
+    const original = readFileSync(join(root, 'cache.md'), 'utf8');
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.decisions[0].text = 'Cached data never expires.';
+    responses.check.findings = [
+      { target: 'c1', reason: 'The source says seven days, not forever.' },
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('partial');
+    responses.byDocument = {
+      'cache.md': {
+        decisions: [
+          { ...responses.extract.decisions[0], text: 'Cached data expires after seven days.' },
+        ],
+        relationships: [
+          { ...responses.extract.relationships[0], from: '@existing:privacy.md', to: 'c1' },
+        ],
+      },
+    };
+    responses.check.findings = [];
+    writeFileSync(file, JSON.stringify(responses));
+    const args = [
+      'update',
+      '--repair',
+      'cache.md',
+      '--reason',
+      'Correct the lifetime against the seven-day rule.',
+      '--codex',
+      binary,
+    ];
+    const repaired = invoke(root, args);
+    expect(repaired.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    const found = invoke(root, ['search', 'expires']);
+    expect(found.value.decisions).not.toContainEqual(
+      expect.objectContaining({ text: 'Cached data never expires.' }),
+    );
+    expect(found.value.decisions).toContainEqual(
+      expect.objectContaining({
+        text: 'Cached data expires after seven days.',
+        quality: 'checked',
+      }),
+    );
+    expect(readFileSync(join(root, 'cache.md'), 'utf8')).toBe(original);
+    expect(invoke(root, args).value.work.id).toBe(repaired.value.work.id);
+    expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(4);
+  });
+});
+
+test('keeps a source-local check finding out of an unrelated consultation', () => {
+  project((root) => {
+    writeFileSync(join(root, 'decoration.md'), '# Decoration\n\nAmber controls glyph colour.\n');
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.decisions = [
+      ...responses.extract.decisions,
+      {
+        ...responses.extract.decisions[0],
+        id: 'c3',
+        document: 'decoration.md',
+        text: 'Amber controls glyph colour.',
+        reason: 'Consistent decorative glyphs.',
+      },
+    ];
+    responses.check.findings = [{ target: 'c3', reason: 'The decorative exception is unclear.' }];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('partial');
+    const answer = invoke(root, ['ask', 'cache', '--codex', binary]);
+    expect(answer.value.status).toBe('ready');
+    expect(JSON.stringify(answer.value.warnings)).not.toContain('decorative exception');
+    const decoration = invoke(root, ['search', 'Amber']);
+    expect(JSON.stringify(decoration.value.warnings)).toContain('decorative exception');
+  });
+});
+
+test('warning scopes carry source references without repeating Markdown bodies', () => {
+  project((root) => {
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.uncertainties = ['Source applicability is unclear.'];
+    writeFileSync(file, JSON.stringify(responses));
+    const updated = invoke(root, ['update', '--codex', binary]);
+    expect(JSON.stringify(updated.value.warnings)).toContain('Source applicability is unclear.');
+    expect(JSON.stringify(updated.value.warnings)).not.toContain(
+      'Cached data expires after seven days.',
+    );
+  });
+});
+
+test('automatic maintenance prioritizes the matching fragment in a large document', () => {
+  project((root) => {
+    rmSync(join(root, 'privacy.md'));
+    writeFileSync(
+      join(root, 'cache.md'),
+      Array.from(
+        { length: 100 },
+        (_, i) =>
+          `## Rule ${i}\n\nRule ${i} requires cache expiry. ${'Background detail. '.repeat(24)}${i === 99 ? ' Quasar.' : ''}\n`,
+      ).join('\n'),
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.fromVisibleRules = true;
+    writeFileSync(file, JSON.stringify(responses));
+    expect(
+      invoke(root, ['ask', 'Quasar', '--max-calls', '2', '--codex', binary]).value.status,
+    ).toBe('budget-exhausted');
+    expect(invoke(root, ['search', 'Rule 99']).value.decisions).toContainEqual(
+      expect.objectContaining({ text: 'Rule 99 requires cache expiry.' }),
+    );
+  });
+});
+
+test('evidence contains source coordinates and text without duplicating decision metadata', () => {
+  project((root) => {
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const evidence = invoke(root, ['search', 'seven days']).value.decisions[0].evidence;
+    expect(Object.keys(evidence).sort()).toEqual([
+      'document',
+      'lineEnd',
+      'lineStart',
+      'text',
+      'version',
+    ]);
+  });
+});
+
+test('repair removes an unsupported relationship even when its endpoints are in unchanged documents', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'privacy.md'),
+      '# Access\n\nPrivate reports require explicit authorisation.\n',
+    );
+    writeFileSync(
+      join(root, 'scope.md'),
+      '# Scope\n\nThe examples do not approve an exception to retention.\n',
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.decisions[1] = {
+      ...responses.extract.decisions[1],
+      text: 'Private reports require explicit authorisation.',
+      conditions: [],
+      reason: 'Protect private reports.',
+    };
+    responses.extract.relationships[0].evidence = [
+      { document: 'scope.md', lineStart: 3, lineEnd: 3 },
+    ];
+    responses.check.findings = [{ target: 'r1', reason: 'The claimed exception is unsupported.' }];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.relationships).toBe(1);
+    responses.byDocument = { 'scope.md': { decisions: [], relationships: [] } };
+    responses.check.findings = [];
+    writeFileSync(file, JSON.stringify(responses));
+    const repaired = invoke(root, [
+      'update',
+      '--repair',
+      'scope.md',
+      '--reason',
+      'Remove the unsupported exception.',
+      '--codex',
+      binary,
+    ]);
+    expect(repaired.value).toMatchObject({ status: 'ready', relationships: 0, decisions: 2 });
+  });
+});
+
+test('raising a context limit resumes the same work without resetting maintenance cost', () => {
+  project((root) => {
+    const binary = model(root);
+    const first = invoke(root, [
+      'ask',
+      'cache',
+      '--max-calls',
+      '2',
+      '--max-context-bytes',
+      '1024',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value.work.calls).toBe(2);
+    const resumed = invoke(root, [
+      'ask',
+      'cache',
+      '--max-calls',
+      '3',
+      '--max-context-bytes',
+      '65536',
+      '--codex',
+      binary,
+    ]);
+    expect(resumed.value).toMatchObject({
+      status: 'ready',
+      work: { id: first.value.work.id, calls: 3 },
+    });
+  });
+});

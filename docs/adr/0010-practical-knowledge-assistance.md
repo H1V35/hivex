@@ -62,7 +62,7 @@ those ADRs describe the earlier implementation and remain historical records.
 The portable skill is part of each functional delivery. It teaches the actual CLI, the agreed
 workflow, good documentation practice and cost/uncertainty handling without requiring Compi's
 private tools or skills. The first slice in #47 supplies explicit initial updates and task context;
-#48 adds automatic incremental maintenance and #19 supplies diff-review assistance. These are
+#48 adds automatic incremental maintenance and interpretation repair; #19 supplies diff-review assistance. These are
 implementation stages, not claims that the entire new contract is already shipped.
 
 Validate with bounded real Compi cases covering a conflict, a valid exception, indirect dependency,
@@ -74,3 +74,16 @@ Early use in Compi is desirable. Complete closure additionally requires recoveri
 knowledge and retiring the old active machinery and consumers after replacement is verified.
 Keep Git history and necessary external evidence; a legacy evidence document can suffice. Do not
 rebuild another fleet inside that archive or treat a successful package build as completed adoption.
+
+## Incremental consultation delivery (#48)
+
+A consultation maintains at most one bounded pending batch before answering, prioritizing matching
+fragments and known affected neighbors. Update, check and answer share one work budget; context-limit
+increases do not reset an unfinished work item. Remaining corpus coverage is reported, and explicit
+updates can advance further rounds. Repeating a completed consultation reuses its result while its
+supplied context remains unchanged.
+
+Repair revisits selected source units with an explicit correction reason, without editing Markdown.
+It replaces their derived decisions and relationships and preserves prior attempts. Check findings
+carry source/version/range scope so an unrelated consultation does not inherit a local uncertainty.
+Removed sources remain identifiable when a dependency can no longer be verified.

@@ -40,11 +40,49 @@ export const checkSchema = z.object({
 });
 const quality = z.enum(['unchecked', 'checked', 'uncertain']);
 const provenance = { version: z.string(), batch: z.string(), localId: z.string(), quality };
+const warningScopeSchema = citationSchema.extend({ version: z.string() });
+export type WarningScope = z.infer<typeof warningScopeSchema>;
+const warningSchema = z.union([
+  z.string(),
+  z.object({ message: z.string(), scope: z.array(warningScopeSchema) }),
+]);
+
+export function warningScope(
+  documents: Document[],
+  ranges?: z.infer<typeof citationSchema>[],
+): WarningScope[] {
+  return (
+    ranges ??
+    documents.map((document) => ({
+      document: document.id,
+      lineStart: 1,
+      lineEnd: rawMarkdownLines(document.text).length,
+    }))
+  ).flatMap((range) => {
+    const source = documents.find((document) => document.id === range.document);
+    return source
+      ? [
+          {
+            document: range.document,
+            lineStart: range.lineStart,
+            lineEnd: range.lineEnd,
+            version: source.hash,
+          },
+        ]
+      : [];
+  });
+}
+
 export const graphSchema = z.object({
   version: z.literal(1),
   lastExtraction: z.string().optional(),
   documents: z.record(z.string(), z.string()),
-  units: z.record(z.string(), z.object({ document: z.string(), version: z.string() })).default({}),
+  units: z
+    .record(
+      z.string(),
+      z.object({ document: z.string(), version: z.string(), workKey: z.string().optional() }),
+    )
+    .default({}),
   decisions: z.array(decisionSchema.extend(provenance)),
   relationships: z.array(
     relationshipSchema.extend({
@@ -54,7 +92,7 @@ export const graphSchema = z.object({
       evidence: z.array(citationSchema.extend({ version: z.string().optional() })),
     }),
   ),
-  warnings: z.array(z.string()),
+  warnings: z.array(warningSchema),
 });
 export type Graph = z.infer<typeof graphSchema>;
 export type Extraction = z.infer<typeof extractionSchema>;
@@ -82,7 +120,9 @@ export function sourceEvidence(entry: z.infer<typeof citationSchema>, project: P
   const document = project.documents.find((item) => item.id === entry.document);
   if (!document || !validCitation(entry, project.documents)) return null;
   return {
-    ...entry,
+    document: entry.document,
+    lineStart: entry.lineStart,
+    lineEnd: entry.lineEnd,
     version: document.hash,
     text: sourceRange(document.text, entry.lineStart, entry.lineEnd),
   };
@@ -116,11 +156,36 @@ type ExtractionOptions = {
   contextRanges?: z.infer<typeof citationSchema>[];
 };
 
+function retainedWarnings(graph: Graph, scope: WarningScope[]) {
+  return graph.warnings.filter(
+    (warning) =>
+      typeof warning === 'string' ||
+      !warning.scope.some((old) =>
+        scope.some(
+          (current) =>
+            current.document === old.document &&
+            (current.version !== old.version ||
+              (current.lineStart <= old.lineEnd && current.lineEnd >= old.lineStart)),
+        ),
+      ),
+  );
+}
+
 export function applyExtraction(options: ExtractionOptions) {
   const { graph, extraction, documents, batch } = options;
   const decisions = graph.decisions.filter((entry) => {
     const source = documents.find((document) => document.id === entry.document);
-    return !source || source.hash === entry.version;
+    return (
+      !source ||
+      (source.hash === entry.version &&
+        validCitation(entry, [source]) &&
+        !options.targetRanges?.some(
+          (range) =>
+            range.document === entry.document &&
+            range.lineStart <= entry.lineEnd &&
+            range.lineEnd >= entry.lineStart,
+        ))
+    );
   });
   const ids = new Map(
     decisions
@@ -172,7 +237,13 @@ export function applyExtraction(options: ExtractionOptions) {
     ),
     decisions,
     relationships,
-    warnings: [...graph.warnings, ...warnings],
+    warnings: [
+      ...retainedWarnings(graph, warningScope(documents, options.targetRanges)),
+      ...warnings.map((message) => ({
+        message,
+        scope: warningScope(documents, options.targetRanges),
+      })),
+    ],
   };
 }
 
@@ -189,10 +260,17 @@ function extractedRelationships(input: {
     (entry) =>
       available.has(entry.from) &&
       available.has(entry.to) &&
-      !entry.evidence.some((citation) =>
-        (options.contextDocuments ?? documents).some(
-          (document) => document.id === citation.document && document.hash !== citation.version,
-        ),
+      !entry.evidence.some(
+        (citation) =>
+          options.targetRanges?.some(
+            (range) =>
+              range.document === citation.document &&
+              range.lineStart <= citation.lineEnd &&
+              range.lineEnd >= citation.lineStart,
+          ) ||
+          (options.contextDocuments ?? documents).some(
+            (document) => document.id === citation.document && document.hash !== citation.version,
+          ),
       ),
   );
   const seen = new Set<string>();
@@ -238,10 +316,17 @@ function extractedRelationships(input: {
   return relationships;
 }
 
-export function applyCheck(graph: Graph, check: KnowledgeCheck, batch: string): Graph {
+export function applyCheck(
+  graph: Graph,
+  check: KnowledgeCheck,
+  batch: string,
+  scope: WarningScope[] = [],
+): Graph {
   const targets = new Set(check.findings.map((finding) => finding.target));
   const known = new Set([
     'batch',
+    ...graph.decisions.map((entry) => entry.id),
+    ...graph.relationships.map((entry) => entry.id),
     ...graph.decisions
       .filter((entry) => entry.batch === batch)
       .flatMap((entry) => [entry.localId, entry.document]),
@@ -249,8 +334,9 @@ export function applyCheck(graph: Graph, check: KnowledgeCheck, batch: string): 
   ]);
   const uncertainBatch = targets.has('batch') || [...targets].some((target) => !known.has(target));
   const decisions = graph.decisions.map((entry) => {
-    if (entry.batch !== batch) return entry;
+    if (entry.batch !== batch && !targets.has(entry.id)) return entry;
     const uncertain =
+      targets.has(entry.id) ||
       entry.quality === 'uncertain' ||
       uncertainBatch ||
       targets.has(entry.localId) ||
@@ -258,8 +344,9 @@ export function applyCheck(graph: Graph, check: KnowledgeCheck, batch: string): 
     return { ...entry, quality: quality.parse(uncertain ? 'uncertain' : 'checked') };
   });
   const relationships = graph.relationships.map((entry) => {
-    if (entry.batch !== batch) return entry;
+    if (entry.batch !== batch && !targets.has(entry.id)) return entry;
     const uncertain =
+      targets.has(entry.id) ||
       uncertainBatch ||
       targets.has(entry.localId) ||
       decisions.some(
@@ -271,6 +358,42 @@ export function applyCheck(graph: Graph, check: KnowledgeCheck, batch: string): 
     ...graph,
     decisions,
     relationships,
-    warnings: [...graph.warnings, ...check.findings.map((finding) => finding.reason)],
+    warnings: [
+      ...graph.warnings,
+      ...check.findings.map((finding) => ({
+        message: finding.reason,
+        scope: findingScope(graph, finding.target, batch, scope),
+      })),
+    ],
   };
+}
+
+function findingScope(
+  graph: Graph,
+  target: string,
+  batch: string,
+  fallback: WarningScope[],
+): WarningScope[] {
+  const decisions = graph.decisions.filter(
+    (entry) =>
+      entry.id === target ||
+      (entry.batch === batch && (entry.localId === target || entry.document === target)),
+  );
+  const relationships = graph.relationships.filter(
+    (entry) => entry.id === target || (entry.batch === batch && entry.localId === target),
+  );
+  const scope = [
+    ...decisions.map(({ document, version, lineStart, lineEnd }) => ({
+      document,
+      version,
+      lineStart,
+      lineEnd,
+    })),
+    ...relationships.flatMap((entry) =>
+      entry.evidence.flatMap((citation) =>
+        citation.version ? [{ ...citation, version: citation.version }] : [],
+      ),
+    ),
+  ];
+  return scope.length ? scope : fallback;
 }

@@ -19,6 +19,7 @@ import {
   extractionSchema,
   citationSchema,
   sourceEvidence,
+  warningScope,
   type Graph,
 } from './knowledge-model.ts';
 
@@ -40,6 +41,8 @@ function optionsFor(args: string[]) {
     strict: true,
     options: {
       source: { type: 'string', multiple: true },
+      repair: { type: 'string', multiple: true },
+      reason: { type: 'string' },
       root: { type: 'string' },
       'max-calls': { type: 'string' },
       'max-input-bytes': { type: 'string' },
@@ -51,7 +54,8 @@ function optionsFor(args: string[]) {
     },
   });
   const [command, query] = parsed.positionals;
-  const queryRequired = command === 'search' || command === 'neighbors' || command === 'ask';
+  const { reason = '' } = parsed.values;
+  const queryRequired = ['search', 'neighbors', 'ask'].includes(command ?? '');
   if (
     !['update', 'search', 'neighbors', 'ask', 'status'].includes(command ?? '') ||
     parsed.positionals.length !== (queryRequired ? 2 : 1) ||
@@ -63,8 +67,10 @@ function optionsFor(args: string[]) {
     });
   return {
     command,
-    query: query ?? '',
+    query: (query ?? '').trim(),
     sources: parsed.values.source ?? [],
+    repair: parsed.values.repair ?? [],
+    repairReason: reason.trim(),
     root: parsed.values.root ?? process.cwd(),
     maxCalls: bounded(parsed.values['max-calls'], 0, 4096),
     maxInputBytes: bounded(parsed.values['max-input-bytes'], 1024, 1073741824),
@@ -94,6 +100,7 @@ function workSummary(work: Work) {
     calls: work.calls,
     cacheHits: work.cacheHits,
     maxCalls: work.maxCalls,
+    phase: work.phase,
     inputBytes: work.inputBytes,
     maxInputBytes: work.maxInputBytes,
     totalTokens: work.totalTokens,
@@ -155,7 +162,7 @@ async function runModel(options: {
   if (retained?.inputHash === fingerprint && retained.result !== undefined)
     return request.schema.parse(retained.result);
   const cached = request.schema.safeParse(store.cached(fingerprint));
-  if (request.stage !== 'ask' && cached.success) {
+  if (cached.success) {
     work.cacheHits += 1;
     work.status = 'pending';
     store.save(work);
@@ -189,7 +196,7 @@ async function runModel(options: {
   try {
     const value = request.schema.parse(JSON.parse(raw));
     attempt.result = value;
-    if (request.stage !== 'ask') store.cache(fingerprint, value);
+    store.cache(fingerprint, value);
     store.save(work);
     return value;
   } catch {
@@ -227,10 +234,17 @@ function updateResponse(project: Project, work: Work, graph: Graph, units: Inges
 }
 
 function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
-  const candidates = graph.decisions.filter((entry) =>
-    project.documents.some(
-      (document) => document.id === entry.document && document.hash === entry.version,
-    ),
+  const candidates = graph.decisions.filter(
+    (entry) =>
+      project.documents.some(
+        (document) => document.id === entry.document && document.hash === entry.version,
+      ) &&
+      !units.some(
+        (unit) =>
+          unit.document === entry.document &&
+          unit.lineStart <= entry.lineEnd &&
+          unit.lineEnd >= entry.lineStart,
+      ),
   );
   const hits = new Set(
     rankLexically(
@@ -254,8 +268,20 @@ function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
       .filter((document) => targetDocuments.has(document.id))
       .flatMap((document) => document.links),
   );
+  const targetNodes = new Set(
+    graph.decisions.filter((entry) => targetDocuments.has(entry.document)).map((entry) => entry.id),
+  );
+  const affected = graph.relationships
+    .filter(
+      (edge) =>
+        targetNodes.has(edge.from) ||
+        targetNodes.has(edge.to) ||
+        edge.evidence.some((citation) => targetDocuments.has(citation.document)),
+    )
+    .flatMap((edge) => [edge.from, edge.to]);
   const priorities = [
     ...new Set([
+      ...affected,
       ...candidates.filter((entry) => linked.has(entry.document)).map((entry) => entry.id),
       ...hits,
       ...candidates.slice(-6).map((entry) => entry.id),
@@ -332,7 +358,8 @@ function finishRound(options: {
   work.remaining = work.remaining.filter((id) => !units.includes(id));
   for (const unit of plan.units.filter((entry) => units.includes(entry.id))) {
     const source = project.documents.find((document) => document.id === unit.document);
-    if (source) graph.units[unit.id] = { document: source.id, version: source.hash };
+    if (source)
+      graph.units[unit.id] = { document: source.id, version: source.hash, workKey: work.key };
   }
   for (const source of project.documents) {
     const complete = plan.units
@@ -341,40 +368,51 @@ function finishRound(options: {
     if (complete && !plan.warnings.some((warning) => warning.path === source.path))
       graph.documents[source.id] = source.hash;
   }
+  work.pending = null;
+  if (work.remaining.length) return;
+  work.status = work.kind === 'ask' ? 'pending' : 'done';
+  if (work.kind === 'ask') work.phase = 'ask';
 }
 
-async function update(project: Project, runtime: Options) {
-  using store = new KnowledgeStore(project.root);
-  using _lease = store.updateLease();
-  let graph = store.graph();
+function prepareUpdate(options: {
+  project: Project;
+  runtime: Options;
+  store: KnowledgeStore;
+  graph: Graph;
+  sharedWork?: Work;
+}) {
+  const { project, runtime, store, graph, sharedWork } = options;
   const plan = ingestionUnits(project.documents);
   project.warnings.push(...plan.warnings);
-  const changed = project.documents.filter(
-    (document) => graph.documents[document.id] !== document.hash,
+  const key = digest(
+    JSON.stringify({
+      snapshot: project.snapshot,
+      model: knowledgeModel,
+      repair: runtime.repair,
+      reason: runtime.repairReason,
+      format: 3,
+    }),
   );
-  const work = store.begin({
-    kind: 'update',
-    key: digest(JSON.stringify({ snapshot: project.snapshot, model: knowledgeModel, format: 2 })),
-    snapshot: project.snapshot,
-    maxCalls: runtime.maxCalls,
-    maxInputBytes: runtime.maxInputBytes,
-    remaining: plan.units
-      .filter((unit) =>
-        changed.some(
-          (document) =>
-            document.id === unit.document && graph.units[unit.id]?.version !== document.hash,
-        ),
-      )
-      .map((unit) => unit.id),
-  });
+  const scoped = sharedWork ? new Set(sharedWork.plannedUnits) : null;
   const remaining = plan.units
-    .filter((unit) =>
-      project.documents.some(
-        (document) =>
-          document.id === unit.document && graph.units[unit.id]?.version !== document.hash,
-      ),
-    )
+    .filter((unit) => {
+      if (scoped && !scoped.has(unit.id)) return false;
+      const source = project.documents.find((document) => document.id === unit.document);
+      if (runtime.repair.length)
+        return runtime.repair.includes(unit.document) && graph.units[unit.id]?.workKey !== key;
+      return graph.units[unit.id]?.version !== source?.hash;
+    })
     .map((unit) => unit.id);
+  const work =
+    sharedWork ??
+    store.begin({
+      kind: 'update',
+      key,
+      snapshot: project.snapshot,
+      maxCalls: runtime.maxCalls,
+      maxInputBytes: runtime.maxInputBytes,
+      remaining,
+    });
   if (
     remaining.some((id) => !work.remaining.includes(id)) ||
     graph.lastExtraction !== work.pending?.batch
@@ -383,6 +421,21 @@ async function update(project: Project, runtime: Options) {
   work.remaining = remaining;
   store.save(work);
   resumeFailed(work, store, runtime.retryFailed);
+  return { plan, work };
+}
+
+async function update(project: Project, runtime: Options, sharedWork?: Work) {
+  using store = new KnowledgeStore(project.root);
+  using _lease = store.updateLease();
+  let graph = store.graph();
+  const currentDocuments = new Set(project.documents.map((document) => document.id));
+  graph.documents = Object.fromEntries(
+    Object.entries(graph.documents).filter(([id]) => currentDocuments.has(id)),
+  );
+  graph.units = Object.fromEntries(
+    Object.entries(graph.units).filter(([, unit]) => currentDocuments.has(unit.document)),
+  );
+  const { plan, work } = prepareUpdate({ project, runtime, store, graph, sharedWork });
   if (work.status === 'done' || work.status === 'failed')
     return updateResponse(project, work, graph, plan.units);
   while (work.remaining.length || work.pending) {
@@ -393,6 +446,7 @@ async function update(project: Project, runtime: Options) {
       const packet = {
         operation: 'extract',
         targets: documents,
+        repairReason: runtime.repairReason,
         units: units.map(({ text: _text, ...unit }) => unit),
         documents: context.documents,
         existing: context.existing,
@@ -407,7 +461,7 @@ async function update(project: Project, runtime: Options) {
           stage: 'extract',
           schema: extractionSchema,
           instruction:
-            'Extract meaningful decisions, constraints, definitions and lessons, not every sentence or incidental numeric value. Use c1,c2,... decision IDs and r1,r2,... relationship IDs. Discover supported semantic relationships even without authored links. Extract decisions only within the target unit line ranges. Other ranges are context; do not duplicate their decisions. Existing decision IDs may be relationship endpoints. Cite each decision in its own document and relationships in the documents supporting their scope.',
+            'For a repair, check repairReason against Markdown; it is not new authority. Extract meaningful decisions, constraints, definitions and lessons, not every sentence or incidental numeric value. Use c1,c2,... decision IDs and r1,r2,... relationship IDs. Discover supported semantic relationships even without authored links. Extract decisions only within the target unit line ranges. Other ranges are context; do not duplicate their decisions. Existing decision IDs may be relationship endpoints. Cite each decision in its own document and relationships in the documents supporting their scope.',
           packet,
         },
       });
@@ -457,19 +511,26 @@ async function update(project: Project, runtime: Options) {
       },
     });
     if (!value) break;
-    graph = applyCheck(graph, checkSchema.parse(value), pending.batch);
+    graph = applyCheck(
+      graph,
+      checkSchema.parse(value),
+      pending.batch,
+      warningScope(
+        project.documents,
+        plan.units.filter((unit) => pending.units.includes(unit.id)),
+      ),
+    );
     finishRound({ project, graph, work, plan, units: pending.units });
-    work.pending = null;
     store.commit(work, graph);
   }
   if (!work.remaining.length && !work.pending) {
-    work.status = 'done';
+    finishRound({ project, graph, work, plan, units: [] });
     store.commit(work, graph);
   }
   return updateResponse(project, work, graph, plan.units);
 }
 
-type AvailableGraph = Graph & { unavailable: { from: string; to: string }[] };
+type AvailableGraph = Graph & { unavailable: { from: string; to: string; documents: string[] }[] };
 
 function relationshipCurrent(relationship: Graph['relationships'][number], project: Project) {
   return relationship.evidence.every((entry) =>
@@ -477,6 +538,29 @@ function relationshipCurrent(relationship: Graph['relationships'][number], proje
       (document) => document.id === entry.document && document.hash === entry.version,
     ),
   );
+}
+
+function unavailableDocuments(
+  edge: Graph['relationships'][number],
+  graph: Graph,
+  project: Project,
+) {
+  const sources = [
+    ...edge.evidence,
+    ...graph.decisions.filter((entry) => entry.id === edge.from || entry.id === edge.to),
+  ];
+  return [
+    ...new Set(
+      sources
+        .filter(
+          (source) =>
+            !project.documents.some(
+              (document) => document.id === source.document && document.hash === source.version,
+            ),
+        )
+        .map((source) => source.document),
+    ),
+  ];
 }
 
 function currentGraph(project: Project): AvailableGraph {
@@ -501,7 +585,11 @@ function currentGraph(project: Project): AvailableGraph {
         (entry) =>
           !ids.has(entry.from) || !ids.has(entry.to) || !relationshipCurrent(entry, project),
       )
-      .map(({ from, to }) => ({ from, to })),
+      .map((edge) => ({
+        from: edge.from,
+        to: edge.to,
+        documents: unavailableDocuments(edge, graph, project),
+      })),
   };
 }
 
@@ -530,6 +618,23 @@ function pendingDocuments(project: Project, graph: Graph) {
   return [...new Set([...versions.keys(), ...Object.keys(graph.documents)])].filter(
     (id) => versions.get(id) !== graph.documents[id],
   );
+}
+
+function contextWarnings(project: Project, graph: Graph, documents: Set<string>) {
+  return [
+    ...project.warnings.filter((warning) => warning.path === '.' || documents.has(warning.path)),
+    ...graph.warnings.filter(
+      (warning) =>
+        typeof warning === 'string' ||
+        warning.scope.some(
+          (source) =>
+            documents.has(source.document) &&
+            project.documents.some(
+              (document) => document.id === source.document && document.hash === source.version,
+            ),
+        ),
+    ),
+  ];
 }
 
 function queryGraph(project: Project, options: Options) {
@@ -569,12 +674,26 @@ function queryGraph(project: Project, options: Options) {
     options.command === 'neighbors' || options.command === 'ask'
       ? neighborhood(graph, selected, options.limit)
       : { ids: selected, pending: [] };
+  const relevantDocuments = new Set([
+    ...documentIds,
+    ...graph.decisions.filter((entry) => expanded.ids.has(entry.id)).map((entry) => entry.document),
+    ...graph.relationships
+      .filter((edge) => expanded.ids.has(edge.from) && expanded.ids.has(edge.to))
+      .flatMap((edge) => edge.evidence.map((citation) => citation.document)),
+  ]);
   return {
     command: options.command,
     snapshot: project.snapshot,
     documents: project.documents
       .filter((document) => documentIds.has(document.id))
       .map(({ id, title, hash }) => ({ id, title, version: hash })),
+    unavailableDocuments: [
+      ...new Set(
+        graph.unavailable
+          .filter((edge) => expanded.ids.has(edge.from) || expanded.ids.has(edge.to))
+          .flatMap((edge) => edge.documents),
+      ),
+    ],
     unexpandedDecisions: [
       ...new Set([
         ...expanded.pending,
@@ -604,7 +723,7 @@ function queryGraph(project: Project, options: Options) {
       (entry) => expanded.ids.has(entry.from) && expanded.ids.has(entry.to),
     ),
     pendingDocuments: pendingDocuments(project, graph),
-    warnings: [...project.warnings, ...graph.warnings],
+    warnings: contextWarnings(project, graph, relevantDocuments),
   };
 }
 
@@ -685,9 +804,8 @@ function suppliedCitation(
   return true;
 }
 
-async function ask(project: Project, runtime: Options) {
-  const context = queryGraph(project, runtime);
-  const documents = [
+function contextDocuments(context: ReturnType<typeof queryGraph>) {
+  return [
     ...new Set([
       ...context.decisions.map((decision) => decision.document),
       ...context.relationships.flatMap((relationship) =>
@@ -696,6 +814,64 @@ async function ask(project: Project, runtime: Options) {
       ...context.documents.map((document) => document.id),
     ]),
   ];
+}
+
+function beginConsultation(options: {
+  project: Project;
+  runtime: Options;
+  store: KnowledgeStore;
+  documents: string[];
+  packet: ReturnType<typeof answerPacket>;
+}) {
+  const { project, runtime, store, documents, packet } = options;
+  const graph = store.graph();
+  const units = ingestionUnits(project.documents).units;
+  const changed = units.filter(
+    (unit) =>
+      graph.units[unit.id]?.version !==
+      project.documents.find((document) => document.id === unit.document)?.hash,
+  );
+  const relevant = new Set(documents);
+  const hits = rankLexically(
+    changed.map((unit) => ({ id: unit.id, title: unit.document, content: unit.text })),
+    runtime.query,
+    64,
+  );
+  const order = [
+    ...new Set([
+      ...hits.map((hit) => hit.id),
+      ...changed.filter((unit) => relevant.has(unit.document)).map((unit) => unit.id),
+      ...changed.map((unit) => unit.id),
+    ]),
+  ];
+  const byId = new Map(changed.map((unit) => [unit.id, unit]));
+  const prioritized = order.flatMap((id) => byId.get(id) ?? []);
+  const work = store.begin({
+    kind: 'ask',
+    key: digest(
+      JSON.stringify({
+        task: runtime.query,
+        sources: [...new Set(runtime.sources)].sort(),
+        snapshot: project.snapshot,
+        model: knowledgeModel,
+        automatic: 1,
+      }),
+    ),
+    resultKey: digest(JSON.stringify(packet)),
+    snapshot: project.snapshot,
+    maxCalls: runtime.maxCalls ?? 3,
+    maxInputBytes: runtime.maxInputBytes,
+    remaining: nextUnits(
+      prioritized,
+      prioritized.map((unit) => unit.id),
+    ).map((unit) => unit.id),
+  });
+  return work;
+}
+
+async function ask(project: Project, runtime: Options) {
+  let context = queryGraph(project, runtime);
+  let documents = contextDocuments(context);
   if (!documents.length)
     return {
       ...context,
@@ -705,7 +881,22 @@ async function ask(project: Project, runtime: Options) {
       guidance:
         'Use project terminology, inspect sources, or select a document with --source; do not assume no decision exists.',
     };
-  const packet = answerPacket(project, runtime, context, documents);
+  let packet = answerPacket(project, runtime, context, documents);
+  using store = new KnowledgeStore(project.root);
+  const work = beginConsultation({ project, runtime, store, documents, packet });
+  resumeFailed(work, store, runtime.retryFailed);
+  if (work.status !== 'done' && work.phase === 'update') await update(project, runtime, work);
+  context = queryGraph(project, runtime);
+  documents = contextDocuments(context);
+  packet = answerPacket(project, runtime, context, documents);
+  if (work.status === 'failed' || work.phase === 'update')
+    return {
+      ...context,
+      status: work.status,
+      answer: null,
+      omittedUnits: packet.omittedUnits,
+      work: workSummary(work),
+    };
   if (
     !packet.documents.length ||
     Buffer.byteLength(JSON.stringify(packet)) > runtime.maxContextBytes
@@ -717,23 +908,6 @@ async function ask(project: Project, runtime: Options) {
       answer: null,
       omittedUnits: packet.omittedUnits,
       warnings: [...context.warnings, ...packet.warnings],
-    };
-  using store = new KnowledgeStore(project.root);
-  const work = store.begin({
-    kind: 'ask',
-    key: digest(JSON.stringify({ packet, model: knowledgeModel })),
-    snapshot: project.snapshot,
-    maxCalls: runtime.maxCalls,
-    maxInputBytes: runtime.maxInputBytes,
-    remaining: [],
-  });
-  resumeFailed(work, store, runtime.retryFailed);
-  if (work.status === 'failed')
-    return {
-      ...context,
-      status: 'failed',
-      answer: null,
-      omittedUnits: packet.omittedUnits,
       work: workSummary(work),
     };
   const value =
@@ -762,6 +936,7 @@ async function ask(project: Project, runtime: Options) {
   const answer = answerSchema.parse(value);
   if (work.status !== 'done') {
     work.result = answer;
+    work.resultKey = digest(JSON.stringify(packet));
     work.status = 'done';
     store.save(work);
   }
@@ -798,14 +973,30 @@ async function ask(project: Project, runtime: Options) {
     ],
     pendingDocuments: context.pendingDocuments,
     unexpandedDecisions: context.unexpandedDecisions,
+    unavailableDocuments: context.unavailableDocuments,
     work: workSummary(work),
   };
 }
 
 export async function knowledgeCommand(args: string[]) {
   const options = optionsFor(args);
+  if (
+    (options.repair.length &&
+      (options.command !== 'update' ||
+        !options.repairReason ||
+        options.repairReason.length > 2048)) ||
+    (!options.repair.length && options.repairReason)
+  )
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Use update --repair <document> --reason <correction up to 2048 characters>.',
+    });
   const project = loadProject(options.root);
-  if (options.sources.some((id) => !project.documents.some((document) => document.id === id)))
+  if (
+    [...options.sources, ...options.repair].some(
+      (id) => !project.documents.some((document) => document.id === id),
+    )
+  )
     throw new HivexError({
       code: 'SOURCE_NOT_FOUND',
       message: 'An explicit source is not in the selected project documents',

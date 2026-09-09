@@ -97,10 +97,18 @@ function responseForPrompt(prompt) {
         .flatMap((part) => part.relationships)
         .map((relationship) => ({
           ...relationship,
-          to: relationship.to.startsWith('@existing:')
-            ? (packet.existing?.find((decision) => decision.document === relationship.to.slice(10))
-                ?.id ?? relationship.to)
-            : relationship.to,
+          ...Object.fromEntries(
+            ['from', 'to'].map((key) => {
+              const endpoint = relationship[key];
+              return [
+                key,
+                endpoint.startsWith('@existing:')
+                  ? (packet.existing?.find((decision) => decision.document === endpoint.slice(10))
+                      ?.id ?? endpoint)
+                  : endpoint,
+              ];
+            }),
+          ),
         }));
       return {
         decisions: parts.flatMap((part) => part.decisions),
