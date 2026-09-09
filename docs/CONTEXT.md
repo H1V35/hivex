@@ -1,26 +1,50 @@
 # Hivex domain language
 
-- **Project** — the body of versioned knowledge adopted by a team and its agents.
-- **Snapshot** — an immutable view of a project's sources and their selection rules.
-- **Document** — authored Markdown that carries project knowledge and has a versioned history.
-- **Source** — a declared document or section selected as knowledge input, retaining its document's provenance. An index is not a source.
-- **Section** — a named part of an authored document, including its subordinate content. It shares the document’s provenance; selecting it does not establish independent authority.
-- **Collection** — an explicitly declared scope for finding related sources. It expresses relevance, not permission or revocation.
-- **Block** — a complete structural fragment of a source, such as a paragraph, list, table or code example.
-- **Authority declaration** — what a source explicitly says about its status or replacement. A declaration alone does not establish which rule applies to a particular case.
-- **Indexed relation** — a derived interpretation connecting an affected rule to a replacement or amendment. Its provenance allows inspection; it can be incomplete or stale and is not itself authority.
-- **Currentness** — whether a rule applies in the relevant context after considering scope, conditions, exceptions and subsequent decisions.
-- **Citation** — the identity and location of evidence within a fixed snapshot.
-- **Claim** — an assertion about a project, including its conditions, exceptions and supporting evidence. A claim can be proposed or incorrect.
-- **Candidate** — a derived interpretation awaiting admission. Producing or structurally validating it does not make it authority.
-- **Graph snapshot** — an immutable projection of claims and relationships bound to a complete source cohort and its processing evidence.
-- **Admission** — the recorded acceptance of a graph projection after the required source, structural and semantic checks. It does not replace the authority of authored decisions.
-- **Source-fidelity review** — an assessment of whether an extraction preserves a complete source's meaning, with explicit omissions and context limits. It is one prerequisite of admission, not a global consistency verdict.
-- **Review cohort** — the source-fidelity work for one exact graph and processing contract, with retained results and explicit unfinished or unresolved claims.
-- **Source comparison** — an assessment of relationships between the claims of two complete supplied sources, retaining scope, conditions and evidence from both sides.
-- **Comparison cohort** — the retained assessment work for a deterministic selection of source pairs in one exact graph, with explicit pending, failed and unresolved outcomes.
-- **Ingestion plan** — a complete declared source cohort bound to its snapshot and processing inputs. It measures and identifies prospective work without executing or admitting it.
-- **Ingestion store** — bounded local state for one frozen cohort, its claimed sources, attempt reports and unaccepted candidates. It is not documentary authority or an admitted graph.
-- **Unresolved invocation** — work whose durable state cannot establish a retained final result. Neither a timeout nor a missing process establishes that no model request occurred.
-- **Grounding** — checking an implementation against applicable documented decisions, using evidence from both the implementation and the documents.
-- **Continuation** — a position from which reading the same source and snapshot can resume without silently losing content.
+Hivex supplies project knowledge to the agents responsible for implementation and review. Markdown
+records that knowledge; the graph helps locate and interpret it without becoming authority itself.
+
+## Language
+
+**Document**: A selected Markdown file, wherever its project, package or module keeps it.
+
+**Document version**: The exact contents of a document at a point in the work. A working copy is a
+version even when it has not been committed; its existence does not establish approval.
+
+**Snapshot**: The selected document versions considered together for a particular work item.
+
+**Decision**: A meaningful project choice or constraint together with its scope, conditions,
+exceptions and reasons. Proposals and historical decisions retain their declared state.
+
+**Relationship**: An evidenced connection between decisions, such as a dependency, exception or
+replacement. It may cross documents that have no authored link; its interpretation can be uncertain.
+
+**Evidence**: An identifiable passage of a particular document or implementation version that a
+reader can inspect. A model's paraphrase is not the passage itself.
+
+**Knowledge graph**: Derived decisions and relationships, with supporting definitions and lessons, that help an agent recover project context.
+It may be incomplete or uncertain without making every usable part unavailable.
+
+**Applicability**: Whether a decision governs the case being considered after its conditions,
+exceptions and replacements have been taken into account.
+
+**Freshness**: Whether derived knowledge still corresponds to the selected document versions.
+Freshness does not establish applicability or correctness by itself.
+
+**Knowledge update**: Processing a selected set of document versions into decisions and relationships,
+followed by one bounded check of that set and its affected relationships.
+
+**Knowledge check**: Examination of an update against its sources to identify omissions or incorrect
+interpretations. It reports issues and uncertainty, not a certificate of global completeness.
+
+**Context**: The decisions, related evidence and remaining uncertainties relevant to a particular task.
+
+**Finding**: A possible conflict between an implementation and project knowledge. The principal
+reviewer verifies it and retains responsibility for the implementation review.
+
+**Work**: One requested update, consultation or review, including its phases and any resumed work.
+
+**Work budget**: The limits shared by every phase and attempt of one work item. Resuming does not
+reset its consumption, and unknown consumption remains visible.
+
+**Recovery**: Incorporating useful historical decisions, reasons and lessons into their appropriate
+Markdown authorities while identifying obsolete, duplicate or purely operational material.
