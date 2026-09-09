@@ -44,7 +44,11 @@
   "files": [
     "src/**/*.ts",
     "!src/**/*.test.ts",
-    "docs/",
+    "docs/README.md",
+    "docs/CONTEXT.md",
+    "docs/engineering.md",
+    "docs/adr/0003-independent-bun-installation.md",
+    "docs/adr/0010-practical-knowledge-assistance.md",
     "skills/",
     "README.md",
     "LICENSE"
