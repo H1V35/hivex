@@ -416,11 +416,13 @@ complete reviews and comparisons. See the [snapshot decision](docs/adr/0005-sour
 bun run --bun typecheck
 bun run --bun lint
 bun run --bun format:check
-bun test ./src
+bun run test
 ```
 
 The integration tests exercise the public CLI against temporary Git repositories. The implementation
 uses mdast/GFM/frontmatter positions, YAML metadata, GitHub-style heading anchors and Bun SQLite FTS5.
+The test script allows 15 seconds per test for multi-step CLI workflows; explicit test and model
+invocation deadlines remain separate.
 Project smoke tests also query every committed collection and validate the referenced documents in
 each configured relation index through the CLI, including header-only indexes.
 Run the same checks after dependency changes. Hivex owns this suite independently of the checks
