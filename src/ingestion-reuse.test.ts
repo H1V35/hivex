@@ -575,7 +575,7 @@ test('rejects altered or misplaced extraction diagnostics despite recomputed sto
   });
 }, 15000);
 
-test.each([16384, 16386, 1048576])(
+test.each([32768, 32770, 1048576])(
   'bounds rejected UTF-8 extraction text without losing usage (%i bytes)',
   async (bytes) => {
     await nativeProject((paths) => {
@@ -589,7 +589,7 @@ test.each([16384, 16386, 1048576])(
         unresolved: 0,
         attempts: { recorded: 3, unresolved: 0, unknownUsage: 0, knownTotalTokens: 450 },
       });
-      const shown = ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']);
+      const shown = ingest(paths, ['--show', 'first.md', '--max-bytes', '131072']);
       expect(shown.stderr).toBe('');
       const result: ReturnType<typeof IngestionStore.result> = JSON.parse(shown.stdout);
       expect(result.state).toBe('failed');
@@ -597,13 +597,13 @@ test.each([16384, 16386, 1048576])(
       for (const report of result.result?.attempts ?? []) {
         expect(report.usage?.totalTokens).toBe(150);
         expect(report.rejectedOutput).toEqual({
-          text: bytes === 16384 ? text : null,
+          text: bytes === 32768 ? text : null,
           hash: hash(text),
           bytes,
-          omittedReason: bytes === 16384 ? null : 'retention-limit',
+          omittedReason: bytes === 32768 ? null : 'retention-limit',
         });
       }
-      const exported = ingest(paths, ['--export', '--max-bytes', '131072']);
+      const exported = ingest(paths, ['--export', '--max-bytes', '262144']);
       expect(exported.stderr).toBe('');
       expect(JSON.parse(exported.stdout).units[0].result).toEqual(result.result);
       expect(readFileSync(paths.calls, 'utf8')).toBe('called\n'.repeat(3));

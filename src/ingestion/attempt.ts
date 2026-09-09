@@ -6,7 +6,7 @@ import { candidateSchema, extractionSchema } from './claims.ts';
 import { validateCandidateEvidence } from './evidence.ts';
 import type { Revision } from './history.ts';
 
-const maximumRejectedOutputBytes = 16 * 1024;
+const maximumRejectedOutputBytes = 32 * 1024;
 export const rejectedExtractionOutputSchema = z
   .strictObject({
     text: z.string().max(maximumRejectedOutputBytes).nullable(),
