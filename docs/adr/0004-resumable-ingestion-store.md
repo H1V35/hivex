@@ -49,6 +49,13 @@ round, including earlier invocations in that round, with at most three attempts.
 and reserve result capacity before requesting the model. Retry uses the original frozen source;
 only an invalid extraction supplies correction feedback, not a failure to start or finish a turn.
 
+Under [Hivex #39](https://github.com/H1V35/hivex/issues/39), an invalid extraction retains its
+rejected text in the existing attempt, capped at 16 KiB of UTF-8 per attempt. Record SHA-256 and
+byte count; above that limit retain those metadata with an explicit retention-limit omission.
+These untrusted diagnostics survive checkpoints, safe retries, export and reuse. Readers validate
+their size/hash and reject diagnostics on a successful attempt; older receipts may omit the field.
+No prompt, retry policy, existing storage limit or invocation accounting changes with retention.
+
 ## Reuse compatible extraction after a snapshot changes
 
 `ingest --export` is a read-only complete export of the frozen plan, every source row and its retained

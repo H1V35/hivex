@@ -240,6 +240,12 @@ valid JSON still yield `status: "candidate"` and `accepted: false`. An exhausted
 operation returns `status: "failed"`, preserves attempt evidence and exits with code 1. Input errors
 fail before a model call. Save the response as verification evidence; it is not authored authority.
 
+An `invalid-output` attempt retains untrusted `rejectedOutput` diagnostics: the exact text up to
+16 KiB of UTF-8, its SHA-256 hash and byte count. Larger text is omitted with `text: null` and
+`omittedReason: "retention-limit"`; its hash, size, outcome and usage remain. Inspection, export
+and reuse validate available diagnostics, which survive a safe retry in the same attempt history.
+Older receipts without this field remain readable. Diagnostics never become candidate evidence.
+
 The processor checks its configured ChatGPT endpoint, account, model/effort and disabled capabilities,
 and records the admitted values and their configuration origins. Native subprocesses receive only
 essential home/path/locale/temp and existing sandbox-marker environment fields; unrelated credentials

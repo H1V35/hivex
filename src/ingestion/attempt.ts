@@ -1,9 +1,43 @@
+import { z } from 'zod';
 import { HivexError } from '../errors.ts';
 import { hash, type Source } from '../sources/markdown.ts';
 import { invokeModel } from '../model/invoke.ts';
 import { candidateSchema, extractionSchema } from './claims.ts';
 import { validateCandidateEvidence } from './evidence.ts';
 import type { Revision } from './history.ts';
+
+const maximumRejectedOutputBytes = 16 * 1024;
+export const rejectedExtractionOutputSchema = z
+  .strictObject({
+    text: z.string().max(maximumRejectedOutputBytes).nullable(),
+    hash: z.string().regex(/^[a-f0-9]{64}$/),
+    bytes: z.number().int().nonnegative(),
+    omittedReason: z.literal('retention-limit').nullable(),
+  })
+  .refine((output) => {
+    if (output.text === null)
+      return (
+        output.bytes > maximumRejectedOutputBytes && output.omittedReason === 'retention-limit'
+      );
+    return (
+      output.omittedReason === null &&
+      output.bytes <= maximumRejectedOutputBytes &&
+      Buffer.byteLength(output.text) === output.bytes &&
+      hash(output.text) === output.hash
+    );
+  }, 'Rejected extraction output is altered or exceeds its retention budget');
+
+function retainRejectedOutput(value: unknown) {
+  if (typeof value !== 'string') return undefined;
+  const bytes = Buffer.byteLength(value);
+  const fits = bytes <= maximumRejectedOutputBytes;
+  return {
+    text: fits ? value : null,
+    hash: hash(value),
+    bytes,
+    omittedReason: fits ? null : ('retention-limit' as const),
+  };
+}
 
 type ModelReport = Awaited<ReturnType<typeof invokeModel>>['report'];
 export type ExtractionAttempt = {
@@ -13,6 +47,7 @@ export type ExtractionAttempt = {
   usage: ModelReport['usage'];
   deadlineMilliseconds: number;
   promptHash: string;
+  rejectedOutput?: z.infer<typeof rejectedExtractionOutputSchema>;
 };
 
 export async function extractAttempt(options: {
@@ -59,6 +94,7 @@ export async function extractAttempt(options: {
       ...response.report,
       ...base,
       outcome: 'invalid-output',
+      rejectedOutput: retainRejectedOutput(response.value),
       code: error instanceof HivexError ? error.code : 'INVALID_MODEL_OUTPUT',
       issues:
         error instanceof HivexError

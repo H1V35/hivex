@@ -8,7 +8,7 @@ import { hash } from '../sources/markdown.ts';
 import type { createPlan } from './plan.ts';
 import type { extractCommand, ExtractionCheckpoint } from './command.ts';
 import { usageSchema } from '../model/transcript.ts';
-import type { ExtractionAttempt } from './attempt.ts';
+import { rejectedExtractionOutputSchema, type ExtractionAttempt } from './attempt.ts';
 import { candidateSchema } from './claims.ts';
 import {
   maximumExtractionAttempts,
@@ -35,13 +35,19 @@ const associationSchema = z.strictObject({
   snapshot: snapshotSchema,
   originalHash: digest,
 });
-const reportSchema = z.looseObject({
-  outcome: z.string().max(256),
-  code: z.string().max(128).optional(),
-  usage: usageSchema.nullable(),
-  deadlineMilliseconds: z.number().int().min(100).max(1_800_000),
-  promptHash: z.string().regex(/^[a-f0-9]{64}$/),
-});
+const reportSchema = z
+  .looseObject({
+    outcome: z.string().max(256),
+    code: z.string().max(128).optional(),
+    usage: usageSchema.nullable(),
+    deadlineMilliseconds: z.number().int().min(100).max(1_800_000),
+    promptHash: z.string().regex(/^[a-f0-9]{64}$/),
+    rejectedOutput: rejectedExtractionOutputSchema.optional(),
+  })
+  .refine(
+    (report) => report.rejectedOutput === undefined || report.outcome === 'invalid-output',
+    'Rejected extraction output is invalid or attached to a successful invocation',
+  );
 const attemptStateSchema = z.object({
   reports: z.array(reportSchema).max(maximumExtractionAttempts),
   revisions: revisionsSchema.optional(),
@@ -388,6 +394,7 @@ function boundedReport(report: ExtractionAttempt, original?: string) {
     usage: report.usage,
     promptHash: report.promptHash,
     deadlineMilliseconds: report.deadlineMilliseconds,
+    ...(report.rejectedOutput === undefined ? {} : { rejectedOutput: report.rejectedOutput }),
     omittedDetails: { originalBytes: bytes, reportHash: hash(value) },
   };
 }
