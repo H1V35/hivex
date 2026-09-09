@@ -27,6 +27,7 @@ import {
   extractionSchema,
   citationSchema,
   sourceEvidence,
+  suppliedCitation,
   warningScope,
   type Graph,
 } from './knowledge-model.ts';
@@ -849,18 +850,6 @@ function answerPacket(
   return packet;
 }
 
-function suppliedCitation(
-  entry: z.infer<typeof citationSchema>,
-  packet: ReturnType<typeof answerPacket>,
-) {
-  const document = packet.documents.find((item) => item.id === entry.document);
-  if (!document || entry.lineEnd < entry.lineStart) return false;
-  const lines = new Set(document.lines.map(([number]) => Number(number)));
-  for (let line = entry.lineStart; line <= entry.lineEnd; line += 1)
-    if (!lines.has(line)) return false;
-  return true;
-}
-
 function contextDocuments(context: ReturnType<typeof queryGraph>) {
   return [
     ...new Set([
@@ -1024,7 +1013,9 @@ function finishAnswer(options: {
     store.save(work);
   }
   const evidence = answer.evidence
-    .map((entry) => (suppliedCitation(entry, packet) ? sourceEvidence(entry, project) : null))
+    .map((entry) =>
+      suppliedCitation(entry, packet.documents) ? sourceEvidence(entry, project) : null,
+    )
     .filter((entry) => entry !== null);
   const invalidReferences = evidence.length !== answer.evidence.length;
   const unreviewed =

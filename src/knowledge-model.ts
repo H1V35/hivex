@@ -3,13 +3,26 @@ import { z } from 'zod';
 import { rawMarkdownLines, sourceRange } from './markdown.ts';
 import type { Document, Project } from './documents.ts';
 
-export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+export const digest = (value: string | Uint8Array) =>
+  createHash('sha256').update(value).digest('hex');
 const explanation = z.string().min(1).max(2048);
 export const citationSchema = z.object({
   document: z.string().min(1),
   lineStart: z.number().int().positive(),
   lineEnd: z.number().int().positive(),
 });
+export type SuppliedDocument = { id: string; lines: (string | number)[][] };
+export function suppliedCitation(
+  entry: z.infer<typeof citationSchema>,
+  documents: SuppliedDocument[],
+) {
+  const document = documents.find((item) => item.id === entry.document);
+  if (!document || entry.lineEnd < entry.lineStart) return false;
+  const lines = new Set(document.lines.map(([number]) => Number(number)));
+  for (let line = entry.lineStart; line <= entry.lineEnd; line += 1)
+    if (!lines.has(line)) return false;
+  return true;
+}
 export const decisionSchema = z.object({
   id: z.string().min(1),
   document: z.string().min(1),

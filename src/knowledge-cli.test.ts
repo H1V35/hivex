@@ -1189,7 +1189,7 @@ test('review shares maintenance budget, cites current code and documents, and de
     });
     writeFileSync(
       join(root, 'privacy.md'),
-      '# Access\n\nPrivate data must be purged before revocation completes.\n',
+      '\uFEFF# Access\n\nRevoking access immediately removes cached private data.\n',
     );
     expect(invoke(root, ['review', '--check', 'report.json']).value.documentsChanged).toBe(true);
   });
@@ -1286,7 +1286,7 @@ test('review binds deleted and untracked code and preserves an omitted resumed c
       }),
     ]);
     writeFileSync(join(root, 'report.json'), JSON.stringify(final.value));
-    writeFileSync(join(root, 'new cache.ts'), 'export const purgeOnRevocation = true;\n');
+    writeFileSync(join(root, 'new cache.ts'), '\uFEFFexport const purgeOnRevocation = false;\n');
     expect(invoke(root, ['review', '--check', 'report.json']).value.implementationChanged).toBe(
       true,
     );

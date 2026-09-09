@@ -56,7 +56,7 @@ function version(bytes: Buffer, label: string, warnings: string[]): Version | nu
     return null;
   }
   return {
-    version: digest(content),
+    version: digest(bytes),
     lines: rawMarkdownLines(content).map((line, index) => [index + 1, lineContent(line)]),
   };
 }

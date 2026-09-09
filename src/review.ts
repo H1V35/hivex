@@ -4,7 +4,12 @@ import { parseArgs } from 'node:util';
 import { z } from 'zod';
 import { loadProject, type Project } from './documents.ts';
 import { captureImplementation, type Implementation } from './implementation.ts';
-import { citationSchema, sourceEvidence } from './knowledge-model.ts';
+import {
+  citationSchema,
+  sourceEvidence,
+  suppliedCitation,
+  type SuppliedDocument,
+} from './knowledge-model.ts';
 import { HivexError } from './errors.ts';
 
 const codeCitation = z.object({
@@ -29,18 +34,6 @@ export const reviewSchema = z.object({
 export const reviewInstructions =
   'Assist the principal reviewer with the task and implementation diff. Discover possible conflicts without requiring suspicions. Explain how documentary rules, direct/indirect dependencies, conditions and exceptions apply. Findings may identify a conflict, a valid exception, or uncertainty; do not turn missing context into approval or reject the entire change. Cite the supplied Markdown ranges and before/after code lines supporting each finding. Distinguish a rule violated by the change from behavior merely seen in context. The reviewer must verify each finding. This is knowledge assistance, not general code review, lint, tests or implementation approval.';
 
-type SuppliedDocument = { id: string; lines: (string | number)[][] };
-function documentWasSupplied(
-  citation: z.infer<typeof citationSchema>,
-  documents: SuppliedDocument[],
-) {
-  const document = documents.find((entry) => entry.id === citation.document);
-  if (!document || citation.lineEnd < citation.lineStart) return false;
-  const numbers = new Set(document.lines.map(([number]) => Number(number)));
-  for (let line = citation.lineStart; line <= citation.lineEnd; line++)
-    if (!numbers.has(line)) return false;
-  return true;
-}
 function codeEvidence(citation: z.infer<typeof codeCitation>, implementation: Implementation) {
   const file = implementation.files.find((entry) => entry.path === citation.path)?.[citation.side];
   if (!file || citation.lineEnd < citation.lineStart || citation.lineEnd > file.lines.length)
@@ -61,7 +54,7 @@ export function materializeReview(
   const findings = response.findings.map((finding) => {
     const documents = finding.documents
       .map((citation) =>
-        documentWasSupplied(citation, supplied) ? sourceEvidence(citation, project) : null,
+        suppliedCitation(citation, supplied) ? sourceEvidence(citation, project) : null,
       )
       .filter((entry) => entry !== null);
     const code = finding.code

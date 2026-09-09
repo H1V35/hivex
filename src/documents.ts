@@ -53,7 +53,7 @@ const MAX_PATTERNS = 64;
 const ORIGIN = 'current-worktree';
 const PROTECTED_DIRECTORIES = new Set(['.git', '.hivex', 'node_modules']);
 const EXCLUDED_DIRECTORIES = new Set(['vendor', 'dist', 'build']);
-const decoder = new TextDecoder('utf-8', { fatal: true });
+const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 function fail(code: string, message: string, details?: Record<string, unknown>): never {
   throw new HivexError({ code, message, details });
