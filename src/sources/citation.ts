@@ -25,22 +25,65 @@ function paragraphs(content: string) {
   });
 }
 
+function withinText(paragraph: ReturnType<typeof paragraphs>[number], start: number, end: number) {
+  return paragraph.textRanges.some(
+    (range) =>
+      range?.start.offset !== undefined &&
+      range.end.offset !== undefined &&
+      start >= range.start.offset &&
+      end <= range.end.offset,
+  );
+}
+
 function joinedText(
   paragraph: ReturnType<typeof paragraphs>[number],
   text: string,
   offset: number,
 ) {
-  return text.replace(/[ \t]*\r?\n[ \t]*/g, (wrap: string, index: number) => {
+  const joins: { at: number; removed: number }[] = [];
+  let removed = 0;
+  const joined = text.replace(/[ \t]*\r?\n[ \t]*/g, (wrap: string, index: number) => {
     const from = offset + index;
-    const withinText = paragraph.textRanges.some(
-      (range) =>
-        range?.start.offset !== undefined &&
-        range.end.offset !== undefined &&
-        from >= range.start.offset &&
-        from + wrap.length <= range.end.offset,
-    );
-    return withinText && text[index + wrap.length] !== '>' ? ' ' : wrap;
+    if (!withinText(paragraph, from, from + wrap.length) || text[index + wrap.length] === '>')
+      return wrap;
+    const at = index - removed;
+    removed += wrap.length - 1;
+    joins.push({ at, removed });
+    return ' ';
   });
+  return { text: joined, joins };
+}
+
+function matchesQuote(
+  paragraph: ReturnType<typeof paragraphs>[number],
+  content: string,
+  offset: number,
+  quote: string,
+) {
+  const source = joinedText(paragraph, content, offset);
+  if (!quote.includes('\n')) return source.text.includes(quote);
+  const lastLine = quote.split('\n').length - 1;
+  const quotedParagraph = paragraphs(quote).find(
+    (item) => item.start === 0 && item.end === lastLine,
+  );
+  if (!quotedParagraph) return false;
+  const cited = joinedText(quotedParagraph, quote, 0);
+  for (
+    let match = source.text.indexOf(cited.text);
+    match >= 0;
+    match = source.text.indexOf(cited.text, match + 1)
+  ) {
+    if (
+      cited.joins.every(({ at }) => {
+        const position = match + at;
+        const removed = source.joins.findLast((join) => join.at < position)?.removed ?? 0;
+        const original = offset + position + removed;
+        return withinText(paragraph, original, original + 1);
+      })
+    )
+      return true;
+  }
+  return false;
 }
 
 export function invalidCitationIndexes(
@@ -63,6 +106,6 @@ export function invalidCitationIndexes(
     const paragraph = parsed.find((item) => start >= item.start && end <= item.end);
     if (!paragraph) return [index];
     const offset = lines.slice(0, start).reduce((sum, line) => sum + line.length + 1, 0);
-    return joinedText(paragraph, content, offset).includes(entry.quote) ? [] : [index];
+    return matchesQuote(paragraph, content, offset, entry.quote) ? [] : [index];
   });
 }

@@ -545,7 +545,7 @@ test('checks joined documentary evidence without promoting an earlier failed rec
       response.documents = [
         {
           source: 's1',
-          quote: 'Keep records, unless exempt, for 30 days.',
+          quote: 'Keep records, unless exempt,\nfor 30 days.',
           lineStart: 4,
           lineEnd: 5,
         },

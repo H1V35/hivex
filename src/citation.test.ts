@@ -11,9 +11,14 @@ test.each([
   ['Keep **approved** records\nfor 30 days.', 'Keep **approved** records for 30 days.'],
   ['Policy uses `daily` and\n  a fixed window.', 'Policy uses `daily` and a fixed window.'],
   ['- Policy uses `daily` and\n  a fixed window.', '- Policy uses `daily` and a fixed window.'],
+  ['Keep records\nfor 30 days\nunless exempt.', 'Keep records for 30 days\nunless exempt.'],
+  ['- Keep records\n  for 30 days.', 'Keep records\nfor 30 days.'],
+  ['Keep records for 30 days.', 'Keep records\nfor 30 days.'],
+  ['Keep records \r\n  for 30 days.', 'Keep records\r\nfor 30 days.'],
+  ['Opening\n  text. The token is `one two`; plain one two follows.', 'one\ntwo'],
 ])('matches a joined soft wrap in one paragraph: %j', (content, quote) => {
   const source = { content, section: null };
-  const entries = [{ quote, lineStart: 1, lineEnd: 2 }];
+  const entries = [{ quote, lineStart: 1, lineEnd: content.split('\n').length }];
   expect(invalidCitationIndexes(source, entries)).toEqual([]);
   expect(source.content).toBe(content);
   expect(entries[0]?.quote).toBe(quote);
@@ -43,6 +48,15 @@ test.each([
   ['---\nrule: Keep records\n  for 30 days.\n---', 'rule: Keep records for 30 days.'],
   ['[records](https://example.invalid\n "policy")', '[records](https://example.invalid "policy")'],
   ['> Keep records\n> for 30 days.', 'Keep records > for 30 days.'],
+  ['The token is `one two`.', 'one\ntwo'],
+  ['Opening\n  text. The token is `one two`.', 'one\ntwo'],
+  ['Keep records  for 30 days.', 'Keep records\n\nfor 30 days.'],
+  ['Keep records for 30 days.', 'Keep records  \nfor 30 days.'],
+  ['Keep records\\ for 30 days.', 'Keep records\\\nfor 30 days.'],
+  ['Use - policy - exception.', 'Use\n- policy\n- exception.'],
+  ['- Keep records - unless exempt.', '- Keep records\n- unless exempt.'],
+  ['--- rule: Keep records ---', '---\nrule: Keep records\n---'],
+  ['| Rule | | --- | | Keep records |', '| Rule |\n| --- |\n| Keep records |'],
 ])('does not normalize protected syntax or changed evidence: %j', (content, quote) => {
   const source = { content, section: null };
   const lineEnd = content.split('\n').length;

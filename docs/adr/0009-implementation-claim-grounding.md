@@ -50,7 +50,9 @@ do not prove that the model interpreted a valid quote correctly.
 The shared documentary citation check tries the original literal match first. Its conservative
 Markdown fallback may join soft line wraps and continuation indentation only within one parsed
 paragraph, including a single list item and the original section ranges. It preserves inline spacing
-and Markdown tokens; code, HTML, tables, frontmatter and hard breaks remain strict. Code citations
+and allows partial joining or changed continuation indentation on either side. Source and quote must
+each respect paragraph boundaries; a converted quote wrap must map to source text, never code.
+Markdown tokens, code, HTML, tables, frontmatter and hard breaks remain strict. Code citations
 always use literal matching. This comparison never rewrites quotes, source bytes, hashes or receipts,
 and never promotes a retained failed result. Prompts and schemas remain unchanged.
 
