@@ -7,6 +7,9 @@ records that knowledge; the graph helps locate and interpret it without becoming
 
 **Document**: A selected Markdown file, wherever its project, package or module keeps it.
 
+**Ingestion unit**: A bounded fragment of a document with its original line range. It permits
+processing and resumption in rounds without becoming a separate documentary authority.
+
 **Document version**: The exact contents of a document at a point in the work. A working copy is a
 version even when it has not been committed; its existence does not establish approval.
 
@@ -35,6 +38,9 @@ followed by one bounded check of that set and its affected relationships.
 
 **Knowledge check**: Examination of an update against its sources to identify omissions or incorrect
 interpretations. It reports issues and uncertainty, not a certificate of global completeness.
+
+**Interpretation repair**: Replacing a wrong derived interpretation by comparing it with unchanged
+Markdown. It preserves source authority and does not resolve a genuine policy conflict by itself.
 
 **Context**: The decisions, related evidence and remaining uncertainties relevant to a particular task.
 

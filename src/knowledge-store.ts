@@ -43,8 +43,14 @@ const workSchema = z.object({
   inputBytes: z.number().int().nonnegative(),
   maxInputBytes: z.number().int().positive(),
   totalTokens: z.number().int().nonnegative(),
-  status: z.enum(['pending', 'running', 'budget-exhausted', 'failed', 'done']),
+  status: z.enum(['pending', 'running', 'budget-exhausted', 'context-limit', 'failed', 'done']),
   remaining: z.array(z.string()),
+  plannedUnits: z.array(z.string()).default([]),
+  phase: z.enum(['update', 'ask']).default('update'),
+  contextLimit: z
+    .object({ documents: z.array(z.string()), requiredBytes: z.number(), maxBytes: z.number() })
+    .optional(),
+  resultKey: z.string().optional(),
   cacheHits: z.number().int().nonnegative().default(0),
   ownerPid: processIdSchema.optional(),
   nativeProcessId: processIdSchema.optional(),
@@ -243,7 +249,9 @@ export class KnowledgeStore implements Disposable {
     maxCalls?: number;
     maxInputBytes?: number;
     remaining: string[];
+    resultKey?: string;
   }): Work {
+    const defaultMaxCalls = options.kind === 'ask' ? 3 : 2;
     return this.db
       .transaction(() => {
         const row = this.db
@@ -253,7 +261,11 @@ export class KnowledgeStore implements Disposable {
           >('SELECT data FROM work WHERE kind=? AND key=? ORDER BY rowid DESC LIMIT 1')
           .get(options.kind, options.key);
         const previous = row ? workSchema.parse(JSON.parse(row.data)) : null;
-        if (previous && (previous.status !== 'done' || options.remaining.length === 0)) {
+        const reusable =
+          options.kind === 'ask'
+            ? previous?.resultKey === options.resultKey
+            : options.remaining.length === 0;
+        if (previous && (previous.status !== 'done' || reusable)) {
           const work = previous;
           if (work.status === 'done') return work;
           if (work.status === 'running')
@@ -269,8 +281,10 @@ export class KnowledgeStore implements Disposable {
         const work: Work = {
           id: randomUUID(),
           ...options,
-          maxCalls: options.maxCalls ?? 2,
+          maxCalls: options.maxCalls ?? defaultMaxCalls,
           maxInputBytes: options.maxInputBytes ?? 131072,
+          plannedUnits: [...options.remaining],
+          phase: 'update',
           calls: 0,
           cacheHits: 0,
           inputBytes: 0,

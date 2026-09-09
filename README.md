@@ -10,9 +10,9 @@ Model invocation is localized for future configuration; multiple providers are n
 
 ## Current delivery
 
-This release-in-development supplies explicit initial updates and task consultation (#47).
-Automatic incremental maintenance (#48), task/diff review assistance (#19), and publication/adoption
-(#21) are subsequent deliveries. It is not complete Compi adoption or legacy retirement.
+This release-in-development supplies initial updates and task consultation (#47), plus automatic
+incremental maintenance and interpretation repair (#48). Task/diff review assistance (#19) and
+publication/adoption (#21) are subsequent deliveries. It is not complete Compi adoption or legacy retirement.
 
 No installed command approves an implementation. The principal reviewer verifies findings, tests and
 the actual source evidence. See the [approved product decision](docs/adr/0010-practical-knowledge-assistance.md).
@@ -69,13 +69,23 @@ Search and neighbor traversal are deterministic and make no model calls. Neighbo
 indirect connections within `--limit` and lists decisions it could not expand. Stale knowledge is not
 presented as current evidence. `status` reports available knowledge and documents requiring attention.
 
-`ask` makes a bounded Luna/max consultation over the selected decisions and original Markdown.
+`ask` first detects added, changed and removed Markdown. It updates at most one bounded batch,
+prioritizing matching fragments, relevant documents and their known dependencies, then asks Luna/max over
+the available decisions and original Markdown. Its default budget is three calls for the complete
+update/check/answer operation. If the budget ends before the answer, repeat the same task with an
+authorized higher total: the work, progress and consumption are retained. An unchanged task reuses
+its answer. Use explicit `update` to advance remaining corpus batches; pending coverage stays visible.
+
+Changed sources bring their known incoming and outgoing neighbors into comparison, including
+relationships supported by a third document. Deleted sources are removed from pending ingestion;
+`unavailableDocuments` identifies dependencies that can no longer be verified. Source-local check
+findings remain scoped, so unrelated consultations can use their valid knowledge.
 It explains applicability and uncertainty. The evidence text in the result is read from the cited
 source ranges, not copied from a model-generated quotation. Large sources are supplied as relevant units within the context limit; `omittedUnits` reports
 unread portions so a partial answer is not mistaken for complete coverage. Identical retained consultations are
 reused. A partial result remains useful within its declared limits.
 
-## Update deliberately
+## Update and repair knowledge
 
 ```sh
 bun hivex update --root /path/to/project --max-calls 2
@@ -95,7 +105,18 @@ reconstructing earlier knowledge. Changed context invalidates that cache entry. 
 matches and recent decisions; `relationshipCoverage` states that this is bounded, not exhaustive. Cache hits are
 reported separately from calls and tokens; this is an optimization, not documentary authority.
 
-The default work budget is two invocation attempts and 131,072 input bytes. `--max-calls` and
+To correct derived knowledge against unchanged Markdown, use:
+
+```sh
+bun hivex update --root /path/to/project --repair docs/cache.md --reason "The source specifies seven days, not indefinite retention."
+```
+
+Repair replaces the affected unit's interpretations and revisits its relationships without editing
+Markdown. Its reason guides comparison with the source; it does not create new authority. Repeating
+the same completed repair reuses its work. A genuine unresolved documentary conflict still needs a
+decision by the responsible person.
+
+The default explicit-update work budget is two invocation attempts and 131,072 input bytes. `--max-calls` and
 `--max-input-bytes` set totals for the complete work, including extraction, check and resumption.
 A zero-call update reports pending documents without invoking the model. An exhausted work item
 retains its progress; repeating the command does not reset its counter. An authorized larger total

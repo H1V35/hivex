@@ -24,7 +24,8 @@ async function main(args: string[]) {
         },
         {
           name: 'update',
-          usage: 'update [--root <project>] [--max-calls <total>] [--max-input-bytes <total>]',
+          usage:
+            'update [--root <project>] [--max-calls <total>] [--max-input-bytes <total>] [--repair <document> --reason <correction>]',
           modelCalls:
             'One extraction and one check per batch; retained work resumes within the same budget.',
         },
@@ -43,7 +44,7 @@ async function main(args: string[]) {
           usage:
             'ask <task> [--root <project>] [--source <document>] [--max-calls <total>] [--max-input-bytes <total>] [--max-context-bytes <bytes>]',
           modelCalls:
-            'Bounded Luna/max assistance over current indexed evidence; identical retained answers are reused.',
+            'One bounded automatic update/check batch and Luna/max assistance share a total budget; identical retained answers are reused.',
         },
         {
           name: 'recover',
@@ -60,7 +61,7 @@ async function main(args: string[]) {
       modelOptions: '--codex <native-binary> --deadline-ms <100..1800000> --retry-failed',
       configuration: 'Optional hivex.json with include/exclude relative Markdown globs.',
       stage:
-        'Explicit initial updates and task context. Automatic maintenance and diff-review assistance are subsequent deliveries.',
+        'Automatic incremental updates, interpretation repair and task context. Diff-review assistance is the next delivery.',
     };
   if (args[0] === 'sources' || args[0] === 'read') return documentCommand(args);
   if (args[0] === 'recover' || args[0] === 'prune') return knowledgeMaintenance(args);
