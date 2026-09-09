@@ -642,3 +642,24 @@ test('supplies an independent source cited by a selected relationship', () => {
     );
   });
 });
+
+test('checks a retained decision when another snapshot re-extracts the same unit', () => {
+  project((root) => {
+    rmSync(join(root, 'privacy.md'));
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.decisions = [responses.extract.decisions[0]];
+    responses.extract.relationships = [];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--max-calls', '1', '--codex', binary]).value.status).toBe(
+      'budget-exhausted',
+    );
+    writeFileSync(join(root, 'note.md'), '# Note\n\nAdditional project background.\n');
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    rmSync(join(root, 'note.md'));
+    const restored = invoke(root, ['update', '--max-calls', '2', '--codex', binary]);
+    expect(restored.value.status).toBe('ready');
+    expect(invoke(root, ['status']).value.uncheckedDecisions).toEqual([]);
+  });
+});

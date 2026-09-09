@@ -141,7 +141,8 @@ export function applyExtraction(options: ExtractionOptions) {
       );
     const id = digest(JSON.stringify({ version: source.hash, ...entry }));
     ids.set(entry.id, id);
-    if (decisions.some((decision) => decision.id === id)) continue;
+    const previous = decisions.findIndex((decision) => decision.id === id);
+    if (previous >= 0) decisions.splice(previous, 1);
     decisions.push({
       ...entry,
       id,
@@ -221,7 +222,8 @@ function extractedRelationships(input: {
       )?.hash,
     }));
     const id = digest(JSON.stringify({ ...entry, evidence, from, to }));
-    if (relationships.some((relationship) => relationship.id === id)) continue;
+    const previous = relationships.findIndex((relationship) => relationship.id === id);
+    if (previous >= 0) relationships.splice(previous, 1);
     relationships.push({
       ...entry,
       evidence,
