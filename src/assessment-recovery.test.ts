@@ -4,7 +4,8 @@ import { hash } from './sources/markdown.ts';
 import { AssessmentStore, type AssessmentPlan } from './graph/assessment-store.ts';
 import { reviewContract } from './graph/review-cohort.ts';
 import { comparisonContract } from './graph/comparison-cohort.ts';
-import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
   invoke,
@@ -15,6 +16,70 @@ import {
 } from '../test/reviewed-project.ts';
 
 type Operation = 'review' | 'compare';
+
+test.each([true, false])(
+  'reauthenticates a format-3 transition only without active claims (running: %s)',
+  (running) => {
+    const directory = mkdtempSync(join(tmpdir(), 'hivex-transition-recovery-'));
+    const path = join(directory, 'comparisons.sqlite');
+    const previous: AssessmentPlan = {
+      graphHash: 'a'.repeat(64),
+      contract: {
+        nativeVersion: 'synthetic',
+        requestedPolicyHash: 'b'.repeat(64),
+        schemaHash: 'c'.repeat(64),
+      },
+      sources: [{ id: 'pair', promptHash: 'd'.repeat(64) }],
+    };
+    const plan = { ...previous, selectionHash: 'e'.repeat(64) };
+    const rows = [{ id: 'pair', state: 'pending', result: null }];
+    const archiveHash = hash(JSON.stringify({ plan: previous, rows }));
+    try {
+      {
+        using store = new AssessmentStore(path, plan, comparisonContract);
+        if (running) expect(store.claim('synthetic-active')).toBe('pair');
+      }
+      using db = new Database(path);
+      db.run('ALTER TABLE cohort ADD COLUMN transition_hash TEXT');
+      db.run('ALTER TABLE reviews ADD COLUMN previous_attempts TEXT');
+      db.run('ALTER TABLE reviews ADD COLUMN previous_attempts_hash TEXT');
+      db.run('UPDATE reviews SET previous_attempts=?, previous_attempts_hash=?', [
+        '[]',
+        hash('[]'),
+      ]);
+      db.run('UPDATE cohort SET transition_hash=?', [archiveHash]);
+      db.run('PRAGMA user_version=3');
+      const before = db.query('SELECT * FROM reviews').all();
+      const schema = db.query('SELECT sql FROM sqlite_schema ORDER BY name').all();
+      const origin = db.query('SELECT * FROM cohort').get();
+      const refresh = () =>
+        AssessmentStore.refresh(
+          { path, previous: { plan: previous, rows }, next: { plan, results: new Map() } },
+          comparisonContract,
+        );
+      if (running) {
+        expect(refresh).toThrow(expect.objectContaining({ code: 'REVIEW_UNRESOLVED' }));
+        expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 3 });
+        expect(db.query('SELECT sql FROM sqlite_schema ORDER BY name').all()).toEqual(schema);
+        expect(db.query('SELECT * FROM cohort').get()).toEqual(origin);
+      } else {
+        expect(refresh).not.toThrow();
+        expect(db.query('PRAGMA user_version').get()).toEqual({ user_version: 4 });
+        expect(db.query('SELECT transition_hash, previous_plan_hash FROM cohort').get()).toEqual({
+          transition_hash: archiveHash,
+          previous_plan_hash: hash(JSON.stringify(previous)),
+        });
+        expect(AssessmentStore.readRefreshed(path, plan, previous, comparisonContract)).toEqual(
+          rows,
+        );
+      }
+      expect(db.query('SELECT * FROM reviews').all()).toEqual(before);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
 function cohort(paths: Paths, fixture: Fixture, operation: Operation, neighbors = 1) {
   let id: string;
   let response: object;

@@ -231,6 +231,11 @@ function recordTransition(db: Database, expectedHash: string, previousPlanHash: 
   enableRecovery(db);
   const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
   if (version === 3) {
+    const running = db
+      .query<{ count: number }, []>("SELECT count(*) AS count FROM reviews WHERE state='running'")
+      .get()?.count;
+    if (running !== 0)
+      fail('REVIEW_UNRESOLVED', 'Finish all active claims before upgrading the transition receipt');
     db.run('ALTER TABLE cohort ADD COLUMN previous_plan_hash TEXT');
     db.run('PRAGMA user_version=4');
   }
