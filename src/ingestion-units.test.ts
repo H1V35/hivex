@@ -89,7 +89,11 @@ describe('ingestionUnits', () => {
     const paragraphB = paragraph('B');
     const fence = [
       '```ts',
-      ...Array.from({ length: 120 }, (_, index) => `const value${index} = ${'x'.repeat(25)};`),
+      ...Array.from({ length: 120 }, (_, index) =>
+        index === 50
+          ? '~~~\n\n# Still inside the backtick fence'
+          : `const value${index} = ${'x'.repeat(25)};`,
+      ),
       '```',
     ].join('\n');
     const text = `# First\n\n${paragraphA}\n\n${fence}\n\n# Second\n\n${paragraphB}\n`;

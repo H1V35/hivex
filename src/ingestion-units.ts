@@ -1,4 +1,5 @@
 import type { Document } from './documents.ts';
+import { rawMarkdownLines } from './markdown.ts';
 import { digest } from './knowledge-model.ts';
 
 const MAX_BYTES = 8192;
@@ -18,16 +19,21 @@ type SourceLine = {
   bytes: number;
   blank: boolean;
   heading: boolean;
-  fence: boolean;
+  fence: { marker: string; length: number; closing: boolean } | null;
 };
 type Warning = { path: string; message: string };
 
 const contentOf = (text: string) => text.replace(/(?:\r\n|\r|\n)$/, '');
-const fenceOf = (content: string) => /^\s{0,3}(?:`{3,}|~{3,})/.test(content);
+function fenceOf(content: string) {
+  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(content);
+  return match?.[1]
+    ? { marker: match[1].charAt(0), length: match[1].length, closing: !match[2]?.trim() }
+    : null;
+}
 const headingOf = (content: string) => /^\s{0,3}#{1,6}(?:\s|$)/.test(content);
 
 function sourceLines(text: string) {
-  return (text.match(/.*(?:\r\n|\n|\r|$)/g) ?? [])
+  return rawMarkdownLines(text)
     .filter((line) => line !== '')
     .map((line, index) => {
       const content = contentOf(line);
@@ -45,27 +51,32 @@ function sourceLines(text: string) {
 function blocksFor(document: Document, warnings: Warning[]) {
   const blocks: SourceLine[][] = [];
   let block: SourceLine[] = [];
-  let inFence = false;
+  let activeFence: SourceLine['fence'] = null;
   const flush = () => {
     if (block.length) blocks.push(block);
     block = [];
   };
 
   for (const line of sourceLines(document.text)) {
+    const inFence = activeFence !== null;
+    const closingFence =
+      activeFence &&
+      line.fence?.closing &&
+      line.fence.marker === activeFence.marker &&
+      line.fence.length >= activeFence.length;
+    if (closingFence) activeFence = null;
+    else if (!activeFence) activeFence = line.fence;
     if (line.bytes > MAX_BYTES) {
       flush();
       warnings.push({
         path: document.path,
         message: `Line ${line.number} is ${line.bytes} UTF-8 bytes, exceeding the ${MAX_BYTES}-byte limit; omitted as unread.`,
       });
-      inFence = inFence !== line.fence;
       continue;
     }
     if (!inFence && line.heading) flush();
-    const closingFence = inFence && line.fence;
     block.push(line);
-    inFence = inFence !== line.fence;
-    if (!inFence && (line.blank || closingFence)) flush();
+    if (!activeFence && (line.blank || closingFence)) flush();
   }
   flush();
   return blocks;

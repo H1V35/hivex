@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { rawMarkdownLines, sourceRange } from './markdown.ts';
 import type { Document, Project } from './documents.ts';
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -45,7 +46,12 @@ export const graphSchema = z.object({
   units: z.record(z.string(), z.object({ document: z.string(), version: z.string() })).default({}),
   decisions: z.array(decisionSchema.extend(provenance)),
   relationships: z.array(
-    relationshipSchema.extend({ batch: z.string(), localId: z.string(), quality }),
+    relationshipSchema.extend({
+      batch: z.string(),
+      localId: z.string(),
+      quality,
+      evidence: z.array(citationSchema.extend({ version: z.string().optional() })),
+    }),
   ),
   warnings: z.array(z.string()),
 });
@@ -66,12 +72,8 @@ export function validCitation(entry: z.infer<typeof citationSchema>, documents: 
   return (
     document !== undefined &&
     entry.lineStart <= entry.lineEnd &&
-    entry.lineEnd <= document.text.split('\n').length &&
-    document.text
-      .split('\n')
-      .slice(entry.lineStart - 1, entry.lineEnd)
-      .join('\n')
-      .trim().length > 0
+    entry.lineEnd <= rawMarkdownLines(document.text).length &&
+    sourceRange(document.text, entry.lineStart, entry.lineEnd).trim().length > 0
   );
 }
 
@@ -81,10 +83,7 @@ export function sourceEvidence(entry: z.infer<typeof citationSchema>, project: P
   return {
     ...entry,
     version: document.hash,
-    text: document.text
-      .split('\n')
-      .slice(entry.lineStart - 1, entry.lineEnd)
-      .join('\n'),
+    text: sourceRange(document.text, entry.lineStart, entry.lineEnd),
   };
 }
 
@@ -105,7 +104,7 @@ function inRanges(
   return true;
 }
 
-export function applyExtraction(options: {
+type ExtractionOptions = {
   graph: Graph;
   extraction: Extraction;
   documents: Document[];
@@ -114,7 +113,9 @@ export function applyExtraction(options: {
   existingIds?: string[];
   targetRanges?: z.infer<typeof citationSchema>[];
   contextRanges?: z.infer<typeof citationSchema>[];
-}) {
+};
+
+export function applyExtraction(options: ExtractionOptions) {
   const { graph, extraction, documents, batch } = options;
   const decisions = graph.decisions.filter((entry) => {
     const source = documents.find((document) => document.id === entry.document);
@@ -149,9 +150,47 @@ export function applyExtraction(options: {
       quality: located ? 'unchecked' : 'uncertain',
     });
   }
+  const relationships = extractedRelationships({ options, decisions, ids, warnings });
+  return {
+    version: 1 as const,
+    documents: Object.fromEntries(
+      Object.entries(graph.documents).filter(
+        ([id, version]) =>
+          !documents.some((document) => document.id === id && document.hash !== version),
+      ),
+    ),
+    units: Object.fromEntries(
+      Object.entries(graph.units).filter(
+        ([, unit]) =>
+          !documents.some(
+            (document) => document.id === unit.document && document.hash !== unit.version,
+          ),
+      ),
+    ),
+    decisions,
+    relationships,
+    warnings: [...graph.warnings, ...warnings],
+  };
+}
+
+function extractedRelationships(input: {
+  options: ExtractionOptions;
+  decisions: Graph['decisions'];
+  ids: Map<string, string>;
+  warnings: string[];
+}) {
+  const { options, decisions, ids, warnings } = input;
+  const { graph, extraction, documents, batch } = options;
   const available = new Set(decisions.map((entry) => entry.id));
   const relationships = graph.relationships.filter(
-    (entry) => available.has(entry.from) && available.has(entry.to),
+    (entry) =>
+      available.has(entry.from) &&
+      available.has(entry.to) &&
+      !entry.evidence.some((citation) =>
+        (options.contextDocuments ?? documents).some(
+          (document) => document.id === citation.document && document.hash !== citation.version,
+        ),
+      ),
   );
   const seen = new Set<string>();
   for (const entry of extraction.relationships) {
@@ -173,24 +212,26 @@ export function applyExtraction(options: {
       continue;
     }
     seen.add(entry.id);
-    const id = digest(JSON.stringify({ ...entry, from, to }));
-    relationships.push({ ...entry, id, from, to, localId: entry.id, batch, quality: 'unchecked' });
+    const evidence = entry.evidence.map((citation) => ({
+      ...citation,
+      version: (options.contextDocuments ?? documents).find(
+        (document) => document.id === citation.document,
+      )?.hash,
+    }));
+    const id = digest(JSON.stringify({ ...entry, evidence, from, to }));
+    if (relationships.some((relationship) => relationship.id === id)) continue;
+    relationships.push({
+      ...entry,
+      evidence,
+      id,
+      from,
+      to,
+      localId: entry.id,
+      batch,
+      quality: 'unchecked',
+    });
   }
-  return {
-    version: 1 as const,
-    documents: graph.documents,
-    units: Object.fromEntries(
-      Object.entries(graph.units).filter(
-        ([, unit]) =>
-          !documents.some(
-            (document) => document.id === unit.document && document.hash !== unit.version,
-          ),
-      ),
-    ),
-    decisions,
-    relationships,
-    warnings: [...graph.warnings, ...warnings],
-  };
+  return relationships;
 }
 
 export function applyCheck(graph: Graph, check: KnowledgeCheck, batch: string): Graph {

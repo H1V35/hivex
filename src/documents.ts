@@ -1,3 +1,4 @@
+import { rawMarkdownLines, lineContent } from './markdown.ts';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -45,7 +46,8 @@ type ParsedValues = {
 const DEFAULT_INCLUDE = ['**/*.md', '**/*.markdown', '**/*.mdown'];
 const DEFAULT_MAX_BYTES = 16_384;
 const MAX_OUTPUT_BYTES = 65_536;
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
+const MAX_CORPUS_BYTES = 64 * 1024 * 1024;
 const MAX_DOCUMENTS = 2_048;
 const MAX_PATTERNS = 64;
 const ORIGIN = 'current-worktree';
@@ -316,9 +318,17 @@ export function loadProject(root: string): Project {
   const candidates = collectCandidates(projectRoot, projectRoot, config, warnings);
   const selectedCandidates = selected(candidates, config);
   const parsed: ParsedDocument[] = [];
+  let sourceBytes = 0;
   for (const candidate of selectedCandidates.slice(0, MAX_DOCUMENTS)) {
     try {
-      parsed.push(parseCandidate(candidate));
+      if (sourceBytes + lstatSync(candidate.absolutePath).size > MAX_CORPUS_BYTES)
+        fail(
+          'CORPUS_LIMIT',
+          'Selected Markdown exceeds the 64 MiB memory budget; narrow include paths',
+        );
+      const document = parseCandidate(candidate);
+      sourceBytes += Buffer.byteLength(document.text);
+      parsed.push(document);
     } catch (error) {
       warnings.push(warningFor(candidate.path, error));
     }
@@ -436,26 +446,18 @@ function metadata(document: Document) {
 }
 
 function linesFor(text: string) {
-  const trailingNewline = text.endsWith('\n');
-  const lines = text.split('\n');
-  if (trailingNewline) lines.pop();
-  return { lines: lines.length ? lines : [''], trailingNewline };
+  return { lines: rawMarkdownLines(text) };
 }
 
-function boundedLines(window: {
-  lines: string[];
-  start: number;
-  end: number;
-  maxBytes: number;
-  trailingNewline: boolean;
-}) {
-  const { lines, start, end, maxBytes, trailingNewline } = window;
+function boundedLines(window: { lines: string[]; start: number; end: number; maxBytes: number }) {
+  const { lines, start, end, maxBytes } = window;
   let text = '';
+  let prefix = '';
   let lineEnd = start - 1;
   for (let line = start; line <= end; line++) {
-    const suffix = trailingNewline && line === lines.length ? '\n' : '';
-    const current = `${lines[line - 1] ?? ''}${suffix}`;
-    const next = line === start ? current : `${text}\n${current}`;
+    const raw = lines[line - 1] ?? '';
+    const current = line === lines.length ? raw : lineContent(raw);
+    const next = prefix + current;
     if (Buffer.byteLength(next) > maxBytes) {
       if (lineEnd < start)
         fail('OUTPUT_LIMIT', 'The first requested line exceeds --max-bytes', {
@@ -466,6 +468,7 @@ function boundedLines(window: {
       return { text, lineEnd };
     }
     text = next;
+    prefix += raw;
     lineEnd = line;
   }
   return { text, lineEnd };
@@ -491,7 +494,7 @@ function continuationFor(
 function readCommand(project: Project, id: string, options: CommandOptions) {
   const source = project.documents.find((document) => document.id === id);
   if (!source) fail('SOURCE_NOT_FOUND', `Markdown source was not selected: ${id}`, { id });
-  const { lines, trailingNewline } = linesFor(source.text);
+  const { lines } = linesFor(source.text);
   const start = options.from ?? 1;
   const requestedEnd = options.to ?? lines.length;
   if (start > lines.length || requestedEnd > lines.length || start > requestedEnd)
@@ -504,7 +507,6 @@ function readCommand(project: Project, id: string, options: CommandOptions) {
     start,
     end: requestedEnd,
     maxBytes: options.maxBytes,
-    trailingNewline,
   });
   const continuation = continuationFor(
     bounded.lineEnd,

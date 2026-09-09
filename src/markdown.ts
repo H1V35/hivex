@@ -84,3 +84,15 @@ export function describeMarkdown(path: string, content: string) {
     links,
   };
 }
+
+export function rawMarkdownLines(text: string): string[] {
+  const lines = (text.match(/[^\r\n]*(?:\r\n|\r|\n|$)/g) ?? []).filter((line) => line.length > 0);
+  return lines.length ? lines : [''];
+}
+
+export const lineContent = (line: string) => line.replace(/(?:\r\n|\r|\n)$/, '');
+
+export function sourceRange(text: string, from: number, to: number) {
+  const selected = rawMarkdownLines(text).slice(from - 1, to);
+  return selected.slice(0, -1).join('') + lineContent(selected.at(-1) ?? '');
+}

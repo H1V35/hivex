@@ -85,12 +85,14 @@ An update splits large Markdown into line-preserving units of at most 8 KiB, pre
 boundaries. Each round selects at most four units and 16 KiB of target text, with up to 8 KiB of
 relevant existing evidence, then performs one additional check. Original document IDs and line
 numbers survive splitting. Earlier rounds remain queryable while `pendingUnits` and `pendingDocuments`
-show unfinished coverage. A line too large to fit is explicitly reported as unread, never silently cut.
+show unfinished coverage. Sources up to 32 MiB can be split, within a 64 MiB loaded-corpus limit;
+narrow the selected paths if that limit is reached. A line too large to fit is explicitly reported as unread, never silently cut.
 
 Each extraction and check is checkpointed. Resuming continues the same work and never repeats its
 completed rounds. Successful structured model results are cached in the same store by the complete
 request, schema and model profile; an identical request can be reused without a call, even when
-reconstructing earlier knowledge. Changed context invalidates that cache entry. Cache hits are
+reconstructing earlier knowledge. Changed context invalidates that cache entry. Context discovery considers authored links, lexical
+matches and recent decisions; `relationshipCoverage` states that this is bounded, not exhaustive. Cache hits are
 reported separately from calls and tokens; this is an optimization, not documentary authority.
 
 The default work budget is two invocation attempts and 131,072 input bytes. `--max-calls` and
@@ -106,6 +108,18 @@ invocation failure and is never retried by this flag. Uncertain or pending knowl
 The single project-local `.hivex/knowledge.sqlite` stores derived knowledge and work accounting;
 no source Markdown is rewritten. Preserve it when work evidence is needed. Storage is bounded at
 64 MiB; do not delete an active store to hide unfinished calls or reset a work budget.
+
+`recover` inspects abandoned work without invoking the model or killing processes. Live owners or
+native processes remain protected. If local processes ended but remote delivery is uncertain,
+`recover --acknowledge-uncertain` records an explicit acknowledgement; original reports and unknown
+usage remain visible. Recovery itself never retries: a subsequent `--retry-failed` uses the retained
+work budget. Do not treat acknowledgement as proof that the earlier remote turn completed.
+
+`prune` releases space occupied by old completed work and cached results, retaining the graph and all
+unfinished work, attempts and budgets. It keeps the newest eight completed works and 64 cached
+results by default; `--keep-completed` and `--keep-caches` change those counts. Pruned answers can
+require a new model call when requested again. Export evidence before pruning if historical reports
+are needed; pruning is explicit, never an automatic budget reset.
 
 Native operations accept `--codex` and `--deadline-ms`; the default deadline is 30 minutes. Consultation
 context defaults to 65,536 bytes and can be bounded with `--max-context-bytes`. Limits are reported,

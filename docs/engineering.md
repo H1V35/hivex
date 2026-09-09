@@ -28,6 +28,11 @@ directly to main or force-push a shared branch. Apply review findings before acc
 review can be rerun, while an adverse finding must be resolved on its merits. Current explicit owner
 authorization governs whether the agent may merge.
 
+Independent code reviewers inherit the coordinating agent's model and reasoning effort. Do not
+substitute the cheaper knowledge model for code review. Routine implementation subtasks may use an
+explicitly authorized cheaper model; Hivex's internal knowledge extraction/checking uses the user's
+knowledge-model configuration independently of the development and code-review model.
+
 Choose verification for the affected surfaces. Code changes require typechecking, lint, formatting
 and relevant behavior tests; documentation-only changes need formatting and checks of affected
 references or declared sources. Record the exact revision and the checks actually completed. A later

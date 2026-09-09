@@ -71,6 +71,12 @@ indexing, maintenance, consultation and review costs and report actual usage and
 Deterministic reads do not require another model call, although the caller consumes context tokens.
 
 Do not automatically retry semantic disagreements or keep correcting until the model says green.
+After a crash, use `recover` to inspect retained work. It must not alter live owners or processes.
+An explicit `--acknowledge-uncertain` preserves uncertainty and cost; it does not certify a remote
+outcome or authorize an automatic retry. Resume only the intended work with its existing budget.
+Use `prune` for obsolete completed work and cached responses when needed; keep unfinished work and
+export evidence that must outlive cache retention.
+
 Preserve useful results and their limits. At a budget boundary, explain what remains and obtain an
 authorized extension before spending more. Existing user authorization remains valid; the skill does
 not require another permission question for already authorized work.

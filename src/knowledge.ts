@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { rawMarkdownLines, lineContent } from './markdown.ts';
 import { loadProject, type Project } from './documents.ts';
 import { ingestionUnits, type IngestionUnit } from './ingestion-units.ts';
 import { HivexError } from './errors.ts';
@@ -80,6 +81,7 @@ const reportSummary = z.object({
   outcome: z.string(),
   code: z.string().optional(),
   cleanup: z.string().optional(),
+  interruption: z.string().optional(),
   turnAccepted: z.string().optional(),
   usage: z.unknown().nullable(),
 });
@@ -95,6 +97,7 @@ function workSummary(work: Work) {
     inputBytes: work.inputBytes,
     maxInputBytes: work.maxInputBytes,
     totalTokens: work.totalTokens,
+    recoveryAcknowledgement: last?.recoveryAcknowledgement ?? null,
     unmeasuredAttempts: work.attempts.filter((attempt) => {
       const parsed = reportSummary.safeParse(attempt.report);
       return (
@@ -107,6 +110,7 @@ function workSummary(work: Work) {
           outcome: report.data.outcome,
           code: last?.error ?? report.data.code,
           cleanup: report.data.cleanup,
+          interruption: report.data.interruption,
           turnAccepted: report.data.turnAccepted,
         }
       : null,
@@ -129,7 +133,7 @@ function documentPacket(project: Project, ids: string[]) {
       id: document.id,
       title: document.title,
       status: document.status,
-      lines: document.text.split('\n').map((line, index) => [index + 1, line]),
+      lines: rawMarkdownLines(document.text).map((line, index) => [index + 1, lineContent(line)]),
     }));
 }
 
@@ -145,7 +149,9 @@ async function runModel(options: {
   const bytes = Buffer.byteLength(prompt);
   const schema = z.toJSONSchema(request.schema);
   const fingerprint = digest(JSON.stringify({ prompt, schema, model: knowledgeModel }));
-  const retained = work.attempts.at(-1);
+  const retained = work.attempts.findLast(
+    (attempt) => attempt.inputHash === fingerprint && attempt.result !== undefined,
+  );
   if (retained?.inputHash === fingerprint && retained.result !== undefined)
     return request.schema.parse(retained.result);
   const cached = request.schema.safeParse(store.cached(fingerprint));
@@ -166,6 +172,7 @@ async function runModel(options: {
     prompt,
     schema,
     deadlineMilliseconds: runtime.deadlineMilliseconds,
+    onNativeProcessStarted: (pid) => store.recordNativeProcess(work, pid),
   });
   const attempt = work.attempts.at(-1);
   if (!attempt) throw new Error('A model call must have a reserved attempt');
@@ -213,6 +220,8 @@ function updateResponse(project: Project, work: Work, graph: Graph, units: Inges
     pendingCheck: work.pending?.documents ?? [],
     decisions: graph.decisions.length,
     relationships: graph.relationships.length,
+    relationshipCoverage:
+      'Bounded authored, lexical and recent neighbors; not an exhaustive comparison of all decisions.',
     warnings: [...project.warnings, ...graph.warnings],
   };
 }
@@ -239,9 +248,25 @@ function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
     lineStart,
     lineEnd,
   }));
+  const targetDocuments = new Set(units.map((unit) => unit.document));
+  const linked = new Set(
+    project.documents
+      .filter((document) => targetDocuments.has(document.id))
+      .flatMap((document) => document.links),
+  );
+  const priorities = [
+    ...new Set([
+      ...candidates.filter((entry) => linked.has(entry.document)).map((entry) => entry.id),
+      ...hits,
+      ...candidates.slice(-6).map((entry) => entry.id),
+    ]),
+  ].slice(0, 18);
+  const byId = new Map(candidates.map((entry) => [entry.id, entry]));
   const existing: Graph['decisions'] = [];
   let contextBytes = 0;
-  for (const entry of candidates.filter((candidate) => hits.has(candidate.id))) {
+  for (const id of priorities) {
+    const entry = byId.get(id);
+    if (!entry) continue;
     const evidence = sourceEvidence(entry, project);
     if (!evidence || contextBytes + Buffer.byteLength(evidence.text) > 8192) continue;
     contextBytes += Buffer.byteLength(evidence.text);
@@ -279,10 +304,18 @@ function nextUnits(units: IngestionUnit[], remaining: string[]) {
 function resumeFailed(work: Work, store: KnowledgeStore, requested: boolean) {
   if (!requested || work.status !== 'failed') return;
   const last = reportSummary.safeParse(work.attempts.at(-1)?.report);
-  if (!last.success || last.data.cleanup !== 'confirmed' || last.data.turnAccepted === 'unknown')
+  const acknowledged =
+    work.attempts.at(-1)?.recoveryAcknowledgement?.type === 'uncertain-invocation';
+  const confirmed =
+    last.success &&
+    last.data.cleanup === 'confirmed' &&
+    last.data.turnAccepted !== 'unknown' &&
+    last.data.interruption !== 'unconfirmed';
+  const beforeTurn = last.success && last.data.code === 'MODEL_INTERRUPTED_BEFORE_TURN';
+  if (!confirmed && !acknowledged && !beforeTurn)
     throw new HivexError({
       code: 'WORK_UNCERTAIN',
-      message: `Work ${work.id} cannot be retried until its unfinished invocation is resolved`,
+      message: `Work ${work.id} has an unresolved invocation. Use recover to inspect it; keep its budget and unknown usage.`,
     });
   work.status = 'pending';
   store.save(work);
@@ -334,6 +367,17 @@ async function update(project: Project, runtime: Options) {
       )
       .map((unit) => unit.id),
   });
+  const remaining = plan.units
+    .filter((unit) =>
+      project.documents.some(
+        (document) =>
+          document.id === unit.document && graph.units[unit.id]?.version !== document.hash,
+      ),
+    )
+    .map((unit) => unit.id);
+  if (remaining.some((id) => !work.remaining.includes(id))) work.pending = null;
+  work.remaining = remaining;
+  store.save(work);
   resumeFailed(work, store, runtime.retryFailed);
   if (work.status === 'done' || work.status === 'failed')
     return updateResponse(project, work, graph, plan.units);
@@ -423,6 +467,14 @@ async function update(project: Project, runtime: Options) {
 
 type AvailableGraph = Graph & { unavailable: { from: string; to: string }[] };
 
+function relationshipCurrent(relationship: Graph['relationships'][number], project: Project) {
+  return relationship.evidence.every((entry) =>
+    project.documents.some(
+      (document) => document.id === entry.document && document.hash === entry.version,
+    ),
+  );
+}
+
 function currentGraph(project: Project): AvailableGraph {
   if (!existsSync(join(project.root, '.hivex/knowledge.sqlite')))
     return { ...emptyGraph(), unavailable: [] };
@@ -437,9 +489,14 @@ function currentGraph(project: Project): AvailableGraph {
   return {
     ...graph,
     decisions,
-    relationships: graph.relationships.filter((entry) => ids.has(entry.from) && ids.has(entry.to)),
+    relationships: graph.relationships.filter(
+      (entry) => ids.has(entry.from) && ids.has(entry.to) && relationshipCurrent(entry, project),
+    ),
     unavailable: graph.relationships
-      .filter((entry) => !ids.has(entry.from) || !ids.has(entry.to))
+      .filter(
+        (entry) =>
+          !ids.has(entry.from) || !ids.has(entry.to) || !relationshipCurrent(entry, project),
+      )
       .map(({ from, to }) => ({ from, to })),
   };
 }
@@ -646,7 +703,14 @@ async function ask(project: Project, runtime: Options) {
     !packet.documents.length ||
     Buffer.byteLength(JSON.stringify(packet)) > runtime.maxContextBytes
   )
-    return { ...context, command: 'ask', status: 'context-limit', answer: null };
+    return {
+      ...context,
+      command: 'ask',
+      status: 'context-limit',
+      answer: null,
+      omittedUnits: packet.omittedUnits,
+      warnings: [...context.warnings, ...packet.warnings],
+    };
   using store = new KnowledgeStore(project.root);
   const work = store.begin({
     kind: 'ask',
@@ -658,7 +722,13 @@ async function ask(project: Project, runtime: Options) {
   });
   resumeFailed(work, store, runtime.retryFailed);
   if (work.status === 'failed')
-    return { ...context, status: 'failed', answer: null, work: workSummary(work) };
+    return {
+      ...context,
+      status: 'failed',
+      answer: null,
+      omittedUnits: packet.omittedUnits,
+      work: workSummary(work),
+    };
   const value =
     work.status === 'done'
       ? work.result
@@ -674,7 +744,14 @@ async function ask(project: Project, runtime: Options) {
             packet,
           },
         });
-  if (!value) return { ...context, status: work.status, answer: null, work: workSummary(work) };
+  if (!value)
+    return {
+      ...context,
+      status: work.status,
+      answer: null,
+      omittedUnits: packet.omittedUnits,
+      work: workSummary(work),
+    };
   const answer = answerSchema.parse(value);
   if (work.status !== 'done') {
     work.result = answer;

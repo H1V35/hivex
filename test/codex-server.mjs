@@ -194,6 +194,10 @@ const handlers = {
     if (typeof params.input[0]?.text !== 'string' || !params.input[0].text.trim())
       throw new Error('prompt not supplied');
     const responseCandidate = responseForPrompt(params.input[0].text);
+    if (process.env.HIVEX_TEST_SCENARIO === 'unconfirmed-interrupt') {
+      setTimeout(() => process.exit(0), 20);
+      return { turn: { id: 'turn1', status: 'inProgress' } };
+    }
     if (['start-unconfirmed', 'update-uncertain'].includes(process.env.HIVEX_TEST_SCENARIO))
       return undefined;
     if (process.env.HIVEX_TEST_SCENARIO === 'oversized-frame')

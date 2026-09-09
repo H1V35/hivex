@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { documentCommand } from './documents.ts';
+import { knowledgeMaintenance } from './knowledge-maintenance.ts';
 import { knowledgeCommand } from './knowledge.ts';
 import { diagnostic } from './cli/diagnostic.ts';
 
@@ -44,6 +45,16 @@ async function main(args: string[]) {
           modelCalls:
             'Bounded Luna/max assistance over current indexed evidence; identical retained answers are reused.',
         },
+        {
+          name: 'recover',
+          usage: 'recover [--root <project>] [--acknowledge-uncertain]',
+          modelCalls: 0,
+        },
+        {
+          name: 'prune',
+          usage: 'prune [--root <project>] [--keep-completed <count>] [--keep-caches <count>]',
+          modelCalls: 0,
+        },
         { name: 'status', usage: 'status [--root <project>]', modelCalls: 0 },
       ],
       modelOptions: '--codex <native-binary> --deadline-ms <100..1800000> --retry-failed',
@@ -52,13 +63,19 @@ async function main(args: string[]) {
         'Explicit initial updates and task context. Automatic maintenance and diff-review assistance are subsequent deliveries.',
     };
   if (args[0] === 'sources' || args[0] === 'read') return documentCommand(args);
+  if (args[0] === 'recover' || args[0] === 'prune') return knowledgeMaintenance(args);
   return knowledgeCommand(args);
 }
 
 try {
   const result = await main(process.argv.slice(2));
   process.stdout.write(JSON.stringify(result) + '\n');
-  if (result && typeof result === 'object' && 'status' in result && result.status === 'failed')
+  if (
+    result &&
+    typeof result === 'object' &&
+    'status' in result &&
+    (result.status === 'failed' || result.status === 'blocked')
+  )
     process.exitCode = 1;
 } catch (error) {
   process.stderr.write(JSON.stringify(diagnostic(error)) + '\n');

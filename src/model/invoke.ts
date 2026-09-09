@@ -8,11 +8,14 @@ import { captureTranscript, type Usage } from './transcript.ts';
 import { startKnowledgeThread } from './thread.ts';
 import { failureDiagnostic, ServerAdmissionFailure } from './failure.ts';
 
-type InvocationOptions = {
+export type NativeProcessStarted = (nativeProcessId: number) => void;
+
+export type InvocationOptions = {
   binary: string;
   prompt: string;
   schema: Record<string, unknown>;
   deadlineMilliseconds: number;
+  onNativeProcessStarted?: NativeProcessStarted;
 };
 export type InvocationReport = {
   outcome: string;
@@ -188,6 +191,7 @@ export async function invokeModel(options: InvocationOptions) {
         throw new Error('Knowledge execution cannot request interaction');
       },
     });
+    options.onNativeProcessStarted?.(resource.server.pid);
     const threadId = await startKnowledgeThread({
       rpc: resource.server.rpc,
       workspace,

@@ -194,11 +194,11 @@ test('discovers a cross-batch exception and follows its indirect dependents with
       writeFileSync(join(root, name), '# Notes\n');
     writeFileSync(
       join(root, '05-access.md'),
-      '# Access\n\nRevoking access immediately removes cached private data.\n',
+      '# Permission\n\nWithdrawing authorisation destroys retained personal records immediately.\n',
     );
     writeFileSync(
       join(root, '06-media.md'),
-      '# Media\n\nThumbnail caches honor access revocation.\n',
+      '# Previews\n\nDerivative previews inherit withdrawal handling.\n',
     );
     const binary = model(root);
     const responsePath = join(root, 'responses.json');
@@ -387,7 +387,10 @@ test('ingests a large document in resumable rounds without losing earlier decisi
     responses.ask.evidence = [{ document: 'cache.md', lineStart: 559, lineEnd: 559 }];
     responses.ask.answer = 'Rule 139 requires cache expiry.';
     writeFileSync(file, JSON.stringify(responses));
-    const answer = invoke(root, ['ask', 'Rule 139', '--codex', binary]);
+    const held = invoke(root, ['ask', 'Rule 139', '--max-calls', '0', '--codex', binary]);
+    expect(held.value.status).toBe('budget-exhausted');
+    expect(held.value.omittedUnits).toBeGreaterThan(0);
+    const answer = invoke(root, ['ask', 'Rule 139', '--max-calls', '1', '--codex', binary]);
     expect(answer.value.answer).toBe('Rule 139 requires cache expiry.');
     expect(answer.value.evidence).toContainEqual(expect.objectContaining({ lineStart: 559 }));
     expect(answer.value.omittedUnits).toBeGreaterThan(0);
@@ -421,5 +424,155 @@ test('accepts instruction-source metadata when native project instructions are d
   project((root) => {
     const binary = model(root, 'instruction-source-metadata');
     expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+  });
+});
+
+test('invalidates a relationship when its independent supporting document changes', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'scope.md'),
+      '# Scope\n\nRevocation overrides cache retention for private records.\n',
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.relationships[0].evidence = [
+      { document: 'scope.md', lineStart: 3, lineEnd: 3 },
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.relationships).toBe(1);
+    const found = invoke(root, ['search', 'seven days']);
+    writeFileSync(join(root, 'scope.md'), '# Scope\n\nThis relationship is awaiting a decision.\n');
+    const neighbors = invoke(root, ['neighbors', found.value.decisions[0].id]);
+    expect(neighbors.value.relationships).toEqual([]);
+    expect(neighbors.value.unexpandedDecisions).toHaveLength(1);
+  });
+});
+
+for (const initialBudget of [2, 16])
+  test(`restores earlier rounds after an intervening document version (initial budget ${initialBudget})`, () => {
+    project((root) => {
+      rmSync(join(root, 'privacy.md'));
+      const original = Array.from(
+        { length: 90 },
+        (_, i) => `## Rule ${i}\n\nRule ${i} requires cache expiry. ${'Reason. '.repeat(40)}\n`,
+      ).join('\n');
+      writeFileSync(join(root, 'cache.md'), original);
+      const binary = model(root);
+      const file = join(root, 'responses.json');
+      const responses = JSON.parse(readFileSync(file, 'utf8'));
+      responses.fromVisibleRules = true;
+      writeFileSync(file, JSON.stringify(responses));
+      const first = invoke(root, [
+        'update',
+        '--max-calls',
+        String(initialBudget),
+        '--max-input-bytes',
+        '1048576',
+        '--codex',
+        binary,
+      ]);
+      expect(first.value.status).toBe(initialBudget === 2 ? 'budget-exhausted' : 'ready');
+      writeFileSync(join(root, 'cache.md'), original.replace('Rule 0', 'Rule zero'));
+      expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value.status).toBe(
+        'budget-exhausted',
+      );
+      writeFileSync(join(root, 'cache.md'), original);
+      const resumed = invoke(root, [
+        'update',
+        '--max-calls',
+        '16',
+        '--max-input-bytes',
+        '1048576',
+        '--codex',
+        binary,
+      ]);
+      expect(resumed.value.status).toBe('ready');
+      if (initialBudget === 2) expect(resumed.value.work.id).toBe(first.value.work.id);
+      else expect(resumed.value.work.calls).toBe(0);
+      expect(invoke(root, ['status']).value).toMatchObject({
+        availableDecisions: 90,
+        pendingDocuments: [],
+      });
+    });
+  });
+
+test('does not retry an accepted turn whose interruption is unconfirmed', () => {
+  project((root) => {
+    const binary = model(root, 'unconfirmed-interrupt');
+    const first = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
+    expect(first.value.work.lastAttempt).toMatchObject({
+      turnAccepted: 'confirmed',
+      interruption: 'unconfirmed',
+    });
+    model(root);
+    const retry = invoke(root, ['update', '--max-calls', '2', '--retry-failed', '--codex', binary]);
+    expect(retry.status).toBe(1);
+    expect(retry.stderr).toContain('WORK_UNCERTAIN');
+    expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(1);
+    const recovered = invoke(root, ['recover', '--acknowledge-uncertain']);
+    expect(recovered.status).toBe(0);
+    const resumed = invoke(root, [
+      'update',
+      '--max-calls',
+      '3',
+      '--retry-failed',
+      '--codex',
+      binary,
+    ]);
+    expect(resumed.value).toMatchObject({
+      status: 'ready',
+      work: { calls: 3, unmeasuredAttempts: 1 },
+    });
+  });
+});
+
+test('keeps original CR line numbers and separators in reads and evidence', () => {
+  project((root) => {
+    writeFileSync(join(root, 'cache.md'), '# Cache\r\rCached data expires after seven days.\r');
+    const read = invoke(root, ['read', 'cache.md', '--from', '2', '--to', '3']);
+    expect(read.value.text).toBe('\rCached data expires after seven days.\r');
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const found = invoke(root, ['search', 'seven days']);
+    expect(found.value.decisions).toContainEqual(
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          lineStart: 3,
+          text: 'Cached data expires after seven days.',
+        }),
+      }),
+    );
+  });
+});
+
+test('plans rounds for Markdown larger than the previous two MiB source limit', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'large.md'),
+      ('A durable rule. ' + 'Detail '.repeat(140) + '\n\n').repeat(2400),
+    );
+    const response = invoke(root, ['update', '--max-calls', '0', '--codex', '/nonexistent-codex']);
+    expect(response.value.pendingDocuments).toContain('large.md');
+    expect(response.value.pendingUnits.length).toBeGreaterThan(100);
+    expect(response.value.work.calls).toBe(0);
+    expect(response.value.warnings).toEqual([]);
+  });
+});
+
+test('runs maintenance through the CLI without calling the model or discarding graph knowledge', () => {
+  project((root) => {
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const before = invoke(root, ['search', 'seven days']);
+    const recovered = invoke(root, ['recover']);
+    expect(recovered.status).toBe(0);
+    expect(recovered.value.modelCalls).toBe(0);
+    const pruned = invoke(root, ['prune', '--keep-completed', '0', '--keep-caches', '0']);
+    expect(pruned.status).toBe(0);
+    expect(pruned.value.modelCalls).toBe(0);
+    const after = invoke(root, ['search', 'seven days']);
+    expect(after.value.decisions).toEqual(before.value.decisions);
+    expect(readFileSync(join(root, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(2);
   });
 });
