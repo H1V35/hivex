@@ -38,4 +38,4 @@ jobs:
       - name: Format
         run: bun run --bun format:check
       - name: Test
-        run: bun test ./src
+        run: bun run test

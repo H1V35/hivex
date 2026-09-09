@@ -240,6 +240,7 @@ test.each(['invalid-json', 'start-unconfirmed'])(
       const row = cohort.units[0];
       if (!row) throw new Error('Expected the exported fixture row');
       expect(row.checkpoint.reports[0]).toHaveProperty('omittedDetails');
+      expect(row.checkpoint.reports[0]?.rejectedOutput).toEqual(first.rejectedOutput);
       expect(row.checkpoint.reports[0]).not.toHaveProperty('turnAccepted');
       expect(row.checkpoint.reports[0]).not.toHaveProperty('cleanup');
       expect(row.result?.attempts[0]).toEqual(report);
@@ -434,3 +435,178 @@ test('revises a reused candidate with its original usage and revision budget int
     { source },
   );
 });
+
+test.each([false, true])(
+  'preserves rejected extraction history through retry and reuse (legacy: %s)',
+  async (legacy) => {
+    await nativeProject((paths) => {
+      writeFileSync(paths.scenario, 'invalid-json');
+      const failed = ingest(paths, ['--attempts', '1']);
+      expect(failed.status).toBe(1);
+      expect(JSON.parse(failed.stdout)).toMatchObject({
+        failed: 1,
+        unresolved: 0,
+        attempts: { recorded: 1, knownTotalTokens: 150 },
+      });
+      const inspected = ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']);
+      expect(inspected.stderr).toBe('');
+      expect(JSON.parse(inspected.stdout).result).toMatchObject({
+        candidate: null,
+        attempts: [
+          {
+            outcome: 'invalid-output',
+            usage: { totalTokens: 150 },
+            rejectedOutput: {
+              text: '{broken',
+              hash: hash('{broken'),
+              bytes: 7,
+              omittedReason: null,
+            },
+          },
+        ],
+      });
+      if (legacy) {
+        using db = new Database(paths.store);
+        const row = db
+          .query<
+            { result: string; attempts: string },
+            []
+          >("SELECT result, attempts FROM units WHERE id='first.md'")
+          .get();
+        if (!row) throw new Error('Expected failed extraction');
+        const result = JSON.parse(row.result);
+        const checkpoint = JSON.parse(row.attempts);
+        delete result.attempts[0].rejectedOutput;
+        delete checkpoint.reports[0].rejectedOutput;
+        const resultText = JSON.stringify(result);
+        const checkpointText = JSON.stringify(checkpoint);
+        db.run(
+          "UPDATE units SET result=?, result_hash=?, attempts=?, attempts_hash=? WHERE id='first.md'",
+          [resultText, hash(resultText), checkpointText, hash(checkpointText)],
+        );
+      }
+      const exported = ingest(paths, ['--export', '--max-bytes', '65536']);
+      expect(exported.stderr).toBe('');
+      const previous = JSON.parse(exported.stdout).units[0].result;
+      const archive = join(dirname(paths.store), 'rejected.json');
+      writeFileSync(archive, exported.stdout);
+      commit(paths, 'unrelated.txt');
+      const calls = readFileSync(paths.calls, 'utf8');
+      const reused = ingest(paths, ['--reuse', archive, '--ref', 'HEAD', '--max-units', '0']);
+      expect(reused.stderr).toBe('');
+      expect(JSON.parse(reused.stdout)).toMatchObject({ failed: 1, reused: 1, processed: 0 });
+      const current = JSON.parse(
+        ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']).stdout,
+      ).result;
+      const { association, ...original } = current;
+      expect(original).toEqual(previous);
+      expect(association.originalHash).toBe(hash(JSON.stringify(previous)));
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+      rmSync(paths.scenario);
+      const retried = ingest(paths, ['--retry-failed', 'first.md', '--attempts', '2']);
+      expect(retried.stderr).toBe('');
+      expect(retried.status).toBe(0);
+      expect(JSON.parse(retried.stdout)).toMatchObject({
+        completed: 2,
+        unresolved: 0,
+        attempts: { recorded: 3, knownTotalTokens: 450 },
+      });
+      const recovered = JSON.parse(
+        ingest(paths, ['--show', 'first.md', '--max-bytes', '65536']).stdout,
+      ).result;
+      expect(recovered.attempts[0]).toEqual(previous.attempts[0]);
+      expect(recovered.attempts[1].rejectedOutput).toBeUndefined();
+      writeFileSync(archive, ingest(paths, ['--export', '--max-bytes', '65536']).stdout);
+      commit(paths, 'next.txt');
+      expect(ingest(paths, ['--reuse', archive, '--ref', 'HEAD', '--max-units', '0']).status).toBe(
+        0,
+      );
+      const built = invoke(paths.root, ['graph', 'build', '--store', paths.store, '--export']);
+      expect(built.stderr).toBe('');
+      expect(built.status).toBe(0);
+      const input = join(dirname(paths.store), 'recovered-graph.json');
+      writeFileSync(input, built.stdout);
+      expect(invoke(paths.root, ['graph', 'check', '--input', input]).status).toBe(0);
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls + 'called\ncalled\n');
+    });
+  },
+  15000,
+);
+
+test('rejects altered or misplaced extraction diagnostics despite recomputed store hashes', async () => {
+  await nativeProject((paths) => {
+    writeFileSync(paths.scenario, 'retry-success');
+    expect(ingest(paths).status).toBe(0);
+    const exported = ingest(paths, ['--export', '--max-bytes', '65536']);
+    expect(exported.stderr).toBe('');
+    const archive = join(dirname(paths.store), 'altered-rejection.json');
+    const calls = readFileSync(paths.calls, 'utf8');
+    using db = new Database(paths.store);
+    for (const field of ['text', 'hash', 'bytes', 'omittedReason', 'successful']) {
+      const cohort = JSON.parse(exported.stdout);
+      const row = cohort.units[0];
+      const rejected = row.result.attempts[0].rejectedOutput;
+      if (field === 'text') rejected.text += 'altered';
+      if (field === 'hash') rejected.hash = '0'.repeat(64);
+      if (field === 'bytes') rejected.bytes += 1;
+      if (field === 'omittedReason') rejected.omittedReason = 'retention-limit';
+      if (field === 'successful') row.result.attempts[1].rejectedOutput = rejected;
+      row.checkpoint.reports = row.result.attempts;
+      const resultText = JSON.stringify(row.result);
+      const checkpointText = JSON.stringify(row.checkpoint);
+      db.run(
+        "UPDATE units SET result=?, result_hash=?, attempts=?, attempts_hash=? WHERE id='first.md'",
+        [resultText, hash(resultText), checkpointText, hash(checkpointText)],
+      );
+      for (const args of [['--show', 'first.md'], ['--export'], ['--max-units', '0']]) {
+        const checked = ingest(paths, args);
+        expect(checked.status).toBe(1);
+        expect(JSON.parse(checked.stderr).error.code).toBe('INVALID_INGESTION_STORE');
+      }
+      const built = invoke(paths.root, ['graph', 'build', '--store', paths.store]);
+      expect(built.status).toBe(1);
+      expect(JSON.parse(built.stderr).error.code).toBe('INVALID_INGESTION_STORE');
+      writeFileSync(archive, JSON.stringify(cohort));
+      const reused = ingest(paths, ['--reuse', archive, '--ref', 'HEAD', '--max-units', '0']);
+      expect(reused.status).toBe(1);
+      expect(JSON.parse(reused.stderr).error.code).toBe('INGESTION_ARCHIVE_MISMATCH');
+    }
+    expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+  });
+}, 15000);
+
+test.each([32768, 32770, 1048576])(
+  'bounds rejected UTF-8 extraction text without losing usage (%i bytes)',
+  async (bytes) => {
+    await nativeProject((paths) => {
+      const text = JSON.stringify('é'.repeat((bytes - 2) / 2));
+      writeFileSync(paths.candidate, text);
+      const failed = ingest(paths, ['--max-units', '1']);
+      expect(failed.stderr).toBe('');
+      expect(failed.status).toBe(1);
+      expect(JSON.parse(failed.stdout)).toMatchObject({
+        failed: 1,
+        unresolved: 0,
+        attempts: { recorded: 3, unresolved: 0, unknownUsage: 0, knownTotalTokens: 450 },
+      });
+      const shown = ingest(paths, ['--show', 'first.md', '--max-bytes', '131072']);
+      expect(shown.stderr).toBe('');
+      const result: ReturnType<typeof IngestionStore.result> = JSON.parse(shown.stdout);
+      expect(result.state).toBe('failed');
+      expect(result.result?.candidate).toBeNull();
+      for (const report of result.result?.attempts ?? []) {
+        expect(report.usage?.totalTokens).toBe(150);
+        expect(report.rejectedOutput).toEqual({
+          text: bytes === 32768 ? text : null,
+          hash: hash(text),
+          bytes,
+          omittedReason: bytes === 32768 ? null : 'retention-limit',
+        });
+      }
+      const exported = ingest(paths, ['--export', '--max-bytes', '262144']);
+      expect(exported.stderr).toBe('');
+      expect(JSON.parse(exported.stdout).units[0].result).toEqual(result.result);
+      expect(readFileSync(paths.calls, 'utf8')).toBe('called\n'.repeat(3));
+    });
+  },
+);

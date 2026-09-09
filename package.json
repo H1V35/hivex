@@ -6,7 +6,7 @@
   "description": "Versioned project knowledge for people and agents.",
   "scripts": {
     "hivex": "bun src/cli.ts",
-    "test": "bun test ./src",
+    "test": "bun test --timeout 15000 ./src",
     "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
     "lint": "eslint src test tooling eslint.config.js eslint.base.config.js",
     "format:check": "prettier --check ."
