@@ -86,9 +86,10 @@ function identity(db: Database, allowEmpty: boolean, applicationId: number) {
     .query<{ application_id: number }, []>('PRAGMA application_id')
     .get()?.application_id;
   const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
-  if (id === applicationId && (version === 1 || version === 2 || version === 3)) {
-    if (version === 3)
+  if (id === applicationId && (version === 1 || version === 2 || version === 3 || version === 4)) {
+    if (version === 3 || version === 4)
       db.query('SELECT previous_attempts, previous_attempts_hash FROM reviews LIMIT 0').all();
+    if (version === 4) db.query('SELECT previous_plan_hash FROM cohort LIMIT 0').all();
     return true;
   }
   const objects = db
@@ -226,18 +227,55 @@ function transitionHash(db: Database) {
     .get()?.transition_hash;
 }
 
-function recordTransition(db: Database, expectedHash: string) {
+function recordTransition(db: Database, expectedHash: string, previousPlanHash: string) {
+  enableRecovery(db);
   const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
-  if (version === 1) {
-    db.run('ALTER TABLE cohort ADD COLUMN transition_hash TEXT');
-    db.run('PRAGMA user_version=2');
+  if (version === 3) {
+    db.run('ALTER TABLE cohort ADD COLUMN previous_plan_hash TEXT');
+    db.run('PRAGMA user_version=4');
   }
-  db.run('UPDATE cohort SET transition_hash=? WHERE id=1', [expectedHash]);
+  db.run('UPDATE cohort SET transition_hash=?, previous_plan_hash=? WHERE id=1', [
+    expectedHash,
+    previousPlanHash,
+  ]);
+}
+
+function verifyTransitionOrigin(db: Database, previousPlanHash: string) {
+  const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
+  const origin =
+    version === 4
+      ? db
+          .query<
+            { previous_plan_hash: string | null },
+            []
+          >('SELECT previous_plan_hash FROM cohort WHERE id=1')
+          .get()?.previous_plan_hash
+      : null;
+  if (origin !== previousPlanHash || !/^[a-f0-9]{64}$/.test(transitionHash(db) ?? ''))
+    fail(
+      'REVIEW_ARCHIVE_MISMATCH',
+      'Changing context requires an explicit transition from the checkpointed comparison plan',
+    );
+}
+
+function authenticateRecordedTransition(
+  db: Database,
+  archiveHash: string,
+  previousPlanHash: string,
+) {
+  if (transitionHash(db) !== archiveHash)
+    fail(
+      'REVIEW_ARCHIVE_MISMATCH',
+      'Reuse requires the retained old cohort or its exact recorded transition archive',
+    );
+  const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
+  if (version !== 4) recordTransition(db, archiveHash, previousPlanHash);
+  verifyTransitionOrigin(db, previousPlanHash);
 }
 
 function enableRecovery(db: Database) {
   const version = db.query<{ user_version: number }, []>('PRAGMA user_version').get()?.user_version;
-  if (version === 3) return;
+  if (version === 3 || version === 4) return;
   const running = db
     .query<{ count: number }, []>("SELECT count(*) AS count FROM reviews WHERE state='running'")
     .get()?.count;
@@ -265,6 +303,20 @@ export class AssessmentStore<T extends AssessmentResult> {
     return db.transaction(() => records(db, plan, contract))();
   }
 
+  static readRefreshed<T extends AssessmentResult>(
+    path: string,
+    plan: AssessmentPlan,
+    previous: AssessmentPlan,
+    contract: AssessmentContract<T>,
+  ) {
+    using db = file(path, true);
+    return db.transaction(() => {
+      const rows = records(db, plan, contract);
+      verifyTransitionOrigin(db, hash(JSON.stringify(previous)));
+      return rows;
+    })();
+  }
+
   static refresh<T extends AssessmentResult>(
     options: {
       path: string;
@@ -285,13 +337,10 @@ export class AssessmentStore<T extends AssessmentResult> {
         const transition = hash(
           JSON.stringify({ plan: options.previous.plan, rows: options.previous.rows }),
         );
+        const previousPlanHash = hash(JSON.stringify(options.previous.plan));
         if (current?.value === value && value !== JSON.stringify(options.previous.plan)) {
           records(db, options.next.plan, contract);
-          if (transitionHash(db) !== transition)
-            fail(
-              'REVIEW_ARCHIVE_MISMATCH',
-              'Reuse requires the retained old cohort or its exact recorded transition archive',
-            );
+          authenticateRecordedTransition(db, transition, previousPlanHash);
           return;
         }
         const rows = records(db, options.previous.plan, contract);
@@ -308,7 +357,7 @@ export class AssessmentStore<T extends AssessmentResult> {
         db.run('PRAGMA max_page_count=32768');
         db.run('DELETE FROM reviews');
         initializePlan(db, options.next.plan);
-        recordTransition(db, transition);
+        recordTransition(db, transition, previousPlanHash);
         for (const [id, result] of options.next.results) {
           const encoded = JSON.stringify(result);
           if (Buffer.byteLength(encoded) > resultLimit)

@@ -716,9 +716,10 @@ and unresolved invocations block replacement. This operation does not retry fail
 complete the whole update workflow.
 
 Transfer the store that retains the old cohort. Do not initialize a separate destination first.
-The atomic transition records its archive binding in assessment-store format 2; a repeated transfer
-must supply that same archive. Existing format-1 stores remain readable and resumable; their first
-new transition upgrades them. A destination without that transition record is rejected before calls.
+The atomic transition records its archive and previous-plan bindings in assessment-store format 4;
+a repeated transfer must supply that same archive. Existing formats 1–3 remain readable and resumable;
+a verified transition upgrades them. A destination without that transition record cannot substitute
+for the explicit context transition required by update.
 
 To also discover unlinked sources with shared documentary vocabulary, choose a bounded number of
 lexical neighbors per source:

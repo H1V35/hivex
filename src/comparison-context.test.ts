@@ -709,3 +709,101 @@ test('freezes supporting context across update/resume after an explicit comparis
     expect(readFileSync(paths.calls, 'utf8')).toBe(calls + 'called\n');
   });
 }, 15000);
+
+test.each(['reinitialized', 'wrong predecessor'])(
+  'rejects a %s comparison cohort when update changes supporting context',
+  async (transition) => {
+    await contextProject((paths, input, config) => {
+      reviewSources(paths, input);
+      const selection: Selection = JSON.parse(
+        invoke(paths.root, ['graph', 'compare-plan', '--input', input]).stdout,
+      );
+      const common = ['graph', 'compare', '--input', input];
+      for (const pair of selection.pairs) {
+        writeFileSync(paths.candidate, JSON.stringify(pairResponse(pair.sources)));
+        expect(
+          invoke(paths.root, [...common, '--all', '--codex', paths.binary, '--max-units', '1'])
+            .status,
+        ).toBe(0);
+      }
+      const output = join(dirname(paths.root), 'managed.json');
+      const update = ['update', '--output', output, '--codex', paths.binary, '--max-units', '0'];
+      const admitted = invoke(paths.root, update);
+      expect(admitted.status).toBe(0);
+      expect(JSON.parse(admitted.stdout)).toMatchObject({ status: 'admitted' });
+      const checkpoint = join(paths.root, '.hivex/update.json');
+      const originalCheckpoint = readFileSync(checkpoint, 'utf8');
+      const originalOutput = readFileSync(output, 'utf8');
+      const calls = readFileSync(paths.calls, 'utf8');
+      const exportArgs = [...common, '--export', '--max-bytes', '134217728'];
+      const original = invoke(paths.root, exportArgs);
+      expect(original.status).toBe(0);
+      const oldPlan: { planHash: string } = JSON.parse(original.stdout);
+      const archive = join(dirname(paths.root), 'old-comparisons.json');
+      writeFileSync(archive, original.stdout);
+      expect(invoke(paths.root, ['graph', 'compare', '--discard', oldPlan.planHash]).status).toBe(
+        0,
+      );
+
+      let initialContext = config;
+      if (transition === 'wrong predecessor') {
+        initialContext = join(dirname(paths.root), 'wrong-context.json');
+        writeFileSync(
+          initialContext,
+          JSON.stringify({
+            version: 1,
+            pairs: [{ sources: ['second.md', 'third.md'], context: ['first.md'] }],
+          }),
+        );
+      }
+      expect(
+        invoke(paths.root, [
+          ...common,
+          '--all',
+          '--comparison-context',
+          initialContext,
+          '--max-units',
+          '0',
+        ]).status,
+      ).toBe(0);
+      if (transition === 'wrong predecessor') {
+        const predecessor = invoke(paths.root, [
+          ...exportArgs,
+          '--comparison-context',
+          initialContext,
+        ]);
+        expect(predecessor.status).toBe(0);
+        const wrongPlan: { planHash: string } = JSON.parse(predecessor.stdout);
+        expect(wrongPlan.planHash).not.toBe(oldPlan.planHash);
+        const wrongArchive = join(dirname(paths.root), 'wrong-predecessor.json');
+        writeFileSync(wrongArchive, predecessor.stdout);
+        expect(
+          invoke(paths.root, [
+            ...common,
+            '--all',
+            '--from',
+            input,
+            '--reuse',
+            wrongArchive,
+            '--comparison-context',
+            config,
+            '--max-units',
+            '0',
+          ]).status,
+        ).toBe(0);
+      }
+      const contextualExport = [...exportArgs, '--comparison-context', config];
+      const prepared = invoke(paths.root, contextualExport);
+      expect(prepared.status).toBe(0);
+      const rejected = invoke(paths.root, [...update, '--comparison-context', config]);
+      expect(rejected.status).toBe(1);
+      expect(rejected.stdout).toContain('REVIEW_ARCHIVE_MISMATCH');
+      expect(readFileSync(checkpoint, 'utf8')).toBe(originalCheckpoint);
+      expect(readFileSync(output, 'utf8')).toBe(originalOutput);
+      expect(readFileSync(paths.calls, 'utf8')).toBe(calls);
+      expect(readFileSync(archive, 'utf8')).toBe(original.stdout);
+      expect(invoke(paths.root, contextualExport).stdout).toBe(prepared.stdout);
+    });
+  },
+  15000,
+);

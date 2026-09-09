@@ -411,7 +411,7 @@ function validatePendingTarget(paths: Paths, checkpoint: Checkpoint, current: Ch
     const { comparisonContext: _next, ...nextTarget } = target;
     if (!isDeepStrictEqual(oldTarget, nextTarget))
       invalid('The pending checkpoint changes an active target', 'UPDATE_ARTIFACT_PENDING');
-    validatePreparedComparisons(paths, checkpoint);
+    validatePreparedComparisons(paths, checkpoint, current);
   }
 }
 
@@ -1267,14 +1267,14 @@ function readCycleCheckpoint(options: UpdateOptions, paths: Paths) {
       phase: 'compare',
       target: { ...checkpoint.target, comparisonContext: options.comparisonContext },
     });
-    validatePreparedComparisons(paths, next);
+    validatePreparedComparisons(paths, next, checkpoint);
     writeCheckpoint(paths.checkpoint, next);
     checkpoint = next;
   }
   return reconcileAdmission(options, paths, resumeIncomingTransition(options, paths, checkpoint));
 }
 
-function validatePreparedComparisons(paths: Paths, checkpoint: Checkpoint) {
+function validatePreparedComparisons(paths: Paths, checkpoint: Checkpoint, previous: Checkpoint) {
   const context = createReviewContext({
     input: paths.candidate,
     root: checkpoint.root,
@@ -1285,7 +1285,17 @@ function validatePreparedComparisons(paths: Paths, checkpoint: Checkpoint) {
     checkpoint.target.neighbors,
     checkpoint.target.comparisonContext,
   );
-  const rows = AssessmentStore.read(paths.comparisons, prepared.plan, comparisonContract);
+  const prior = prepareComparisonCohort(
+    context,
+    previous.target.neighbors,
+    previous.target.comparisonContext,
+  );
+  const rows = AssessmentStore.readRefreshed(
+    paths.comparisons,
+    prepared.plan,
+    prior.plan,
+    comparisonContract,
+  );
   validateComparisons(rows, prepared);
   if (rows.some((row) => row.state === 'running'))
     invalid('A comparison invocation is unresolved; preserve its context', 'REVIEW_UNRESOLVED');
