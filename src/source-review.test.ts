@@ -132,7 +132,7 @@ test('prepares the compact per-source review schema without calling a model', as
   );
 });
 
-test('uses exact compact coverage and literal multiline citations for ordinary fidelity', async () => {
+test('uses exact compact coverage and preserves multiline or joined softwrap citations', async () => {
   await nativeProject(
     (paths) => {
       const lineQuote = { quote: 'First line.\nSecond line.', lineStart: 3, lineEnd: 4 };
@@ -245,7 +245,7 @@ test('uses exact compact coverage and literal multiline citations for ordinary f
       if (!citation) throw new Error('Expected relation evidence');
       citation.quote = 'First line. Second line.';
       writeFileSync(paths.candidate, JSON.stringify(collapsed));
-      const alteredCitation = invoke(paths.root, [
+      const joinedCitation = invoke(paths.root, [
         'graph',
         'review',
         'first.md',
@@ -254,11 +254,11 @@ test('uses exact compact coverage and literal multiline citations for ordinary f
         '--codex',
         paths.binary,
       ]);
-      expect(alteredCitation.status).toBe(1);
-      expect(JSON.parse(alteredCitation.stdout)).toMatchObject({
-        status: 'failed',
-        review: null,
-        report: { outcome: 'invalid-output' },
+      expect(joinedCitation.status).toBe(0);
+      expect(JSON.parse(joinedCitation.stdout)).toMatchObject({
+        status: 'reviewed',
+        review: { relations: [{ evidence: [citation] }] },
+        report: { outcome: 'completed' },
       });
       expect(graph.nodes.filter((node) => node.source === 'first.md')).toHaveLength(2);
       expect(graph.edges.filter((edge) => edge.source === 'first.md')).toHaveLength(1);

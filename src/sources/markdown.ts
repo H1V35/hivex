@@ -53,6 +53,13 @@ export type Source = {
 export const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 export const isMarkdownPath = (path: string) => /\.(?:md|markdown|mdown)$/i.test(path);
 
+export function parseMarkdown(content: string) {
+  return fromMarkdown(content, {
+    extensions: [gfm(), frontmatter(['yaml'])],
+    mdastExtensions: [gfmFromMarkdown(), frontmatterFromMarkdown(['yaml'])],
+  });
+}
+
 function readMetadata(tree: ReturnType<typeof fromMarkdown>) {
   const node = tree.children.find((child) => child.type === 'yaml');
   if (node?.type !== 'yaml') return metadata.parse({});
@@ -86,10 +93,7 @@ export function parseSource(options: {
   collection: Collection | null;
 }): Source {
   const { path, content, collection } = options;
-  const tree = fromMarkdown(content, {
-    extensions: [gfm(), frontmatter(['yaml'])],
-    mdastExtensions: [gfmFromMarkdown(), frontmatterFromMarkdown(['yaml'])],
-  });
+  const tree = parseMarkdown(content);
   const front = readMetadata(tree);
   const anchors = headingAnchors(tree);
   const headings: Source['headings'] = [];
@@ -151,7 +155,7 @@ type MarkdownNode = {
   position?: { start: { line: number; offset?: number }; end: { line: number; offset?: number } };
 };
 
-function* descendants(tree: MarkdownNode): Generator<MarkdownNode> {
+export function* descendants(tree: MarkdownNode): Generator<MarkdownNode> {
   const pending = [tree];
   while (pending.length) {
     const node = pending.pop();

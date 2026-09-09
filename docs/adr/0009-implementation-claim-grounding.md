@@ -47,6 +47,13 @@ A definitive verdict needs cited relevant changed code and documentation, comple
 context and no unresolved applicability. These structural checks support semantic assessment; they
 do not prove that the model interpreted a valid quote correctly.
 
+The shared documentary citation check tries the original literal match first. Its conservative
+Markdown fallback may join soft line wraps and continuation indentation only within one parsed
+paragraph, including a single list item and the original section ranges. It preserves inline spacing
+and Markdown tokens; code, HTML, tables, frontmatter and hard breaks remain strict. Code citations
+always use literal matching. This comparison never rewrites quotes, source bytes, hashes or receipts,
+and never promotes a retained failed result. Prompts and schemas remain unchanged.
+
 Use the admitted native Luna/max route. Retain positive, negative and unresolved assessments with
 actual invocation evidence, usage and unmeasured failures. A rejected model response is retained as
 hashed, untrusted diagnostic text; it cannot become an assessment or be implicitly retried. The result binds the admitted graph hash,

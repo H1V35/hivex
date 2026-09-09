@@ -208,7 +208,10 @@ function validateCode(
       entry.revision === 'context'
         ? prepared.contextFiles.find((file) => file.id === entry.file)?.text
         : prepared.code.files.find((file) => file.id === entry.file)?.[entry.revision]?.text;
-    if (content === undefined || invalidCitationIndexes({ content, section: null }, [entry]).length)
+    if (
+      content === undefined ||
+      invalidCitationIndexes({ content, section: null }, [entry], 'code').length
+    )
       invalid('Code citations must match the supplied file version and range');
   }
 }

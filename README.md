@@ -872,6 +872,10 @@ a correctly dismissed finding. `status: reviewed` means that claim has a complet
 assessment; it always keeps `implementationAccepted: false`. Unresolved evidence or a checkout changed
 during the call yields `status: failed` and exit 1, retaining the assessment and usage where available.
 
+Documentary citations may join Markdown soft wraps within one paragraph or list item; original ranges,
+words and Markdown remain required. Code citations stay literal. This comparison preserves the raw
+quote and source; it cannot repair omitted clauses or turn an earlier failed receipt into success.
+
 Store the complete stdout result through the project's existing review workflow. `--check` revalidates
 a retained result (maximum 8 MiB) against current code, the graph, citations and processing contract
 without another model call. Changes invalidate corresponding evidence. Both commands create no
