@@ -17,6 +17,24 @@ Publication (#21) prepares early use; introduction in Compi is a separate step. 
 No installed command approves an implementation. The principal reviewer verifies findings, tests and
 the actual source evidence. See the [approved product decision](docs/adr/0010-practical-knowledge-assistance.md).
 
+## Install the CLI and skill
+
+Requires Bun 1.4.2. Once the release is available from npm:
+
+```sh
+bun add --dev --exact @h1v35/hivex@0.1.0
+bun hivex --help
+```
+
+Copy `node_modules/@h1v35/hivex/skills/hivex` into the skill directory used by your agent. For an
+agent that discovers project skills in `.agents/skills`, use `.agents/skills/hivex`. Keep the CLI and
+skill at the same release; upgrade the copied skill when upgrading the package. The skill and its
+Markdown guide are portable and do not require Compi's private tools or other installed skills.
+
+The current knowledge profile needs an authenticated Codex CLI session with the selected Luna/max
+model available. Native invocation checks that profile and stops rather than silently falling back.
+Document discovery and version checks work without a model. See the CLI help for bounded model work.
+
 ## Run
 
 Use Bun 1.4.2. In this checkout:
