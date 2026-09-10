@@ -19,6 +19,10 @@ Use the capabilities advertised by that version. Do not invent commands, silentl
 pretend a planned capability exists. Hivex's current validated knowledge profile is Luna/max through
 native Codex; the principal agent's model is independent of that choice.
 
+Native Codex must be able to write its own local state. When the host sandbox prevents that,
+use its normal execution-approval mechanism within the existing authorized scope. Keep a failed
+launch in the same work history when resuming; an initialization failure is not a model verdict.
+
 ## Before implementation
 
 For a coherent feature or behavior change, ask about the intended task and recover the relevant
