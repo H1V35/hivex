@@ -1390,3 +1390,59 @@ test('review retrieves decisions from new file content without hints in the task
     expect(result.value.documents).toContainEqual(expect.objectContaining({ id: 'cache.md' }));
   });
 });
+
+test('source quotes carried by the graph remain citable when full document units are omitted', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n\n' +
+        'Supporting rationale. '.repeat(270) +
+        '\n',
+    );
+    const binary = reviewProject(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.decisions[0].lineEnd = 4;
+    const evidence = [{ document: 'cache.md', lineStart: 3, lineEnd: 4 }];
+    responses.ask.evidence = evidence;
+    responses.review.findings[0].documents = evidence;
+    responses.review.findings = [
+      responses.review.findings[0],
+      {
+        ...responses.review.findings[0],
+        documents: [{ document: 'cache.md', lineStart: 5, lineEnd: 5 }],
+      },
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const asked = invoke(root, ['ask', 'cache', '--max-context-bytes', '5000', '--codex', binary]);
+    expect(asked.value.omittedUnits).toBe(1);
+    expect(asked.value.evidence).toContainEqual(
+      expect.objectContaining({
+        document: 'cache.md',
+        lineStart: 3,
+        text: 'Cached data expires after seven days.\n',
+      }),
+    );
+    const reviewed = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-context-bytes',
+      '5000',
+      '--codex',
+      binary,
+    ]);
+    expect(reviewed.value.omittedUnits).toBe(1);
+    expect(reviewed.value.findings[0]).toMatchObject({
+      referencesVerified: true,
+      documents: [{ document: 'cache.md', lineStart: 3 }],
+    });
+    expect(reviewed.value.findings[1]).toMatchObject({
+      assessment: 'uncertain',
+      referencesVerified: false,
+      documents: [],
+    });
+  });
+});

@@ -16,9 +16,12 @@ export function suppliedCitation(
   entry: z.infer<typeof citationSchema>,
   documents: SuppliedDocument[],
 ) {
-  const document = documents.find((item) => item.id === entry.document);
-  if (!document || entry.lineEnd < entry.lineStart) return false;
-  const lines = new Set(document.lines.map(([number]) => Number(number)));
+  if (entry.lineEnd < entry.lineStart) return false;
+  const lines = new Set(
+    documents
+      .filter((document) => document.id === entry.document)
+      .flatMap((document) => document.lines.map(([number]) => Number(number))),
+  );
   for (let line = entry.lineStart; line <= entry.lineEnd; line += 1)
     if (!lines.has(line)) return false;
   return true;
