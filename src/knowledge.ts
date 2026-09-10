@@ -995,6 +995,25 @@ async function ask(project: Project, runtime: Options) {
   return finishAnswer({ project, work, store, packet, value });
 }
 
+function suppliedDocuments(packet: ReturnType<typeof answerPacket>) {
+  return [
+    ...packet.documents,
+    ...packet.context.decisions.flatMap(({ evidence }) =>
+      evidence
+        ? [
+            {
+              id: evidence.document,
+              lines: rawMarkdownLines(evidence.text).map((line, index) => [
+                evidence.lineStart + index,
+                lineContent(line),
+              ]),
+            },
+          ]
+        : [],
+    ),
+  ];
+}
+
 function finishAnswer(options: {
   project: Project;
   work: Work;
@@ -1012,10 +1031,9 @@ function finishAnswer(options: {
     work.status = 'done';
     store.save(work);
   }
+  const supplied = suppliedDocuments(packet);
   const evidence = answer.evidence
-    .map((entry) =>
-      suppliedCitation(entry, packet.documents) ? sourceEvidence(entry, project) : null,
-    )
+    .map((entry) => (suppliedCitation(entry, supplied) ? sourceEvidence(entry, project) : null))
     .filter((entry) => entry !== null);
   const invalidReferences = evidence.length !== answer.evidence.length;
   const unreviewed =
@@ -1062,7 +1080,7 @@ function finishReview(options: {
 }) {
   const { project, runtime, work, store, packet, value } = options;
   const implementation = runtime.implementation!;
-  const review = materializeReview(project, implementation, value, packet.documents);
+  const review = materializeReview(project, implementation, value, suppliedDocuments(packet));
   if (work.status !== 'done') {
     work.result = value;
     work.resultKey = digest(JSON.stringify(packet));
