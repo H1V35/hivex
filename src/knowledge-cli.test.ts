@@ -1446,3 +1446,59 @@ test('source quotes carried by the graph remain citable when full document units
     });
   });
 });
+
+test('review supplies changed ranges of a large file and keeps exact line evidence', () => {
+  project((root) => {
+    const binary = reviewProject(root, {
+      findings: [
+        {
+          assessment: 'conflict',
+          explanation: 'The changed flag disables required purge.',
+          documents: [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }],
+          code: [{ path: 'large.ts', side: 'after', lineStart: 14001, lineEnd: 14001 }],
+        },
+        {
+          assessment: 'conflict',
+          explanation: 'This unrelated line is not supplied.',
+          documents: [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }],
+          code: [{ path: 'large.ts', side: 'after', lineStart: 1, lineEnd: 1 }],
+        },
+      ],
+      uncertainties: [],
+    });
+    const unchanged = '// Unchanged generated implementation context.\n'.repeat(14000);
+    writeFileSync(join(root, 'large.ts'), unchanged + 'export const purgeOnRevocation = true;\n');
+    expect(spawnSync('git', ['add', 'large.ts'], { cwd: root }).status).toBe(0);
+    expect(
+      spawnSync(
+        'git',
+        [
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.invalid',
+          'commit',
+          '-qm',
+          'Large baseline',
+        ],
+        { cwd: root },
+      ).status,
+    ).toBe(0);
+    writeFileSync(join(root, 'large.ts'), unchanged + 'export const purgeOnRevocation = false;\n');
+    const result = invoke(root, ['review', 'cache purge', '--base', 'HEAD', '--codex', binary]);
+    expect(result.stderr).toBe('');
+    expect(result.value).toMatchObject({ status: 'partial', work: { calls: 3 } });
+    expect(result.value.findings[0]).toMatchObject({
+      referencesVerified: true,
+      code: [
+        { path: 'large.ts', lineStart: 14001, text: 'export const purgeOnRevocation = false;' },
+      ],
+    });
+    expect(result.value.findings[1]).toMatchObject({
+      assessment: 'uncertain',
+      referencesVerified: false,
+      code: [],
+    });
+    expect(JSON.stringify(result.value.warnings)).toContain('unchanged code is omitted');
+  });
+});
