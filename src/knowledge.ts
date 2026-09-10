@@ -1003,10 +1003,9 @@ function suppliedDocuments(packet: ReturnType<typeof answerPacket>) {
         ? [
             {
               id: evidence.document,
-              lines: rawMarkdownLines(evidence.text).map((line, index) => [
-                evidence.lineStart + index,
-                lineContent(line),
-              ]),
+              lines: evidence.text
+                .split(/\r\n|\r|\n/u)
+                .map((line, index) => [evidence.lineStart + index, line]),
             },
           ]
         : [],

@@ -1402,7 +1402,8 @@ test('source quotes carried by the graph remain citable when full document units
     const binary = reviewProject(root);
     const file = join(root, 'responses.json');
     const responses = JSON.parse(readFileSync(file, 'utf8'));
-    const evidence = [{ document: 'cache.md', lineStart: 3, lineEnd: 3 }];
+    responses.extract.decisions[0].lineEnd = 4;
+    const evidence = [{ document: 'cache.md', lineStart: 3, lineEnd: 4 }];
     responses.ask.evidence = evidence;
     responses.review.findings[0].documents = evidence;
     responses.review.findings = [
@@ -1420,7 +1421,7 @@ test('source quotes carried by the graph remain citable when full document units
       expect.objectContaining({
         document: 'cache.md',
         lineStart: 3,
-        text: 'Cached data expires after seven days.',
+        text: 'Cached data expires after seven days.\n',
       }),
     );
     const reviewed = invoke(root, [
