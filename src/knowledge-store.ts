@@ -35,7 +35,7 @@ const attemptSchema = z.object({
 });
 const workSchema = z.object({
   id: z.string(),
-  kind: z.enum(['update', 'ask']),
+  kind: z.enum(['update', 'ask', 'review']),
   key: z.string(),
   snapshot: z.string(),
   calls: z.number().int().nonnegative(),
@@ -46,7 +46,7 @@ const workSchema = z.object({
   status: z.enum(['pending', 'running', 'budget-exhausted', 'context-limit', 'failed', 'done']),
   remaining: z.array(z.string()),
   plannedUnits: z.array(z.string()).default([]),
-  phase: z.enum(['update', 'ask']).default('update'),
+  phase: z.enum(['update', 'ask', 'review']).default('update'),
   contextLimit: z
     .object({ documents: z.array(z.string()), requiredBytes: z.number(), maxBytes: z.number() })
     .optional(),
@@ -69,6 +69,16 @@ const workSchema = z.object({
   result: z.unknown().optional(),
 });
 export type Work = z.infer<typeof workSchema>;
+
+type BeginWork = {
+  kind: Work['kind'];
+  key: string;
+  snapshot: string;
+  maxCalls?: number;
+  maxInputBytes?: number;
+  remaining: string[];
+  resultKey?: string;
+};
 
 export type RecoveryReport = {
   status: 'clean' | 'recovered' | 'blocked';
@@ -242,16 +252,8 @@ export class KnowledgeStore implements Disposable {
     ]);
   }
 
-  begin(options: {
-    kind: Work['kind'];
-    key: string;
-    snapshot: string;
-    maxCalls?: number;
-    maxInputBytes?: number;
-    remaining: string[];
-    resultKey?: string;
-  }): Work {
-    const defaultMaxCalls = options.kind === 'ask' ? 3 : 2;
+  begin(options: BeginWork): Work {
+    const defaultMaxCalls = options.kind === 'update' ? 2 : 3;
     return this.db
       .transaction(() => {
         const row = this.db
@@ -262,21 +264,11 @@ export class KnowledgeStore implements Disposable {
           .get(options.kind, options.key);
         const previous = row ? workSchema.parse(JSON.parse(row.data)) : null;
         const reusable =
-          options.kind === 'ask'
+          options.kind !== 'update'
             ? previous?.resultKey === options.resultKey
             : options.remaining.length === 0;
-        if (previous && (previous.status !== 'done' || reusable)) {
-          const work = previous;
-          if (work.status === 'done') return work;
-          if (work.status === 'running')
-            throw new HivexError({
-              code: 'WORK_RUNNING',
-              message: `Work ${work.id} has an unfinished invocation; inspect it before retrying`,
-            });
-          if (options.maxCalls !== undefined) work.maxCalls = options.maxCalls;
-          if (options.maxInputBytes !== undefined) work.maxInputBytes = options.maxInputBytes;
-          this.save(work);
-          return work;
+        if (previous && (options.kind !== 'update' || previous.status !== 'done' || reusable)) {
+          return this.resume(previous, options, reusable);
         }
         const work: Work = {
           id: randomUUID(),
@@ -297,6 +289,23 @@ export class KnowledgeStore implements Disposable {
         return work;
       })
       .immediate();
+  }
+
+  private resume(work: Work, options: BeginWork, reusable: boolean) {
+    if (work.status === 'done' && reusable) return work;
+    if (work.status === 'done') {
+      work.status = 'pending';
+      delete work.result;
+    }
+    if (work.status === 'running')
+      throw new HivexError({
+        code: 'WORK_RUNNING',
+        message: `Work ${work.id} has an unfinished invocation; inspect it before retrying`,
+      });
+    if (options.maxCalls !== undefined) work.maxCalls = options.maxCalls;
+    if (options.maxInputBytes !== undefined) work.maxInputBytes = options.maxInputBytes;
+    this.save(work);
+    return work;
   }
 
   save(work: Work) {

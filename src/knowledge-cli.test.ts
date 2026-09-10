@@ -1086,3 +1086,419 @@ test('a changed known supporting document takes priority over unrelated pending 
     expect(answer.value.unavailableDocuments).not.toContain('z-scope.md');
   });
 });
+
+function reviewProject(root: string, response?: object) {
+  writeFileSync(
+    join(root, '.gitignore'),
+    '.hivex/\nresponses.json\ncodex\ncodex.mjs\nmodel-calls.log\nreport.json\n',
+  );
+  writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = true;\n');
+  for (const args of [
+    ['init', '-q'],
+    ['add', '.'],
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      'commit',
+      '-qm',
+      'Initial',
+    ],
+  ]) {
+    expect(spawnSync('git', args, { cwd: root }).status).toBe(0);
+  }
+  writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = false;\n');
+  const binary = model(root);
+  const file = join(root, 'responses.json');
+  const responses = JSON.parse(readFileSync(file, 'utf8'));
+  responses.review = response ?? {
+    findings: [
+      {
+        assessment: 'conflict',
+        explanation: 'Private cache survives access revocation, contradicting the purge rule.',
+        documents: [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }],
+        code: [{ path: 'cache.ts', side: 'after', lineStart: 1, lineEnd: 1 }],
+      },
+    ],
+    uncertainties: [],
+  };
+  writeFileSync(file, JSON.stringify(responses));
+  return binary;
+}
+
+test('review shares maintenance budget, cites current code and documents, and detects later changes', () => {
+  project((root) => {
+    const binary = reviewProject(root);
+    const first = invoke(root, [
+      'review',
+      'change cache behavior',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    expect(first.stderr).toBe('');
+    expect(first.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { calls: 2, maxCalls: 2 },
+    });
+    const final = invoke(root, [
+      'review',
+      'change cache behavior',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '3',
+      '--codex',
+      binary,
+    ]);
+    expect(final.value).toMatchObject({
+      command: 'review',
+      status: 'ready',
+      work: { id: first.value.work.id, calls: 3 },
+    });
+    expect(final.value.findings[0]).toMatchObject({
+      assessment: 'conflict',
+      code: [{ path: 'cache.ts', text: 'export const purgeOnRevocation = false;' }],
+    });
+    expect(final.value.findings[0].documents[0]).toMatchObject({
+      document: 'privacy.md',
+      text: 'Revoking access immediately removes cached private data.',
+    });
+    writeFileSync(join(root, 'report.json'), JSON.stringify(final.value));
+    expect(invoke(root, ['review', '--check', 'report.json']).value.status).toBe('current');
+    const repeat = invoke(root, [
+      'review',
+      'change cache behavior',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '0',
+      '--codex',
+      '/nonexistent-codex',
+    ]);
+    expect(repeat.value.work).toMatchObject({ id: final.value.work.id, calls: 3 });
+    writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = true;\n');
+    expect(invoke(root, ['review', '--check', 'report.json']).value).toMatchObject({
+      status: 'stale',
+      implementationChanged: true,
+      documentsChanged: false,
+    });
+    writeFileSync(
+      join(root, 'privacy.md'),
+      '\uFEFF# Access\n\nRevoking access immediately removes cached private data.\n',
+    );
+    expect(invoke(root, ['review', '--check', 'report.json']).value.documentsChanged).toBe(true);
+  });
+});
+
+test('review keeps an unverifiable finding local while retaining a supported exception', () => {
+  project((root) => {
+    const documents = [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }];
+    const code = [{ path: 'cache.ts', side: 'after', lineStart: 1, lineEnd: 1 }];
+    const binary = reviewProject(root, {
+      findings: [
+        {
+          assessment: 'conflict',
+          explanation: 'A location that was not supplied.',
+          documents,
+          code: [{ ...code[0], lineEnd: 999 }],
+        },
+        {
+          assessment: 'exception',
+          explanation: 'Revocation overrides the normal expiry.',
+          documents,
+          code,
+        },
+      ],
+      uncertainties: ['The deployment size is not documented.'],
+    });
+    const result = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
+    expect(result.value.status).toBe('partial');
+    expect(result.value.findings[0]).toMatchObject({
+      assessment: 'uncertain',
+      referencesVerified: false,
+      code: [],
+    });
+    expect(result.value.findings[1]).toMatchObject({
+      assessment: 'exception',
+      referencesVerified: true,
+    });
+    expect(result.value.uncertainties).toContain('The deployment size is not documented.');
+  });
+});
+
+test('review binds deleted and untracked code and preserves an omitted resumed call limit', () => {
+  project((root) => {
+    const binary = reviewProject(root, {
+      findings: [
+        {
+          assessment: 'conflict',
+          explanation: 'The replacement drops immediate purge.',
+          documents: [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }],
+          code: [
+            { path: 'cache.ts', side: 'before', lineStart: 1, lineEnd: 1 },
+            { path: 'new cache.ts', side: 'after', lineStart: 1, lineEnd: 1 },
+          ],
+        },
+      ],
+      uncertainties: [],
+    });
+    rmSync(join(root, 'cache.ts'));
+    writeFileSync(join(root, 'new cache.ts'), 'export const purgeOnRevocation = false;\n');
+    const first = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '1',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value.work).toMatchObject({ calls: 1, maxCalls: 1 });
+    const held = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
+    expect(held.value.work).toMatchObject({ id: first.value.work.id, calls: 1, maxCalls: 1 });
+    const final = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '3',
+      '--codex',
+      binary,
+    ]);
+    expect(final.value.status).toBe('ready');
+    expect(final.value.findings[0].code).toEqual([
+      expect.objectContaining({
+        path: 'cache.ts',
+        side: 'before',
+        text: 'export const purgeOnRevocation = true;',
+      }),
+      expect.objectContaining({
+        path: 'new cache.ts',
+        side: 'after',
+        text: 'export const purgeOnRevocation = false;',
+      }),
+    ]);
+    writeFileSync(join(root, 'report.json'), JSON.stringify(final.value));
+    writeFileSync(join(root, 'new cache.ts'), '\uFEFFexport const purgeOnRevocation = false;\n');
+    expect(invoke(root, ['review', '--check', 'report.json']).value.implementationChanged).toBe(
+      true,
+    );
+  });
+});
+
+test('review rejects oversized implementation before spending and exposes unsupported binary scope', () => {
+  project((root) => {
+    const binary = reviewProject(root);
+    writeFileSync(join(root, 'cache.ts'), 'x'.repeat(262145));
+    const large = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
+    expect(JSON.parse(large.stderr).error.code).toBe('IMPLEMENTATION_TOO_LARGE');
+    expect(invoke(root, ['status']).value.availableDecisions).toBe(0);
+    writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = false;\n');
+    writeFileSync(join(root, 'asset.bin'), Buffer.from([0, 1, 2]));
+    const partial = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
+    expect(partial.value).toMatchObject({ status: 'partial', work: { calls: 3 } });
+    expect(JSON.stringify(partial.value.warnings)).toContain('Unsupported binary');
+  });
+});
+
+test('expanding a partial review keeps the original work and its consumed budget', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n\n' +
+        'Supporting rationale. '.repeat(270) +
+        '\n',
+    );
+    const binary = reviewProject(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const first = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '1',
+      '--max-context-bytes',
+      '5000',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value).toMatchObject({
+      status: 'partial',
+      omittedUnits: 1,
+      work: { calls: 1, maxCalls: 1 },
+    });
+    const expanded = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '1',
+      '--max-context-bytes',
+      '30000',
+      '--codex',
+      binary,
+    ]);
+    expect(expanded.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { id: first.value.work.id, calls: 1, maxCalls: 1 },
+    });
+    const continued = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '2',
+      '--max-context-bytes',
+      '30000',
+      '--codex',
+      binary,
+    ]);
+    expect(continued.value).toMatchObject({
+      status: 'ready',
+      omittedUnits: 0,
+      work: { id: first.value.work.id, calls: 2, maxCalls: 2 },
+    });
+  });
+});
+
+test('review retrieves decisions from new file content without hints in the task or filename', () => {
+  project((root) => {
+    const binary = reviewProject(root);
+    writeFileSync(join(root, 'cache.ts'), 'export const purgeOnRevocation = true;\n');
+    writeFileSync(join(root, 'worker.ts'), 'export const cache = { expiresAfterDays: 90 };\n');
+    const result = invoke(root, [
+      'review',
+      'Implement worker',
+      '--base',
+      'HEAD',
+      '--max-calls',
+      '0',
+      '--codex',
+      binary,
+    ]);
+    expect(result.value.status).toBe('budget-exhausted');
+    expect(result.value.documents).toContainEqual(expect.objectContaining({ id: 'cache.md' }));
+  });
+});
+
+test('source quotes carried by the graph remain citable when full document units are omitted', () => {
+  project((root) => {
+    writeFileSync(
+      join(root, 'cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n\n' +
+        'Supporting rationale. '.repeat(270) +
+        '\n',
+    );
+    const binary = reviewProject(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.extract.decisions[0].lineEnd = 4;
+    const evidence = [{ document: 'cache.md', lineStart: 3, lineEnd: 4 }];
+    responses.ask.evidence = evidence;
+    responses.review.findings[0].documents = evidence;
+    responses.review.findings = [
+      responses.review.findings[0],
+      {
+        ...responses.review.findings[0],
+        documents: [{ document: 'cache.md', lineStart: 5, lineEnd: 5 }],
+      },
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const asked = invoke(root, ['ask', 'cache', '--max-context-bytes', '5000', '--codex', binary]);
+    expect(asked.value.omittedUnits).toBe(1);
+    expect(asked.value.evidence).toContainEqual(
+      expect.objectContaining({
+        document: 'cache.md',
+        lineStart: 3,
+        text: 'Cached data expires after seven days.\n',
+      }),
+    );
+    const reviewed = invoke(root, [
+      'review',
+      'cache',
+      '--base',
+      'HEAD',
+      '--max-context-bytes',
+      '5000',
+      '--codex',
+      binary,
+    ]);
+    expect(reviewed.value.omittedUnits).toBe(1);
+    expect(reviewed.value.findings[0]).toMatchObject({
+      referencesVerified: true,
+      documents: [{ document: 'cache.md', lineStart: 3 }],
+    });
+    expect(reviewed.value.findings[1]).toMatchObject({
+      assessment: 'uncertain',
+      referencesVerified: false,
+      documents: [],
+    });
+  });
+});
+
+test('review supplies changed ranges of a large file and keeps exact line evidence', () => {
+  project((root) => {
+    const binary = reviewProject(root, {
+      findings: [
+        {
+          assessment: 'conflict',
+          explanation: 'The changed flag disables required purge.',
+          documents: [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }],
+          code: [{ path: 'large.ts', side: 'after', lineStart: 14001, lineEnd: 14001 }],
+        },
+        {
+          assessment: 'conflict',
+          explanation: 'This unrelated line is not supplied.',
+          documents: [{ document: 'privacy.md', lineStart: 3, lineEnd: 3 }],
+          code: [{ path: 'large.ts', side: 'after', lineStart: 1, lineEnd: 1 }],
+        },
+      ],
+      uncertainties: [],
+    });
+    const unchanged = '// Unchanged generated implementation context.\n'.repeat(14000);
+    writeFileSync(join(root, 'large.ts'), unchanged + 'export const purgeOnRevocation = true;\n');
+    expect(spawnSync('git', ['add', 'large.ts'], { cwd: root }).status).toBe(0);
+    expect(
+      spawnSync(
+        'git',
+        [
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.invalid',
+          'commit',
+          '-qm',
+          'Large baseline',
+        ],
+        { cwd: root },
+      ).status,
+    ).toBe(0);
+    writeFileSync(join(root, 'large.ts'), unchanged + 'export const purgeOnRevocation = false;\n');
+    const result = invoke(root, ['review', 'cache purge', '--base', 'HEAD', '--codex', binary]);
+    expect(result.stderr).toBe('');
+    expect(result.value).toMatchObject({ status: 'partial', work: { calls: 3 } });
+    expect(result.value.findings[0]).toMatchObject({
+      referencesVerified: true,
+      code: [
+        { path: 'large.ts', lineStart: 14001, text: 'export const purgeOnRevocation = false;' },
+      ],
+    });
+    expect(result.value.findings[1]).toMatchObject({
+      assessment: 'uncertain',
+      referencesVerified: false,
+      code: [],
+    });
+    expect(JSON.stringify(result.value.warnings)).toContain('unchanged code is omitted');
+  });
+});

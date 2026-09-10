@@ -14,9 +14,10 @@ function documentCommand(args: string[]): unknown {
   return JSON.parse(result.stdout);
 }
 
-test('sources lists current Markdown from an uncommitted project without returning text', () => {
+test('sources accepts BOM configuration and lists current nested Markdown without returning text', () => {
   const root = mkdtempSync(join(tmpdir(), 'hivex-documents-'));
   try {
+    writeFileSync(join(root, 'hivex.json'), '\uFEFF{"include":["**/*.md"]}');
     mkdirSync(join(root, 'packages', 'core'), { recursive: true });
     writeFileSync(
       join(root, 'packages', 'core', 'decision.md'),

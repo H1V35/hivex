@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { checkReview } from './review.ts';
 import { documentCommand } from './documents.ts';
 import { knowledgeMaintenance } from './knowledge-maintenance.ts';
 import { knowledgeCommand } from './knowledge.ts';
@@ -47,6 +48,13 @@ async function main(args: string[]) {
             'One bounded automatic update/check batch and Luna/max assistance share a total budget; identical retained answers are reused.',
         },
         {
+          name: 'review',
+          usage:
+            'review <task> --base <git-ref> [--root <project>] [--source <document>] [--max-calls <total>] [--max-context-bytes <bytes>] | review --check <saved-report.json> [--root <project>]',
+          modelCalls:
+            'One automatic update/check batch and a review share one budget. Checking saved versions needs no model.',
+        },
+        {
           name: 'recover',
           usage: 'recover [--root <project>] [--acknowledge-uncertain]',
           modelCalls: 0,
@@ -60,9 +68,9 @@ async function main(args: string[]) {
       ],
       modelOptions: '--codex <native-binary> --deadline-ms <100..1800000> --retry-failed',
       configuration: 'Optional hivex.json with include/exclude relative Markdown globs.',
-      stage:
-        'Automatic incremental updates, interpretation repair and task context. Diff-review assistance is the next delivery.',
+      stage: 'Incremental project knowledge and task/diff assistance for the principal agent.',
     };
+  if (args[0] === 'review' && args.includes('--check')) return checkReview(args);
   if (args[0] === 'sources' || args[0] === 'read') return documentCommand(args);
   if (args[0] === 'recover' || args[0] === 'prune') return knowledgeMaintenance(args);
   return knowledgeCommand(args);

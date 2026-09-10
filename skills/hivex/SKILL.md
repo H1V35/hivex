@@ -35,15 +35,23 @@ implementation step. Respect declared incomplete exploration and unavailable evi
 
 ## During review
 
-The principal reviewer directs the review. Where the installed CLI supports task/diff assistance,
-use it to identify relevant decisions and possible conflicts; it need not receive a predetermined
-list of suspicions. Check its findings against the actual implementation and Markdown. Tests, lint
-and general code review still address their own concerns.
+The principal reviewer directs the review. Run `hivex review "<task>" --base <git-ref>` from the
+Git project root. It examines tracked and untracked working changes, recovers relevant documentary
+context and makes one review call after at most one update/check batch. The default total budget is
+three calls; resume the same task/base with the intended total limit to continue retained work.
+Expanding a partial report keeps its work identity and consumed budget; a larger context does not
+create another allowance.
 
-Resolve a demonstrated contradiction before closing the change, by correcting the implementation
-or recording an approved decision change. An uncertain finding needs investigation of the affected
-point, not an automatic rerun of the whole process. Do not present a partial result as complete.
-If this installed version lacks review assistance, report that limit rather than fabricating it.
+Check each finding against its cited before/after code and Markdown versions, including dependencies,
+conditions and exceptions. Resolve a demonstrated contradiction before closing the change, by
+correcting the implementation or recording an approved decision change. Uncertainty calls for focused
+investigation; absence of a finding is not implementation approval. Missing context may be addressed
+with a focused task, explicit `--source` or an appropriate context limit, not automatic semantic retries.
+
+Save a report outside the reviewed project or in an ignored path when it must survive the session.
+`hivex review --check <saved-report.json> --root <project>` checks documentary and implementation
+freshness without a model. A current report is not proof of correct code; a stale report does not
+cover subsequent changes. Review output never replaces general code review, lint or tests.
 
 ## Maintain knowledge
 
