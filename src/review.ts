@@ -36,8 +36,7 @@ export const reviewInstructions =
 
 function codeEvidence(citation: z.infer<typeof codeCitation>, implementation: Implementation) {
   const file = implementation.files.find((entry) => entry.path === citation.path)?.[citation.side];
-  if (!file || citation.lineEnd < citation.lineStart || citation.lineEnd > file.lines.length)
-    return null;
+  if (!file || citation.lineEnd < citation.lineStart) return null;
   const lines = file.lines.filter(
     ([number]) => number >= citation.lineStart && number <= citation.lineEnd,
   );

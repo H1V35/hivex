@@ -186,7 +186,9 @@ hivex review --check /tmp/hivex-review.json
 ```
 
 Use the same task and base to resume or reuse retained work. Update, knowledge check and review share
-one budget, including expansion of a partial report. Context is bounded; large changes must be narrowed or split into coherent reviews.
+one budget, including expansion of a partial report. Context is bounded; large changes must be narrowed or split into coherent reviews. Larger existing
+text files contribute diff excerpts with original line numbers and explicit omissions; their full-file
+versions still detect later changes.
 The principal reviewer verifies conflicts and exceptions and resolves supported contradictions before
 closing the change. A `ready` result means assistance is available, never that the implementation is
 approved. A saved report can be checked without a model; changed code or documents make it stale.
