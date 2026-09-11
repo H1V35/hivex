@@ -277,6 +277,7 @@ export class KnowledgeStore implements Disposable {
     const defaultMaxCalls = options.kind === 'update' ? 2 : 3;
     return this.db
       .transaction(() => {
+        if (!this.db.query('SELECT id FROM graph WHERE id=1').get()) this.saveGraph(this.graph());
         const row = this.db
           .query<
             { data: string },
