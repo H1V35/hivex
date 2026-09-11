@@ -553,6 +553,7 @@ test('retrieves a consulted historical dependency when a current query reaches i
     const binary = model(root);
     const file = join(root, 'responses.json');
     const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.capturePackets = true;
     responses.byDocument = {
       'cache.md': { decisions: [responses.extract.decisions[0]], relationships: [] },
       'privacy.md': { decisions: [responses.extract.decisions[1]], relationships: [] },
@@ -625,7 +626,54 @@ test('retrieves a consulted historical dependency when a current query reaches i
       expect(reused.value.pendingDocuments).not.toContain('archive/unread.md');
       expect(existsSync(join(clone, '.hivex/knowledge.sqlite'))).toBe(false);
       expect(invoke(clone, ['snapshot', 'import']).value.status).toBe('ready');
+      const limited = invoke(clone, [
+        'ask',
+        'retention',
+        '--source',
+        'cache.md',
+        '--limit',
+        '1',
+        '--max-calls',
+        '0',
+        '--codex',
+        '/no-model',
+      ]);
+      const expanded = invoke(clone, [
+        'ask',
+        'retention',
+        '--source',
+        'cache.md',
+        '--limit',
+        '2',
+        '--codex',
+        '/no-model',
+      ]);
+      expect(expanded.value.work).toMatchObject({
+        id: limited.value.work.id,
+        calls: 0,
+        maxCalls: 0,
+      });
     });
+    writeFileSync(
+      join(root, 'cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n\nNew current context.\n',
+    );
+    const pending = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
+    expect(pending.value.work.calls).toBe(1);
+    writeFileSync(
+      join(root, 'archive/replaced.md'),
+      '# Replaced\n\nUpdated historical explanation.\n',
+    );
+    const resumed = invoke(root, ['update', '--max-calls', '2', '--codex', binary]);
+    expect(resumed.value.work).toMatchObject({ id: pending.value.work.id, calls: 2 });
+    const lastPacket = JSON.parse(
+      readFileSync(file + '.packets', 'utf8')
+        .trim()
+        .split('\n')
+        .at(-1)!,
+    );
+    expect(lastPacket.operation).toBe('extract');
+    expect(JSON.stringify(lastPacket.documents)).toContain('Updated historical explanation.');
   });
 });
 

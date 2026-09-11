@@ -275,7 +275,35 @@ function updateResponse(project: Project, work: Work, graph: Graph, units: Inges
   };
 }
 
-function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
+function resolveContextReferences(
+  project: Project,
+  targets: Set<string>,
+  references: Graph['relationships'][number]['evidence'],
+) {
+  const ranges: { document: string; lineStart: number; lineEnd: number }[] = [];
+  const missing = new Set<string>();
+  for (const citation of references) {
+    if (targets.has(citation.document)) continue;
+    const document = project.documents.find((source) => source.id === citation.document);
+    if (!document) {
+      missing.add(citation.document);
+      continue;
+    }
+    ranges.push(
+      citation.version === document.hash
+        ? citation
+        : { document: document.id, lineStart: 1, lineEnd: rawMarkdownLines(document.text).length },
+    );
+  }
+  return { ranges, missing };
+}
+
+function batchContext(
+  project: Project,
+  graph: Graph,
+  units: IngestionUnit[],
+  retainedSources: string[] = [],
+) {
   const candidates = graph.decisions.filter(
     (entry) =>
       project.documents.some(
@@ -321,20 +349,12 @@ function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
       edge.evidence.some((citation) => targetDocuments.has(citation.document)),
   );
   const affected = affectedRelations.flatMap((edge) => [edge.from, edge.to]);
-  const missing = new Set<string>();
-  for (const citation of affectedRelations.flatMap((edge) => edge.evidence)) {
-    if (targetDocuments.has(citation.document)) continue;
-    const document = project.documents.find((source) => source.id === citation.document);
-    if (!document) {
-      missing.add(citation.document);
-      continue;
-    }
-    ranges.push(
-      citation.version === document.hash
-        ? citation
-        : { document: document.id, lineStart: 1, lineEnd: rawMarkdownLines(document.text).length },
-    );
-  }
+  const supporting = resolveContextReferences(project, targetDocuments, [
+    ...affectedRelations.flatMap((edge) => edge.evidence),
+    ...retainedSources.map((document) => ({ document, lineStart: 1, lineEnd: 1 })),
+  ]);
+  const missing = supporting.missing;
+  ranges.push(...supporting.ranges);
   const allowed = new Set(
     candidates
       .filter(
@@ -464,6 +484,21 @@ function finishRound(options: {
   if (work.kind !== 'update') work.phase = work.kind;
 }
 
+function pendingContextCurrent(project: Project, pending: Work['pending']) {
+  if (!pending) return false;
+  const sources = z
+    .array(z.object({ id: z.string(), version: z.string() }))
+    .safeParse(pending.packet?.documents);
+  return (
+    sources.success &&
+    sources.data.every((source) =>
+      project.documents.some(
+        (document) => document.id === source.id && document.hash === source.version,
+      ),
+    )
+  );
+}
+
 function prepareUpdate(options: {
   project: Project;
   runtime: Options;
@@ -538,10 +573,10 @@ async function update(project: Project, runtime: Options, sharedWork?: Work) {
   if (['done', 'failed'].includes(work.status))
     return updateResponse(project, work, graph, plan.units);
   while (work.remaining.length || work.pending) {
-    if (!work.pending) {
+    if (!pendingContextCurrent(project, work.pending)) {
       const units = nextUnits(plan.units, work.remaining);
       const documents = [...new Set(units.map((unit) => unit.document))];
-      const context = batchContext(project, graph, units);
+      const context = batchContext(project, graph, units, work.pending?.context);
       const packet = {
         operation: 'extract',
         targets: documents,
@@ -603,7 +638,7 @@ async function update(project: Project, runtime: Options, sharedWork?: Work) {
       };
       store.commit(work, graph);
     }
-    const pending = work.pending;
+    const pending = work.pending!;
     const value = await runModel({
       work,
       store,
@@ -992,7 +1027,7 @@ function beginConsultation(options: {
         task: runtime.query,
         implementation: runtime.implementation?.fingerprint,
         sources: [...new Set(runtime.sources)].sort(),
-        snapshot: packet.context.snapshot,
+        snapshot: knowledgeSnapshot(project, new Set(runtime.sources)),
         model: knowledgeModel,
         automatic: 1,
       }),
