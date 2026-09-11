@@ -7,6 +7,9 @@ records that knowledge; the graph helps locate and interpret it without becoming
 
 **Document**: A selected Markdown file, wherever its project, package or module keeps it.
 
+**Archived document**: Historical Markdown preserved as evidence of replaced decisions and their
+reasons. It remains available for focused retrieval without being presumed current authority.
+
 **Ingestion unit**: A bounded fragment of a document with its original line range. It permits
 processing and resumption in rounds without becoming a separate documentary authority.
 
@@ -26,6 +29,9 @@ reader can inspect. A model's paraphrase is not the passage itself.
 
 **Knowledge graph**: Derived decisions and relationships, with supporting definitions and lessons, that help an agent recover project context.
 It may be incomplete or uncertain without making every usable part unavailable.
+
+**Knowledge snapshot**: A portable representation of reusable graph knowledge, its source versions,
+evidence, provenance and coverage. It is distinct from a document snapshot and from execution state.
 
 **Applicability**: Whether a decision governs the case being considered after its conditions,
 exceptions and replacements have been taken into account.

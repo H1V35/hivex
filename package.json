@@ -49,6 +49,7 @@
     "docs/engineering.md",
     "docs/adr/0003-independent-bun-installation.md",
     "docs/adr/0010-practical-knowledge-assistance.md",
+    "docs/adr/0011-shared-knowledge-and-selective-history.md",
     "skills/",
     "README.md",
     "LICENSE"
