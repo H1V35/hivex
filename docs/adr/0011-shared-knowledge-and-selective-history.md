@@ -1,6 +1,6 @@
 ---
 title: Shared knowledge snapshots and selective documentary history
-status: accepted (selective history implementation pending)
+status: accepted
 date: 2026-09-11
 ---
 
@@ -47,7 +47,8 @@ Snapshot operations must not trigger hidden model calls or source edits.
 
 This extends ADR 0010's portable second-brain contract and supersedes a blanket recommendation to
 ignore every artifact under `.hivex/`. The CLI supports explicit snapshot export/import and reuses
-the snapshot in a fresh clone. Selective historical source access is the remaining delivery.
+the snapshot in a fresh clone. Configurable `history` globs keep historical sources available for
+focused retrieval while excluding them from ordinary ingestion.
 A saved snapshot alone does not complete Compi adoption; publication and process retirement follow
 the project's normal workflow.
 

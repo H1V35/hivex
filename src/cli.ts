@@ -73,7 +73,8 @@ async function main(args: string[]) {
         { name: 'status', usage: 'status [--root <project>]', modelCalls: 0 },
       ],
       modelOptions: '--codex <native-binary> --deadline-ms <100..1800000> --retry-failed',
-      configuration: 'Optional hivex.json with include/exclude relative Markdown globs.',
+      configuration:
+        'Optional hivex.json with include/exclude/history relative Markdown globs; history sources are focused evidence.',
       stage: 'Incremental project knowledge and task/diff assistance for the principal agent.',
     };
   if (args[0] === 'review' && args.includes('--check')) return checkReview(args);

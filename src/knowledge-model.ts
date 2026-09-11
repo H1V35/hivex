@@ -140,6 +140,7 @@ export function sourceEvidence(entry: z.infer<typeof citationSchema>, project: P
     lineStart: entry.lineStart,
     lineEnd: entry.lineEnd,
     version: document.hash,
+    historical: document.historical,
     text: sourceRange(document.text, entry.lineStart, entry.lineEnd),
   };
 }

@@ -51,6 +51,29 @@ test('plans an initial knowledge update without spending when its work budget is
   });
 });
 
+test('keeps declared history out of an ordinary update plan', () => {
+  const root = mkdtempSync(join(tmpdir(), 'hivex-selective-history-'));
+  try {
+    mkdirSync(join(root, 'archive'), { recursive: true });
+    writeFileSync(join(root, 'active.md'), '# Active\n\nCurrent rule.\n');
+    writeFileSync(join(root, 'archive', 'replaced.md'), '# Replaced\n\nOld rule.\n');
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({ include: ['**/*.md'], history: ['archive/**/*.md'] }),
+    );
+
+    const response = invoke(root, ['update', '--max-calls', '0', '--codex', '/nonexistent-codex']);
+
+    expect(response.value).toMatchObject({
+      status: 'budget-exhausted',
+      pendingDocuments: ['active.md'],
+    });
+    expect(response.value.pendingDocuments).not.toContain('archive/replaced.md');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 function model(root: string, scenario = '') {
   const responses = join(root, 'responses.json');
   const binary = join(root, 'codex');
@@ -349,6 +372,308 @@ test('can use an explicitly selected document when a task uses different vocabul
     ]);
     expect(answer.value.answer).toContain('removes private cached data immediately');
     expect(answer.value.work.calls).toBe(1);
+  });
+});
+
+test('asks a declared historical source with bounded evidence and historical provenance', () => {
+  project((root) => {
+    mkdirSync(join(root, 'archive'), { recursive: true });
+    writeFileSync(
+      join(root, 'archive', 'replaced.md'),
+      '# Replaced\n\nThe old cache rule allowed seven days.\n',
+    );
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({ include: ['*.md'], history: ['archive/**/*.md'] }),
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.capturePackets = true;
+    responses.byDocument = {
+      'archive/replaced.md': {
+        decisions: [
+          {
+            ...responses.extract.decisions[0],
+            id: 'history-rule',
+            document: 'archive/replaced.md',
+            text: 'The old cache rule allowed seven days.',
+            status: 'current',
+            lineStart: 3,
+            lineEnd: 3,
+          },
+        ],
+        relationships: [],
+      },
+    };
+    responses.ask = {
+      answer: 'The old cache rule allowed seven days.',
+      evidence: [{ document: 'archive/replaced.md', lineStart: 3, lineEnd: 3 }],
+      uncertainties: [],
+    };
+    writeFileSync(file, JSON.stringify(responses));
+
+    const first = invoke(root, [
+      'ask',
+      'old cache rule',
+      '--source',
+      'archive/replaced.md',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { calls: 2, maxCalls: 2 },
+    });
+
+    const answer = invoke(root, [
+      'ask',
+      'old cache rule',
+      '--source',
+      'archive/replaced.md',
+      '--max-calls',
+      '3',
+      '--codex',
+      binary,
+    ]);
+
+    expect(answer.value.answer).toBe('The old cache rule allowed seven days.');
+    expect(answer.value.work.id).toBe(first.value.work.id);
+    expect(answer.value.work.calls).toBe(3);
+    expect(answer.value.evidence).toContainEqual(
+      expect.objectContaining({
+        document: 'archive/replaced.md',
+        historical: true,
+        text: 'The old cache rule allowed seven days.',
+      }),
+    );
+    const found = invoke(root, ['search', 'old cache rule', '--source', 'archive/replaced.md']);
+    expect(found.value.decisions).toContainEqual(
+      expect.objectContaining({
+        document: 'archive/replaced.md',
+        historical: true,
+        status: 'historical',
+      }),
+    );
+    const repaired = invoke(root, [
+      'update',
+      '--repair',
+      'archive/replaced.md',
+      '--reason',
+      'Check the historical lifetime.',
+      '--codex',
+      binary,
+    ]);
+    expect(repaired.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    writeFileSync(join(root, 'cache.md'), '# Cache\n\nCurrent cache expires after eight days.\n');
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const packets = readFileSync(file + '.packets', 'utf8')
+      .trim()
+      .split('\n')
+      .map(
+        (line) =>
+          JSON.parse(line) as { operation: string; targets: string[]; documents: { id: string }[] },
+      );
+    const ordinary = packets.filter((packet) => packet.operation === 'extract').at(-1);
+    if (!ordinary) throw new Error('Expected extraction of the changed current document');
+    expect(ordinary.targets).not.toContain('archive/replaced.md');
+    expect(ordinary.documents).not.toContainEqual(
+      expect.objectContaining({ id: 'archive/replaced.md' }),
+    );
+  });
+});
+
+test('does not ingest a historical match during an ordinary consultation', () => {
+  project((root) => {
+    mkdirSync(join(root, 'archive'), { recursive: true });
+    writeFileSync(
+      join(root, 'archive', 'replaced.md'),
+      '# Replaced\n\nThe old cache rule allowed seven days.\n',
+    );
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({ include: ['*.md'], history: ['archive/**/*.md'] }),
+    );
+
+    const answer = invoke(root, [
+      'ask',
+      'old cache rule',
+      '--max-calls',
+      '0',
+      '--codex',
+      '/nonexistent-codex',
+    ]);
+
+    expect(answer.value).toMatchObject({
+      command: 'ask',
+      status: 'budget-exhausted',
+      answer: null,
+    });
+    expect(answer.value.documents).not.toContainEqual(
+      expect.objectContaining({ id: 'archive/replaced.md' }),
+    );
+    expect(answer.value.pendingDocuments).not.toContain('archive/replaced.md');
+    writeFileSync(join(root, 'archive/replaced.md'), '# Replaced\n\nUnrelated historical note.\n');
+    const resumed = invoke(root, ['ask', 'old cache rule', '--codex', '/nonexistent-codex']);
+    expect(resumed.value.work).toMatchObject({ id: answer.value.work.id, calls: 0, maxCalls: 0 });
+  });
+});
+
+test('names an unconsulted historical reference instead of silently approving incomplete context', () => {
+  project((root) => {
+    mkdirSync(join(root, 'archive'));
+    writeFileSync(join(root, 'archive/exception.md'), '# Exception\n\nThe old exemption.\n');
+    writeFileSync(
+      join(root, 'cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n\nSee the [exception](archive/exception.md).\n',
+    );
+    writeFileSync(join(root, 'hivex.json'), JSON.stringify({ history: ['archive/**/*.md'] }));
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const answer = invoke(root, ['ask', 'cache retention', '--codex', binary]);
+    expect(answer.value.status).toBe('partial');
+    expect(JSON.stringify(answer.value.warnings)).toContain('archive/exception.md');
+    expect(answer.value.work.calls).toBe(1);
+  });
+});
+
+test('retrieves a consulted historical dependency when a current query reaches it', () => {
+  project((root) => {
+    mkdirSync(join(root, 'archive'), { recursive: true });
+    writeFileSync(
+      join(root, 'archive', 'replaced.md'),
+      '# Replaced\n\nThe old cache rule allowed seven days. See [current](../cache.md).\n',
+    );
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({ include: ['*.md'], history: ['archive/**/*.md'] }),
+    );
+    const binary = model(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.capturePackets = true;
+    responses.byDocument = {
+      'cache.md': { decisions: [responses.extract.decisions[0]], relationships: [] },
+      'privacy.md': { decisions: [responses.extract.decisions[1]], relationships: [] },
+      'archive/replaced.md': {
+        decisions: [
+          {
+            ...responses.extract.decisions[0],
+            id: 'history-rule',
+            document: 'archive/replaced.md',
+            text: 'The old cache rule allowed seven days.',
+            lineStart: 3,
+            lineEnd: 3,
+          },
+        ],
+        relationships: [
+          {
+            id: 'history-to-cache',
+            from: 'history-rule',
+            to: '@existing:cache.md',
+            type: 'supersedes',
+            reason: 'The current rule replaced the historical retention period.',
+            evidence: [
+              { document: 'archive/replaced.md', lineStart: 3, lineEnd: 3 },
+              { document: 'cache.md', lineStart: 3, lineEnd: 3 },
+            ],
+          },
+        ],
+      },
+    };
+    responses.ask = {
+      answer: 'The current cache rule superseded the historical seven-day rule.',
+      evidence: [{ document: 'archive/replaced.md', lineStart: 3, lineEnd: 3 }],
+      uncertainties: [],
+    };
+    writeFileSync(file, JSON.stringify(responses));
+
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    expect(
+      invoke(root, ['ask', 'old cache rule', '--source', 'archive/replaced.md', '--codex', binary])
+        .value.status,
+    ).toBe('ready');
+
+    const answer = invoke(root, ['ask', 'cache retention', '--codex', binary]);
+
+    expect(answer.value.evidence).toContainEqual(
+      expect.objectContaining({ document: 'archive/replaced.md', historical: true }),
+    );
+    expect(answer.value.pendingDocuments).not.toContain('archive/replaced.md');
+    writeFileSync(join(root, 'archive', 'unread.md'), '# Unrelated history\n\nOld rule.\n');
+    expect(invoke(root, ['snapshot', 'export']).value).toMatchObject({
+      status: 'ready',
+      pendingUnits: [],
+      modelCalls: 0,
+    });
+    project((clone) => {
+      mkdirSync(join(clone, 'archive'));
+      mkdirSync(join(clone, '.hivex'));
+      for (const file of [
+        'hivex.json',
+        'archive/replaced.md',
+        'archive/unread.md',
+        '.hivex/graph.json',
+      ])
+        copyFileSync(join(root, file), join(clone, file));
+      const reused = invoke(clone, ['search', 'cache retention']);
+      const neighbors = invoke(clone, ['neighbors', reused.value.decisions[0].id]);
+      expect(neighbors.value.decisions).toContainEqual(
+        expect.objectContaining({ document: 'archive/replaced.md', status: 'historical' }),
+      );
+      expect(reused.value.pendingDocuments).not.toContain('archive/unread.md');
+      expect(existsSync(join(clone, '.hivex/knowledge.sqlite'))).toBe(false);
+      expect(invoke(clone, ['snapshot', 'import']).value.status).toBe('ready');
+      const limited = invoke(clone, [
+        'ask',
+        'retention',
+        '--source',
+        'cache.md',
+        '--limit',
+        '1',
+        '--max-calls',
+        '0',
+        '--codex',
+        '/no-model',
+      ]);
+      const expanded = invoke(clone, [
+        'ask',
+        'retention',
+        '--source',
+        'cache.md',
+        '--limit',
+        '2',
+        '--codex',
+        '/no-model',
+      ]);
+      expect(expanded.value.work).toMatchObject({
+        id: limited.value.work.id,
+        calls: 0,
+        maxCalls: 0,
+      });
+    });
+    writeFileSync(
+      join(root, 'cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n\nNew current context.\n',
+    );
+    const pending = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
+    expect(pending.value.work.calls).toBe(1);
+    writeFileSync(
+      join(root, 'archive/replaced.md'),
+      '# Replaced\n\nUpdated historical explanation.\n',
+    );
+    const resumed = invoke(root, ['update', '--max-calls', '2', '--codex', binary]);
+    expect(resumed.value.work).toMatchObject({ id: pending.value.work.id, calls: 2 });
+    const lastPacket = JSON.parse(
+      readFileSync(file + '.packets', 'utf8')
+        .trim()
+        .split('\n')
+        .at(-1)!,
+    );
+    expect(lastPacket.operation).toBe('extract');
+    expect(JSON.stringify(lastPacket.documents)).toContain('Updated historical explanation.');
   });
 });
 
@@ -889,6 +1214,7 @@ test('evidence contains source coordinates and text without duplicating decision
     const evidence = invoke(root, ['search', 'seven days']).value.decisions[0].evidence;
     expect(Object.keys(evidence).sort()).toEqual([
       'document',
+      'historical',
       'lineEnd',
       'lineStart',
       'text',
@@ -1201,6 +1527,71 @@ test('review shares maintenance budget, cites current code and documents, and de
       '\uFEFF# Access\n\nRevoking access immediately removes cached private data.\n',
     );
     expect(invoke(root, ['review', '--check', 'report.json']).value.documentsChanged).toBe(true);
+  });
+});
+
+test('review can use an explicitly selected historical source with visible provenance', () => {
+  project((root) => {
+    mkdirSync(join(root, 'archive'), { recursive: true });
+    writeFileSync(
+      join(root, 'archive', 'replaced.md'),
+      '# Replaced\n\nThe old rule required immediate purge.\n',
+    );
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({ include: ['*.md'], history: ['archive/**/*.md'] }),
+    );
+    const binary = reviewProject(root);
+    const file = join(root, 'responses.json');
+    const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.byDocument = {
+      'archive/replaced.md': {
+        decisions: [
+          {
+            ...responses.extract.decisions[0],
+            id: 'historical-purge',
+            document: 'archive/replaced.md',
+            text: 'The old rule required immediate purge.',
+            status: 'current',
+            lineStart: 3,
+            lineEnd: 3,
+          },
+        ],
+        relationships: [],
+      },
+    };
+    responses.review = {
+      findings: [
+        {
+          assessment: 'conflict',
+          explanation: 'The change drops the historical purge requirement.',
+          documents: [{ document: 'archive/replaced.md', lineStart: 3, lineEnd: 3 }],
+          code: [{ path: 'cache.ts', side: 'after', lineStart: 1, lineEnd: 1 }],
+        },
+      ],
+      uncertainties: [],
+    };
+    writeFileSync(file, JSON.stringify(responses));
+
+    const result = invoke(root, [
+      'review',
+      'historical cache behavior',
+      '--base',
+      'HEAD',
+      '--source',
+      'archive/replaced.md',
+      '--codex',
+      binary,
+    ]);
+
+    expect(result.value).toMatchObject({ command: 'review', status: 'ready' });
+    expect(result.value.findings[0].documents).toContainEqual(
+      expect.objectContaining({
+        document: 'archive/replaced.md',
+        historical: true,
+        text: 'The old rule required immediate purge.',
+      }),
+    );
   });
 });
 

@@ -30,7 +30,7 @@ function sourceVersions(project: Project, graph: Graph) {
 }
 
 function snapshotReport(project: Project, graph: Graph, operation: string) {
-  const plan = ingestionUnits(project.documents);
+  const plan = ingestionUnits(project.currentDocuments);
   const pending = plan.units.filter(
     (unit) =>
       graph.units[unit.id]?.version !==

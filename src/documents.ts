@@ -14,16 +14,20 @@ export type Document = {
   hash: string;
   status: string | null;
   links: string[];
+  historical: boolean;
 };
 
 export type Project = {
   root: string;
   snapshot: string;
+  currentSnapshot: string;
   documents: Document[];
+  currentDocuments: Document[];
+  historicalDocuments: Document[];
   warnings: { path: string; message: string }[];
 };
 
-type Config = { include: string[]; exclude: string[] };
+type Config = { include: string[]; exclude: string[]; history: string[] };
 type Candidate = { absolutePath: string; path: string };
 type ParsedDocument = Document & { rawLinks: string[] };
 type CommandOptions = {
@@ -153,24 +157,29 @@ function parseConfig(text: string): Config {
       'LEGACY_CONFIGURATION',
       'hivex.json uses legacy collections; replace it with include and exclude globs',
     );
-  const unknown = Object.keys(record).filter((key) => key !== 'include' && key !== 'exclude');
+  const unknown = Object.keys(record).filter(
+    (key) => !['include', 'exclude', 'history'].includes(key),
+  );
   if (unknown.length) fail('INVALID_CONFIG', `hivex.json has unsupported field: ${unknown[0]}`);
   return {
     include: patterns(record.include, 'include', DEFAULT_INCLUDE),
     exclude: patterns(record.exclude, 'exclude', []),
+    history: patterns(record.history, 'history', []),
   };
 }
 
 function configFrom(root: string): Config {
   const text = configText(root);
-  if (text === null) return { include: [...DEFAULT_INCLUDE], exclude: [] };
+  if (text === null) return { include: [...DEFAULT_INCLUDE], exclude: [], history: [] };
   return parseConfig(text);
 }
 
 function excludedName(name: string, config: Config) {
   if (PROTECTED_DIRECTORIES.has(name)) return true;
   if (!EXCLUDED_DIRECTORIES.has(name) && !name.startsWith('.')) return false;
-  return !config.include.some((pattern) => pattern.split('/').includes(name));
+  return ![...config.include, ...config.history].some((pattern) =>
+    pattern.split('/').includes(name),
+  );
 }
 
 function collectCandidates(
@@ -215,14 +224,19 @@ function matches(path: string, patternsToMatch: string[]) {
 }
 
 function selected(candidates: Candidate[], config: Config) {
-  return candidates
+  const available = candidates
     .filter(({ path }) => isMarkdownPath(path))
-    .filter(({ path }) => matches(path, config.include))
     .filter(({ path }) => !matches(path, config.exclude))
     .sort((left, right) => left.path.localeCompare(right.path));
+  return {
+    current: available.filter(
+      ({ path }) => matches(path, config.include) && !matches(path, config.history),
+    ),
+    historical: available.filter(({ path }) => matches(path, config.history)),
+  };
 }
 
-function parseCandidate(candidate: Candidate): ParsedDocument {
+function parseCandidate(candidate: Candidate, historical: boolean): ParsedDocument {
   const text = readUtf8(candidate.absolutePath, candidate.path, MAX_SOURCE_BYTES);
   const source = describeMarkdown(candidate.path, text);
   return {
@@ -233,6 +247,7 @@ function parseCandidate(candidate: Candidate): ParsedDocument {
     hash: hash(text),
     status: source.status,
     links: [],
+    historical,
     rawLinks: source.links,
   };
 }
@@ -244,7 +259,7 @@ function warningFor(path: string, error: unknown) {
   };
 }
 
-function linkPath(root: string, source: Document, rawLink: string, ids: Set<string>) {
+function linkPath(root: string, source: Document, rawLink: string) {
   if (!rawLink || rawLink.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(rawLink)) return null;
   const fragment = rawLink.search(/[?#]/);
   const target = fragment === -1 ? rawLink : rawLink.slice(0, fragment);
@@ -262,18 +277,17 @@ function linkPath(root: string, source: Document, rawLink: string, ids: Set<stri
     relativeTarget === '.' ||
     relativeTarget.startsWith('../') ||
     isAbsolute(relativeTarget) ||
-    !ids.has(relativeTarget)
+    !isMarkdownPath(relativeTarget)
   )
     return null;
   return relativeTarget;
 }
 
 function resolveLinks(root: string, documents: ParsedDocument[]) {
-  const ids = new Set(documents.map((document) => document.id));
   for (const document of documents) {
     const links = new Set<string>();
     for (const rawLink of document.rawLinks) {
-      const link = linkPath(root, document, rawLink, ids);
+      const link = linkPath(root, document, rawLink);
       if (link) links.add(link);
     }
     document.links = [...links];
@@ -288,6 +302,7 @@ function snapshotFor(documents: Document[], config: Config) {
   const selection = JSON.stringify({
     include: [...config.include].sort(),
     exclude: [...config.exclude].sort(),
+    history: [...config.history].sort(),
     ignoredDirectories: [...PROTECTED_DIRECTORIES, ...EXCLUDED_DIRECTORIES].sort(),
     markdownExtensions: ['.md', '.markdown', '.mdown'],
   });
@@ -316,7 +331,9 @@ export function loadProject(root: string): Project {
   const config = configFrom(projectRoot);
   const warnings: Project['warnings'] = [];
   const candidates = collectCandidates(projectRoot, projectRoot, config, warnings);
-  const selectedCandidates = selected(candidates, config);
+  const selection = selected(candidates, config);
+  const historicalPaths = new Set(selection.historical.map((candidate) => candidate.path));
+  const selectedCandidates = [...selection.current, ...selection.historical];
   const parsed: ParsedDocument[] = [];
   let sourceBytes = 0;
   for (const candidate of selectedCandidates.slice(0, MAX_DOCUMENTS)) {
@@ -326,7 +343,7 @@ export function loadProject(root: string): Project {
           'CORPUS_LIMIT',
           'Selected Markdown exceeds the 64 MiB memory budget; narrow include paths',
         );
-      const document = parseCandidate(candidate);
+      const document = parseCandidate(candidate, historicalPaths.has(candidate.path));
       sourceBytes += Buffer.byteLength(document.text);
       parsed.push(document);
     } catch (error) {
@@ -339,11 +356,19 @@ export function loadProject(root: string): Project {
       message: `Only the first ${MAX_DOCUMENTS} Markdown sources were loaded`,
     });
   resolveLinks(projectRoot, parsed);
-  const documents = parsed.map(({ rawLinks: _rawLinks, ...document }) => document);
+  const documents = parsed
+    .map(({ rawLinks: _rawLinks, ...document }) => document)
+    .sort((left, right) => left.path.localeCompare(right.path));
   return {
     root: projectRoot,
     snapshot: snapshotFor(documents, config),
+    currentSnapshot: snapshotFor(
+      documents.filter((document) => !document.historical),
+      config,
+    ),
     documents,
+    currentDocuments: documents.filter((document) => !document.historical),
+    historicalDocuments: documents.filter((document) => document.historical),
     warnings,
   };
 }
