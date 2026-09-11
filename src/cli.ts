@@ -3,6 +3,7 @@ import { checkReview } from './review.ts';
 import { documentCommand } from './documents.ts';
 import { knowledgeMaintenance } from './knowledge-maintenance.ts';
 import { knowledgeCommand } from './knowledge.ts';
+import { snapshotCommand } from './snapshot-command.ts';
 import { diagnostic } from './cli/diagnostic.ts';
 
 async function main(args: string[]) {
@@ -64,6 +65,11 @@ async function main(args: string[]) {
           usage: 'prune [--root <project>] [--keep-completed <count>] [--keep-caches <count>]',
           modelCalls: 0,
         },
+        {
+          name: 'snapshot',
+          usage: 'snapshot export | import [--root <project>]',
+          modelCalls: 0,
+        },
         { name: 'status', usage: 'status [--root <project>]', modelCalls: 0 },
       ],
       modelOptions: '--codex <native-binary> --deadline-ms <100..1800000> --retry-failed',
@@ -73,6 +79,7 @@ async function main(args: string[]) {
     };
   if (args[0] === 'review' && args.includes('--check')) return checkReview(args);
   if (args[0] === 'sources' || args[0] === 'read') return documentCommand(args);
+  if (args[0] === 'snapshot') return snapshotCommand(args);
   if (args[0] === 'recover' || args[0] === 'prune') return knowledgeMaintenance(args);
   return knowledgeCommand(args);
 }
