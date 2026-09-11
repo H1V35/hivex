@@ -389,6 +389,7 @@ test('asks a declared historical source with bounded evidence and historical pro
     const binary = model(root);
     const file = join(root, 'responses.json');
     const responses = JSON.parse(readFileSync(file, 'utf8'));
+    responses.capturePackets = true;
     responses.byDocument = {
       'archive/replaced.md': {
         decisions: [
@@ -456,6 +457,31 @@ test('asks a declared historical source with bounded evidence and historical pro
         status: 'historical',
       }),
     );
+    const repaired = invoke(root, [
+      'update',
+      '--repair',
+      'archive/replaced.md',
+      '--reason',
+      'Check the historical lifetime.',
+      '--codex',
+      binary,
+    ]);
+    expect(repaired.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    writeFileSync(join(root, 'cache.md'), '# Cache\n\nCurrent cache expires after eight days.\n');
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const packets = readFileSync(file + '.packets', 'utf8')
+      .trim()
+      .split('\n')
+      .map(
+        (line) =>
+          JSON.parse(line) as { operation: string; targets: string[]; documents: { id: string }[] },
+      );
+    const ordinary = packets.filter((packet) => packet.operation === 'extract').at(-1);
+    if (!ordinary) throw new Error('Expected extraction of the changed current document');
+    expect(ordinary.targets).not.toContain('archive/replaced.md');
+    expect(ordinary.documents).not.toContainEqual(
+      expect.objectContaining({ id: 'archive/replaced.md' }),
+    );
   });
 });
 
@@ -489,6 +515,27 @@ test('does not ingest a historical match during an ordinary consultation', () =>
       expect.objectContaining({ id: 'archive/replaced.md' }),
     );
     expect(answer.value.pendingDocuments).not.toContain('archive/replaced.md');
+    writeFileSync(join(root, 'archive/replaced.md'), '# Replaced\n\nUnrelated historical note.\n');
+    const resumed = invoke(root, ['ask', 'old cache rule', '--codex', '/nonexistent-codex']);
+    expect(resumed.value.work).toMatchObject({ id: answer.value.work.id, calls: 0, maxCalls: 0 });
+  });
+});
+
+test('names an unconsulted historical reference instead of silently approving incomplete context', () => {
+  project((root) => {
+    mkdirSync(join(root, 'archive'));
+    writeFileSync(join(root, 'archive/exception.md'), '# Exception\n\nThe old exemption.\n');
+    writeFileSync(
+      join(root, 'cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n\nSee the [exception](archive/exception.md).\n',
+    );
+    writeFileSync(join(root, 'hivex.json'), JSON.stringify({ history: ['archive/**/*.md'] }));
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const answer = invoke(root, ['ask', 'cache retention', '--codex', binary]);
+    expect(answer.value.status).toBe('partial');
+    expect(JSON.stringify(answer.value.warnings)).toContain('archive/exception.md');
+    expect(answer.value.work.calls).toBe(1);
   });
 });
 

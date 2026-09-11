@@ -20,6 +20,7 @@ export type Document = {
 export type Project = {
   root: string;
   snapshot: string;
+  currentSnapshot: string;
   documents: Document[];
   currentDocuments: Document[];
   historicalDocuments: Document[];
@@ -258,7 +259,7 @@ function warningFor(path: string, error: unknown) {
   };
 }
 
-function linkPath(root: string, source: Document, rawLink: string, ids: Set<string>) {
+function linkPath(root: string, source: Document, rawLink: string) {
   if (!rawLink || rawLink.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(rawLink)) return null;
   const fragment = rawLink.search(/[?#]/);
   const target = fragment === -1 ? rawLink : rawLink.slice(0, fragment);
@@ -276,18 +277,17 @@ function linkPath(root: string, source: Document, rawLink: string, ids: Set<stri
     relativeTarget === '.' ||
     relativeTarget.startsWith('../') ||
     isAbsolute(relativeTarget) ||
-    !ids.has(relativeTarget)
+    !isMarkdownPath(relativeTarget)
   )
     return null;
   return relativeTarget;
 }
 
 function resolveLinks(root: string, documents: ParsedDocument[]) {
-  const ids = new Set(documents.map((document) => document.id));
   for (const document of documents) {
     const links = new Set<string>();
     for (const rawLink of document.rawLinks) {
-      const link = linkPath(root, document, rawLink, ids);
+      const link = linkPath(root, document, rawLink);
       if (link) links.add(link);
     }
     document.links = [...links];
@@ -333,9 +333,7 @@ export function loadProject(root: string): Project {
   const candidates = collectCandidates(projectRoot, projectRoot, config, warnings);
   const selection = selected(candidates, config);
   const historicalPaths = new Set(selection.historical.map((candidate) => candidate.path));
-  const selectedCandidates = [...selection.current, ...selection.historical].sort((left, right) =>
-    left.path.localeCompare(right.path),
-  );
+  const selectedCandidates = [...selection.current, ...selection.historical];
   const parsed: ParsedDocument[] = [];
   let sourceBytes = 0;
   for (const candidate of selectedCandidates.slice(0, MAX_DOCUMENTS)) {
@@ -364,6 +362,10 @@ export function loadProject(root: string): Project {
   return {
     root: projectRoot,
     snapshot: snapshotFor(documents, config),
+    currentSnapshot: snapshotFor(
+      documents.filter((document) => !document.historical),
+      config,
+    ),
     documents,
     currentDocuments: documents.filter((document) => !document.historical),
     historicalDocuments: documents.filter((document) => document.historical),

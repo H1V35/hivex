@@ -156,6 +156,23 @@ test('declares historical globs for focused reads without treating them as curre
   }
 });
 
+test('a large historical archive does not displace current sources at the document limit', () => {
+  const root = mkdtempSync(join(tmpdir(), 'hivex-history-limit-'));
+  try {
+    mkdirSync(join(root, 'archive'));
+    for (let index = 0; index < 2048; index += 1)
+      writeFileSync(join(root, 'archive', `${index}.md`), '# Old rule\n');
+    writeFileSync(join(root, 'current.md'), '# Current\n\nCurrent rule.\n');
+    writeFileSync(join(root, 'hivex.json'), JSON.stringify({ history: ['archive/**/*.md'] }));
+    expect(documentCommand(['read', 'current.md', '--root', root])).toMatchObject({
+      source: { historical: false, path: 'current.md' },
+      text: '# Current\n\nCurrent rule.\n',
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('does not make an excluded historical source readable', () => {
   const root = mkdtempSync(join(tmpdir(), 'hivex-history-excluded-'));
   try {

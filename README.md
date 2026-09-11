@@ -93,6 +93,8 @@ remains discoverable. When needed, select a known document with `--source` in a 
 than reopening a settled question with the owner. Historical sources are not searched into an ordinary
 consultation merely because they are available; a focused source or a known dependency is required.
 If a necessary historical source is excluded or unavailable, the result names the missing evidence.
+An unconsulted historical or unavailable local Markdown link is reported for the responsible agent
+to assess with `read` or `--source`; merely linking to an archive does not ingest it automatically.
 
 Search and neighbor traversal are deterministic and make no model calls. Neighbor traversal includes
 indirect connections within `--limit` and lists decisions it could not expand. Stale knowledge is not
@@ -134,6 +136,9 @@ narrow the selected paths if that limit is reached. A line too large to fit is e
 Sources declared by `history` are not part of an ordinary update. A focused `ask` or `review` adds
 only its selected bounded units to the same resumable work; a known dependency can add the ranges
 needed to verify it. The work budget, graph knowledge and cache survive resumption.
+Changing an unrelated historical document does not start a fresh consultation budget. Current
+documents take priority when the loaded-corpus limit is reached; narrow the configured scope to
+access sources outside the reported coverage.
 
 Each extraction and check is checkpointed. Resuming continues the same work and never repeats its
 completed rounds. Successful structured model results are cached in the same store by the complete

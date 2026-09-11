@@ -61,6 +61,8 @@ function responseForPrompt(prompt) {
   if (process.env.HIVEX_TEST_RESPONSES) {
     const responses = JSON.parse(readFileSync(process.env.HIVEX_TEST_RESPONSES, 'utf8'));
     const packet = payloadFromPrompt(prompt);
+    if (responses.capturePackets)
+      appendFileSync(process.env.HIVEX_TEST_RESPONSES + '.packets', JSON.stringify(packet) + '\n');
     if (packet?.operation === 'extract' && responses.fromVisibleRules) {
       const decisions = packet.documents
         .filter((doc) => packet.targets.includes(doc.id))

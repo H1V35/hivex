@@ -335,14 +335,24 @@ function batchContext(project: Project, graph: Graph, units: IngestionUnit[]) {
         : { document: document.id, lineStart: 1, lineEnd: rawMarkdownLines(document.text).length },
     );
   }
+  const allowed = new Set(
+    candidates
+      .filter(
+        (entry) => !historicalDocuments.has(entry.document) || targetDocuments.has(entry.document),
+      )
+      .map((entry) => entry.id),
+  );
   const priorities = [
     ...new Set([
       ...affected,
       ...candidates
         .filter((entry) => linked.has(entry.document) && !historicalDocuments.has(entry.document))
         .map((entry) => entry.id),
-      ...hits,
-      ...candidates.slice(-6).map((entry) => entry.id),
+      ...[...hits].filter((id) => allowed.has(id)),
+      ...candidates
+        .filter((entry) => allowed.has(entry.id))
+        .slice(-6)
+        .map((entry) => entry.id),
     ]),
   ].slice(0, 18);
   const byId = new Map(candidates.map((entry) => [entry.id, entry]));
@@ -462,16 +472,20 @@ function prepareUpdate(options: {
   sharedWork?: Work;
 }) {
   const { project, runtime, store, graph, sharedWork } = options;
-  const selectedHistory = sharedWork
-    ? project.historicalDocuments.filter((document) =>
-        sharedWork.plannedUnits.some((id) => id.startsWith(`${document.id}:`)),
-      )
-    : [];
+  const selectedHistory = project.historicalDocuments.filter(
+    (document) =>
+      runtime.repair.includes(document.id) ||
+      sharedWork?.plannedUnits.some((id) => id.startsWith(`${document.id}:`)),
+  );
   const plan = ingestionUnits([...project.currentDocuments, ...selectedHistory]);
+  const snapshot = knowledgeSnapshot(
+    project,
+    new Set(selectedHistory.map((document) => document.id)),
+  );
   project.warnings.push(...plan.warnings);
   const key = digest(
     JSON.stringify({
-      snapshot: project.snapshot,
+      snapshot,
       model: knowledgeModel,
       repair: runtime.repair,
       reason: runtime.repairReason,
@@ -493,7 +507,7 @@ function prepareUpdate(options: {
     store.begin({
       kind: 'update',
       key,
-      snapshot: project.snapshot,
+      snapshot,
       maxCalls: runtime.maxCalls,
       maxInputBytes: runtime.maxInputBytes,
       remaining,
@@ -734,6 +748,25 @@ function contextWarnings(project: Project, graph: Graph, documents: Set<string>)
   ];
 }
 
+function knowledgeSnapshot(project: Project, relevant: Set<string>) {
+  const history = project.historicalDocuments
+    .filter((document) => relevant.has(document.id))
+    .map((document) => [document.id, document.hash]);
+  return digest(JSON.stringify([project.currentSnapshot, history]));
+}
+
+function unconsultedReferences(project: Project, relevant: Set<string>) {
+  return [
+    ...new Set(
+      project.documents
+        .filter((document) => relevant.has(document.id))
+        .flatMap((document) => document.links),
+    ),
+  ].filter(
+    (id) => !relevant.has(id) && !project.currentDocuments.some((document) => document.id === id),
+  );
+}
+
 function queryGraph(project: Project, options: Options) {
   const graph = currentGraph(project);
   const explicitSources = new Set(options.sources);
@@ -786,7 +819,7 @@ function queryGraph(project: Project, options: Options) {
   ]);
   return {
     command: options.command,
-    snapshot: project.snapshot,
+    snapshot: knowledgeSnapshot(project, relevantDocuments),
     documents: project.documents
       .filter((document) => documentIds.has(document.id))
       .map(({ id, title, hash }) => ({ id, title, version: hash })),
@@ -828,7 +861,13 @@ function queryGraph(project: Project, options: Options) {
       (entry) => expanded.ids.has(entry.from) && expanded.ids.has(entry.to),
     ),
     pendingDocuments: pendingDocuments(project, graph, relevantDocuments),
-    warnings: contextWarnings(project, graph, relevantDocuments),
+    warnings: [
+      ...contextWarnings(project, graph, relevantDocuments),
+      ...unconsultedReferences(project, relevantDocuments).map(
+        (id) =>
+          `Referenced source has not been consulted: ${id}. Read it or select --source to assess applicability.`,
+      ),
+    ],
   };
 }
 
@@ -953,13 +992,13 @@ function beginConsultation(options: {
         task: runtime.query,
         implementation: runtime.implementation?.fingerprint,
         sources: [...new Set(runtime.sources)].sort(),
-        snapshot: project.snapshot,
+        snapshot: packet.context.snapshot,
         model: knowledgeModel,
         automatic: 1,
       }),
     ),
     resultKey: digest(JSON.stringify(packet)),
-    snapshot: project.snapshot,
+    snapshot: packet.context.snapshot,
     maxCalls: runtime.maxCalls,
     maxInputBytes: runtime.maxInputBytes,
     remaining: nextUnits(
@@ -1092,13 +1131,14 @@ function finishAnswer(options: {
     context.pendingDocuments.some((id) => documents.includes(id));
   return {
     command: 'ask',
-    snapshot: project.snapshot,
+    snapshot: context.snapshot,
     answer: answer.answer,
     evidence,
     status:
       invalidReferences ||
       packet.omittedUnits ||
       packet.warnings.length ||
+      context.warnings.length ||
       unreviewed ||
       context.unexpandedDecisions.length ||
       answer.uncertainties.length
