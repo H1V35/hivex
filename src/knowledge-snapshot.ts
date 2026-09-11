@@ -23,7 +23,16 @@ function validateGraph(graph: Graph) {
   const invalid =
     decisions.size !== graph.decisions.length ||
     relationships.size !== graph.relationships.length ||
-    graph.relationships.some((edge) => !decisions.has(edge.from) || !decisions.has(edge.to));
+    graph.decisions.some(
+      (entry) => entry.quality === 'checked' && entry.lineStart > entry.lineEnd,
+    ) ||
+    graph.relationships.some(
+      (edge) =>
+        !decisions.has(edge.from) ||
+        !decisions.has(edge.to) ||
+        !edge.evidence.length ||
+        edge.evidence.some((entry) => entry.lineStart > entry.lineEnd),
+    );
   const references = [
     ...Object.keys(graph.documents),
     ...Object.values(graph.units).map((unit) => unit.document),

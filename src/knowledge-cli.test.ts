@@ -1850,6 +1850,18 @@ test('shares checked knowledge with a fresh clone without re-extraction or query
           text: 'Access revocation immediately purges private cache.',
         }),
       );
+      const asked = invoke(clone, [
+        'ask',
+        'seven days',
+        '--max-calls',
+        '0',
+        '--codex',
+        '/no-model',
+      ]);
+      expect(asked.value.work.calls).toBe(0);
+      expect(invoke(clone, ['neighbors', found.value.decisions[0].id]).value.decisions).toEqual(
+        neighbors.value.decisions,
+      );
       const updated = invoke(clone, ['update', '--max-calls', '0', '--codex', '/no-model']);
       expect(updated.value).toMatchObject({
         status: 'ready',
@@ -1933,6 +1945,29 @@ test('rejects invalid snapshot relationships without corrupting local knowledge'
     expect(invoke(root, ['search', 'seven days']).value.decisions).toHaveLength(1);
     expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
     expect(readFileSync(path, 'utf8')).not.toContain('missing-decision');
+  });
+});
+
+test('rejects broken evidence before replacing locally checked knowledge', () => {
+  project((root) => {
+    expect(invoke(root, ['update', '--codex', model(root)]).value.status).toBe('ready');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    const path = join(root, '.hivex/graph.json');
+    const original = readFileSync(path, 'utf8');
+    const empty = JSON.parse(original);
+    empty.relationships[0].evidence = [];
+    const reversed = JSON.parse(original);
+    reversed.relationships[0].evidence[0].lineEnd = 1;
+    const decision = JSON.parse(original);
+    decision.decisions[0].lineEnd = 1;
+    for (const invalid of [empty, reversed, decision]) {
+      writeFileSync(path, JSON.stringify(invalid));
+      const imported = invoke(root, ['snapshot', 'import']);
+      expect(imported.status).toBe(1);
+      expect(JSON.parse(imported.stderr).error.code).toBe('INVALID_SNAPSHOT');
+      expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+      expect(readFileSync(path, 'utf8')).toBe(original);
+    }
   });
 });
 
