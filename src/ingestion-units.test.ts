@@ -4,7 +4,16 @@ import { digest } from './knowledge-model.ts';
 import { ingestionUnits } from './ingestion-units.ts';
 
 function documentOf(text: string, path = 'notes.md'): Document {
-  return { id: path, path, title: path, text, hash: digest(text), status: null, links: [] };
+  return {
+    id: path,
+    path,
+    title: path,
+    text,
+    hash: digest(text),
+    status: null,
+    links: [],
+    historical: false,
+  };
 }
 
 describe('ingestionUnits', () => {

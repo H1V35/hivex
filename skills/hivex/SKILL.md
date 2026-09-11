@@ -19,6 +19,12 @@ Use the capabilities advertised by that version. Do not invent commands, silentl
 pretend a planned capability exists. Hivex's current validated knowledge profile is Luna/max through
 native Codex; the principal agent's model is independent of that choice.
 
+Projects may declare additional historical Markdown with `history` globs in `hivex.json`. Those
+sources are available to `sources` and `read`, but remain outside ordinary update and consultation
+selection. Use `--source <document>` with `ask` or `review` for a focused retrieval; a known graph
+relationship may bring back only the bounded evidence it needs. Explicit `exclude` globs still win,
+and the CLI continues to reject symlinks, protected directories and paths outside the project.
+
 Native Codex must be able to write its own local state. When the host sandbox prevents that,
 use its normal execution-approval mechanism within the existing authorized scope. Keep a failed
 launch in the same work history when resuming; an initialization failure is not a model verdict.
@@ -76,6 +82,12 @@ limits the conclusions that depend on it, without making unrelated context unusa
 budget. Its default is three calls. Omitted limits preserve a resumed work item's budget. Repeat the same task to resume; changing its budget changes the
 total ceiling, never the consumed count. Pending corpus coverage is explicit; use `update` when more
 rounds are needed, rather than issuing repeated identical questions to force indexing.
+
+An ordinary consultation does not ingest every declared historical source. A focused source is marked
+as historical in supplied packets, decisions and evidence, and its extracted decisions retain
+historical status with their conditions, exceptions, warnings and source ranges. If a required
+historical dependency is outside the declared scope, inspect `unavailableDocuments` and the reported
+coverage instead of treating the answer as complete.
 
 Repair a demonstrably wrong interpretation with `update --repair <document> --reason <correction>`.
 Check the Markdown first. This revises derived knowledge and its relationships without changing the

@@ -62,10 +62,11 @@ Preserve referenced anchors or update their links. Do not archive a live excepti
 is old, or change what an earlier decision meant while shortening its current presentation.
 
 Compi uses `docs/archive/adr/` for this purpose; other layouts remain valid. Historical evidence should
-be available for focused consultation without being loaded into every model context. Check the
-installed CLI's source-selection capabilities before moving a referenced source: the accepted
-selective-history extension is not yet implemented by Hivex 0.1.0. Compaction must not silently make
-necessary evidence inaccessible. The human or implementing agent maintains these documents.
+be available for focused consultation without being loaded into every model context. Declare its
+relative globs in `hivex.json` under `history`, then use the installed CLI's `--source` selection or
+a known relationship for bounded retrieval. Compaction must not silently make necessary evidence
+inaccessible. The human or implementing agent maintains these documents; Hivex does not rewrite or
+move the sources.
 
 ## Keep the glossary focused
 

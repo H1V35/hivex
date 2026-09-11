@@ -55,22 +55,31 @@ use their project's own Markdown format. An optional `hivex.json` selects relati
 ```json
 {
   "include": ["docs/**/*.md", "packages/**/*.md", "src/**/decisions/*.md"],
-  "exclude": ["docs/archive/**"]
+  "exclude": ["docs/generated/**"],
+  "history": ["docs/archive/**/*.md"]
 }
 ```
 
 Without configuration, Hivex selects Markdown files under the project. It skips dependencies,
 its own cache, Git metadata and private dot directories; explicitly named documentation directories
-can be selected. Symlinks are not followed. The previous experimental `collections` configuration
-is rejected with a migration message rather than silently reinterpreted.
+can be selected. `history` declares additional Markdown that remains readable evidence while staying
+out of ordinary update and consultation ingestion. Use `--source <document>` with `ask` or `review`
+to select it, or let a known relationship bring back the bounded ranges it requires. Historical
+metadata and evidence carry `historical: true`; an extracted decision from that source remains
+`historical`, even when the transport suggests another status. An `exclude` glob wins over `history`.
+Symlinks are not followed and protected directories and scope escapes remain rejected. The previous
+experimental `collections` configuration is rejected with a migration message rather than silently
+reinterpreted.
 
 ## Recover context
 
 ```sh
 bun hivex sources --root /path/to/project --limit 20
 bun hivex read docs/policy.md --root /path/to/project
+bun hivex read docs/archive/old-policy.md --root /path/to/project
 bun hivex search "cache access revocation" --root /path/to/project
 bun hivex neighbors <decision-id> --root /path/to/project --limit 24
+bun hivex ask "What did the old cache policy require?" --source docs/archive/old-policy.md --root /path/to/project
 bun hivex ask "How should private cached data behave when access is revoked?" --root /path/to/project
 ```
 
@@ -81,7 +90,9 @@ explicit. A working version is not evidence of approval.
 
 Search covers both extracted decisions and original Markdown, so terminology omitted from a summary
 remains discoverable. When needed, select a known document with `--source` in a consultation rather
-than reopening a settled question with the owner.
+than reopening a settled question with the owner. Historical sources are not searched into an ordinary
+consultation merely because they are available; a focused source or a known dependency is required.
+If a necessary historical source is excluded or unavailable, the result names the missing evidence.
 
 Search and neighbor traversal are deterministic and make no model calls. Neighbor traversal includes
 indirect connections within `--limit` and lists decisions it could not expand. Stale knowledge is not
@@ -103,6 +114,10 @@ source ranges, not copied from a model-generated quotation. Large sources are su
 unread portions so a partial answer is not mistaken for complete coverage. Identical retained consultations are
 reused. A partial result remains useful within its declared limits.
 
+Hivex does not compact, move or rewrite Markdown. Authors preserve the original historical text,
+dates, links and anchors; Hivex exposes the selected source version and line ranges while keeping
+historical applicability and conditions visible.
+
 ## Update and repair knowledge
 
 ```sh
@@ -115,6 +130,10 @@ relevant existing evidence, then performs one additional check. Original documen
 numbers survive splitting. Earlier rounds remain queryable while `pendingUnits` and `pendingDocuments`
 show unfinished coverage. Sources up to 32 MiB can be split, within a 64 MiB loaded-corpus limit;
 narrow the selected paths if that limit is reached. A line too large to fit is explicitly reported as unread, never silently cut.
+
+Sources declared by `history` are not part of an ordinary update. A focused `ask` or `review` adds
+only its selected bounded units to the same resumable work; a known dependency can add the ranges
+needed to verify it. The work budget, graph knowledge and cache survive resumption.
 
 Each extraction and check is checkpointed. Resuming continues the same work and never repeats its
 completed rounds. Successful structured model results are cached in the same store by the complete

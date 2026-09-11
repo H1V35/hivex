@@ -121,6 +121,67 @@ test('accepts a custom explicit layout and rejects legacy collections without mi
   }
 });
 
+test('declares historical globs for focused reads without treating them as current sources', () => {
+  const root = mkdtempSync(join(tmpdir(), 'hivex-history-'));
+  try {
+    mkdirSync(join(root, 'docs', 'archive'), { recursive: true });
+    writeFileSync(join(root, 'docs', 'current.md'), '# Current\n\nCurrent rule.\n', 'utf8');
+    writeFileSync(
+      join(root, 'docs', 'archive', 'replaced.md'),
+      '# Replaced\n\nHistorical rule.\n',
+      'utf8',
+    );
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({ include: ['docs/**/*.md'], history: ['docs/archive/**/*.md'] }),
+      'utf8',
+    );
+
+    const listed = documentCommand(['sources', '--root', root]) as {
+      documents: Array<Record<string, unknown>>;
+    };
+    expect(listed.documents).toEqual([
+      expect.objectContaining({ path: 'docs/archive/replaced.md', historical: true }),
+      expect.objectContaining({ path: 'docs/current.md', historical: false }),
+    ]);
+
+    const opened = documentCommand(['read', 'docs/archive/replaced.md', '--root', root]) as {
+      source: Record<string, unknown>;
+      text: string;
+    };
+    expect(opened.source).toMatchObject({ historical: true, path: 'docs/archive/replaced.md' });
+    expect(opened.text).toBe('# Replaced\n\nHistorical rule.\n');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('does not make an excluded historical source readable', () => {
+  const root = mkdtempSync(join(tmpdir(), 'hivex-history-excluded-'));
+  try {
+    mkdirSync(join(root, 'docs', 'archive'), { recursive: true });
+    writeFileSync(join(root, 'docs', 'archive', 'replaced.md'), '# Replaced\n', 'utf8');
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({
+        include: ['docs/**/*.md'],
+        history: ['docs/archive/**/*.md'],
+        exclude: ['docs/archive/**'],
+      }),
+      'utf8',
+    );
+
+    expect(
+      (documentCommand(['sources', '--root', root]) as { documents: unknown[] }).documents,
+    ).toEqual([]);
+    expect(() => documentCommand(['read', 'docs/archive/replaced.md', '--root', root])).toThrow(
+      /was not selected/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('reports invalid UTF-8 and skips symlinked sources without reading outside the root', () => {
   const root = mkdtempSync(join(tmpdir(), 'hivex-documents-'));
   const outside = mkdtempSync(join(tmpdir(), 'hivex-documents-outside-'));
