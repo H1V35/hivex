@@ -1,6 +1,15 @@
 import { expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -1500,5 +1509,223 @@ test('review supplies changed ranges of a large file and keeps exact line eviden
       code: [],
     });
     expect(JSON.stringify(result.value.warnings)).toContain('unchanged code is omitted');
+  });
+});
+
+test('shares checked knowledge with a fresh clone without re-extraction or query artifacts', () => {
+  project((root) => {
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const exported = invoke(root, ['snapshot', 'export']);
+    expect(exported.status).toBe(0);
+    expect(exported.value).toMatchObject({
+      command: 'snapshot',
+      operation: 'export',
+      modelCalls: 0,
+    });
+    const path = join(root, '.hivex/graph.json');
+    const snapshot = readFileSync(path, 'utf8');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    expect(readFileSync(path, 'utf8')).toBe(snapshot);
+    expect(Object.keys(JSON.parse(snapshot)).sort()).toEqual([
+      'decisions',
+      'documents',
+      'lastExtraction',
+      'relationships',
+      'units',
+      'version',
+      'warnings',
+    ]);
+    project((clone) => {
+      mkdirSync(join(clone, '.hivex'));
+      copyFileSync(path, join(clone, '.hivex/graph.json'));
+      const found = invoke(clone, ['search', 'seven days']);
+      expect(found.status).toBe(0);
+      expect(found.value.decisions).toContainEqual(
+        expect.objectContaining({
+          text: 'Cached data expires after seven days.',
+          quality: 'checked',
+        }),
+      );
+      expect(existsSync(join(clone, '.hivex/knowledge.sqlite'))).toBe(false);
+      const neighbors = invoke(clone, ['neighbors', found.value.decisions[0].id]);
+      expect(neighbors.value.decisions).toContainEqual(
+        expect.objectContaining({
+          text: 'Access revocation immediately purges private cache.',
+        }),
+      );
+      const asked = invoke(clone, [
+        'ask',
+        'seven days',
+        '--max-calls',
+        '0',
+        '--codex',
+        '/no-model',
+      ]);
+      expect(asked.value.work.calls).toBe(0);
+      expect(invoke(clone, ['neighbors', found.value.decisions[0].id]).value.decisions).toEqual(
+        neighbors.value.decisions,
+      );
+      const updated = invoke(clone, ['update', '--max-calls', '0', '--codex', '/no-model']);
+      expect(updated.value).toMatchObject({
+        status: 'ready',
+        work: { calls: 0 },
+        pendingUnits: [],
+      });
+      expect(readFileSync(join(clone, '.hivex/graph.json'), 'utf8')).toBe(snapshot);
+    });
+  });
+});
+
+test('snapshot import preserves unfinished work and only restores graph knowledge after completion', () => {
+  project((root) => {
+    expect(invoke(root, ['update', '--codex', model(root)]).value.status).toBe('ready');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    project((clone) => {
+      const binary = model(clone);
+      const pending = invoke(clone, ['update', '--max-calls', '1', '--codex', binary]);
+      expect(pending.value.work.calls).toBe(1);
+      copyFileSync(join(root, '.hivex/graph.json'), join(clone, '.hivex/graph.json'));
+      const refused = invoke(clone, ['snapshot', 'import']);
+      expect(refused.status).toBe(1);
+      expect(JSON.parse(refused.stderr).error.code).toBe('UNFINISHED_WORK');
+      const resumed = invoke(clone, ['update', '--max-calls', '2', '--codex', binary]);
+      expect(resumed.value).toMatchObject({
+        status: 'ready',
+        work: { id: pending.value.work.id, calls: 2 },
+      });
+      const imported = invoke(clone, ['snapshot', 'import']);
+      expect(imported.status).toBe(0);
+      expect(imported.value).toMatchObject({
+        command: 'snapshot',
+        operation: 'import',
+        modelCalls: 0,
+        status: 'ready',
+      });
+      expect(invoke(clone, ['update', '--codex', binary]).value.work.calls).toBe(2);
+      expect(readFileSync(join(clone, 'model-calls.log'), 'utf8').trim().split('\n')).toHaveLength(
+        2,
+      );
+    });
+  });
+});
+
+test('shared snapshots expose changed sources and retain reusable neighboring knowledge', () => {
+  project((root) => {
+    expect(invoke(root, ['update', '--codex', model(root)]).value.status).toBe('ready');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    project((clone) => {
+      mkdirSync(join(clone, '.hivex'));
+      copyFileSync(join(root, '.hivex/graph.json'), join(clone, '.hivex/graph.json'));
+      writeFileSync(join(clone, 'cache.md'), '# Cache\n\nCached data expires after thirty days.\n');
+      const imported = invoke(clone, ['snapshot', 'import']);
+      expect(imported.value).toMatchObject({
+        status: 'partial',
+        sources: { stale: ['cache.md'], unavailable: [] },
+      });
+      expect(invoke(clone, ['search', 'seven days']).value.decisions).toEqual([]);
+      expect(invoke(clone, ['search', 'revocation']).value.decisions).toContainEqual(
+        expect.objectContaining({
+          text: 'Access revocation immediately purges private cache.',
+        }),
+      );
+      const pending = invoke(clone, ['update', '--max-calls', '0', '--codex', '/no-model']);
+      expect(pending.value).toMatchObject({ work: { calls: 0 }, pendingDocuments: ['cache.md'] });
+    });
+  });
+});
+
+test('rejects invalid snapshot relationships without corrupting local knowledge', () => {
+  project((root) => {
+    expect(invoke(root, ['update', '--codex', model(root)]).value.status).toBe('ready');
+    invoke(root, ['snapshot', 'export']);
+    const path = join(root, '.hivex/graph.json');
+    const graph = JSON.parse(readFileSync(path, 'utf8'));
+    graph.relationships[0].to = 'missing-decision';
+    writeFileSync(path, JSON.stringify(graph));
+    const invalid = invoke(root, ['snapshot', 'import']);
+    expect(invalid.status).toBe(1);
+    expect(JSON.parse(invalid.stderr).error.code).toBe('INVALID_SNAPSHOT');
+    expect(invoke(root, ['search', 'seven days']).value.decisions).toHaveLength(1);
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    expect(readFileSync(path, 'utf8')).not.toContain('missing-decision');
+  });
+});
+
+test('rejects broken evidence before replacing locally checked knowledge', () => {
+  project((root) => {
+    expect(invoke(root, ['update', '--codex', model(root)]).value.status).toBe('ready');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    const path = join(root, '.hivex/graph.json');
+    const original = readFileSync(path, 'utf8');
+    const empty = JSON.parse(original);
+    empty.relationships[0].evidence = [];
+    const reversed = JSON.parse(original);
+    reversed.relationships[0].evidence[0].lineEnd = 1;
+    const decision = JSON.parse(original);
+    decision.decisions[0].lineEnd = 1;
+    for (const invalid of [empty, reversed, decision]) {
+      writeFileSync(path, JSON.stringify(invalid));
+      const imported = invoke(root, ['snapshot', 'import']);
+      expect(imported.status).toBe(1);
+      expect(JSON.parse(imported.stderr).error.code).toBe('INVALID_SNAPSHOT');
+      expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+      expect(readFileSync(path, 'utf8')).toBe(original);
+    }
+  });
+});
+
+test('does not follow a shared snapshot symlink or overwrite its target', () => {
+  project((root) => {
+    mkdirSync(join(root, '.hivex'));
+    const target = join(root, 'untouched.json');
+    writeFileSync(target, '{"private":"untouched"}\n');
+    symlinkSync(target, join(root, '.hivex/graph.json'));
+    for (const args of [
+      ['search', 'cache'],
+      ['snapshot', 'import'],
+      ['snapshot', 'export'],
+    ]) {
+      const response = invoke(root, args);
+      expect(response.status).toBe(1);
+      expect(JSON.parse(response.stderr).error.code).toBe('INVALID_SNAPSHOT');
+    }
+    expect(readFileSync(target, 'utf8')).toBe('{"private":"untouched"}\n');
+  });
+});
+
+test('does not seed over unfinished local work when its first graph is still absent', () => {
+  project((root) => {
+    invoke(root, ['update', '--codex', model(root)]);
+    invoke(root, ['snapshot', 'export']);
+    project((clone) => {
+      const pending = invoke(clone, ['update', '--max-calls', '0', '--codex', '/no-model']);
+      copyFileSync(join(root, '.hivex/graph.json'), join(clone, '.hivex/graph.json'));
+      const unchanged = invoke(clone, ['update', '--max-calls', '0', '--codex', '/no-model']);
+      expect(unchanged.value).toMatchObject({
+        status: 'budget-exhausted',
+        work: { id: pending.value.work.id, calls: 0 },
+        pendingDocuments: ['cache.md', 'privacy.md'],
+      });
+      expect(invoke(clone, ['search', 'seven days']).value.decisions).toEqual([]);
+    });
+  });
+});
+
+test('reports unavailable snapshot sources and rejects malformed JSON without losing local data', () => {
+  project((root) => {
+    invoke(root, ['update', '--codex', model(root)]);
+    invoke(root, ['snapshot', 'export']);
+    rmSync(join(root, 'privacy.md'));
+    const partial = invoke(root, ['snapshot', 'import']);
+    expect(partial.value).toMatchObject({
+      status: 'partial',
+      sources: { unavailable: ['privacy.md'] },
+    });
+    writeFileSync(join(root, '.hivex/graph.json'), '{');
+    const malformed = invoke(root, ['snapshot', 'import']);
+    expect(malformed.status).toBe(1);
+    expect(JSON.parse(malformed.stderr).error.code).toBe('INVALID_SNAPSHOT');
+    expect(invoke(root, ['search', 'seven days']).value.decisions).toHaveLength(1);
   });
 });

@@ -144,7 +144,7 @@ A failed or unfinished invocation is not retried automatically by increasing the
 reported outcome and usage first. `--retry-failed` can explicitly resume a safely ended failure within
 the same work budget; uncertain invocations remain blocked. A completed adverse check is not an
 invocation failure and is never retried by this flag. Uncertain or pending knowledge does not become a blanket pass.
-The single project-local `.hivex/knowledge.sqlite` stores derived knowledge and work accounting;
+The project-local `.hivex/knowledge.sqlite` stores working knowledge and execution accounting;
 no source Markdown is rewritten. Preserve it when work evidence is needed. Storage is bounded at
 64 MiB; do not delete an active store to hide unfinished calls or reset a work budget.
 
@@ -164,6 +164,40 @@ Native operations accept `--codex` and `--deadline-ms`; the default deadline is 
 context defaults to 65,536 bytes and can be bounded with `--max-context-bytes`. Limits are reported,
 not met by silently cutting a rule or pretending omitted evidence was reviewed. Input-byte and call
 budgets limit work; reported token usage is actual consumption, including known failed attempts.
+
+## Share knowledge through Git
+
+```sh
+bun hivex snapshot export --root /path/to/project
+bun hivex snapshot import --root /path/to/project
+```
+
+`snapshot export` writes `.hivex/graph.json` atomically as stable, readable JSON. Commit that file
+alongside the Markdown it describes to share decisions, relationships, source versions, evidence,
+available provenance and coverage. It exports the graph, not work records, process identities,
+budgets or cached model answers. Both snapshot operations make zero model calls.
+
+A fresh clone can use `search`, `neighbors` and `status` directly from the shared snapshot without
+creating a local database. Its first update reuses matching ingestion units and starts local work
+accounting. If a local graph already exists, it takes precedence: use `snapshot import` to adopt a
+new shared version. Import refuses while local work is unfinished and never resets attempts or
+budgets. Complete or recover that work through its normal lifecycle first.
+
+The snapshot response identifies current, stale and unavailable source versions, pending units and
+warnings. A changed or absent source is not silently current; matching sources remain reusable.
+Partial and uncertain knowledge can be shared with those states retained. Freshness is not proof
+that a model interpretation is correct: the cited Markdown remains authority.
+
+Keep only the shared graph under version control, for example:
+
+```gitignore
+/.hivex/*
+!/.hivex/graph.json
+```
+
+Read-only queries do not rewrite the snapshot. Export intentionally when reusable knowledge changes,
+not on every consultation. Invalid snapshots or symbolic-link paths fail without replacing local
+knowledge. Existing local stores continue to work without a shared file.
 
 ## Agent skill and Markdown practice
 

@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { HivexError } from './errors.ts';
+import { sharedKnowledge } from './knowledge-snapshot.ts';
 import { emptyGraph, extractionSchema, graphSchema, type Graph } from './knowledge-model.ts';
 
 const processIdSchema = z.number().int().positive();
@@ -243,7 +244,15 @@ export class KnowledgeStore implements Disposable {
 
   graph(): Graph {
     const row = this.db.query<{ data: string }, []>('SELECT data FROM graph WHERE id=1').get();
-    return row ? graphSchema.parse(JSON.parse(row.data)) : emptyGraph();
+    if (row) return graphSchema.parse(JSON.parse(row.data));
+    return this.hasUnfinishedWork() ? emptyGraph() : sharedKnowledge(join(this.directory, '..'));
+  }
+
+  private hasUnfinishedWork() {
+    return this.db
+      .query<{ data: string }, []>('SELECT data FROM work')
+      .all()
+      .some((row) => workSchema.parse(JSON.parse(row.data)).status !== 'done');
   }
 
   saveGraph(graph: Graph) {
@@ -252,10 +261,23 @@ export class KnowledgeStore implements Disposable {
     ]);
   }
 
+  importGraph(graph: Graph) {
+    this.db.transaction(() => {
+      if (this.hasUnfinishedWork())
+        throw new HivexError({
+          code: 'UNFINISHED_WORK',
+          message:
+            'Finish or recover existing work before importing a knowledge snapshot; its attempts and budgets are preserved.',
+        });
+      this.saveGraph(graph);
+    })();
+  }
+
   begin(options: BeginWork): Work {
     const defaultMaxCalls = options.kind === 'update' ? 2 : 3;
     return this.db
       .transaction(() => {
+        if (!this.db.query('SELECT id FROM graph WHERE id=1').get()) this.saveGraph(this.graph());
         const row = this.db
           .query<
             { data: string },

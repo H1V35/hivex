@@ -82,6 +82,20 @@ Check the Markdown first. This revises derived knowledge and its relationships w
 document or authorizing new policy. Do not use it to suppress a genuine contradiction. Review source-local
 warnings in their stated scope and inspect `unavailableDocuments` for changed or removed dependencies.
 
+## Share reusable knowledge
+
+`hivex snapshot export` saves the current graph to `.hivex/graph.json`, suitable for Git alongside its
+Markdown sources. It retains source versions, evidence, available provenance and partial/uncertain
+coverage; it does not export local attempts, budgets, process locks or model caches. Snapshot commands
+make no model calls. Keep the SQLite store and locks ignored while allowing the shared JSON file.
+
+A clone without local knowledge can read the snapshot directly and reuse its matching units on the
+first update. Existing local knowledge takes precedence; `hivex snapshot import` explicitly adopts
+the shared graph and refuses if work is unfinished. Preserve that work and its accounting rather than
+deleting the store to force import. Stale or unavailable source versions remain explicit, and source
+freshness is not semantic approval. Export when knowledge changes; ordinary reads do not dirty the
+shared artifact.
+
 ## Control consumption
 
 Large Markdown is ingested in bounded rounds. Inspect pending units and coverage, and resume the

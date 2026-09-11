@@ -53,6 +53,20 @@ Use an ADR when the choice is consequential, reflects a real trade-off and would
 without its rationale. Do not create one for every routine edit or dependency. Sequential names
 such as `0001-short-decision.md` are convenient if the project adopts that convention.
 
+## Compact an ADR without losing its history
+
+When replaced text obscures a decision's current meaning, preserve that history in a clearly marked
+Markdown archive and keep the active document focused on applicable rules, reasons, dependencies
+and exceptions. A wholly superseded ADR can remain as a short pointer to its replacement and archive.
+Preserve referenced anchors or update their links. Do not archive a live exception merely because it
+is old, or change what an earlier decision meant while shortening its current presentation.
+
+Compi uses `docs/archive/adr/` for this purpose; other layouts remain valid. Historical evidence should
+be available for focused consultation without being loaded into every model context. Check the
+installed CLI's source-selection capabilities before moving a referenced source: the accepted
+selective-history extension is not yet implemented by Hivex 0.1.0. Compaction must not silently make
+necessary evidence inaccessible. The human or implementing agent maintains these documents.
+
 ## Keep the glossary focused
 
 Define each project-specific concept briefly and use that term consistently. A glossary explains

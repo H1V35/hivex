@@ -18,12 +18,12 @@ import { invokeModel } from './model/invoke.ts';
 import { knowledgeModel } from './model/profile.ts';
 import { rankLexically } from './retrieval/lexical.ts';
 import { KnowledgeStore, type Work } from './knowledge-store.ts';
+import { sharedKnowledge } from './knowledge-snapshot.ts';
 import {
   applyCheck,
   applyExtraction,
   checkSchema,
   digest,
-  emptyGraph,
   extractionSchema,
   citationSchema,
   sourceEvidence,
@@ -622,10 +622,7 @@ function unavailableDocuments(
 }
 
 function currentGraph(project: Project): AvailableGraph {
-  if (!existsSync(join(project.root, '.hivex/knowledge.sqlite')))
-    return { ...emptyGraph(), unavailable: [] };
-  using store = new KnowledgeStore(project.root, { readonly: true });
-  const graph = store.graph();
+  const graph = storedGraph(project.root);
   const decisions = graph.decisions.filter((entry) =>
     project.documents.some(
       (document) => document.id === entry.document && document.hash === entry.version,
@@ -649,6 +646,12 @@ function currentGraph(project: Project): AvailableGraph {
         documents: unavailableDocuments(edge, graph, project),
       })),
   };
+}
+
+function storedGraph(root: string): Graph {
+  if (!existsSync(join(root, '.hivex/knowledge.sqlite'))) return sharedKnowledge(root);
+  using store = new KnowledgeStore(root, { readonly: true });
+  return store.graph();
 }
 
 function neighborhood(graph: Graph, seeds: Set<string>, limit: number) {

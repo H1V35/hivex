@@ -1,2 +1,3 @@
-/node_modules/
-/.hivex/
+/node_modules
+/.hivex/*
+!/.hivex/graph.json
