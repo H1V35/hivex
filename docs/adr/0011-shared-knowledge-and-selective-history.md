@@ -1,6 +1,6 @@
 ---
 title: Shared knowledge snapshots and selective documentary history
-status: accepted (implementation pending)
+status: accepted (selective history implementation pending)
 date: 2026-09-11
 ---
 
@@ -46,10 +46,10 @@ same graph should produce a stable diff; normal read-only queries should not dir
 Snapshot operations must not trigger hidden model calls or source edits.
 
 This extends ADR 0010's portable second-brain contract and supersedes a blanket recommendation to
-ignore every artifact under `.hivex/`. The currently published implementation still has the single
-local SQLite store; selective history and portable snapshot loading/export need implementation.
-Neither the acceptance of this decision nor a saved snapshot completes Compi adoption or authorizes
-publication, merges or retirement of live processes during the owner's review.
+ignore every artifact under `.hivex/`. The CLI supports explicit snapshot export/import and reuses
+the snapshot in a fresh clone. Selective historical source access is the remaining delivery.
+A saved snapshot alone does not complete Compi adoption; publication and process retirement follow
+the project's normal workflow.
 
 Delivery is tracked by [#53](https://github.com/H1V35/hivex/issues/53) (shared graph snapshot) and
 [#54](https://github.com/H1V35/hivex/issues/54) (selective historical sources), under
