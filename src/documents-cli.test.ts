@@ -223,6 +223,36 @@ test('prunes excluded directories before inspecting their files and symlinks', (
   }
 });
 
+test.each([
+  { exclude: 'app/ios/*', expected: ['app/docs.md', 'app/ios/nested/guide.md'] },
+  { exclude: '!app/ios/nested/**', expected: ['app/ios/nested/guide.md'] },
+])('keeps descendants not excluded by $exclude', ({ exclude, expected }) => {
+  const root = mkdtempSync(join(tmpdir(), 'hivex-file-exclusion-'));
+  try {
+    mkdirSync(join(root, 'app', 'ios', 'nested'), { recursive: true });
+    writeFileSync(join(root, 'app', 'docs.md'), '# Ordinary\n', 'utf8');
+    writeFileSync(join(root, 'app', 'ios', 'top.md'), '# Top\n', 'utf8');
+    writeFileSync(join(root, 'app', 'ios', 'nested', 'guide.md'), '# Nested\n', 'utf8');
+    symlinkSync(join(root, 'missing.md'), join(root, 'app', 'ios', 'nested', 'broken.md'));
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({ include: ['app/**/*.md'], exclude: [exclude] }),
+      'utf8',
+    );
+
+    const result = documentCommand(['sources', '--root', root]) as {
+      documents: Array<Record<string, unknown>>;
+      warnings: Array<{ path: string; message: string }>;
+    };
+    expect(result.documents.map((document) => document.path)).toEqual([...expected]);
+    expect(result.warnings).toEqual([
+      { path: 'app/ios/nested/broken.md', message: 'Skipped symbolic link' },
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('reports invalid UTF-8 and skips symlinked sources without reading outside the root', () => {
   const root = mkdtempSync(join(tmpdir(), 'hivex-documents-'));
   const outside = mkdtempSync(join(tmpdir(), 'hivex-documents-outside-'));
