@@ -210,13 +210,20 @@ function collectCandidates(
       warnings.push({ path, message: 'Skipped symbolic link' });
       continue;
     }
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() && !excludedSubtree(path, config)) {
       candidates.push(...collectCandidates(root, absolutePath, config, warnings));
       continue;
     }
     if (entry.isFile()) candidates.push({ absolutePath, path });
   }
   return candidates;
+}
+
+function excludedSubtree(path: string, config: Config) {
+  const subtrees = config.exclude.filter(
+    (pattern) => pattern.endsWith('/**') && !pattern.startsWith('!'),
+  );
+  return matches(`${path}/`, subtrees);
 }
 
 function matches(path: string, patternsToMatch: string[]) {

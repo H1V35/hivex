@@ -5,8 +5,7 @@
 - [Practical knowledge assistance](adr/0010-practical-knowledge-assistance.md): the current approved
   contract, staged delivery, autonomy, semantic relationships, uncertainty and cost.
 - [Shared knowledge and selective history](adr/0011-shared-knowledge-and-selective-history.md): accepted
-  extension for compact ADRs, bounded historical retrieval and a Git-versioned knowledge snapshot;
-  implementation is pending.
+  extension for compact ADRs, bounded historical retrieval and a Git-versioned knowledge snapshot.
 - [Recommended Markdown convention](../skills/hivex/references/markdown.md): optional organization
   and writing practices for any adopting project.
 - [CLI guide](../README.md) and [agent skill](../skills/hivex/SKILL.md): the interface actually available.
