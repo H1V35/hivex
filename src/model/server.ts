@@ -1,31 +1,23 @@
-import { spawn, spawnSync } from "node:child_process";
-import { AppServerConnection } from "./connection.ts";
-import { ServerAdmissionFailure } from "./failure.ts";
+import { spawn, spawnSync } from 'node:child_process';
+import { AppServerConnection } from './connection.ts';
+import { ServerAdmissionFailure } from './failure.ts';
 import {
   admitProfile,
   launchArguments,
   nativeEnvironment,
   nativeVersion,
   requestedPolicyHash,
-} from "./profile.ts";
+} from './profile.ts';
 
-const signalGroup = (
-  pid: number,
-  signal: Parameters<typeof process.kill>[1]
-) => {
+const signalGroup = (pid: number, signal: Parameters<typeof process.kill>[1]) => {
   try {
     process.kill(-pid, signal);
     return true;
   } catch (error) {
-    if (Error.isError(error) && "code" in error && error.code === "ESRCH") {
+    if (Error.isError(error) && 'code' in error && error.code === 'ESRCH') {
       return false;
     }
-    if (
-      signal === 0 &&
-      Error.isError(error) &&
-      "code" in error &&
-      error.code === "EPERM"
-    ) {
+    if (signal === 0 && Error.isError(error) && 'code' in error && error.code === 'EPERM') {
       return true;
     }
     throw error;
@@ -33,22 +25,19 @@ const signalGroup = (
 };
 
 const areOnlyTerminatedMembersRemaining = (pid: number) => {
-  if (process.platform !== "linux") {
+  if (process.platform !== 'linux') {
     return false;
   }
-  const result = spawnSync("/bin/ps", ["-e", "-o", "pgid=,stat="], {
-    encoding: "utf-8",
-    env: Object.fromEntries([
-      ...Object.entries(nativeEnvironment()),
-      ["LC_ALL", "C"],
-    ]),
+  const result = spawnSync('/bin/ps', ['-e', '-o', 'pgid=,stat='], {
+    encoding: 'utf-8',
+    env: Object.fromEntries([...Object.entries(nativeEnvironment()), ['LC_ALL', 'C']]),
     maxBuffer: 1_048_576,
     timeout: 1000,
   });
   if (result.status !== 0) {
     return false;
   }
-  const rows = result.stdout.trim().split("\n");
+  const rows = result.stdout.trim().split('\n');
   if (rows.some((row) => !/^\s*\d+\s+\S+\s*$/u.test(row))) {
     return false;
   }
@@ -60,8 +49,7 @@ const areOnlyTerminatedMembersRemaining = (pid: number) => {
   }
   // Container init may retain orphan zombies; they cannot execute or receive signals.
   return members.every(
-    ([, state]) =>
-      state?.startsWith("Z") === true || state?.startsWith("X") === true
+    ([, state]) => state?.startsWith('Z') === true || state?.startsWith('X') === true
   );
 };
 
@@ -88,10 +76,7 @@ const isExitComplete = async (exit: Promise<unknown>) => {
   return true;
 };
 
-const isSettledWithin = async (
-  exit: Promise<unknown>,
-  milliseconds: number
-) => {
+const isSettledWithin = async (exit: Promise<unknown>, milliseconds: number) => {
   const expired = Promise.withResolvers<boolean>();
   const timer = setTimeout(() => {
     expired.resolve(false);
@@ -121,51 +106,48 @@ const captureFailure = async <Value>(promise: Promise<Value>) => {
 
 const terminateProcessGroup = async (pid: number, exit: Promise<unknown>) => {
   await isSettledWithin(exit, 1000);
-  const isTerminated = signalGroup(pid, "SIGTERM");
+  const isTerminated = signalGroup(pid, 'SIGTERM');
   if (isTerminated) {
     const areMembersTerminated = await areGroupMembersTerminated(pid);
     if (!areMembersTerminated) {
-      signalGroup(pid, "SIGKILL");
+      signalGroup(pid, 'SIGKILL');
       if (!(await areGroupMembersTerminated(pid))) {
-        throw new Error("Owned Codex process group survived cleanup");
+        throw new Error('Owned Codex process group survived cleanup');
       }
     }
   }
   if (!(await isSettledWithin(exit, 1000))) {
-    throw new Error("Native Codex process was not reaped");
+    throw new Error('Native Codex process was not reaped');
   }
 };
 
-const launchServer = async (
-  options: ServerOptions,
-  disabledServers: string[]
-) => {
-  const version = spawnSync(options.binary, ["--version"], {
-    encoding: "utf-8",
+const launchServer = async (options: ServerOptions, disabledServers: string[]) => {
+  const version = spawnSync(options.binary, ['--version'], {
+    encoding: 'utf-8',
     env: nativeEnvironment(),
     maxBuffer: 65_536,
     timeout: 10_000,
   });
   if (version.status !== 0 || version.stdout.trim() !== nativeVersion) {
-    throw new Error("Knowledge execution requires verified codex-cli 0.153.2");
+    throw new Error('Knowledge execution requires verified codex-cli 0.153.2');
   }
   const child = spawn(options.binary, launchArguments(disabledServers), {
     cwd: options.workspace,
     detached: true,
     env: nativeEnvironment(),
-    stdio: "pipe",
+    stdio: 'pipe',
   });
   const exit = Promise.withResolvers<boolean>();
-  child.once("exit", () => {
+  child.once('exit', () => {
     exit.resolve(true);
   });
-  child.once("error", () => {
+  child.once('error', () => {
     exit.resolve(true);
   });
   child.stderr.resume();
   const { pid } = child;
   if (pid === undefined) {
-    throw new Error("Native Codex could not start");
+    throw new Error('Native Codex could not start');
   }
   const rpc = new AppServerConnection({
     input: child.stdin,
@@ -175,24 +157,22 @@ const launchServer = async (
   });
   const stop = async () => {
     child.stdin.end();
-    const result = await captureFailure(
-      terminateProcessGroup(pid, exit.promise)
-    );
+    const result = await captureFailure(terminateProcessGroup(pid, exit.promise));
     rpc.dispose();
     child.stdin.destroy();
     child.stdout.destroy();
     child.stderr.destroy();
-    if ("error" in result) {
+    if ('error' in result) {
       throw result.error;
     }
   };
   try {
     await rpc.request(
-      "initialize",
-      { clientInfo: { name: "hivex", version: "0.1.0" } },
+      'initialize',
+      { clientInfo: { name: 'hivex', version: '0.1.0' } },
       { signal: options.signal }
     );
-    rpc.notify("initialized");
+    rpc.notify('initialized');
     const profile = await admitProfile({ rpc, signal: options.signal });
     return {
       activeServers: profile.activeServers,
@@ -210,28 +190,26 @@ const launchServer = async (
     } catch {
       throw new ServerAdmissionFailure({
         cause: error,
-        cleanup: "failed",
+        cleanup: 'failed',
         processId: pid,
       });
     }
     throw new ServerAdmissionFailure({
       cause: error,
-      cleanup: "confirmed",
+      cleanup: 'confirmed',
       processId: pid,
     });
   }
 };
 
-const stopForAdmission = async (
-  server: Awaited<ReturnType<typeof launchServer>>
-) => {
+const stopForAdmission = async (server: Awaited<ReturnType<typeof launchServer>>) => {
   try {
     await server.stop();
   } catch (error) {
     throw new ServerAdmissionFailure({
       admission: server.admission,
       cause: error,
-      cleanup: "failed",
+      cleanup: 'failed',
       processId: server.pid,
     });
   }
@@ -247,7 +225,7 @@ export const startServer = async (options: ServerOptions) => {
     throw new ServerAdmissionFailure({
       admission: initial.admission,
       cause: options.signal.reason,
-      cleanup: "confirmed",
+      cleanup: 'confirmed',
       processId: initial.pid,
     });
   }
@@ -258,10 +236,8 @@ export const startServer = async (options: ServerOptions) => {
   await stopForAdmission(isolated);
   throw new ServerAdmissionFailure({
     admission: isolated.admission,
-    cause: new Error(
-      "MCP configuration changed or did not honor process-local overrides"
-    ),
-    cleanup: "confirmed",
+    cause: new Error('MCP configuration changed or did not honor process-local overrides'),
+    cleanup: 'confirmed',
     processId: isolated.pid,
   });
 };

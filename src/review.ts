@@ -1,30 +1,26 @@
-import { readFileSync, statSync } from "node:fs";
-import pathModule from "node:path";
-import { parseArgs } from "node:util";
-import { z } from "zod";
-import { loadProject } from "./documents.ts";
-import { captureImplementation } from "./implementation.ts";
-import {
-  citationSchema,
-  sourceEvidence,
-  suppliedCitation,
-} from "./knowledge-model.ts";
-import { HivexError } from "./errors.ts";
-import type { Project } from "./documents.ts";
-import type { Implementation } from "./implementation.ts";
-import type { SuppliedDocument } from "./knowledge-model.ts";
+import { readFileSync, statSync } from 'node:fs';
+import pathModule from 'node:path';
+import { parseArgs } from 'node:util';
+import { z } from 'zod';
+import { loadProject } from './documents.ts';
+import { captureImplementation } from './implementation.ts';
+import { citationSchema, sourceEvidence, suppliedCitation } from './knowledge-model.ts';
+import { HivexError } from './errors.ts';
+import type { Project } from './documents.ts';
+import type { Implementation } from './implementation.ts';
+import type { SuppliedDocument } from './knowledge-model.ts';
 
 const codeCitation = z.object({
   lineEnd: z.number().int().positive(),
   lineStart: z.number().int().positive(),
   path: z.string().min(1),
-  side: z.enum(["before", "after"]),
+  side: z.enum(['before', 'after']),
 });
 export const reviewSchema = z.object({
   findings: z
     .array(
       z.object({
-        assessment: z.enum(["conflict", "exception", "uncertain"]),
+        assessment: z.enum(['conflict', 'exception', 'uncertain']),
         code: z.array(codeCitation).max(8),
         documents: z.array(citationSchema).max(8),
         explanation: z.string().min(1).max(4096),
@@ -34,15 +30,13 @@ export const reviewSchema = z.object({
   uncertainties: z.array(z.string().min(1).max(2048)).max(24),
 });
 export const reviewInstructions =
-  "Assist the principal reviewer with the task and implementation diff. Discover possible conflicts without requiring suspicions. Explain how documentary rules, direct/indirect dependencies, conditions and exceptions apply. Findings may identify a conflict, a valid exception, or uncertainty; do not turn missing context into approval or reject the entire change. Cite the supplied Markdown ranges and before/after code lines supporting each finding. Distinguish a rule violated by the change from behavior merely seen in context. The reviewer must verify each finding. This is knowledge assistance, not general code review, lint, tests or implementation approval.";
+  'Assist the principal reviewer with the task and implementation diff. Discover possible conflicts without requiring suspicions. Explain how documentary rules, direct/indirect dependencies, conditions and exceptions apply. Findings may identify a conflict, a valid exception, or uncertainty; do not turn missing context into approval or reject the entire change. Cite the supplied Markdown ranges and before/after code lines supporting each finding. Distinguish a rule violated by the change from behavior merely seen in context. The reviewer must verify each finding. This is knowledge assistance, not general code review, lint, tests or implementation approval.';
 
 const codeEvidence = function codeEvidence(
   citation: z.infer<typeof codeCitation>,
   implementation: Implementation
 ) {
-  const file = implementation.files.find(
-    (entry) => entry.path === citation.path
-  )?.[citation.side];
+  const file = implementation.files.find((entry) => entry.path === citation.path)?.[citation.side];
   if (!file || citation.lineEnd < citation.lineStart) {
     return null;
   }
@@ -54,7 +48,7 @@ const codeEvidence = function codeEvidence(
   }
   return {
     ...citation,
-    text: lines.map(([, text]) => text).join("\n"),
+    text: lines.map(([, text]) => text).join('\n'),
     version: file.version,
   };
 };
@@ -82,7 +76,7 @@ export const materializeReview = function materializeReview(
       code.length === finding.code.length;
     return {
       ...finding,
-      assessment: areReferencesVerified ? finding.assessment : "uncertain",
+      assessment: areReferencesVerified ? finding.assessment : 'uncertain',
       code,
       documents,
       referencesVerified: areReferencesVerified,
@@ -118,13 +112,11 @@ export const reviewFreshness = function reviewFreshness(
   const project = loadProject(root);
   const implementation = captureImplementation(root, binding.baseCommit);
   const areDocumentsChanged = project.snapshot !== binding.documents;
-  const isImplementationChanged =
-    implementation.fingerprint !== binding.implementation;
+  const isImplementationChanged = implementation.fingerprint !== binding.implementation;
   return {
     documentsChanged: areDocumentsChanged,
     implementationChanged: isImplementationChanged,
-    status:
-      areDocumentsChanged || isImplementationChanged ? "stale" : "current",
+    status: areDocumentsChanged || isImplementationChanged ? 'stale' : 'current',
   };
 };
 
@@ -132,35 +124,34 @@ export const checkReview = function checkReview(reviewArguments: string[]) {
   const parsed = parseArgs({
     allowPositionals: true,
     args: reviewArguments,
-    options: { check: { type: "string" }, root: { type: "string" } },
+    options: { check: { type: 'string' }, root: { type: 'string' } },
     strict: true,
   });
   if (
     parsed.positionals.length !== 1 ||
-    parsed.positionals[0] !== "review" ||
-    typeof parsed.values.check !== "string" ||
+    parsed.positionals[0] !== 'review' ||
+    typeof parsed.values.check !== 'string' ||
     parsed.values.check.length === 0
   ) {
     throw new HivexError({
-      code: "INVALID_ARGUMENT",
-      message: "Use review --check <saved-report.json> [--root <project>].",
+      code: 'INVALID_ARGUMENT',
+      message: 'Use review --check <saved-report.json> [--root <project>].',
     });
   }
   const root = parsed.values.root ?? process.cwd();
   const reportPath = pathModule.resolve(root, parsed.values.check);
   if (statSync(reportPath).size > 1_048_576) {
     throw new HivexError({
-      code: "INVALID_REVIEW",
-      message: "Saved review exceeds 1 MiB.",
+      code: 'INVALID_REVIEW',
+      message: 'Saved review exceeds 1 MiB.',
     });
   }
   const report = z
-    .object({ binding: bindingSchema, command: z.literal("review") })
-    .parse(JSON.parse(readFileSync(reportPath, "utf-8")));
+    .object({ binding: bindingSchema, command: z.literal('review') })
+    .parse(JSON.parse(readFileSync(reportPath, 'utf-8')));
   return {
-    command: "review-check",
+    command: 'review-check',
     ...reviewFreshness(root, report.binding),
-    guidance:
-      "Current means the versions still match, not that the implementation is approved.",
+    guidance: 'Current means the versions still match, not that the implementation is approved.',
   };
 };

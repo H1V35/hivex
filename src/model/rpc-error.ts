@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 export const RemoteErrorSchema = z.looseObject({
   code: z.number().int(),
@@ -9,7 +9,7 @@ export const RemoteErrorSchema = z.looseObject({
 export type RemoteError = z.infer<typeof RemoteErrorSchema>;
 
 export class AppServerRpcError extends Error {
-  name = "AppServerRpcError";
+  name = 'AppServerRpcError';
   readonly code: number;
   readonly data: unknown;
 

@@ -1,11 +1,11 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 const identity = z.looseObject({ threadId: z.string(), turnId: z.string() });
 const terminal = z.looseObject({
   threadId: z.string(),
   turn: z.looseObject({
     id: z.string(),
-    status: z.enum(["completed", "failed", "interrupted"]),
+    status: z.enum(['completed', 'failed', 'interrupted']),
   }),
 });
 const itemEvent = identity.extend({
@@ -75,49 +75,40 @@ export const captureTranscript = () => {
   const trackIdentity = (value: { threadId: string; turnId: string }) => {
     identities.add(JSON.stringify([value.threadId, value.turnId]));
     if (identities.size > 1) {
-      throw new Error("Native evidence mixed thread or turn identities");
+      throw new Error('Native evidence mixed thread or turn identities');
     }
   };
   void observeRejection(done.promise);
   const receive = (method: string, parameters: unknown) => {
     switch (method) {
-      case "turn/completed": {
+      case 'turn/completed': {
         const event = terminal.parse(parameters);
         trackIdentity({ threadId: event.threadId, turnId: event.turn.id });
         if (state.terminalSeen) {
-          throw new Error("Duplicate native terminal event");
+          throw new Error('Duplicate native terminal event');
         }
         state.terminalSeen = true;
         done.resolve(event);
         break;
       }
-      case "thread/tokenUsage/updated": {
+      case 'thread/tokenUsage/updated': {
         const event = usageEvent.parse(parameters);
         trackIdentity(event);
-        if (
-          !consistentUsage(
-            event.tokenUsage.total,
-            state.counter?.tokenUsage.total
-          )
-        ) {
+        if (!consistentUsage(event.tokenUsage.total, state.counter?.tokenUsage.total)) {
           state.usageInvalid = true;
-          throw new Error("Native usage is inconsistent or regressed");
+          throw new Error('Native usage is inconsistent or regressed');
         }
         state.counter = event;
         break;
       }
-      case "item/completed":
-      case "item/started": {
+      case 'item/completed':
+      case 'item/started': {
         const entry = itemEvent.parse(parameters);
         trackIdentity(entry);
-        if (
-          !["userMessage", "reasoning", "agentMessage"].includes(
-            entry.item.type
-          )
-        ) {
-          throw new Error("Unexpected knowledge-model tool activity");
+        if (!['userMessage', 'reasoning', 'agentMessage'].includes(entry.item.type)) {
+          throw new Error('Unexpected knowledge-model tool activity');
         }
-        if (method === "item/completed" && entry.item.type === "agentMessage") {
+        if (method === 'item/completed' && entry.item.type === 'agentMessage') {
           items.push(entry);
         }
         break;
@@ -147,13 +138,8 @@ export const captureTranscript = () => {
     return current.tokenUsage.total;
   };
   const assertValid = (expected: { threadId: string; turnId: string }) => {
-    if (
-      state.invalid ||
-      !identities.has(JSON.stringify([expected.threadId, expected.turnId]))
-    ) {
-      throw new Error(
-        "Native evidence did not retain one consistent invocation identity"
-      );
+    if (state.invalid || !identities.has(JSON.stringify([expected.threadId, expected.turnId]))) {
+      throw new Error('Native evidence did not retain one consistent invocation identity');
     }
   };
   return {

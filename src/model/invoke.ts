@@ -1,14 +1,14 @@
-import { mkdtempSync, readdirSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { z } from "zod";
-import { startServer } from "./server.ts";
-import { knowledgeTurn } from "./profile.ts";
-import { startKnowledgeThread } from "./thread.ts";
-import { failureDiagnostic, ServerAdmissionFailure } from "./failure.ts";
-import { captureTranscript } from "./transcript.ts";
-import type { ProfileEvidence } from "./profile.ts";
-import type { Usage } from "./transcript.ts";
+import { mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { z } from 'zod';
+import { startServer } from './server.ts';
+import { knowledgeTurn } from './profile.ts';
+import { startKnowledgeThread } from './thread.ts';
+import { failureDiagnostic, ServerAdmissionFailure } from './failure.ts';
+import { captureTranscript } from './transcript.ts';
+import type { ProfileEvidence } from './profile.ts';
+import type { Usage } from './transcript.ts';
 
 export type NativeProcessStarted = (nativeProcessId: number) => void;
 
@@ -25,10 +25,10 @@ export interface InvocationReport {
   deadlineMilliseconds: number;
   interruption?: string;
   usage: Usage | null;
-  turnAccepted?: "confirmed" | "unknown";
+  turnAccepted?: 'confirmed' | 'unknown';
   threadId?: string;
   turnId?: string;
-  cleanup?: "confirmed" | "failed" | "not-observed";
+  cleanup?: 'confirmed' | 'failed' | 'not-observed';
   startedAt?: string;
   durationMilliseconds?: number;
   admission?: ProfileEvidence & { launchPolicyHash: string };
@@ -37,11 +37,11 @@ export interface InvocationReport {
 }
 
 class ModelAbortError extends Error {
-  name = "ModelAbortError";
-  readonly kind: "cancelled" | "timeout";
+  name = 'ModelAbortError';
+  readonly kind: 'cancelled' | 'timeout';
 
-  constructor(kind: "cancelled" | "timeout", options?: ErrorOptions) {
-    super("", options);
+  constructor(kind: 'cancelled' | 'timeout', options?: ErrorOptions) {
+    super('', options);
     this.kind = kind;
   }
 }
@@ -54,14 +54,14 @@ const completedWithin = async (options: {
 }) => {
   const expired = Promise.withResolvers<never>();
   const cancelled = (): void => {
-    expired.reject(new ModelAbortError("cancelled"));
+    expired.reject(new ModelAbortError('cancelled'));
   };
-  options.signal?.addEventListener("abort", cancelled, { once: true });
+  options.signal?.addEventListener('abort', cancelled, { once: true });
   if (options.signal?.aborted === true) {
     cancelled();
   }
   const timer = setTimeout(() => {
-    expired.reject(new ModelAbortError("timeout"));
+    expired.reject(new ModelAbortError('timeout'));
   }, options.milliseconds);
   try {
     return await Promise.race([
@@ -71,7 +71,7 @@ const completedWithin = async (options: {
     ]);
   } finally {
     clearTimeout(timer);
-    options.signal?.removeEventListener("abort", cancelled);
+    options.signal?.removeEventListener('abort', cancelled);
   }
 };
 
@@ -80,11 +80,7 @@ const isInterruptedTurn = function isInterruptedTurn(
   threadId: string,
   turnId: string
 ) {
-  return (
-    end.threadId === threadId &&
-    end.turn.id === turnId &&
-    end.turn.status === "interrupted"
-  );
+  return end.threadId === threadId && end.turn.id === turnId && end.turn.status === 'interrupted';
 };
 
 const isInterruptRequestAccepted = async (options: {
@@ -94,7 +90,7 @@ const isInterruptRequestAccepted = async (options: {
 }) => {
   try {
     await options.server.rpc.request(
-      "turn/interrupt",
+      'turn/interrupt',
       { threadId: options.threadId, turnId: options.turnId },
       { timeoutMilliseconds: 5000 }
     );
@@ -157,21 +153,18 @@ const createInvocationResult = (
 
 const failureCode = (options: { isCancelled: boolean; isTimeout: boolean }) => {
   if (options.isCancelled) {
-    return "MODEL_CANCELLED";
+    return 'MODEL_CANCELLED';
   }
-  return options.isTimeout ? "MODEL_TIMEOUT" : "MODEL_PROTOCOL_FAILED";
+  return options.isTimeout ? 'MODEL_TIMEOUT' : 'MODEL_PROTOCOL_FAILED';
 };
 
-const completeTurn = async (
-  options: RunTurnOptions & { begin: number; turnId: string }
-) => {
+const completeTurn = async (options: RunTurnOptions & { begin: number; turnId: string }) => {
   if (options.signal.aborted) {
-    throw new ModelAbortError("cancelled");
+    throw new ModelAbortError('cancelled');
   }
-  const remaining =
-    options.deadlineMilliseconds - (performance.now() - options.begin);
+  const remaining = options.deadlineMilliseconds - (performance.now() - options.begin);
   if (remaining <= 0) {
-    throw new ModelAbortError("timeout");
+    throw new ModelAbortError('timeout');
   }
   const end = await completedWithin({
     captured: options.captured,
@@ -182,9 +175,9 @@ const completeTurn = async (
   if (
     end.threadId !== options.threadId ||
     end.turn.id !== options.turnId ||
-    end.turn.status !== "completed"
+    end.turn.status !== 'completed'
   ) {
-    throw new Error("Model completion was not established");
+    throw new Error('Model completion was not established');
   }
   options.captured.assertValid({
     threadId: options.threadId,
@@ -194,14 +187,14 @@ const completeTurn = async (
   const text = final?.item.text;
   if (
     text === undefined ||
-    text === "" ||
+    text === '' ||
     final?.threadId !== options.threadId ||
     final.turnId !== options.turnId
   ) {
-    throw new Error("Structured model output is missing");
+    throw new Error('Structured model output is missing');
   }
   if (readdirSync(options.workspace).length !== 0) {
-    throw new Error("Knowledge workspace was mutated");
+    throw new Error('Knowledge workspace was mutated');
   }
   return text;
 };
@@ -209,7 +202,7 @@ const completeTurn = async (
 const runTurn = async (options: RunTurnOptions) => {
   const { server, captured, threadId } = options;
   const begin = performance.now();
-  const inputTextType = { type: "text" };
+  const inputTextType = { type: 'text' };
   const inputText = { text: options.prompt };
   const turnInput = {
     ...inputTextType,
@@ -226,7 +219,7 @@ const runTurn = async (options: RunTurnOptions) => {
   };
   let accepted: z.infer<typeof turnStartResponse> | null;
   try {
-    const response = await server.rpc.request("turn/start", turnParameters, {
+    const response = await server.rpc.request('turn/start', turnParameters, {
       timeoutMilliseconds: Math.min(options.deadlineMilliseconds, 30_000),
     });
     accepted = turnStartResponse.parse(response);
@@ -234,9 +227,9 @@ const runTurn = async (options: RunTurnOptions) => {
     accepted = null;
   }
   if (accepted === null) {
-    const reportOutcome = { outcome: "failed" };
-    const reportCode = { code: "MODEL_START_UNCONFIRMED" };
-    const reportTurnAccepted = { turnAccepted: "unknown" as const };
+    const reportOutcome = { outcome: 'failed' };
+    const reportCode = { code: 'MODEL_START_UNCONFIRMED' };
+    const reportTurnAccepted = { turnAccepted: 'unknown' as const };
     const reportThreadId = { threadId };
     const reportDeadlineMilliseconds = {
       deadlineMilliseconds: options.deadlineMilliseconds,
@@ -255,10 +248,10 @@ const runTurn = async (options: RunTurnOptions) => {
   const turnId = accepted.turn.id;
   try {
     const value = await completeTurn({ ...options, begin, turnId });
-    const reportOutcome = { outcome: "completed" };
+    const reportOutcome = { outcome: 'completed' };
     const reportThreadId = { threadId };
     const reportTurnId = { turnId };
-    const reportTurnAccepted = { turnAccepted: "confirmed" as const };
+    const reportTurnAccepted = { turnAccepted: 'confirmed' as const };
     const reportDeadlineMilliseconds = {
       deadlineMilliseconds: options.deadlineMilliseconds,
     };
@@ -277,20 +270,18 @@ const runTurn = async (options: RunTurnOptions) => {
       ...options,
       turnId,
     });
-    const isTimeout =
-      error instanceof ModelAbortError && error.kind === "timeout";
-    const isCancelled =
-      error instanceof ModelAbortError && error.kind === "cancelled";
+    const isTimeout = error instanceof ModelAbortError && error.kind === 'timeout';
+    const isCancelled = error instanceof ModelAbortError && error.kind === 'cancelled';
     const reportOutcome = {
-      outcome: isTimeout ? "timeout" : "failed",
+      outcome: isTimeout ? 'timeout' : 'failed',
     };
     const reportThreadId = { threadId };
     const reportTurnId = { turnId };
     const reportCode = { code: failureCode({ isCancelled, isTimeout }) };
     const reportInterruption = {
-      interruption: isInterruptionConfirmed ? "confirmed" : "unconfirmed",
+      interruption: isInterruptionConfirmed ? 'confirmed' : 'unconfirmed',
     };
-    const reportTurnAccepted = { turnAccepted: "confirmed" as const };
+    const reportTurnAccepted = { turnAccepted: 'confirmed' as const };
     const reportDeadlineMilliseconds = {
       deadlineMilliseconds: options.deadlineMilliseconds,
     };
@@ -305,11 +296,7 @@ const runTurn = async (options: RunTurnOptions) => {
       ...reportDeadlineMilliseconds,
       ...reportUsage,
     };
-    return createInvocationResult(
-      null,
-      report,
-      isTimeout && isInterruptionConfirmed
-    );
+    return createInvocationResult(null, report, isTimeout && isInterruptionConfirmed);
   }
 };
 
@@ -330,18 +317,16 @@ export const invokeModel = async (options: InvocationOptions) => {
   const currentTime = new Date();
   const startedAt = currentTime.toISOString();
   const began = performance.now();
-  const workspace = realpathSync(
-    mkdtempSync(path.join(tmpdir(), "hivex-model-"))
-  );
+  const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), 'hivex-model-')));
   const captured = captureTranscript();
   const controller = new AbortController();
   const cancel = (): void => {
     controller.abort();
   };
-  process.on("SIGINT", cancel);
-  process.on("SIGTERM", cancel);
-  const initialReportOutcome = { outcome: "failed" };
-  const initialReportCode = { code: "MODEL_ADMISSION_FAILED" };
+  process.on('SIGINT', cancel);
+  process.on('SIGTERM', cancel);
+  const initialReportOutcome = { outcome: 'failed' };
+  const initialReportCode = { code: 'MODEL_ADMISSION_FAILED' };
   const initialReportDeadlineMilliseconds = {
     deadlineMilliseconds: options.deadlineMilliseconds,
   };
@@ -360,7 +345,7 @@ export const invokeModel = async (options: InvocationOptions) => {
       const server = await startServer({
         binary: options.binary,
         interaction: () => {
-          throw new Error("Knowledge execution cannot request interaction");
+          throw new Error('Knowledge execution cannot request interaction');
         },
         notification: captured.notification,
         signal: controller.signal,
@@ -386,10 +371,10 @@ export const invokeModel = async (options: InvocationOptions) => {
       });
     })()
   );
-  if ("error" in execution) {
+  if ('error' in execution) {
     const { error } = execution;
     if (controller.signal.aborted) {
-      initialReport.code = "MODEL_CANCELLED";
+      initialReport.code = 'MODEL_CANCELLED';
     }
     initialReport.diagnostic = failureDiagnostic(error);
     if (error instanceof ServerAdmissionFailure) {
@@ -405,14 +390,14 @@ export const invokeModel = async (options: InvocationOptions) => {
       rmSync(workspace, { force: true, recursive: true });
       resource.result.report.cleanup =
         resource.server === undefined
-          ? (resource.result.report.cleanup ?? "not-observed")
-          : "confirmed";
+          ? (resource.result.report.cleanup ?? 'not-observed')
+          : 'confirmed';
     })()
   );
-  if ("error" in cleanup) {
-    const cleanupReportOutcome = { outcome: "failed" };
-    const cleanupReportCode = { code: "MODEL_CLEANUP_FAILED" };
-    const cleanupReportCleanup = { cleanup: "failed" as const };
+  if ('error' in cleanup) {
+    const cleanupReportOutcome = { outcome: 'failed' };
+    const cleanupReportCode = { code: 'MODEL_CLEANUP_FAILED' };
+    const cleanupReportCleanup = { cleanup: 'failed' as const };
     const cleanupReport = {
       ...resource.result.report,
       ...cleanupReportOutcome,
@@ -421,21 +406,16 @@ export const invokeModel = async (options: InvocationOptions) => {
     };
     resource.result = createInvocationResult(null, cleanupReport, false);
   }
-  process.off("SIGINT", cancel);
-  process.off("SIGTERM", cancel);
+  process.off('SIGINT', cancel);
+  process.off('SIGTERM', cancel);
   const { report } = resource.result;
   const { threadId, turnId } = report;
-  if (
-    threadId !== undefined &&
-    threadId !== "" &&
-    turnId !== undefined &&
-    turnId !== ""
-  ) {
+  if (threadId !== undefined && threadId !== '' && turnId !== undefined && turnId !== '') {
     report.usage = captured.measured({ threadId, turnId });
   }
-  if (captured.invalid && report.outcome === "completed") {
-    const protocolReportOutcome = { outcome: "failed" };
-    const protocolReportCode = { code: "MODEL_PROTOCOL_FAILED" };
+  if (captured.invalid && report.outcome === 'completed') {
+    const protocolReportOutcome = { outcome: 'failed' };
+    const protocolReportCode = { code: 'MODEL_PROTOCOL_FAILED' };
     const protocolReport = {
       ...report,
       ...protocolReportOutcome,

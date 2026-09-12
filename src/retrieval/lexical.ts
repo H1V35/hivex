@@ -1,12 +1,12 @@
-import { Database } from "bun:sqlite";
-import { z } from "zod";
-import { HivexError } from "../errors.ts";
+import { Database } from 'bun:sqlite';
+import { z } from 'zod';
+import { HivexError } from '../errors.ts';
 
 const row = z.object({ id: z.string(), score: z.number() });
 export const searchTerms = (text: string) => {
   const terms = text
     .toLowerCase()
-    .normalize("NFKC")
+    .normalize('NFKC')
     .match(/[\p{L}\p{N}]+/gu);
   if (terms === null) {
     return [];
@@ -25,53 +25,40 @@ interface RankOptions {
   terms: string[];
 }
 
-const rank = function rank({
-  database,
-  excludedId = null,
-  limit,
-  terms,
-}: RankOptions) {
-  const expression = terms
-    .map((term) => `"${term.replaceAll('"', '""')}"`)
-    .join(" OR ");
+const rank = function rank({ database, excludedId = null, limit, terms }: RankOptions) {
+  const expression = terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(' OR ');
   if (!expression) {
     return [];
   }
   return database
     .prepare(
-      "SELECT id, bm25(sources) AS score FROM sources WHERE sources MATCH ? AND (? IS NULL OR id != ?) ORDER BY score, id LIMIT ?"
+      'SELECT id, bm25(sources) AS score FROM sources WHERE sources MATCH ? AND (? IS NULL OR id != ?) ORDER BY score, id LIMIT ?'
     )
     .all(expression, excludedId, excludedId, limit)
     .map((value) => row.parse(value));
 };
 
 const prepareVocabulary = function prepareVocabulary(database: Database) {
-  database.run(
-    "CREATE VIRTUAL TABLE vocabulary USING fts5vocab(sources, 'row')"
-  );
-  database.run(
-    "CREATE VIRTUAL TABLE instances USING fts5vocab(sources, 'instance')"
-  );
-  database.run(
-    "CREATE TABLE document_terms AS SELECT DISTINCT doc, term FROM instances"
-  );
-  database.run("CREATE INDEX document_terms_by_doc ON document_terms(doc)");
+  database.run("CREATE VIRTUAL TABLE vocabulary USING fts5vocab(sources, 'row')");
+  database.run("CREATE VIRTUAL TABLE instances USING fts5vocab(sources, 'instance')");
+  database.run('CREATE TABLE document_terms AS SELECT DISTINCT doc, term FROM instances');
+  database.run('CREATE INDEX document_terms_by_doc ON document_terms(doc)');
 };
 
 export class LexicalIndex {
-  private readonly db = new Database(":memory:");
+  private readonly db = new Database(':memory:');
   private readonly ids = new Map<string, number>();
   private vocabularyReady = false;
 
   constructor(records: readonly Record[]) {
     try {
-      this.db.run("PRAGMA page_size=4096");
-      this.db.run("PRAGMA max_page_count=32768");
+      this.db.run('PRAGMA page_size=4096');
+      this.db.run('PRAGMA max_page_count=32768');
       this.db.run(
-        "CREATE VIRTUAL TABLE sources USING fts5(id UNINDEXED, title, content, tokenize=unicode61)"
+        'CREATE VIRTUAL TABLE sources USING fts5(id UNINDEXED, title, content, tokenize=unicode61)'
       );
       const insert = this.db.prepare(
-        "INSERT INTO sources(rowid, id, title, content) VALUES (?, ?, ?, ?)"
+        'INSERT INTO sources(rowid, id, title, content) VALUES (?, ?, ?, ?)'
       );
       this.db.transaction(() => {
         for (const [index, record] of records.entries()) {
@@ -93,8 +80,8 @@ export class LexicalIndex {
     const documentId = this.ids.get(id);
     if (documentId === undefined) {
       throw new HivexError({
-        code: "LEXICAL_SOURCE_NOT_FOUND",
-        message: "The source is not in this lexical index",
+        code: 'LEXICAL_SOURCE_NOT_FOUND',
+        message: 'The source is not in this lexical index',
       });
     }
     if (!this.vocabularyReady) {
@@ -103,7 +90,7 @@ export class LexicalIndex {
     }
     const terms = this.db
       .query<{ term: string }, [number]>(
-        "SELECT t.term FROM document_terms t JOIN vocabulary v ON v.term=t.term WHERE t.doc=? AND v.doc>=2 ORDER BY v.doc, t.term LIMIT 32"
+        'SELECT t.term FROM document_terms t JOIN vocabulary v ON v.term=t.term WHERE t.doc=? AND v.doc>=2 ORDER BY v.doc, t.term LIMIT 32'
       )
       .all(documentId)
       .map((entry) => entry.term);

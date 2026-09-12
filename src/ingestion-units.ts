@@ -1,6 +1,6 @@
-import { digest } from "./knowledge-model.ts";
-import { rawMarkdownLines } from "./markdown.ts";
-import type { Document } from "./documents.ts";
+import { digest } from './knowledge-model.ts';
+import { rawMarkdownLines } from './markdown.ts';
+import type { Document } from './documents.ts';
 
 const maxBytes = 8192;
 
@@ -27,7 +27,7 @@ interface Warning {
 }
 
 const contentOf = function contentOf(text: string) {
-  return text.replace(/(?:\r\n|\r|\n)$/u, "");
+  return text.replace(/(?:\r\n|\r|\n)$/u, '');
 };
 const fenceOf = function fenceOf(content: string) {
   const indentationMatch = /^ */u.exec(content);
@@ -37,16 +37,16 @@ const fenceOf = function fenceOf(content: string) {
   }
   const source = content.slice(indentation);
   const marker = source.at(0);
-  if (marker !== "`" && marker !== "~") {
+  if (marker !== '`' && marker !== '~') {
     return null;
   }
   const markerMatch = /^(?:`+|~+)/u.exec(source);
-  const markerRun = markerMatch?.[0] ?? "";
+  const markerRun = markerMatch?.[0] ?? '';
   if (markerRun.length < 3) {
     return null;
   }
   return {
-    closing: source.slice(markerRun.length).trim() === "",
+    closing: source.slice(markerRun.length).trim() === '',
     length: markerRun.length,
     marker,
   };
@@ -55,12 +55,12 @@ const isHeading = (content: string) => /^\s{0,3}#{1,6}(?:\s|$)/u.test(content);
 
 const sourceLines = function sourceLines(text: string) {
   return rawMarkdownLines(text)
-    .filter((line) => line !== "")
+    .filter((line) => line !== '')
     .map((line, index) => {
       const content = contentOf(line);
       return {
-        blank: content.trim() === "",
-        bytes: Buffer.byteLength(line, "utf-8"),
+        blank: content.trim() === '',
+        bytes: Buffer.byteLength(line, 'utf-8'),
         fence: fenceOf(content),
         heading: isHeading(content),
         number: index + 1,
@@ -72,7 +72,7 @@ const sourceLines = function sourceLines(text: string) {
 const blocksFor = function blocksFor(document: Document, warnings: Warning[]) {
   const blocks: SourceLine[][] = [];
   let block: SourceLine[] = [];
-  let activeFence: SourceLine["fence"] = null;
+  let activeFence: SourceLine['fence'] = null;
   const flush = () => {
     if (block.length > 0) {
       blocks.push(block);
@@ -154,9 +154,7 @@ const packedBlocks = function packedBlocks(blocks: SourceLine[][]) {
     const blockBytes = block.reduce((total, line) => total + line.bytes, 0);
     const last = current.at(-1);
     const shouldFlush =
-      last === undefined ||
-      last.number + 1 !== first.number ||
-      bytes + blockBytes > maxBytes;
+      last === undefined || last.number + 1 !== first.number || bytes + blockBytes > maxBytes;
     if (shouldFlush && current.length > 0) {
       flush();
     }
@@ -167,16 +165,13 @@ const packedBlocks = function packedBlocks(blocks: SourceLine[][]) {
   return packed;
 };
 
-const makeUnit = function makeUnit(
-  document: Document,
-  lines: SourceLine[]
-): IngestionUnit {
+const makeUnit = function makeUnit(document: Document, lines: SourceLine[]): IngestionUnit {
   const first = lines.at(0);
   const last = lines.at(-1);
   if (first === undefined || last === undefined) {
-    throw new Error("Cannot create an empty ingestion unit");
+    throw new Error('Cannot create an empty ingestion unit');
   }
-  const text = lines.map((line) => line.text).join("");
+  const text = lines.map((line) => line.text).join('');
   return {
     document: document.id,
     hash: digest(text),
@@ -194,8 +189,8 @@ export const ingestionUnits = function ingestionUnits(documents: Document[]): {
   const units: IngestionUnit[] = [];
   const warnings: Warning[] = [];
   for (const document of documents) {
-    const documentUnits = packedBlocks(blocksFor(document, warnings)).map(
-      (lines) => makeUnit(document, lines)
+    const documentUnits = packedBlocks(blocksFor(document, warnings)).map((lines) =>
+      makeUnit(document, lines)
     );
     units.push(...documentUnits);
   }
