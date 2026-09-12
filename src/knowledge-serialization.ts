@@ -49,11 +49,11 @@ const fieldOrder = {
   extraction: [
     "operation",
     "targets",
+    "repairReason",
     "units",
     "documents",
     "existing",
     "previousRelationships",
-    "repairReason",
     "scope",
     "extraction",
   ],
@@ -95,7 +95,7 @@ const fieldOrder = {
     "quality",
   ],
   reviewFinding: ["assessment", "explanation", "documents", "code"],
-  unit: ["id", "document", "version", "lineStart", "lineEnd", "text"],
+  unit: ["id", "document", "hash", "lineStart", "lineEnd", "text"],
   version: ["version", "lines"],
   warning: ["path", "message"],
 };
@@ -125,14 +125,29 @@ const orderRecord = function orderRecord(
   );
 };
 
+const hasOrderPrefix = function hasOrderPrefix(
+  value: Record<string, unknown>,
+  fields: string[]
+) {
+  const keys = Object.keys(value);
+  return fields.every((field, index) => keys[index] === field);
+};
+
 const sourceOrder = function sourceOrder(value: Record<string, unknown>) {
   if (hasFields(value, ["kind", "id"])) {
-    return Object.hasOwn(value, "historical")
-      ? fieldOrder.queriedDecision
+    if (Object.hasOwn(value, "historical")) {
+      return fieldOrder.queriedDecision;
+    }
+    // Retained packets may contain live graph records, whose provenance fields
+    // were appended in a different order from records decoded by the store.
+    return hasOrderPrefix(value, fieldOrder.decision.slice(0, 10))
+      ? null
       : fieldOrder.decision;
   }
   if (hasFields(value, ["from", "to", "type"])) {
-    return fieldOrder.relationship;
+    return hasOrderPrefix(value, fieldOrder.relationship.slice(0, 6))
+      ? null
+      : fieldOrder.relationship;
   }
   if (hasFields(value, ["id", "title"])) {
     return fieldOrder.document;

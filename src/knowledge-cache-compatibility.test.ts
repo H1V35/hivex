@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
+import { stringifyKnowledge } from "./knowledge-serialization.ts";
 import { knowledgeCommand } from "./knowledge.ts";
 
 const fixture = readFileSync(
@@ -66,3 +67,68 @@ test.each([
     });
   }
 );
+
+test("preserves the provenance order of records in a retained model packet", () => {
+  using database = new Database(":memory:");
+  database.run(fixture);
+  const row = database
+    .query<
+      { item: string },
+      []
+    >("SELECT json_remove(json_extract(data, '$.decisions[0]'), '$.batch') AS item FROM graph")
+    .get();
+  if (row === null) {
+    throw new Error("Expected the retained graph record");
+  }
+  const record: unknown = JSON.parse(row.item);
+  expect(stringifyKnowledge({ existing: [record], operation: "check" })).toBe(
+    `{"operation":"check","existing":[${row.item}]}`
+  );
+});
+
+test("reuses v1 extraction and check caches with the original exhausted update budget", async () => {
+  using cleanup = new DisposableStack();
+  const root = mkdtempSync(path.join(tmpdir(), "hivex-update-cache-compat-"));
+  cleanup.defer(() => {
+    rmSync(root, { force: true, recursive: true });
+  });
+  writeFileSync(
+    path.join(root, "notes.md"),
+    "# Policy\nUse bounded work.\nPreserve the budget.\n"
+  );
+  mkdirSync(path.join(root, ".hivex"));
+  using database = new Database(path.join(root, ".hivex/knowledge.sqlite"));
+  database.run(
+    readFileSync(
+      new URL(
+        "../test/fixtures/knowledge-update-cache-v1.sql",
+        import.meta.url
+      ),
+      "utf-8"
+    )
+  );
+  const result = await knowledgeCommand([
+    "update",
+    "--root",
+    root,
+    "--max-calls",
+    "2",
+    "--codex",
+    path.join(root, "model-must-not-start"),
+  ]);
+  expect(result).toMatchObject({
+    decisions: 2,
+    pendingUnits: [],
+    relationships: 1,
+    status: "ready",
+    work: {
+      cacheHits: 2,
+      calls: 2,
+      id: "df3ff9f3-1c23-4103-a08b-e7c3d65683e8",
+      inputBytes: 4282,
+      maxCalls: 2,
+      maxInputBytes: 131_072,
+      totalTokens: 10,
+    },
+  });
+});
