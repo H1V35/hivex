@@ -1,93 +1,125 @@
-import type { Document } from './documents.ts';
-import { rawMarkdownLines } from './markdown.ts';
-import { digest } from './knowledge-model.ts';
+import { digest } from "./knowledge-model.ts";
+import { rawMarkdownLines } from "./markdown.ts";
+import type { Document } from "./documents.ts";
 
-const MAX_BYTES = 8192;
+const maxBytes = 8192;
 
-export type IngestionUnit = {
-  id: string;
+export interface IngestionUnit {
   document: string;
   hash: string;
-  lineStart: number;
+  id: string;
   lineEnd: number;
+  lineStart: number;
   text: string;
-};
+}
 
-type SourceLine = {
+interface SourceLine {
+  blank: boolean;
+  bytes: number;
+  fence: { marker: string; length: number; closing: boolean } | null;
+  heading: boolean;
   number: number;
   text: string;
-  bytes: number;
-  blank: boolean;
-  heading: boolean;
-  fence: { marker: string; length: number; closing: boolean } | null;
-};
-type Warning = { path: string; message: string };
-
-const contentOf = (text: string) => text.replace(/(?:\r\n|\r|\n)$/, '');
-function fenceOf(content: string) {
-  const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(content);
-  return match?.[1]
-    ? { marker: match[1].charAt(0), length: match[1].length, closing: !match[2]?.trim() }
-    : null;
 }
-const headingOf = (content: string) => /^\s{0,3}#{1,6}(?:\s|$)/.test(content);
+interface Warning {
+  message: string;
+  path: string;
+}
 
-function sourceLines(text: string) {
+const contentOf = function contentOf(text: string) {
+  return text.replace(/(?:\r\n|\r|\n)$/u, "");
+};
+const fenceOf = function fenceOf(content: string) {
+  const indentationMatch = /^ */u.exec(content);
+  const indentation = indentationMatch?.[0].length ?? 0;
+  if (indentation > 3) {
+    return null;
+  }
+  const source = content.slice(indentation);
+  const marker = source.at(0);
+  if (marker !== "`" && marker !== "~") {
+    return null;
+  }
+  const markerMatch = /^(?:`+|~+)/u.exec(source);
+  const markerRun = markerMatch?.[0] ?? "";
+  if (markerRun.length < 3) {
+    return null;
+  }
+  return {
+    closing: source.slice(markerRun.length).trim() === "",
+    length: markerRun.length,
+    marker,
+  };
+};
+const isHeading = (content: string) => /^\s{0,3}#{1,6}(?:\s|$)/u.test(content);
+
+const sourceLines = function sourceLines(text: string) {
   return rawMarkdownLines(text)
-    .filter((line) => line !== '')
+    .filter((line) => line !== "")
     .map((line, index) => {
       const content = contentOf(line);
       return {
+        blank: content.trim() === "",
+        bytes: Buffer.byteLength(line, "utf-8"),
+        fence: fenceOf(content),
+        heading: isHeading(content),
         number: index + 1,
         text: line,
-        bytes: Buffer.byteLength(line, 'utf8'),
-        blank: content.trim() === '',
-        heading: headingOf(content),
-        fence: fenceOf(content),
       };
     });
-}
+};
 
-function blocksFor(document: Document, warnings: Warning[]) {
+const blocksFor = function blocksFor(document: Document, warnings: Warning[]) {
   const blocks: SourceLine[][] = [];
   let block: SourceLine[] = [];
-  let activeFence: SourceLine['fence'] = null;
+  let activeFence: SourceLine["fence"] = null;
   const flush = () => {
-    if (block.length) blocks.push(block);
+    if (block.length > 0) {
+      blocks.push(block);
+    }
     block = [];
   };
 
   for (const line of sourceLines(document.text)) {
-    const inFence = activeFence !== null;
-    const closingFence =
-      activeFence &&
-      line.fence?.closing &&
+    const isInFence = activeFence !== null;
+    const isSameFence =
+      activeFence !== null &&
+      line.fence !== null &&
       line.fence.marker === activeFence.marker &&
       line.fence.length >= activeFence.length;
-    if (closingFence) activeFence = null;
-    else if (!activeFence) activeFence = line.fence;
-    if (line.bytes > MAX_BYTES) {
+    const isClosingFence = line.fence?.closing === true && isSameFence;
+    if (isClosingFence) {
+      activeFence = null;
+    } else {
+      activeFence ??= line.fence;
+    }
+    if (line.bytes > maxBytes) {
       flush();
       warnings.push({
+        message: `Line ${line.number} is ${line.bytes} UTF-8 bytes, exceeding the ${maxBytes}-byte limit; omitted as unread.`,
         path: document.path,
-        message: `Line ${line.number} is ${line.bytes} UTF-8 bytes, exceeding the ${MAX_BYTES}-byte limit; omitted as unread.`,
       });
       continue;
     }
-    if (!inFence && line.heading) flush();
+    if (!isInFence && line.heading) {
+      flush();
+    }
     block.push(line);
-    if (!activeFence && (line.blank || closingFence)) flush();
+    const shouldFlush = activeFence === null && (line.blank || isClosingFence);
+    if (shouldFlush) {
+      flush();
+    }
   }
   flush();
   return blocks;
-}
+};
 
-function splitBlock(block: SourceLine[]) {
+const splitBlock = function splitBlock(block: SourceLine[]) {
   const pieces: SourceLine[][] = [];
   let piece: SourceLine[] = [];
   let bytes = 0;
   for (const line of block) {
-    if (piece.length && bytes + line.bytes > MAX_BYTES) {
+    if (piece.length > 0 && bytes + line.bytes > maxBytes) {
       pieces.push(piece);
       piece = [];
       bytes = 0;
@@ -95,61 +127,77 @@ function splitBlock(block: SourceLine[]) {
     piece.push(line);
     bytes += line.bytes;
   }
-  if (piece.length) pieces.push(piece);
+  if (piece.length > 0) {
+    pieces.push(piece);
+  }
   return pieces;
-}
+};
 
-function packedBlocks(blocks: SourceLine[][]) {
+const packedBlocks = function packedBlocks(blocks: SourceLine[][]) {
   const packed: SourceLine[][] = [];
   let current: SourceLine[] = [];
   let bytes = 0;
   const flush = () => {
-    if (current.length) packed.push(current);
+    if (current.length > 0) {
+      packed.push(current);
+    }
     current = [];
     bytes = 0;
   };
 
-  for (const block of blocks.flatMap((item) => splitBlock(item))) {
+  const splitBlocks = blocks.flatMap((item) => splitBlock(item));
+  for (const block of splitBlocks) {
     const first = block.at(0);
-    if (!first) continue;
+    if (first === undefined) {
+      continue;
+    }
     const blockBytes = block.reduce((total, line) => total + line.bytes, 0);
     const last = current.at(-1);
-    if (
-      current.length &&
-      (bytes + blockBytes > MAX_BYTES || !last || last.number + 1 !== first.number)
-    )
+    const shouldFlush =
+      last === undefined ||
+      last.number + 1 !== first.number ||
+      bytes + blockBytes > maxBytes;
+    if (shouldFlush && current.length > 0) {
       flush();
+    }
     current.push(...block);
     bytes += blockBytes;
   }
   flush();
   return packed;
-}
+};
 
-function makeUnit(document: Document, lines: SourceLine[]): IngestionUnit {
+const makeUnit = function makeUnit(
+  document: Document,
+  lines: SourceLine[]
+): IngestionUnit {
   const first = lines.at(0);
   const last = lines.at(-1);
-  if (!first || !last) throw new Error('Cannot create an empty ingestion unit');
-  const text = lines.map((line) => line.text).join('');
+  if (first === undefined || last === undefined) {
+    throw new Error("Cannot create an empty ingestion unit");
+  }
+  const text = lines.map((line) => line.text).join("");
   return {
-    id: `${document.path}:${first.number}-${last.number}`,
     document: document.id,
     hash: digest(text),
-    lineStart: first.number,
+    id: `${document.path}:${first.number}-${last.number}`,
     lineEnd: last.number,
+    lineStart: first.number,
     text,
   };
-}
+};
 
-export function ingestionUnits(documents: Document[]): {
+export const ingestionUnits = function ingestionUnits(documents: Document[]): {
   units: IngestionUnit[];
   warnings: Warning[];
 } {
   const units: IngestionUnit[] = [];
   const warnings: Warning[] = [];
-  for (const document of documents)
-    units.push(
-      ...packedBlocks(blocksFor(document, warnings)).map((lines) => makeUnit(document, lines)),
+  for (const document of documents) {
+    const documentUnits = packedBlocks(blocksFor(document, warnings)).map(
+      (lines) => makeUnit(document, lines)
     );
+    units.push(...documentUnits);
+  }
   return { units, warnings };
-}
+};

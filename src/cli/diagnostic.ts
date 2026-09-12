@@ -1,26 +1,36 @@
-import { HivexError } from '../errors.ts';
+import { HivexError } from "../errors.ts";
 
-function bounded(text: string) {
-  let result = '';
+const bounded = (text: string) => {
+  let result = "";
   for (const char of text) {
-    if (Buffer.byteLength(JSON.stringify(result + char)) > 256) break;
+    if (Buffer.byteLength(JSON.stringify(result + char)) > 256) {
+      break;
+    }
     result += char;
   }
   return result;
-}
-
-export function diagnostic(error: unknown) {
+};
+export const diagnostic = (error: unknown) => {
   let failure = new HivexError({
-    code: 'READ_FAILED',
-    message: 'Unable to read project knowledge',
+    code: "READ_FAILED",
+    message: "Unable to read project knowledge",
   });
-  if (error instanceof HivexError) failure = error;
-  else if (error instanceof Error)
-    failure = new HivexError({ code: 'READ_FAILED', message: error.message });
-  let details = failure.details;
-  if (details && Buffer.byteLength(JSON.stringify(details)) > 384) details = { omitted: true };
+  if (error instanceof HivexError) {
+    failure = error;
+  } else if (Error.isError(error)) {
+    failure = new HivexError({ code: "READ_FAILED", message: error.message });
+  }
+  let { details } = failure;
+  if (details && Buffer.byteLength(JSON.stringify(details)) > 384) {
+    details = { omitted: true };
+  }
   const message = bounded(failure.message);
   return {
-    error: { code: failure.code, message, messageTruncated: message !== failure.message, details },
+    error: {
+      code: failure.code,
+      details,
+      message,
+      messageTruncated: message !== failure.message,
+    },
   };
-}
+};

@@ -1,3 +1,7 @@
 {
-  "include": ["README.md", "docs/**/*.md", "skills/hivex/references/markdown.md"]
+  "include": [
+    "README.md",
+    "docs/**/*.md",
+    "skills/hivex/references/markdown.md"
+  ]
 }
