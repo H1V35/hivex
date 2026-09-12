@@ -147,7 +147,8 @@ const sourceOrder = function sourceOrder(value: Record<string, unknown>) {
   if (hasFields(value, ['path', 'message'])) {
     return fieldOrder.warning;
   }
-  return null;
+  // No source shape matched. Null above preserves a recognized record's live order.
+  return [];
 };
 
 const packetOrder = function packetOrder(key: string, value: Record<string, unknown>) {
@@ -164,7 +165,11 @@ const packetOrder = function packetOrder(key: string, value: Record<string, unkn
   if (hasFields(value, ['path', 'before', 'after'])) {
     return fieldOrder.file;
   }
-  return sourceOrder(value) ?? (hasFields(value, ['target', 'reason']) ? fieldOrder.finding : null);
+  const order = sourceOrder(value);
+  if (order === null || order.length > 0) {
+    return order;
+  }
+  return hasFields(value, ['target', 'reason']) ? fieldOrder.finding : null;
 };
 
 export const stringifyKnowledge = function stringifyKnowledge(packet: unknown) {

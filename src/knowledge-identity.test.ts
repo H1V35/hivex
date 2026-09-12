@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { applyExtraction, emptyGraph, extractionSchema } from './knowledge-model.ts';
+import { stringifyKnowledge } from './knowledge-serialization.ts';
 import { compareSerializedStrings } from './ordering.ts';
 import type { Document } from './documents.ts';
 
@@ -83,4 +84,12 @@ test('retains serialized UTF-16 order for supplementary Unicode document names',
     'docs/\u{10000}.md',
     'docs/\u{E000}.md',
   ]);
+});
+
+test.each([
+  '{"id":"d1","document":"docs/cache.md","text":"Keep cache private","kind":"constraint","status":"current","conditions":[],"exceptions":[],"reason":"Access","lineStart":1,"lineEnd":1,"localId":"c1","version":"v1","batch":"b1","quality":"accepted","target":"d2"}',
+  '{"id":"r1","from":"d1","to":"d2","type":"supports","reason":"Access","evidence":[],"localId":"r1","batch":"b1","quality":"accepted","target":"d2"}',
+])('retains live provenance order when a cached record also has finding fields', (serialized) => {
+  const packet: unknown = JSON.parse(serialized);
+  expect(stringifyKnowledge(packet)).toBe(serialized);
 });
