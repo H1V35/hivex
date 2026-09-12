@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import nodePath from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test } from "bun:test";
+import { captureImplementation } from "./implementation.ts";
 import { KnowledgeStore } from "./knowledge-store.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -2715,6 +2716,54 @@ test("review rejects oversized implementation before spending and exposes unsupp
     expect(JSON.stringify(arrayField(partial.value, "warnings"))).toContain(
       "Unsupported binary"
     );
+  });
+});
+
+test("review keeps 200 KiB binary versions bounded with digest-only warnings", () => {
+  project((root) => {
+    const assetPath = nodePath.join(root, "asset.bin");
+    const before = Buffer.alloc(200 * 1024);
+    const after = Buffer.alloc(200 * 1024, 255);
+    writeFileSync(assetPath, before);
+    const binary = reviewProject(root);
+    writeFileSync(assetPath, after);
+
+    const implementation = captureImplementation(root, "HEAD");
+    const warnings = [
+      "Unsupported binary or invalid UTF-8 content: before asset.bin (13f85ed26dc953b0410f9b1ab4ada10cc9f1719924804a2662cd46f8977e76e0)",
+      "Unsupported binary or invalid UTF-8 content: after asset.bin (1b49c45eb2cce0c9af787939a85d848590b8383da07333bf8ecc56d57b5dfd75)",
+    ];
+    expect(implementation.files).toContainEqual({
+      after: null,
+      before: null,
+      path: "asset.bin",
+    });
+    expect(implementation.warnings).toEqual(warnings);
+    expect(Buffer.byteLength(JSON.stringify(implementation))).toBeLessThan(
+      256 * 1024
+    );
+
+    const result = invoke(root, [
+      "review",
+      "cache",
+      "--base",
+      "HEAD",
+      "--codex",
+      binary,
+    ]);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.value).toMatchObject({
+      status: "partial",
+      work: { calls: 3 },
+    });
+    const output = JSON.stringify(result.value);
+    for (const warning of warnings) {
+      expect(output).toContain(warning);
+    }
+    expect(output).not.toContain(before.toBase64());
+    expect(output).not.toContain(after.toBase64());
+    expect(Buffer.byteLength(output)).toBeLessThan(256 * 1024);
   });
 });
 

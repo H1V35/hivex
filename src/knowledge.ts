@@ -2,6 +2,10 @@ import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import {
+  schemaForKnowledge,
+  stringifyKnowledge,
+} from "./knowledge-serialization.ts";
 import { compareSerializedStrings } from "./ordering.ts";
 import {
   reviewSchema,
@@ -280,9 +284,9 @@ const runModel = async function runModel(options: {
   };
 }) {
   const { work, store, runtime, request } = options;
-  const prompt = `${commonInstructions}\n${request.instruction}\n\n${JSON.stringify(request.packet)}`;
+  const prompt = `${commonInstructions}\n${request.instruction}\n\n${stringifyKnowledge(request.packet)}`;
   const bytes = Buffer.byteLength(prompt);
-  const schema = z.toJSONSchema(request.schema);
+  const schema = schemaForKnowledge(z.toJSONSchema(request.schema));
   const fingerprint = digest(
     JSON.stringify(
       Object.fromEntries([
@@ -552,7 +556,7 @@ const batchContextLimit = function batchContextLimit(
   packet: unknown,
   maxBytes: number
 ): Work["contextLimit"] {
-  const requiredBytes = Buffer.byteLength(JSON.stringify(packet));
+  const requiredBytes = Buffer.byteLength(stringifyKnowledge(packet));
   if (!context.missing.length && requiredBytes <= maxBytes) {
     return undefined;
   }
@@ -827,7 +831,7 @@ const extractBatch = async function extractBatch(state: UpdateRound) {
     project,
     extractionSchema.parse(value)
   );
-  const batch = `${work.id}:${digest(JSON.stringify(packet))}`;
+  const batch = `${work.id}:${digest(stringifyKnowledge(packet))}`;
   graph = applyExtraction({
     batch,
     contextDocuments: project.documents.filter((document) =>
@@ -1424,7 +1428,7 @@ const beginConsultation = function beginConsultation(options: {
       prioritized,
       prioritized.map((unit) => unit.id)
     ).map((unit) => unit.id),
-    resultKey: digest(JSON.stringify(packet)),
+    resultKey: digest(stringifyKnowledge(packet)),
     snapshot: packet.context.snapshot,
   });
 };
@@ -1473,7 +1477,7 @@ const finishAnswer = function finishAnswer(options: {
   const answer = answerSchema.parse(value);
   if (work.status !== "done") {
     work.result = answer;
-    work.resultKey = digest(JSON.stringify(packet));
+    work.resultKey = digest(stringifyKnowledge(packet));
     work.status = "done";
     store.save(work);
   }
@@ -1540,7 +1544,7 @@ const finishReview = function finishReview(options: {
   });
   if (work.status !== "done") {
     work.result = value;
-    work.resultKey = digest(JSON.stringify(packet));
+    work.resultKey = digest(stringifyKnowledge(packet));
     work.status = "done";
     store.save(work);
   }
@@ -1632,7 +1636,7 @@ const ask = async function ask(project: Project, runtime: Options) {
   }
   if (
     !packet.documents.length ||
-    Buffer.byteLength(JSON.stringify(packet)) > runtime.maxContextBytes
+    Buffer.byteLength(stringifyKnowledge(packet)) > runtime.maxContextBytes
   ) {
     return {
       ...context,

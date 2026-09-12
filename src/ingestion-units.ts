@@ -40,12 +40,9 @@ const fenceOf = function fenceOf(content: string) {
   if (marker !== "`" && marker !== "~") {
     return null;
   }
-  const markerMatch = /^[`~]+/u.exec(source);
+  const markerMatch = /^(?:`+|~+)/u.exec(source);
   const markerRun = markerMatch?.[0] ?? "";
-  if (
-    markerRun.length < 3 ||
-    markerRun.split("").some((character) => character !== marker)
-  ) {
+  if (markerRun.length < 3) {
     return null;
   }
   return {

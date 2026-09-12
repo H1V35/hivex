@@ -86,7 +86,7 @@ export default [
         {
           category: "knowledge",
           pattern:
-            "src/{knowledge-model,ingestion-units,knowledge-store,knowledge-snapshot}.ts",
+            "src/{knowledge-model,ingestion-units,knowledge-store,knowledge-snapshot,knowledge-serialization}.ts",
         },
         { category: "review", pattern: "src/{implementation,review}.ts" },
         { category: "model", pattern: "src/model/**" },

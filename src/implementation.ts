@@ -93,7 +93,7 @@ const unsupportedVersion = function unsupportedVersion(
   warnings: string[]
 ): null {
   warnings.push(
-    `Unsupported binary or invalid UTF-8 content: ${label} (${bytes.toBase64()})`
+    `Unsupported binary or invalid UTF-8 content: ${label} (${digest(bytes.toBase64())})`
   );
   return null;
 };

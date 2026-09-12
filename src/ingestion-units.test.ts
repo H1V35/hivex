@@ -121,6 +121,34 @@ describe("ingestionUnits", () => {
     expect(warning?.message).toContain("omitted");
   });
 
+  test.each(["```~", "```ts", "~~~`", "~~~ts"])(
+    "keeps the fence opened by %s separate from a following paragraph at the byte boundary",
+    (opening) => {
+      const closing = opening.startsWith("`") ? "```" : "~~~";
+      const fence = [
+        opening,
+        "x".repeat(3000),
+        "",
+        "# In a fence",
+        "",
+        "y".repeat(3000),
+        closing,
+        "",
+      ].join("\n");
+      const paragraph = `${"p".repeat(3000)}\n`;
+      const result = ingestionUnits([documentOf(fence + paragraph)]);
+
+      expect(result.warnings).toEqual([]);
+      expect(
+        result.units.map((unit) => [unit.id, unit.lineStart, unit.lineEnd])
+      ).toEqual([
+        ["notes.md:1-7", 1, 7],
+        ["notes.md:8-8", 8, 8],
+      ]);
+      expect(result.units.map((unit) => unit.text)).toEqual([fence, paragraph]);
+    }
+  );
+
   test("keeps paragraphs and fences intact when a boundary can fit", () => {
     const paragraph = function paragraph(letter: string) {
       return Array.from(
