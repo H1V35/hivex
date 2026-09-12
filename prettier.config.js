@@ -1,3 +1,3 @@
-import config from "ultracite/prettier";
+import config from 'ultracite/prettier';
 
-export default { ...config };
+export default { ...config, printWidth: 100, singleQuote: true };

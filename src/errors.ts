@@ -10,7 +10,7 @@ export class HivexError extends Error {
 
   constructor(options: HivexErrorOptions) {
     super(options.message, options);
-    this.name = "HivexError";
+    this.name = 'HivexError';
     this.code = options.code;
     this.details = options.details;
   }

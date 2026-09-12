@@ -1,15 +1,15 @@
-import { lstatSync, readFileSync, readdirSync } from "node:fs";
-import pathModule from "node:path";
-import { parseArgs } from "node:util";
-import { compareSerializedStrings } from "./ordering.ts";
-import { HivexError } from "./errors.ts";
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import pathModule from 'node:path';
+import { parseArgs } from 'node:util';
+import { compareSerializedStrings } from './ordering.ts';
+import { HivexError } from './errors.ts';
 import {
   describeMarkdown,
   hash,
   isMarkdownPath,
   lineContent,
   rawMarkdownLines,
-} from "./markdown.ts";
+} from './markdown.ts';
 
 export interface Document {
   id: string;
@@ -64,7 +64,7 @@ interface ParsedValues {
 interface CollectionContext {
   config: Config;
   root: string;
-  warnings: Project["warnings"];
+  warnings: Project['warnings'];
 }
 interface ContinuationOptions {
   lineEnd: number;
@@ -73,17 +73,17 @@ interface ContinuationOptions {
   totalLines: number;
 }
 
-const defaultInclude = ["**/*.md", "**/*.markdown", "**/*.mdown"];
+const defaultInclude = ['**/*.md', '**/*.markdown', '**/*.mdown'];
 const defaultMaxBytes = 16_384;
 const maxOutputBytes = 65_536;
 const maxSourceBytes = 32 * 1024 * 1024;
 const maxCorpusBytes = 64 * 1024 * 1024;
 const maxDocuments = 2048;
 const maxPatterns = 64;
-const origin = "current-worktree";
-const protectedDirectories = new Set([".git", ".hivex", "node_modules"]);
-const excludedDirectories = new Set(["vendor", "dist", "build"]);
-const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+const origin = 'current-worktree';
+const protectedDirectories = new Set(['.git', '.hivex', 'node_modules']);
+const excludedDirectories = new Set(['vendor', 'dist', 'build']);
+const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 const fail = function fail(
   code: string,
@@ -94,16 +94,12 @@ const fail = function fail(
 };
 
 const pathFor = function pathFor(root: string, absolutePath: string) {
-  return pathModule.relative(root, absolutePath).replaceAll("\\", "/");
+  return pathModule.relative(root, absolutePath).replaceAll('\\', '/');
 };
 
-const decodeUtf8 = function decodeUtf8(
-  bytes: Buffer,
-  sourcePath: string,
-  limit: number
-) {
+const decodeUtf8 = function decodeUtf8(bytes: Buffer, sourcePath: string, limit: number) {
   if (bytes.byteLength > limit) {
-    fail("DOCUMENT_TOO_LARGE", `Markdown source exceeds ${limit} bytes`, {
+    fail('DOCUMENT_TOO_LARGE', `Markdown source exceeds ${limit} bytes`, {
       actualBytes: bytes.byteLength,
       maxBytes: limit,
       path: sourcePath,
@@ -112,78 +108,57 @@ const decodeUtf8 = function decodeUtf8(
   try {
     return decoder.decode(bytes);
   } catch {
-    return fail("INVALID_UTF8", "Markdown source is not valid UTF-8", {
+    return fail('INVALID_UTF8', 'Markdown source is not valid UTF-8', {
       path: sourcePath,
     });
   }
 };
 
-const readUtf8 = function readUtf8(
-  absolutePath: string,
-  sourcePath: string,
-  limit: number
-) {
+const readUtf8 = function readUtf8(absolutePath: string, sourcePath: string, limit: number) {
   try {
     return decodeUtf8(readFileSync(absolutePath), sourcePath, limit);
   } catch (error) {
     if (error instanceof HivexError) {
       throw error;
     }
-    return fail("SOURCE_READ_FAILED", "Unable to read Markdown source", {
+    return fail('SOURCE_READ_FAILED', 'Unable to read Markdown source', {
       path: sourcePath,
-      reason: Error.isError(error) ? error.message : "unknown read failure",
+      reason: Error.isError(error) ? error.message : 'unknown read failure',
     });
   }
 };
 
-const validatePattern = function validatePattern(
-  pattern: unknown,
-  field: string,
-  index: number
-) {
-  if (typeof pattern !== "string" || !pattern.trim()) {
-    return fail(
-      "INVALID_CONFIG",
-      `${field}[${index}] must be a non-empty relative glob`
-    );
+const validatePattern = function validatePattern(pattern: unknown, field: string, index: number) {
+  if (typeof pattern !== 'string' || !pattern.trim()) {
+    return fail('INVALID_CONFIG', `${field}[${index}] must be a non-empty relative glob`);
   }
-  const normalized = pattern.replaceAll("\\", "/");
-  const segments = normalized.split("/");
+  const normalized = pattern.replaceAll('\\', '/');
+  const segments = normalized.split('/');
   if (
     pathModule.isAbsolute(normalized) ||
-    normalized.startsWith("/") ||
-    normalized.includes("\u{0}") ||
-    segments.includes("..")
+    normalized.startsWith('/') ||
+    normalized.includes('\u{0}') ||
+    segments.includes('..')
   ) {
-    return fail(
-      "INVALID_CONFIG",
-      `${field}[${index}] must stay inside the project root`
-    );
+    return fail('INVALID_CONFIG', `${field}[${index}] must stay inside the project root`);
   }
   try {
     const glob = new Bun.Glob(normalized);
-    glob.match("");
+    glob.match('');
   } catch (error) {
-    return fail("INVALID_CONFIG", `${field}[${index}] is not a valid glob`, {
-      reason: Error.isError(error) ? error.message : "invalid glob",
+    return fail('INVALID_CONFIG', `${field}[${index}] is not a valid glob`, {
+      reason: Error.isError(error) ? error.message : 'invalid glob',
     });
   }
   return normalized;
 };
 
-const patterns = function patterns(
-  value: unknown,
-  field: string,
-  fallback: string[]
-) {
+const patterns = function patterns(value: unknown, field: string, fallback: string[]) {
   if (value === undefined) {
     return [...fallback];
   }
   if (!Array.isArray(value) || value.length > maxPatterns) {
-    return fail(
-      "INVALID_CONFIG",
-      `${field} must contain at most ${maxPatterns} relative globs`
-    );
+    return fail('INVALID_CONFIG', `${field} must contain at most ${maxPatterns} relative globs`);
   }
   return value.map((pattern, index) => validatePattern(pattern, field, index));
 };
@@ -191,16 +166,16 @@ const patterns = function patterns(
 const readConfigBytes = function readConfigBytes(configPath: string) {
   const stat = lstatSync(configPath);
   if (stat.isSymbolicLink()) {
-    return fail("INVALID_CONFIG", "hivex.json must not be a symlink");
+    return fail('INVALID_CONFIG', 'hivex.json must not be a symlink');
   }
   if (!stat.isFile()) {
-    return fail("INVALID_CONFIG", "hivex.json must be a regular file");
+    return fail('INVALID_CONFIG', 'hivex.json must be a regular file');
   }
   return readFileSync(configPath);
 };
 
 const configText = function configText(root: string) {
-  const configPath = pathModule.join(root, "hivex.json");
+  const configPath = pathModule.join(root, 'hivex.json');
   let bytes: Buffer;
   try {
     bytes = readConfigBytes(configPath);
@@ -208,54 +183,49 @@ const configText = function configText(root: string) {
     if (error instanceof HivexError) {
       throw error;
     }
-    if (Error.isError(error) && "code" in error && error.code === "ENOENT") {
+    if (Error.isError(error) && 'code' in error && error.code === 'ENOENT') {
       return null;
     }
-    return fail("INVALID_CONFIG", "Unable to read hivex.json", {
-      reason: Error.isError(error) ? error.message : "unknown read failure",
+    return fail('INVALID_CONFIG', 'Unable to read hivex.json', {
+      reason: Error.isError(error) ? error.message : 'unknown read failure',
     });
   }
-  return decodeUtf8(bytes, "hivex.json", 64 * 1024);
+  return decodeUtf8(bytes, 'hivex.json', 64 * 1024);
 };
 
-const isRecord = function isRecord(
-  value: unknown
-): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+const isRecord = function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 };
 
 const parseConfig = function parseConfig(text: string): Config {
   let value: unknown;
   try {
-    value = JSON.parse(text.replace(/^\u{FEFF}/u, ""));
+    value = JSON.parse(text.replace(/^\u{FEFF}/u, ''));
   } catch (error) {
-    return fail("INVALID_CONFIG", "hivex.json must contain valid JSON", {
-      reason: Error.isError(error) ? error.message : "invalid JSON",
+    return fail('INVALID_CONFIG', 'hivex.json must contain valid JSON', {
+      reason: Error.isError(error) ? error.message : 'invalid JSON',
     });
   }
   if (!isRecord(value)) {
-    return fail("INVALID_CONFIG", "hivex.json must contain an object");
+    return fail('INVALID_CONFIG', 'hivex.json must contain an object');
   }
-  if ("collections" in value) {
+  if ('collections' in value) {
     return fail(
-      "LEGACY_CONFIGURATION",
-      "hivex.json uses legacy collections; replace it with include and exclude globs"
+      'LEGACY_CONFIGURATION',
+      'hivex.json uses legacy collections; replace it with include and exclude globs'
     );
   }
   const record = value;
   const unknown = Object.keys(record).filter(
-    (key) => !["exclude", "history", "include"].includes(key)
+    (key) => !['exclude', 'history', 'include'].includes(key)
   );
   if (unknown.length) {
-    return fail(
-      "INVALID_CONFIG",
-      `hivex.json has unsupported field: ${unknown[0]}`
-    );
+    return fail('INVALID_CONFIG', `hivex.json has unsupported field: ${unknown[0]}`);
   }
   return {
-    exclude: patterns(value.exclude, "exclude", []),
-    history: patterns(value.history, "history", []),
-    include: patterns(value.include, "include", defaultInclude),
+    exclude: patterns(value.exclude, 'exclude', []),
+    history: patterns(value.history, 'history', []),
+    include: patterns(value.include, 'include', defaultInclude),
   };
 };
 
@@ -271,11 +241,11 @@ const isExcludedName = function isExcludedName(name: string, config: Config) {
   if (protectedDirectories.has(name)) {
     return true;
   }
-  if (!excludedDirectories.has(name) && !name.startsWith(".")) {
+  if (!excludedDirectories.has(name) && !name.startsWith('.')) {
     return false;
   }
   return [...config.include, ...config.history].every(
-    (pattern) => !pattern.split("/").includes(name)
+    (pattern) => !pattern.split('/').includes(name)
   );
 };
 
@@ -286,31 +256,25 @@ const isMatch = function isMatch(pathName: string, patternsToMatch: string[]) {
   });
 };
 
-const isExcludedSubtree = function isExcludedSubtree(
-  pathName: string,
-  config: Config
-) {
+const isExcludedSubtree = function isExcludedSubtree(pathName: string, config: Config) {
   const subtrees = config.exclude.filter(
-    (pattern) => pattern.endsWith("/**") && !pattern.startsWith("!")
+    (pattern) => pattern.endsWith('/**') && !pattern.startsWith('!')
   );
   return isMatch(`${pathName}/`, subtrees);
 };
 
-const collectCandidates = function collectCandidates(
-  current: string,
-  context: CollectionContext
-) {
+const collectCandidates = function collectCandidates(current: string, context: CollectionContext) {
   const { config, root, warnings } = context;
   const candidates: Candidate[] = [];
   let entries;
   try {
-    entries = readdirSync(current, { withFileTypes: true }).toSorted(
-      (left, right) => left.name.localeCompare(right.name)
+    entries = readdirSync(current, { withFileTypes: true }).toSorted((left, right) =>
+      left.name.localeCompare(right.name)
     );
   } catch (error) {
     warnings.push({
-      message: `Unable to inspect directory: ${Error.isError(error) ? error.message : "unknown error"}`,
-      path: pathFor(root, current) || ".",
+      message: `Unable to inspect directory: ${Error.isError(error) ? error.message : 'unknown error'}`,
+      path: pathFor(root, current) || '.',
     });
     return candidates;
   }
@@ -322,7 +286,7 @@ const collectCandidates = function collectCandidates(
     const absolutePath = pathModule.join(current, entry.name);
     const path = pathFor(root, absolutePath);
     if (entry.isSymbolicLink()) {
-      warnings.push({ message: "Skipped symbolic link", path });
+      warnings.push({ message: 'Skipped symbolic link', path });
     } else if (entry.isDirectory()) {
       if (!isExcludedSubtree(path, config)) {
         candidates.push(...collectCandidates(absolutePath, context));
@@ -344,9 +308,7 @@ const selected = function selected(candidates: Candidate[], config: Config) {
       ({ path: pathName }) =>
         isMatch(pathName, config.include) && !isMatch(pathName, config.history)
     ),
-    historical: available.filter(({ path: pathName }) =>
-      isMatch(pathName, config.history)
-    ),
+    historical: available.filter(({ path: pathName }) => isMatch(pathName, config.history)),
   };
 };
 
@@ -373,23 +335,13 @@ const parseCandidate = function parseCandidate(
 
 const warningFor = function warningFor(path: string, error: unknown) {
   return {
-    message: Error.isError(error)
-      ? error.message
-      : "Unable to parse Markdown source",
+    message: Error.isError(error) ? error.message : 'Unable to parse Markdown source',
     path,
   };
 };
 
-const linkPath = function linkPath(
-  root: string,
-  source: Document,
-  rawLink: string
-) {
-  if (
-    !rawLink ||
-    rawLink.startsWith("#") ||
-    /^[a-z][a-z0-9+.-]*:/iu.test(rawLink)
-  ) {
+const linkPath = function linkPath(root: string, source: Document, rawLink: string) {
+  if (!rawLink || rawLink.startsWith('#') || /^[a-z][a-z0-9+.-]*:/iu.test(rawLink)) {
     return null;
   }
   const fragment = rawLink.search(/[?#]/u);
@@ -408,13 +360,10 @@ const linkPath = function linkPath(
     decoded
   );
   const relativeTarget = pathFor(root, absoluteTarget);
-  if (!relativeTarget || relativeTarget === ".") {
+  if (!relativeTarget || relativeTarget === '.') {
     return null;
   }
-  if (
-    relativeTarget.startsWith("../") ||
-    pathModule.isAbsolute(relativeTarget)
-  ) {
+  if (relativeTarget.startsWith('../') || pathModule.isAbsolute(relativeTarget)) {
     return null;
   }
   if (!isMarkdownPath(relativeTarget)) {
@@ -423,10 +372,7 @@ const linkPath = function linkPath(
   return relativeTarget;
 };
 
-const resolveLinks = function resolveLinks(
-  root: string,
-  documents: ParsedDocument[]
-) {
+const resolveLinks = function resolveLinks(root: string, documents: ParsedDocument[]) {
   for (const { document, rawLinks } of documents) {
     const links = new Set<string>();
     for (const rawLink of rawLinks) {
@@ -439,26 +385,21 @@ const resolveLinks = function resolveLinks(
   }
 };
 
-const snapshotFor = function snapshotFor(
-  documents: Document[],
-  config: Config
-) {
+const snapshotFor = function snapshotFor(documents: Document[], config: Config) {
   const identities = documents
     .map((document) => `${document.id}\0${document.hash}`)
     .toSorted(compareSerializedStrings)
-    .join("\n");
+    .join('\n');
   const selection = JSON.stringify(
     Object.fromEntries([
-      ["include", [...config.include].toSorted(compareSerializedStrings)],
-      ["exclude", [...config.exclude].toSorted(compareSerializedStrings)],
-      ["history", [...config.history].toSorted(compareSerializedStrings)],
+      ['include', [...config.include].toSorted(compareSerializedStrings)],
+      ['exclude', [...config.exclude].toSorted(compareSerializedStrings)],
+      ['history', [...config.history].toSorted(compareSerializedStrings)],
       [
-        "ignoredDirectories",
-        [...protectedDirectories, ...excludedDirectories].toSorted(
-          compareSerializedStrings
-        ),
+        'ignoredDirectories',
+        [...protectedDirectories, ...excludedDirectories].toSorted(compareSerializedStrings),
       ],
-      ["markdownExtensions", [".md", ".markdown", ".mdown"]],
+      ['markdownExtensions', ['.md', '.markdown', '.mdown']],
     ])
   );
   return hash(`${identities}\nselection\0${selection}`);
@@ -467,17 +408,17 @@ const snapshotFor = function snapshotFor(
 const validateRoot = function validateRoot(requested: string) {
   const stat = lstatSync(requested);
   if (stat.isSymbolicLink()) {
-    return fail("INVALID_ROOT", "Project root must not be a symlink");
+    return fail('INVALID_ROOT', 'Project root must not be a symlink');
   }
   if (!stat.isDirectory()) {
-    return fail("INVALID_ROOT", "Project root must be a directory");
+    return fail('INVALID_ROOT', 'Project root must be a directory');
   }
   return requested;
 };
 
 const absoluteRoot = function absoluteRoot(root: string) {
   if (!root.trim()) {
-    fail("INVALID_ROOT", "Project root must be a non-empty path");
+    fail('INVALID_ROOT', 'Project root must be a non-empty path');
   }
   const requested = pathModule.resolve(root);
   try {
@@ -486,8 +427,8 @@ const absoluteRoot = function absoluteRoot(root: string) {
     if (error instanceof HivexError) {
       throw error;
     }
-    return fail("INVALID_ROOT", "Project root is not readable", {
-      reason: Error.isError(error) ? error.message : "unknown root failure",
+    return fail('INVALID_ROOT', 'Project root is not readable', {
+      reason: Error.isError(error) ? error.message : 'unknown root failure',
       root: requested,
     });
   }
@@ -500,8 +441,8 @@ const parseCandidateWithinBudget = function parseCandidateWithinBudget(
 ) {
   if (sourceBytes + lstatSync(candidate.absolutePath).size > maxCorpusBytes) {
     return fail(
-      "CORPUS_LIMIT",
-      "Selected Markdown exceeds the 64 MiB memory budget; narrow include paths"
+      'CORPUS_LIMIT',
+      'Selected Markdown exceeds the 64 MiB memory budget; narrow include paths'
     );
   }
   return parseCandidate(candidate, isHistorical);
@@ -510,16 +451,14 @@ const parseCandidateWithinBudget = function parseCandidateWithinBudget(
 export const loadProject = function loadProject(root: string): Project {
   const projectRoot = absoluteRoot(root);
   const config = configFrom(projectRoot);
-  const warnings: Project["warnings"] = [];
+  const warnings: Project['warnings'] = [];
   const candidates = collectCandidates(projectRoot, {
     config,
     root: projectRoot,
     warnings,
   });
   const selection = selected(candidates, config);
-  const historicalPaths = new Set(
-    selection.historical.map((candidate) => candidate.path)
-  );
+  const historicalPaths = new Set(selection.historical.map((candidate) => candidate.path));
   const selectedCandidates = [...selection.current, ...selection.historical];
   const parsed: ParsedDocument[] = [];
   let sourceBytes = 0;
@@ -539,7 +478,7 @@ export const loadProject = function loadProject(root: string): Project {
   if (selectedCandidates.length > maxDocuments) {
     warnings.push({
       message: `Only the first ${maxDocuments} Markdown sources were loaded`,
-      path: ".",
+      path: '.',
     });
   }
   resolveLinks(projectRoot, parsed);
@@ -569,14 +508,14 @@ const positiveInteger = function positiveInteger(
     if (fallback !== undefined) {
       return fallback;
     }
-    return fail("INVALID_ARGUMENT", `${label} is required`);
+    return fail('INVALID_ARGUMENT', `${label} is required`);
   }
   if (!/^\d+$/u.test(value)) {
-    return fail("INVALID_ARGUMENT", `${label} must be a positive integer`);
+    return fail('INVALID_ARGUMENT', `${label} must be a positive integer`);
   }
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < 1) {
-    return fail("INVALID_ARGUMENT", `${label} must be positive`);
+    return fail('INVALID_ARGUMENT', `${label} must be positive`);
   }
   return number;
 };
@@ -592,27 +531,25 @@ const optionalPositiveInteger = function optionalPositiveInteger(
   return result;
 };
 
-const parseCommandArguments = function parseCommandArguments(
-  commandArguments: string[]
-) {
+const parseCommandArguments = function parseCommandArguments(commandArguments: string[]) {
   try {
     return parseArgs({
       allowPositionals: true,
       args: commandArguments,
       options: {
-        cursor: { type: "string" },
-        from: { type: "string" },
-        limit: { type: "string" },
-        "max-bytes": { type: "string" },
-        root: { type: "string" },
-        to: { type: "string" },
+        cursor: { type: 'string' },
+        from: { type: 'string' },
+        limit: { type: 'string' },
+        'max-bytes': { type: 'string' },
+        root: { type: 'string' },
+        to: { type: 'string' },
       },
       strict: true,
     });
   } catch (error) {
     return fail(
-      "INVALID_ARGUMENT",
-      Error.isError(error) ? error.message : "Invalid command arguments"
+      'INVALID_ARGUMENT',
+      Error.isError(error) ? error.message : 'Invalid command arguments'
     );
   }
 };
@@ -621,41 +558,38 @@ const validatePositionals: (
   command: string | undefined,
   id: string | undefined,
   extra: string | undefined
-) => asserts command is "sources" | "read" = function validatePositionals(
+) => asserts command is 'sources' | 'read' = function validatePositionals(
   command: string | undefined,
   id: string | undefined,
   extra: string | undefined
-): asserts command is "sources" | "read" {
-  if (command !== "sources" && command !== "read") {
-    fail("INVALID_ARGUMENT", "Usage: hivex sources | read <id> [options]");
+): asserts command is 'sources' | 'read' {
+  if (command !== 'sources' && command !== 'read') {
+    fail('INVALID_ARGUMENT', 'Usage: hivex sources | read <id> [options]');
   }
-  if (command === "sources" && (id !== undefined || extra !== undefined)) {
-    fail("INVALID_ARGUMENT", "sources does not accept a source id");
+  if (command === 'sources' && (id !== undefined || extra !== undefined)) {
+    fail('INVALID_ARGUMENT', 'sources does not accept a source id');
   }
-  if (command === "read" && id === undefined) {
-    fail("INVALID_ARGUMENT", "read requires a source id");
+  if (command === 'read' && id === undefined) {
+    fail('INVALID_ARGUMENT', 'read requires a source id');
   }
-  if (command === "read" && extra !== undefined) {
-    fail("INVALID_ARGUMENT", "read accepts one source id");
+  if (command === 'read' && extra !== undefined) {
+    fail('INVALID_ARGUMENT', 'read accepts one source id');
   }
 };
 
-const rangeOptions = function rangeOptions(
-  command: string,
-  values: ParsedValues
-) {
-  if (command === "sources") {
+const rangeOptions = function rangeOptions(command: string, values: ParsedValues) {
+  if (command === 'sources') {
     if (values.from !== undefined || values.to !== undefined) {
-      fail("INVALID_ARGUMENT", "--from and --to are only valid for read");
+      fail('INVALID_ARGUMENT', '--from and --to are only valid for read');
     }
     return {};
   }
   if (values.limit !== undefined || values.cursor !== undefined) {
-    fail("INVALID_ARGUMENT", "--limit and --cursor are only valid for sources");
+    fail('INVALID_ARGUMENT', '--limit and --cursor are only valid for sources');
   }
   return {
-    from: optionalPositiveInteger(values.from, "--from"),
-    to: optionalPositiveInteger(values.to, "--to"),
+    from: optionalPositiveInteger(values.from, '--from'),
+    to: optionalPositiveInteger(values.to, '--to'),
   };
 };
 
@@ -668,13 +602,9 @@ const commandOptions = function commandOptions(commandArguments: string[]): {
   const values = parsed.values as ParsedValues;
   const [command, id, extra] = parsed.positionals;
   validatePositionals(command, id, extra);
-  const maxBytes = positiveInteger(
-    values["max-bytes"],
-    "--max-bytes",
-    defaultMaxBytes
-  );
+  const maxBytes = positiveInteger(values['max-bytes'], '--max-bytes', defaultMaxBytes);
   if (maxBytes > maxOutputBytes) {
-    fail("INVALID_ARGUMENT", `--max-bytes must be at most ${maxOutputBytes}`);
+    fail('INVALID_ARGUMENT', `--max-bytes must be at most ${maxOutputBytes}`);
   }
   return {
     command,
@@ -682,7 +612,7 @@ const commandOptions = function commandOptions(commandArguments: string[]): {
     options: {
       ...rangeOptions(command, values),
       cursor: values.cursor,
-      limit: positiveInteger(values.limit, "--limit", 20),
+      limit: positiveInteger(values.limit, '--limit', 20),
       maxBytes,
       root: values.root ?? process.cwd(),
     },
@@ -691,7 +621,7 @@ const commandOptions = function commandOptions(commandArguments: string[]): {
 
 const metadata = function metadata(document: Document) {
   const result = { ...document };
-  Reflect.deleteProperty(result, "text");
+  Reflect.deleteProperty(result, 'text');
   return result;
 };
 
@@ -706,16 +636,16 @@ const boundedLines = function boundedLines(window: {
   maxBytes: number;
 }) {
   const { lines, start, end, maxBytes } = window;
-  let text = "";
-  let prefix = "";
+  let text = '';
+  let prefix = '';
   let lineEnd = start - 1;
   for (let line = start; line <= end; line += 1) {
-    const raw = lines[line - 1] ?? "";
+    const raw = lines[line - 1] ?? '';
     const current = line === lines.length ? raw : lineContent(raw);
     const next = prefix + current;
     if (Buffer.byteLength(next) > maxBytes) {
       if (lineEnd < start) {
-        fail("OUTPUT_LIMIT", "The first requested line exceeds --max-bytes", {
+        fail('OUTPUT_LIMIT', 'The first requested line exceeds --max-bytes', {
           line,
           maxBytes,
           requiredBytes: Buffer.byteLength(next),
@@ -739,7 +669,7 @@ const continuationFor = function continuationFor({
   if (lineEnd >= totalLines) {
     return null;
   }
-  const reason = lineEnd < requestedEnd ? "max-bytes" : "range";
+  const reason = lineEnd < requestedEnd ? 'max-bytes' : 'range';
   return {
     from: lineEnd + 1,
     maxBytes,
@@ -748,33 +678,21 @@ const continuationFor = function continuationFor({
   };
 };
 
-const readCommand = function readCommand(
-  project: Project,
-  id: string,
-  options: CommandOptions
-) {
+const readCommand = function readCommand(project: Project, id: string, options: CommandOptions) {
   const source = project.documents.find((document) => document.id === id);
   if (!source) {
-    return fail("SOURCE_NOT_FOUND", `Markdown source was not selected: ${id}`, {
+    return fail('SOURCE_NOT_FOUND', `Markdown source was not selected: ${id}`, {
       id,
     });
   }
   const { lines } = linesFor(source.text);
   const start = options.from ?? 1;
   const requestedEnd = options.to ?? lines.length;
-  if (
-    start > lines.length ||
-    requestedEnd > lines.length ||
-    start > requestedEnd
-  ) {
-    fail(
-      "INVALID_RANGE",
-      `Line range ${start}-${requestedEnd} is outside the source`,
-      {
-        id,
-        lineCount: lines.length,
-      }
-    );
+  if (start > lines.length || requestedEnd > lines.length || start > requestedEnd) {
+    fail('INVALID_RANGE', `Line range ${start}-${requestedEnd} is outside the source`, {
+      id,
+      lineCount: lines.length,
+    });
   }
   const bounded = boundedLines({
     end: requestedEnd,
@@ -789,7 +707,7 @@ const readCommand = function readCommand(
     totalLines: lines.length,
   });
   return {
-    command: "read",
+    command: 'read',
     continuation,
     lineEnd: bounded.lineEnd,
     lineStart: start,
@@ -802,19 +720,11 @@ const readCommand = function readCommand(
   };
 };
 
-const listSources = function listSources(
-  project: Project,
-  options: CommandOptions
-) {
-  const cursor = options.cursor?.match(
-    /^s1\.(?<snapshot>[a-f\d]{64})\.(?<start>\d+)$/u
-  );
+const listSources = function listSources(project: Project, options: CommandOptions) {
+  const cursor = options.cursor?.match(/^s1\.(?<snapshot>[a-f\d]{64})\.(?<start>\d+)$/u);
   const cursorSnapshot = cursor?.groups?.snapshot;
   if (options.cursor !== undefined && cursorSnapshot !== project.snapshot) {
-    fail(
-      "INVALID_CURSOR",
-      "Source continuation belongs to a different or invalid snapshot"
-    );
+    fail('INVALID_CURSOR', 'Source continuation belongs to a different or invalid snapshot');
   }
   const start = Number(cursor?.groups?.start ?? 0);
   if (
@@ -822,12 +732,12 @@ const listSources = function listSources(
     start < 0 ||
     (start > 0 && start >= project.documents.length)
   ) {
-    fail("INVALID_CURSOR", "Source continuation is outside this snapshot");
+    fail('INVALID_CURSOR', 'Source continuation is outside this snapshot');
   }
   const documents: ReturnType<typeof metadata>[] = [];
   const response = function response() {
     return {
-      command: "sources",
+      command: 'sources',
       continuation:
         start + documents.length < project.documents.length
           ? `s1.${project.snapshot}.${start + documents.length}`
@@ -849,26 +759,24 @@ const listSources = function listSources(
       documents.pop();
       if (!documents.length) {
         fail(
-          "OUTPUT_LIMIT",
-          "The next source metadata does not fit; increase --max-bytes or narrow the selected sources"
+          'OUTPUT_LIMIT',
+          'The next source metadata does not fit; increase --max-bytes or narrow the selected sources'
         );
       }
       break;
     }
   }
   if (Buffer.byteLength(JSON.stringify(response())) > options.maxBytes) {
-    fail("OUTPUT_LIMIT", "Source-list metadata exceeds --max-bytes");
+    fail('OUTPUT_LIMIT', 'Source-list metadata exceeds --max-bytes');
   }
   return response();
 };
 
-export const documentCommand = function documentCommand(
-  commandArguments: string[]
-): unknown {
+export const documentCommand = function documentCommand(commandArguments: string[]): unknown {
   const { command, id, options } = commandOptions(commandArguments);
   const project = loadProject(options.root);
-  if (command === "sources") {
+  if (command === 'sources') {
     return listSources(project, options);
   }
-  return readCommand(project, id ?? "", options);
+  return readCommand(project, id ?? '', options);
 };

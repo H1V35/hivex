@@ -1,14 +1,14 @@
-import { z } from "zod";
-import { knowledgeModel, knowledgeThread } from "./profile.ts";
-import type { AppServerConnection } from "./connection.ts";
+import { z } from 'zod';
+import { knowledgeModel, knowledgeThread } from './profile.ts';
+import type { AppServerConnection } from './connection.ts';
 
 const startedThread = z.looseObject({
   cwd: z.string(),
   instructionSources: z.array(z.string()),
   model: z.literal(knowledgeModel.name),
-  modelProvider: z.literal("openai"),
-  reasoningEffort: z.literal("max"),
-  sandbox: z.looseObject({ type: z.literal("readOnly") }),
+  modelProvider: z.literal('openai'),
+  reasoningEffort: z.literal('max'),
+  sandbox: z.looseObject({ type: z.literal('readOnly') }),
   thread: z.looseObject({ ephemeral: z.literal(true), id: z.string() }),
   // Discovery paths can be reported even with project_doc_max_bytes=0, verified at admission.
 });
@@ -17,10 +17,8 @@ const mcpInventory = z.looseObject({
     z.looseObject({
       resourceTemplates: z.array(z.unknown()).length(0),
       resources: z.array(z.unknown()).length(0),
-      runtimeStatus: z.literal("disabled"),
-      tools: z
-        .record(z.string(), z.unknown())
-        .refine((value) => !Object.keys(value).length),
+      runtimeStatus: z.literal('disabled'),
+      tools: z.record(z.string(), z.unknown()).refine((value) => !Object.keys(value).length),
     })
   ),
   nextCursor: z.null().optional(),
@@ -35,7 +33,7 @@ export const startKnowledgeThread = async (options: {
   const { rpc, workspace, signal } = options;
   const started = startedThread.parse(
     await rpc.request(
-      "thread/start",
+      'thread/start',
       {
         ...knowledgeThread,
         cwd: workspace,
@@ -44,7 +42,7 @@ export const startKnowledgeThread = async (options: {
     )
   );
   if (started.cwd !== workspace) {
-    throw new Error("Native Codex workspace changed");
+    throw new Error('Native Codex workspace changed');
   }
   const threadId = started.thread.id;
   const threadStatusThreadId = { threadId };
@@ -54,7 +52,7 @@ export const startKnowledgeThread = async (options: {
     ...threadStatusLimit,
   };
   mcpInventory.parse(
-    await rpc.request("mcpServerStatus/list", threadStatusParameters, {
+    await rpc.request('mcpServerStatus/list', threadStatusParameters, {
       signal,
     })
   );

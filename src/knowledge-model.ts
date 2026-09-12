@@ -1,36 +1,36 @@
-import { createHash } from "node:crypto";
-import { z } from "zod";
-import { withLiveProvenance } from "./knowledge-serialization.ts";
-import { rawMarkdownLines, sourceRange } from "./markdown.ts";
-import type { Document, Project } from "./documents.ts";
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import { withLiveProvenance } from './knowledge-serialization.ts';
+import { rawMarkdownLines, sourceRange } from './markdown.ts';
+import type { Document, Project } from './documents.ts';
 
 export const digest = (value: string | Uint8Array) =>
-  createHash("sha256").update(value).digest("hex");
+  createHash('sha256').update(value).digest('hex');
 // JSON property lists preserve identities created before the lint migration.
 const decisionIdentityFields = [
-  "version",
-  "id",
-  "document",
-  "text",
-  "kind",
-  "status",
-  "conditions",
-  "exceptions",
-  "reason",
-  "lineStart",
-  "lineEnd",
+  'version',
+  'id',
+  'document',
+  'text',
+  'kind',
+  'status',
+  'conditions',
+  'exceptions',
+  'reason',
+  'lineStart',
+  'lineEnd',
 ];
 const relationshipIdentityFields = [
-  "id",
-  "from",
-  "to",
-  "type",
-  "reason",
-  "evidence",
-  "document",
-  "lineStart",
-  "lineEnd",
-  "version",
+  'id',
+  'from',
+  'to',
+  'type',
+  'reason',
+  'evidence',
+  'document',
+  'lineStart',
+  'lineEnd',
+  'version',
 ];
 const explanation = z.string().min(1).max(2048);
 export const citationSchema = z.object({
@@ -66,11 +66,11 @@ export const decisionSchema = z.object({
   document: z.string().min(1),
   exceptions: z.array(explanation).max(16),
   id: z.string().min(1),
-  kind: z.enum(["decision", "constraint", "definition", "lesson"]),
+  kind: z.enum(['decision', 'constraint', 'definition', 'lesson']),
   lineEnd: z.number().int().positive(),
   lineStart: z.number().int().positive(),
   reason: explanation,
-  status: z.enum(["current", "proposed", "historical", "uncertain"]),
+  status: z.enum(['current', 'proposed', 'historical', 'uncertain']),
   text: explanation,
 });
 export const relationshipSchema = z.object({
@@ -79,13 +79,7 @@ export const relationshipSchema = z.object({
   id: z.string().min(1),
   reason: explanation,
   to: z.string().min(1),
-  type: z.enum([
-    "requires",
-    "exception-to",
-    "supersedes",
-    "supports",
-    "contradicts",
-  ]),
+  type: z.enum(['requires', 'exception-to', 'supersedes', 'supports', 'contradicts']),
 });
 export const extractionSchema = z.object({
   decisions: z.array(decisionSchema).max(64),
@@ -93,11 +87,9 @@ export const extractionSchema = z.object({
   uncertainties: z.array(explanation).max(32),
 });
 export const checkSchema = z.object({
-  findings: z
-    .array(z.object({ reason: explanation, target: z.string().min(1) }))
-    .max(64),
+  findings: z.array(z.object({ reason: explanation, target: z.string().min(1) })).max(64),
 });
-const quality = z.enum(["unchecked", "checked", "uncertain"]);
+const quality = z.enum(['unchecked', 'checked', 'uncertain']);
 const provenance = {
   batch: z.string(),
   localId: z.string(),
@@ -146,9 +138,7 @@ export const graphSchema = z.object({
   relationships: z.array(
     relationshipSchema.extend({
       batch: z.string(),
-      evidence: z.array(
-        citationSchema.extend({ version: z.string().optional() })
-      ),
+      evidence: z.array(citationSchema.extend({ version: z.string().optional() })),
       localId: z.string(),
       quality,
     })
@@ -243,12 +233,9 @@ interface ExtractionOptions {
   targetRanges?: z.infer<typeof citationSchema>[];
 }
 
-const retainedWarnings = function retainedWarnings(
-  graph: Graph,
-  scope: WarningScope[]
-) {
+const retainedWarnings = function retainedWarnings(graph: Graph, scope: WarningScope[]) {
   return graph.warnings.filter((warning) => {
-    if (typeof warning === "string") {
+    if (typeof warning === 'string') {
       return true;
     }
     return warning.scope.every((old) => {
@@ -268,7 +255,7 @@ const retainedWarnings = function retainedWarnings(
 
 const extractedRelationships = function extractedRelationships(input: {
   options: ExtractionOptions;
-  decisions: Graph["decisions"];
+  decisions: Graph['decisions'];
   ids: Map<string, string>;
   warnings: string[];
 }) {
@@ -282,26 +269,17 @@ const extractedRelationships = function extractedRelationships(input: {
           if (range.document !== citation.document) {
             return false;
           }
-          return (
-            range.lineStart <= citation.lineEnd &&
-            range.lineEnd >= citation.lineStart
-          );
+          return range.lineStart <= citation.lineEnd && range.lineEnd >= citation.lineStart;
         }) === true;
-      const hasChangedDocument = (options.contextDocuments ?? documents).some(
-        (document) => {
-          if (document.id !== citation.document) {
-            return false;
-          }
-          return document.hash !== citation.version;
+      const hasChangedDocument = (options.contextDocuments ?? documents).some((document) => {
+        if (document.id !== citation.document) {
+          return false;
         }
-      );
+        return document.hash !== citation.version;
+      });
       return isTargetRange || hasChangedDocument;
     });
-    return (
-      available.has(entry.from) &&
-      available.has(entry.to) &&
-      !hasChangedEvidence
-    );
+    return available.has(entry.from) && available.has(entry.to) && !hasChangedEvidence;
   });
   const seen = new Set<string>();
   for (const entry of extraction.relationships) {
@@ -328,20 +306,13 @@ const extractedRelationships = function extractedRelationships(input: {
       );
       return { ...citation, version: source?.hash };
     });
-    const id = digest(
-      JSON.stringify(
-        { ...entry, evidence, from, to },
-        relationshipIdentityFields
-      )
-    );
-    const previous = relationships.findIndex(
-      (relationship) => relationship.id === id
-    );
+    const id = digest(JSON.stringify({ ...entry, evidence, from, to }, relationshipIdentityFields));
+    const previous = relationships.findIndex((relationship) => relationship.id === id);
     if (previous !== -1) {
       relationships.splice(previous, 1);
     }
     relationships.push(
-      withLiveProvenance<Graph["relationships"][number]>(
+      withLiveProvenance<Graph['relationships'][number]>(
         {
           ...entry,
           batch,
@@ -349,19 +320,17 @@ const extractedRelationships = function extractedRelationships(input: {
           from,
           id,
           localId: entry.id,
-          quality: "unchecked",
+          quality: 'unchecked',
           to,
         },
-        "relationship"
+        'relationship'
       )
     );
   }
   return relationships;
 };
 
-export const applyExtraction = function applyExtraction(
-  options: ExtractionOptions
-) {
+export const applyExtraction = function applyExtraction(options: ExtractionOptions) {
   const { graph, extraction, documents, batch } = options;
   const decisions = graph.decisions.filter((entry) => {
     const source = documents.find((document) => document.id === entry.document);
@@ -370,15 +339,11 @@ export const applyExtraction = function applyExtraction(
         if (range.document !== entry.document) {
           return false;
         }
-        return (
-          range.lineStart <= entry.lineEnd && range.lineEnd >= entry.lineStart
-        );
+        return range.lineStart <= entry.lineEnd && range.lineEnd >= entry.lineStart;
       }) === true;
     return (
       source === undefined ||
-      (source.hash === entry.version &&
-        validCitation(entry, [source]) &&
-        !isTargetRange)
+      (source.hash === entry.version && validCitation(entry, [source]) && !isTargetRange)
     );
   });
   const ids = new Map(
@@ -390,37 +355,32 @@ export const applyExtraction = function applyExtraction(
   for (const entry of extraction.decisions) {
     const source = documents.find((document) => document.id === entry.document);
     if (source === undefined || ids.has(entry.id)) {
-      warnings.push(
-        `Decision ${entry.id} has an unknown, duplicate or invalid source reference.`
-      );
+      warnings.push(`Decision ${entry.id} has an unknown, duplicate or invalid source reference.`);
       continue;
     }
-    const isLocated =
-      validCitation(entry, documents) && inRanges(entry, options.targetRanges);
+    const isLocated = validCitation(entry, documents) && inRanges(entry, options.targetRanges);
     if (!isLocated) {
       warnings.push(
         `Decision ${entry.id} has an unverified line range; its document remains available.`
       );
     }
-    const id = digest(
-      JSON.stringify({ version: source.hash, ...entry }, decisionIdentityFields)
-    );
+    const id = digest(JSON.stringify({ version: source.hash, ...entry }, decisionIdentityFields));
     ids.set(entry.id, id);
     const previous = decisions.findIndex((decision) => decision.id === id);
     if (previous !== -1) {
       decisions.splice(previous, 1);
     }
     decisions.push(
-      withLiveProvenance<Graph["decisions"][number]>(
+      withLiveProvenance<Graph['decisions'][number]>(
         {
           ...entry,
           batch,
           id,
           localId: entry.id,
-          quality: isLocated ? "unchecked" : "uncertain",
+          quality: isLocated ? 'unchecked' : 'uncertain',
           version: source.hash,
         },
-        "decision"
+        'decision'
       )
     );
   }
@@ -476,10 +436,7 @@ const findingScope = function findingScope(
     if (entry.id === target) {
       return true;
     }
-    return (
-      entry.batch === batch &&
-      (entry.localId === target || entry.document === target)
-    );
+    return entry.batch === batch && (entry.localId === target || entry.document === target);
   });
   const relationships = graph.relationships.filter((entry) => {
     if (entry.id === target) {
@@ -487,9 +444,7 @@ const findingScope = function findingScope(
     }
     return entry.batch === batch && entry.localId === target;
   });
-  const evidenceScopeFor = function evidenceScopeFor(
-    entry: Graph["relationships"][number]
-  ) {
+  const evidenceScopeFor = function evidenceScopeFor(entry: Graph['relationships'][number]) {
     return entry.evidence.flatMap((citation) => {
       if (citation.version === undefined) {
         return [];
@@ -519,7 +474,7 @@ export const applyCheck = function applyCheck(
 ): Graph {
   const targets = new Set(check.findings.map((finding) => finding.target));
   const known = new Set([
-    "batch",
+    'batch',
     ...scope.map((entry) => entry.document),
     ...graph.decisions.map((entry) => entry.id),
     ...graph.relationships.map((entry) => entry.id),
@@ -529,25 +484,20 @@ export const applyCheck = function applyCheck(
       }
       return [entry.localId, entry.document];
     }),
-    ...graph.relationships
-      .filter((entry) => entry.batch === batch)
-      .map((entry) => entry.localId),
+    ...graph.relationships.filter((entry) => entry.batch === batch).map((entry) => entry.localId),
   ]);
   const isUncertainBatch =
-    targets.has("batch") || [...targets].some((target) => !known.has(target));
+    targets.has('batch') || [...targets].some((target) => !known.has(target));
   const decisions = graph.decisions.map((entry) => {
     if (entry.batch !== batch && !targets.has(entry.id)) {
       return entry;
     }
     const isTargeted =
-      targets.has(entry.id) ||
-      targets.has(entry.localId) ||
-      targets.has(entry.document);
-    const isUncertain =
-      isTargeted || entry.quality === "uncertain" || isUncertainBatch;
+      targets.has(entry.id) || targets.has(entry.localId) || targets.has(entry.document);
+    const isUncertain = isTargeted || entry.quality === 'uncertain' || isUncertainBatch;
     return {
       ...entry,
-      quality: quality.parse(isUncertain ? "uncertain" : "checked"),
+      quality: quality.parse(isUncertain ? 'uncertain' : 'checked'),
     };
   });
   const relationships = graph.relationships.map((entry) => {
@@ -562,11 +512,11 @@ export const applyCheck = function applyCheck(
         if (node.id !== entry.from && node.id !== entry.to) {
           return false;
         }
-        return node.quality === "uncertain";
+        return node.quality === 'uncertain';
       });
     return {
       ...entry,
-      quality: quality.parse(isUncertain ? "uncertain" : "checked"),
+      quality: quality.parse(isUncertain ? 'uncertain' : 'checked'),
     };
   });
   return {
