@@ -133,6 +133,33 @@ const hasOrderPrefix = function hasOrderPrefix(
   return fields.every((field, index) => keys[index] === field);
 };
 
+// New graph records must retain the original live provenance order between
+// rounds. Decoding a stored graph has its own schema order.
+export const withLiveProvenance = function withLiveProvenance<T extends object>(
+  value: T,
+  kind: "decision" | "relationship"
+): T {
+  const record = { ...value };
+  const fields =
+    kind === "decision"
+      ? [
+          ...fieldOrder.decision.slice(0, 10),
+          "localId",
+          "version",
+          "batch",
+          "quality",
+        ]
+      : [...fieldOrder.relationship.slice(0, 6), "localId", "batch", "quality"];
+  for (const field of fields) {
+    const descriptor = Object.getOwnPropertyDescriptor(record, field);
+    if (descriptor !== undefined) {
+      Reflect.deleteProperty(record, field);
+      Object.defineProperty(record, field, descriptor);
+    }
+  }
+  return record;
+};
+
 const sourceOrder = function sourceOrder(value: Record<string, unknown>) {
   if (hasFields(value, ["kind", "id"])) {
     if (Object.hasOwn(value, "historical")) {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { withLiveProvenance } from "./knowledge-serialization.ts";
 import { rawMarkdownLines, sourceRange } from "./markdown.ts";
 import type { Document, Project } from "./documents.ts";
 
@@ -339,16 +340,21 @@ const extractedRelationships = function extractedRelationships(input: {
     if (previous !== -1) {
       relationships.splice(previous, 1);
     }
-    relationships.push({
-      ...entry,
-      batch,
-      evidence,
-      from,
-      id,
-      localId: entry.id,
-      quality: "unchecked",
-      to,
-    });
+    relationships.push(
+      withLiveProvenance<Graph["relationships"][number]>(
+        {
+          ...entry,
+          batch,
+          evidence,
+          from,
+          id,
+          localId: entry.id,
+          quality: "unchecked",
+          to,
+        },
+        "relationship"
+      )
+    );
   }
   return relationships;
 };
@@ -404,14 +410,19 @@ export const applyExtraction = function applyExtraction(
     if (previous !== -1) {
       decisions.splice(previous, 1);
     }
-    decisions.push({
-      ...entry,
-      batch,
-      id,
-      localId: entry.id,
-      quality: isLocated ? "unchecked" : "uncertain",
-      version: source.hash,
-    });
+    decisions.push(
+      withLiveProvenance<Graph["decisions"][number]>(
+        {
+          ...entry,
+          batch,
+          id,
+          localId: entry.id,
+          quality: isLocated ? "unchecked" : "uncertain",
+          version: source.hash,
+        },
+        "decision"
+      )
+    );
   }
   const relationships = extractedRelationships({
     decisions,

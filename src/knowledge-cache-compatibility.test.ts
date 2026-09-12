@@ -132,3 +132,55 @@ test("reuses v1 extraction and check caches with the original exhausted update b
     },
   });
 });
+
+test("reuses old caches across two update rounds with live graph neighbors", async () => {
+  using cleanup = new DisposableStack();
+  const root = mkdtempSync(
+    path.join(tmpdir(), "hivex-multiround-cache-compat-")
+  );
+  cleanup.defer(() => {
+    rmSync(root, { force: true, recursive: true });
+  });
+  const markdown = [1, 2, 3]
+    .map((number) => {
+      const details = "Detail ".repeat(800).trimEnd();
+      return `# Section ${number}\n\nRule ${number} requires bounded work. ${details}\n`;
+    })
+    .join("\n");
+  writeFileSync(path.join(root, "notes.md"), markdown);
+  mkdirSync(path.join(root, ".hivex"));
+  using database = new Database(path.join(root, ".hivex/knowledge.sqlite"));
+  database.run(
+    readFileSync(
+      new URL(
+        "../test/fixtures/knowledge-multiround-cache-v1.sql",
+        import.meta.url
+      ),
+      "utf-8"
+    )
+  );
+  const result = await knowledgeCommand([
+    "update",
+    "--root",
+    root,
+    "--max-calls",
+    "4",
+    "--codex",
+    path.join(root, "model-must-not-start"),
+  ]);
+  expect(result).toMatchObject({
+    decisions: 3,
+    pendingUnits: [],
+    relationships: 1,
+    status: "ready",
+    work: {
+      cacheHits: 4,
+      calls: 4,
+      id: "cc4bb47f-3512-40b0-8c6c-9ef5a326e2db",
+      inputBytes: 55_743,
+      maxCalls: 4,
+      maxInputBytes: 131_072,
+      totalTokens: 20,
+    },
+  });
+});
