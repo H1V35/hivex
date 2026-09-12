@@ -1,4 +1,4 @@
-import { Database } from 'bun:sqlite';
+import { randomUUID } from "node:crypto";
 import {
   closeSync,
   lstatSync,
@@ -7,673 +7,931 @@ import {
   readFileSync,
   unlinkSync,
   writeFileSync,
-} from 'node:fs';
-import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
-import { HivexError } from './errors.ts';
-import { sharedKnowledge } from './knowledge-snapshot.ts';
-import { emptyGraph, extractionSchema, graphSchema, type Graph } from './knowledge-model.ts';
+} from "node:fs";
+import path from "node:path";
+import { Database } from "bun:sqlite";
+import { z } from "zod";
+import { HivexError } from "./errors.ts";
+import { sharedKnowledge } from "./knowledge-snapshot.ts";
+import {
+  emptyGraph,
+  extractionSchema,
+  graphSchema,
+} from "./knowledge-model.ts";
+import type { Graph } from "./knowledge-model.ts";
 
 const processIdSchema = z.number().int().positive();
-const lockSchema = z.object({ pid: processIdSchema, id: z.string().min(1) });
+const lockSchema = z.object({ id: z.string().min(1), pid: processIdSchema });
 const recoveryAcknowledgementSchema = z.object({
-  type: z.literal('uncertain-invocation'),
   acknowledgedAt: z.string(),
   nativeProcessId: processIdSchema,
+  type: z.literal("uncertain-invocation"),
 });
-
+const workConflictCode = "WORK_CONFLICT";
+const lockFilename = "knowledge.lock";
+const workByIdQuery = "SELECT data FROM work WHERE id=?";
 const attemptSchema = z.object({
-  stage: z.string(),
-  inputHash: z.string(),
-  inputBytes: z.number(),
-  report: z.unknown().optional(),
-  outputHash: z.string().optional(),
   diagnostic: z.string().optional(),
   error: z.string().optional(),
-  result: z.unknown().optional(),
+  inputBytes: z.number(),
+  inputHash: z.string(),
+  outputHash: z.string().optional(),
   recoveryAcknowledgement: recoveryAcknowledgementSchema.optional(),
+  report: z.unknown().optional(),
+  result: z.unknown().optional(),
+  stage: z.string(),
 });
 const workSchema = z.object({
-  id: z.string(),
-  kind: z.enum(['update', 'ask', 'review']),
-  key: z.string(),
-  snapshot: z.string(),
-  calls: z.number().int().nonnegative(),
-  maxCalls: z.number().int().nonnegative(),
-  inputBytes: z.number().int().nonnegative(),
-  maxInputBytes: z.number().int().positive(),
-  totalTokens: z.number().int().nonnegative(),
-  status: z.enum(['pending', 'running', 'budget-exhausted', 'context-limit', 'failed', 'done']),
-  remaining: z.array(z.string()),
-  plannedUnits: z.array(z.string()).default([]),
-  phase: z.enum(['update', 'ask', 'review']).default('update'),
-  contextLimit: z
-    .object({ documents: z.array(z.string()), requiredBytes: z.number(), maxBytes: z.number() })
-    .optional(),
-  resultKey: z.string().optional(),
+  attempts: z.array(attemptSchema).max(4096),
   cacheHits: z.number().int().nonnegative().default(0),
-  ownerPid: processIdSchema.optional(),
+  calls: z.number().int().nonnegative(),
+  contextLimit: z
+    .object({
+      documents: z.array(z.string()),
+      maxBytes: z.number(),
+      requiredBytes: z.number(),
+    })
+    .optional(),
+  id: z.string(),
+  inputBytes: z.number().int().nonnegative(),
+  key: z.string(),
+  kind: z.enum(["update", "ask", "review"]),
+  maxCalls: z.number().int().nonnegative(),
+  maxInputBytes: z.number().int().positive(),
   nativeProcessId: processIdSchema.optional(),
+  ownerPid: processIdSchema.optional(),
   pending: z
     .object({
       batch: z.string(),
-      documents: z.array(z.string()),
-      units: z.array(z.string()).default([]),
-      packet: z.record(z.string(), z.unknown()).optional(),
       context: z.array(z.string()).default([]),
+      documents: z.array(z.string()),
       existing: z.array(z.string()).default([]),
       extraction: extractionSchema,
+      packet: z.record(z.string(), z.unknown()).optional(),
+      units: z.array(z.string()).default([]),
     })
     .nullable(),
-  attempts: z.array(attemptSchema).max(4096),
+  phase: z.enum(["update", "ask", "review"]).default("update"),
+  plannedUnits: z.array(z.string()).default([]),
+  remaining: z.array(z.string()),
   result: z.unknown().optional(),
+  resultKey: z.string().optional(),
+  snapshot: z.string(),
+  status: z.enum([
+    "pending",
+    "running",
+    "budget-exhausted",
+    "context-limit",
+    "failed",
+    "done",
+  ]),
+  totalTokens: z.number().int().nonnegative(),
 });
 export type Work = z.infer<typeof workSchema>;
-
-type BeginWork = {
-  kind: Work['kind'];
+interface StoreOptions {
+  readonly?: boolean;
+  update?: boolean;
+}
+interface BeginWork {
   key: string;
-  snapshot: string;
+  kind: Work["kind"];
   maxCalls?: number;
   maxInputBytes?: number;
   remaining: string[];
   resultKey?: string;
-};
-
-export type RecoveryReport = {
-  status: 'clean' | 'recovered' | 'blocked';
-  lock: 'absent' | 'released' | 'held' | 'unreadable' | 'changed';
-  interruptedWorks: number;
+  snapshot: string;
+}
+const recoveryLockValues = [
+  "absent",
+  "released",
+  "held",
+  "unreadable",
+  "changed",
+] as const;
+type RecoveryLockStatus = (typeof recoveryLockValues)[number];
+export interface RecoveryReport {
   acknowledgedWorks: number;
   guidance?: string;
-};
-
-export type RecoveryOptions = {
+  interruptedWorks: number;
+  lock: RecoveryLockStatus;
+  status: "clean" | "recovered" | "blocked";
+}
+export interface RecoveryOptions {
   acknowledgeUncertain?: boolean;
-};
-
-export type PruneOptions = {
-  keepCompleted: number;
+}
+export interface PruneOptions {
   keepCaches: number;
-};
-
-export type PruneReport = {
-  deletedCompletedWorks: number;
+  keepCompleted: number;
+}
+export interface PruneReport {
   deletedCaches: number;
-  retainedCompletedWorks: number;
+  deletedCompletedWorks: number;
   retainedCaches: number;
+  retainedCompletedWorks: number;
   unfinishedWorks: number;
-};
-
-type ProcessState = 'alive' | 'dead' | 'unknown';
-type RecoveryLock = { raw: string; pid: number };
-
-function errorCode(error: unknown) {
-  return error instanceof Error && 'code' in error && typeof error.code === 'string'
+}
+type ProcessState = "alive" | "dead" | "unknown";
+interface RecoveryLock {
+  pid: number;
+  raw: string;
+}
+const errorCode = function errorCode(error: unknown) {
+  return Error.isError(error) &&
+    "code" in error &&
+    typeof error.code === "string"
     ? error.code
     : undefined;
-}
-
-function processState(pid: number): ProcessState {
+};
+const processState = function processState(pid: number): ProcessState {
   try {
     process.kill(pid, 0);
-    return 'alive';
+    return "alive";
   } catch (error) {
     const code = errorCode(error);
-    if (code === 'ESRCH') return 'dead';
-    if (code === 'EPERM') return 'alive';
-    return 'unknown';
+    if (code === "ESRCH") {
+      return "dead";
+    }
+    if (code === "EPERM") {
+      return "alive";
+    }
+    return "unknown";
   }
-}
-
-function recordValue(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function interruptedReport(previous: unknown, nativeProcessId: number) {
+};
+const recordValue = function recordValue(
+  value: unknown
+): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return Object.fromEntries(Object.entries(value));
+};
+const interruptedReport = function interruptedReport(
+  previous: unknown,
+  nativeProcessId: number
+) {
   const report = recordValue(previous) ?? {};
   return {
     ...report,
-    outcome: 'interrupted',
-    code: 'MODEL_INTERRUPTED_RECOVERED',
-    interruption: 'unconfirmed',
-    turnAccepted: typeof report.turnAccepted === 'string' ? report.turnAccepted : 'unknown',
-    cleanup: 'not-observed',
-    usage: report.usage ?? null,
+    cleanup: "not-observed",
+    code: "MODEL_INTERRUPTED_RECOVERED",
+    interruption: "unconfirmed",
+    outcome: "interrupted",
     recovery: {
-      nativeProcessId,
       nativeProcessEnded: true,
-      previousOutcome: typeof report.outcome === 'string' ? report.outcome : null,
+      nativeProcessId,
+      previousOutcome:
+        typeof report.outcome === "string" ? report.outcome : null,
     },
+    turnAccepted:
+      typeof report.turnAccepted === "string" ? report.turnAccepted : "unknown",
+    usage: report.usage ?? null,
   };
-}
-
-function deleteRows(db: Database, table: 'work' | 'model_cache', rowids: number[]) {
-  if (!rowids.length) return;
-  const placeholders = rowids.map(() => '?').join(',');
-  db.run(`DELETE FROM ${table} WHERE rowid IN (${placeholders})`, rowids);
-}
-
-function throwRecovery(
-  lock: RecoveryReport['lock'],
+};
+const deleteRows = function deleteRows(
+  database: Database,
+  table: "work" | "model_cache",
+  rowids: number[]
+) {
+  if (rowids.length === 0) {
+    return;
+  }
+  const placeholders = rowids.map(() => "?").join(",");
+  database.run(`DELETE FROM ${table} WHERE rowid IN (${placeholders})`, rowids);
+};
+const throwRecovery: (
+  lock: RecoveryReport["lock"],
   guidance: string,
-  interruptedWorks = 0,
-): never {
+  interruptedWorks?: number
+) => never = function throwRecovery(lock, guidance, interruptedWorks = 0) {
   throw new HivexError({
-    code: 'RECOVERY_UNSAFE',
+    code: "RECOVERY_UNSAFE",
+    details: { interruptedWorks, lock },
     message: guidance,
-    details: { lock, interruptedWorks },
   });
-}
-
-function blockedRecovery(error: HivexError): RecoveryReport {
+};
+const blockedRecovery = function blockedRecovery(
+  error: HivexError
+): RecoveryReport {
   const lock = error.details?.lock;
+  const knownLocks = recoveryLockValues.filter(
+    (candidate) => candidate !== "released"
+  );
   return {
-    status: 'blocked',
-    lock:
-      lock === 'absent' || lock === 'held' || lock === 'unreadable' || lock === 'changed'
-        ? lock
-        : 'unreadable',
-    interruptedWorks:
-      typeof error.details?.interruptedWorks === 'number' ? error.details.interruptedWorks : 0,
     acknowledgedWorks: 0,
     guidance: error.message,
+    interruptedWorks:
+      typeof error.details?.interruptedWorks === "number"
+        ? error.details.interruptedWorks
+        : 0,
+    lock: knownLocks.find((candidate) => candidate === lock) ?? "unreadable",
+    status: "blocked",
   };
-}
+};
+const releaseLockFile = function releaseLockFile(
+  lockPath: string,
+  token: string
+) {
+  let contents: string;
+  try {
+    contents = readFileSync(lockPath, "utf-8");
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  if (contents === token) {
+    unlinkSync(lockPath);
+  }
+};
+const hasUnfinishedWork = function hasUnfinishedWork(database: Database) {
+  return database
+    .query<
+      {
+        data: string;
+      },
+      []
+    >("SELECT data FROM work")
+    .all()
+    .some((row) => workSchema.parse(JSON.parse(row.data)).status !== "done");
+};
+const saveWork = function saveWork(database: Database, work: Work) {
+  if (work.status !== "running") {
+    delete work.nativeProcessId;
+  }
+  database.run(
+    "INSERT INTO work VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+    [work.id, work.kind, work.key, JSON.stringify(work)]
+  );
+};
+const allWorks = function allWorks(database: Database) {
+  return database
+    .query<
+      {
+        data: string;
+      },
+      []
+    >("SELECT data FROM work")
+    .all()
+    .map(({ data }) => workSchema.parse(JSON.parse(data)));
+};
+const runningWorks = function runningWorks(database: Database) {
+  return allWorks(database).filter((work) => work.status === "running");
+};
+const uncertainFailedWorks = function uncertainFailedWorks(database: Database) {
+  return allWorks(database).flatMap((work) => {
+    const attempt = work.attempts.at(-1);
+    if (
+      work.status !== "failed" ||
+      attempt?.recoveryAcknowledgement !== undefined
+    ) {
+      return [];
+    }
+    const report = recordValue(attempt?.report);
+    if (
+      report === null ||
+      (report.interruption !== "unconfirmed" &&
+        report.turnAccepted !== "unknown")
+    ) {
+      return [];
+    }
+    const nativeProcessId = processIdSchema.safeParse(report.nativeProcessId);
+    return [
+      {
+        nativeProcessId: nativeProcessId.success
+          ? nativeProcessId.data
+          : undefined,
+        work,
+      },
+    ];
+  });
+};
+const recoveryLock = function recoveryLock(
+  directory: string
+): RecoveryLock | null {
+  const lockPath = path.join(directory, lockFilename);
+  let raw: string;
+  try {
+    raw = readFileSync(lockPath, "utf-8");
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") {
+      return null;
+    }
+    return throwRecovery(
+      "unreadable",
+      "knowledge.lock cannot be read safely; inspect the store before continuing."
+    );
+  }
+  try {
+    const lock = lockSchema.parse(JSON.parse(raw));
+    return { pid: lock.pid, raw };
+  } catch {
+    return throwRecovery(
+      "unreadable",
+      "knowledge.lock has no verifiable PID; do not delete it and inspect the process manually."
+    );
+  }
+};
+const runningWorksOrBlock = function runningWorksOrBlock(database: Database) {
+  try {
+    return runningWorks(database);
+  } catch {
+    return throwRecovery(
+      "unreadable",
+      "Work state cannot be validated; preserve the store and inspect it manually."
+    );
+  }
+};
+const assertOwnerEnded = function assertOwnerEnded(
+  ownerPid: number,
+  lock: RecoveryReport["lock"],
+  label = "The lock owner"
+) {
+  const state = processState(ownerPid);
+  if (state === "alive") {
+    throwRecovery(
+      lock,
+      `${label} (PID ${ownerPid}) is still alive; no process was modified or terminated.`
+    );
+  }
+  if (state !== "dead") {
+    throwRecovery(
+      lock,
+      `${label} (PID ${ownerPid}) cannot be proven dead; no state was modified.`
+    );
+  }
+};
+const assertRecoverable = function assertRecoverable(
+  work: Work,
+  nativeProcessId: number | undefined,
+  lock: RecoveryReport["lock"]
+) {
+  if (work.ownerPid === undefined) {
+    throwRecovery(
+      lock,
+      `Work ${work.id} has no recorded owner PID; its recovery state is unchanged.`
+    );
+  }
+  assertOwnerEnded(work.ownerPid, lock, `Work ${work.id} owner`);
+  const attempt = work.attempts.at(-1);
+  if (attempt === undefined) {
+    throwRecovery(
+      lock,
+      `Work ${work.id} has no reserved attempt; no state was changed.`
+    );
+  }
+  if (nativeProcessId === undefined && work.status === "running") {
+    return;
+  }
+  if (nativeProcessId === undefined) {
+    throwRecovery(
+      lock,
+      `Work ${work.id} has no native PID for its uncertain result; no state was changed.`
+    );
+  }
+  const state = processState(nativeProcessId);
+  if (state === "alive") {
+    throwRecovery(
+      lock,
+      `Native process PID ${nativeProcessId} for work ${work.id} is still alive; no process was killed.`
+    );
+  }
+  if (state !== "dead") {
+    throwRecovery(
+      lock,
+      `Native process PID ${nativeProcessId} for work ${work.id} cannot be checked; no state was changed.`
+    );
+  }
+  const { report } = attempt;
+  if (report !== undefined && recordValue(report) === null) {
+    throwRecovery(
+      lock,
+      `Work ${work.id} has an unstructured running report; recovery left it unchanged.`
+    );
+  }
+};
+const recordRecovery = function recordRecovery(
+  database: Database,
+  works: {
+    nativeProcessId: number | undefined;
+    work: Work;
+  }[]
+) {
+  database.transaction(() => {
+    for (const { nativeProcessId, work } of works) {
+      const row = database
+        .query<
+          {
+            data: string;
+          },
+          [string]
+        >(workByIdQuery)
+        .get(work.id);
+      const current =
+        row?.data === undefined
+          ? undefined
+          : workSchema.parse(JSON.parse(row.data));
+      const attempt = current?.attempts.at(-1);
+      if (
+        attempt === undefined ||
+        current?.status !== work.status ||
+        current.calls !== work.calls
+      ) {
+        throwRecovery(
+          "changed",
+          `Work ${work.id} changed during recovery; run recover again.`
+        );
+      }
+      attempt.report ??=
+        nativeProcessId === undefined
+          ? {
+              cleanup: "not-observed",
+              code: "MODEL_INTERRUPTED_BEFORE_TURN",
+              outcome: "interrupted",
+              usage: null,
+            }
+          : interruptedReport(undefined, nativeProcessId);
+      if (nativeProcessId !== undefined) {
+        const now = new Date();
+        const acknowledgedAt = now.toISOString();
+        attempt.recoveryAcknowledgement = {
+          acknowledgedAt,
+          nativeProcessId,
+          type: "uncertain-invocation",
+        };
+      }
+      current.status = "failed";
+      saveWork(database, current);
+    }
+  })();
+};
+const releaseLock = function releaseLock(directory: string, expected: string) {
+  const lockPath = path.join(directory, lockFilename);
+  let contents: string;
+  try {
+    contents = readFileSync(lockPath, "utf-8");
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") {
+      return true;
+    }
+    throw error;
+  }
+  if (contents !== expected) {
+    return false;
+  }
+  unlinkSync(lockPath);
+  return true;
+};
+const releaseRecoveryLock = function releaseRecoveryLock(
+  directory: string,
+  {
+    acknowledgedWorks,
+    interruptedWorks,
+    raw,
+  }: {
+    acknowledgedWorks: number;
+    interruptedWorks: number;
+    raw: string | null;
+  }
+): RecoveryReport {
+  if (raw === null) {
+    return {
+      acknowledgedWorks,
+      ...(acknowledgedWorks > 0 && {
+        guidance:
+          "Recovery preserved the work. Run `hivex update --retry-failed --root <project>` to retry it explicitly; recovery made zero model calls.",
+      }),
+      interruptedWorks,
+      lock: "absent",
+      status: "recovered",
+    };
+  }
+  let isReleased: boolean;
+  try {
+    isReleased = releaseLock(directory, raw);
+  } catch {
+    return throwRecovery(
+      "unreadable",
+      acknowledgedWorks > 0
+        ? "Work was acknowledged, but knowledge.lock could not be released."
+        : "The owner is dead, but knowledge.lock could not be released atomically.",
+      interruptedWorks
+    );
+  }
+  if (!isReleased) {
+    return throwRecovery(
+      "changed",
+      acknowledgedWorks > 0
+        ? "Work was acknowledged, but knowledge.lock changed; run recover again before continuing."
+        : "knowledge.lock changed during recovery; inspect the store before continuing.",
+      interruptedWorks
+    );
+  }
+  return {
+    acknowledgedWorks,
+    ...(acknowledgedWorks > 0 && {
+      guidance:
+        "Recovery preserved the work. Run `hivex update --retry-failed --root <project>` to retry it explicitly; recovery made zero model calls.",
+    }),
+    interruptedWorks,
+    lock: "released",
+    status: "recovered",
+  };
+};
+const recoverChecked = function recoverChecked(
+  database: Database,
+  directory: string,
+  options: RecoveryOptions
+): RecoveryReport {
+  const lock = recoveryLock(directory);
+  if (lock !== null) {
+    assertOwnerEnded(lock.pid, "held");
+  }
+  const running = runningWorksOrBlock(database);
+  const failed = uncertainFailedWorks(database);
+  if (running.length === 0 && failed.length === 0) {
+    return releaseRecoveryLock(directory, {
+      acknowledgedWorks: 0,
+      interruptedWorks: 0,
+      raw: lock?.raw ?? null,
+    });
+  }
+  const lockState = lock === null ? "absent" : "held";
+  for (const work of running) {
+    assertRecoverable(work, work.nativeProcessId, lockState);
+  }
+  for (const entry of failed) {
+    assertRecoverable(entry.work, entry.nativeProcessId, lockState);
+  }
+  const uncertain =
+    running.filter((work) => work.nativeProcessId !== undefined).length +
+    failed.length;
+  if (uncertain > 0 && options.acknowledgeUncertain !== true) {
+    throwRecovery(
+      lockState,
+      "Uncertain work is recoverable after its owner and native PIDs ended; rerun `hivex recover --acknowledge-uncertain --root <project>` to record an explicit acknowledgement."
+    );
+  }
+  const recoverableWorks = [
+    ...running.map((work) => {
+      const { nativeProcessId } = work;
+      return { nativeProcessId, work };
+    }),
+    ...failed,
+  ];
+  recordRecovery(database, recoverableWorks);
+  return releaseRecoveryLock(directory, {
+    acknowledgedWorks: uncertain,
+    interruptedWorks: running.length,
+    raw: lock?.raw ?? null,
+  });
+};
+const initializeStorage = function initializeStorage(
+  database: Database,
+  resources: DisposableStack,
+  acquireUpdate?: () => Disposable
+) {
+  database.run("PRAGMA busy_timeout=1000");
+  database.run("PRAGMA max_page_count=16384");
+  database.run(
+    "CREATE TABLE IF NOT EXISTS graph (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)"
+  );
+  database.run(
+    "CREATE TABLE IF NOT EXISTS work (id TEXT PRIMARY KEY, kind TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL)"
+  );
+  database.run(
+    "CREATE TABLE IF NOT EXISTS model_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+  );
+  database.run("CREATE INDEX IF NOT EXISTS work_key ON work(kind,key)");
+  if (acquireUpdate !== undefined) {
+    resources.use(acquireUpdate());
+  }
+};
 
 export class KnowledgeStore implements Disposable {
   private readonly db: Database;
   private readonly directory: string;
-
-  constructor(root: string, options: { readonly?: boolean } = {}) {
-    const directory = join(root, '.hivex');
-    this.directory = directory;
-    const path = join(directory, 'knowledge.sqlite');
-    for (const candidate of [directory, path]) {
-      if (lstatSync(candidate, { throwIfNoEntry: false })?.isSymbolicLink())
-        throw new HivexError({
-          code: 'INVALID_STORE',
-          message: 'Knowledge storage cannot be a symlink',
-        });
+  private readonly resources = new DisposableStack();
+  constructor(root: string, options: StoreOptions = {}) {
+    if (options.readonly === true && options.update === true) {
+      throw new HivexError({
+        code: "INVALID_STORE",
+        message: "Knowledge storage cannot be readonly and own an update lock",
+      });
     }
-    if (!options.readonly) mkdirSync(directory, { recursive: true, mode: 0o700 });
-    this.db = options.readonly ? new Database(path, { readonly: true }) : new Database(path);
-    if (options.readonly) return;
-    this.db.run('PRAGMA busy_timeout=1000');
-    this.db.run('PRAGMA max_page_count=16384');
-    this.db.run(
-      'CREATE TABLE IF NOT EXISTS graph (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)',
+    const directory = path.join(root, ".hivex");
+    this.directory = directory;
+    const databasePath = path.join(directory, "knowledge.sqlite");
+    for (const candidate of [directory, databasePath]) {
+      if (
+        lstatSync(candidate, { throwIfNoEntry: false })?.isSymbolicLink() ===
+        true
+      ) {
+        throw new HivexError({
+          code: "INVALID_STORE",
+          message: "Knowledge storage cannot be a symlink",
+        });
+      }
+    }
+    if (options.readonly !== true) {
+      mkdirSync(directory, { mode: 0o700, recursive: true });
+    }
+    this.db = this.resources.use(
+      options.readonly === true
+        ? new Database(databasePath, { readonly: true })
+        : new Database(databasePath)
     );
-    this.db.run(
-      'CREATE TABLE IF NOT EXISTS work (id TEXT PRIMARY KEY, kind TEXT NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL)',
-    );
-    this.db.run(
-      'CREATE TABLE IF NOT EXISTS model_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
-    );
-    this.db.run('CREATE INDEX IF NOT EXISTS work_key ON work(kind,key)');
+    if (options.readonly === true) {
+      return;
+    }
+    const acquireUpdate =
+      options.update === true ? this.updateLease.bind(this) : undefined;
+    try {
+      initializeStorage(this.db, this.resources, acquireUpdate);
+    } catch (error) {
+      this.resources.dispose();
+      throw error;
+    }
   }
-
   updateLease(): Disposable {
-    const path = join(this.directory, 'knowledge.lock');
-    const token = JSON.stringify({ pid: process.pid, id: randomUUID() });
+    const lockPath = path.join(this.directory, lockFilename);
+    const token = JSON.stringify({ id: randomUUID(), pid: process.pid });
     let fd: number;
     try {
-      fd = openSync(path, 'wx', 0o600);
+      fd = openSync(lockPath, "wx", 0o600);
     } catch {
       throw new HivexError({
-        code: 'KNOWLEDGE_LOCKED',
+        code: "KNOWLEDGE_LOCKED",
         message:
-          'Cannot acquire the update lock; inspect any active or interrupted update before continuing',
+          "Cannot acquire the update lock; inspect any active or interrupted update before continuing",
       });
     }
     writeFileSync(fd, token);
     return {
       [Symbol.dispose]() {
         closeSync(fd);
-        try {
-          if (readFileSync(path, 'utf8') === token) unlinkSync(path);
-        } catch (error) {
-          if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
-        }
+        releaseLockFile(lockPath, token);
       },
     };
   }
-
   graph(): Graph {
-    const row = this.db.query<{ data: string }, []>('SELECT data FROM graph WHERE id=1').get();
-    if (row) return graphSchema.parse(JSON.parse(row.data));
-    return this.hasUnfinishedWork() ? emptyGraph() : sharedKnowledge(join(this.directory, '..'));
+    const row = this.db
+      .query<
+        {
+          data: string;
+        },
+        []
+      >("SELECT data FROM graph WHERE id=1")
+      .get();
+    if (row !== null) {
+      return graphSchema.parse(JSON.parse(row.data));
+    }
+    return hasUnfinishedWork(this.db)
+      ? emptyGraph()
+      : sharedKnowledge(path.join(this.directory, ".."));
   }
-
-  private hasUnfinishedWork() {
-    return this.db
-      .query<{ data: string }, []>('SELECT data FROM work')
-      .all()
-      .some((row) => workSchema.parse(JSON.parse(row.data)).status !== 'done');
-  }
-
   saveGraph(graph: Graph) {
-    this.db.run('INSERT INTO graph VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data', [
-      JSON.stringify(graph),
-    ]);
+    this.db.run(
+      "INSERT INTO graph VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+      [JSON.stringify(graph)]
+    );
   }
-
   importGraph(graph: Graph) {
     this.db.transaction(() => {
-      if (this.hasUnfinishedWork())
+      if (hasUnfinishedWork(this.db)) {
         throw new HivexError({
-          code: 'UNFINISHED_WORK',
+          code: "UNFINISHED_WORK",
           message:
-            'Finish or recover existing work before importing a knowledge snapshot; its attempts and budgets are preserved.',
+            "Finish or recover existing work before importing a knowledge snapshot; its attempts and budgets are preserved.",
         });
+      }
       this.saveGraph(graph);
     })();
   }
-
   begin(options: BeginWork): Work {
-    const defaultMaxCalls = options.kind === 'update' ? 2 : 3;
+    const defaultMaxCalls = options.kind === "update" ? 2 : 3;
     return this.db
       .transaction(() => {
-        if (!this.db.query('SELECT id FROM graph WHERE id=1').get()) this.saveGraph(this.graph());
+        if (this.db.query("SELECT id FROM graph WHERE id=1").get() === null) {
+          this.saveGraph(this.graph());
+        }
         const row = this.db
           .query<
-            { data: string },
+            {
+              data: string;
+            },
             [string, string]
-          >('SELECT data FROM work WHERE kind=? AND key=? ORDER BY rowid DESC LIMIT 1')
+          >(
+            "SELECT data FROM work WHERE kind=? AND key=? ORDER BY rowid DESC LIMIT 1"
+          )
           .get(options.kind, options.key);
-        const previous = row ? workSchema.parse(JSON.parse(row.data)) : null;
-        const reusable =
-          options.kind !== 'update'
-            ? previous?.resultKey === options.resultKey
-            : options.remaining.length === 0;
-        if (previous && (options.kind !== 'update' || previous.status !== 'done' || reusable)) {
-          return this.resume(previous, options, reusable);
+        const previous =
+          row === null ? null : workSchema.parse(JSON.parse(row.data));
+        const isReusable =
+          options.kind === "update"
+            ? options.remaining.length === 0
+            : previous?.resultKey === options.resultKey;
+        if (
+          previous !== null &&
+          (isReusable ||
+            options.kind !== "update" ||
+            previous.status !== "done")
+        ) {
+          if (isReusable && previous.status === "done") {
+            return previous;
+          }
+          if (previous.status === "done") {
+            previous.status = "pending";
+            delete previous.result;
+          }
+          if (previous.status === "running") {
+            throw new HivexError({
+              code: "WORK_RUNNING",
+              message: `Work ${previous.id} has an unfinished invocation; inspect it before retrying`,
+            });
+          }
+          if (options.maxCalls !== undefined) {
+            previous.maxCalls = options.maxCalls;
+          }
+          if (options.maxInputBytes !== undefined) {
+            previous.maxInputBytes = options.maxInputBytes;
+          }
+          this.save(previous);
+          return previous;
         }
         const work: Work = {
-          id: randomUUID(),
           ...options,
-          maxCalls: options.maxCalls ?? defaultMaxCalls,
-          maxInputBytes: options.maxInputBytes ?? 131072,
-          plannedUnits: [...options.remaining],
-          phase: 'update',
-          calls: 0,
-          cacheHits: 0,
-          inputBytes: 0,
-          totalTokens: 0,
-          status: 'pending',
-          pending: null,
           attempts: [],
+          cacheHits: 0,
+          calls: 0,
+          id: randomUUID(),
+          inputBytes: 0,
+          maxCalls: options.maxCalls ?? defaultMaxCalls,
+          maxInputBytes: options.maxInputBytes ?? 131_072,
+          pending: null,
+          phase: "update",
+          plannedUnits: [...options.remaining],
+          status: "pending",
+          totalTokens: 0,
         };
         this.save(work);
         return work;
       })
       .immediate();
   }
-
-  private resume(work: Work, options: BeginWork, reusable: boolean) {
-    if (work.status === 'done' && reusable) return work;
-    if (work.status === 'done') {
-      work.status = 'pending';
-      delete work.result;
-    }
-    if (work.status === 'running')
-      throw new HivexError({
-        code: 'WORK_RUNNING',
-        message: `Work ${work.id} has an unfinished invocation; inspect it before retrying`,
-      });
-    if (options.maxCalls !== undefined) work.maxCalls = options.maxCalls;
-    if (options.maxInputBytes !== undefined) work.maxInputBytes = options.maxInputBytes;
-    this.save(work);
-    return work;
-  }
-
   save(work: Work) {
-    if (work.status !== 'running') delete work.nativeProcessId;
-    this.db.run(
-      'INSERT INTO work VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data',
-      [work.id, work.kind, work.key, JSON.stringify(work)],
-    );
+    saveWork(this.db, work);
   }
-
   commit(work: Work, graph: Graph) {
     this.db.transaction(() => {
       this.saveGraph(graph);
       this.save(work);
     })();
   }
-
   cached(key: string): unknown {
     const row = this.db
-      .query<{ value: string }, [string]>('SELECT value FROM model_cache WHERE key=?')
+      .query<
+        {
+          value: string;
+        },
+        [string]
+      >("SELECT value FROM model_cache WHERE key=?")
       .get(key);
     return row ? JSON.parse(row.value) : undefined;
   }
-
   cache(key: string, value: unknown) {
     this.db.run(
-      'INSERT INTO model_cache VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
-      [key, JSON.stringify(value)],
+      "INSERT INTO model_cache VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      [key, JSON.stringify(value)]
     );
   }
-
   recordNativeProcess(work: Work, nativeProcessId: number) {
-    if (!processIdSchema.safeParse(nativeProcessId).success)
+    if (!processIdSchema.safeParse(nativeProcessId).success) {
       throw new HivexError({
-        code: 'INVALID_PROCESS_ID',
-        message: 'Native process ID must be a positive integer',
+        code: "INVALID_PROCESS_ID",
+        message: "Native process ID must be a positive integer",
       });
+    }
     this.db.transaction(() => {
       const stored = this.db
-        .query<{ data: string }, [string]>('SELECT data FROM work WHERE id=?')
+        .query<
+          {
+            data: string;
+          },
+          [string]
+        >(workByIdQuery)
         .get(work.id);
-      const current = stored && workSchema.parse(JSON.parse(stored.data));
-      if (!current || current.calls !== work.calls || current.status !== 'running')
+      const current =
+        stored?.data === undefined
+          ? undefined
+          : workSchema.parse(JSON.parse(stored.data));
+      if (current?.calls !== work.calls || current.status !== "running") {
         throw new HivexError({
-          code: 'WORK_CONFLICT',
-          message: 'Work was claimed or changed before the native process was recorded',
+          code: workConflictCode,
+          message:
+            "Work was claimed or changed before the native process was recorded",
         });
+      }
       work.nativeProcessId = nativeProcessId;
       this.save(work);
     })();
   }
-
-  reserve(work: Work, stage: string, inputHash: string, inputBytes: number) {
+  reserve(
+    work: Work,
+    input: { inputBytes: number; inputHash: string; stage: string }
+  ) {
+    const { inputBytes, inputHash, stage } = input;
     this.db.transaction(() => {
       const stored = this.db
-        .query<{ data: string }, [string]>('SELECT data FROM work WHERE id=?')
+        .query<
+          {
+            data: string;
+          },
+          [string]
+        >(workByIdQuery)
         .get(work.id);
-      const current = stored && workSchema.parse(JSON.parse(stored.data));
-      if (!current || current.calls !== work.calls || current.status === 'running')
+      const current =
+        stored?.data === undefined
+          ? undefined
+          : workSchema.parse(JSON.parse(stored.data));
+      if (current?.calls !== work.calls || current.status === "running") {
         throw new HivexError({
-          code: 'WORK_CONFLICT',
-          message: 'Work was claimed or changed by another operation',
+          code: workConflictCode,
+          message: "Work was claimed or changed by another operation",
         });
+      }
       work.calls += 1;
       work.inputBytes += inputBytes;
-      work.status = 'running';
+      work.status = "running";
       work.ownerPid = process.pid;
       delete work.nativeProcessId;
-      work.attempts.push({ stage, inputHash, inputBytes });
+      work.attempts.push({ inputBytes, inputHash, stage });
       this.save(work);
     })();
   }
-
   recover(options: RecoveryOptions = {}): RecoveryReport {
     try {
-      return this.recoverChecked(options);
+      return recoverChecked(this.db, this.directory, options);
     } catch (error) {
-      if (error instanceof HivexError && error.code === 'RECOVERY_UNSAFE')
+      if (error instanceof HivexError && error.code === "RECOVERY_UNSAFE") {
         return blockedRecovery(error);
+      }
       throw error;
     }
   }
-
   prune(options: PruneOptions): PruneReport {
     if (
-      !Number.isInteger(options.keepCompleted) ||
+      !Number.isSafeInteger(options.keepCompleted) ||
       options.keepCompleted < 0 ||
-      !Number.isInteger(options.keepCaches) ||
+      !Number.isSafeInteger(options.keepCaches) ||
       options.keepCaches < 0
-    )
+    ) {
       throw new HivexError({
-        code: 'INVALID_RETENTION',
-        message: 'Retention counts must be non-negative integers',
+        code: "INVALID_RETENTION",
+        message: "Retention counts must be non-negative integers",
       });
+    }
     const works = this.db
-      .query<{ rowid: number; data: string }, []>('SELECT rowid,data FROM work ORDER BY rowid DESC')
+      .query<
+        {
+          rowid: number;
+          data: string;
+        },
+        []
+      >("SELECT rowid,data FROM work ORDER BY rowid DESC")
       .all()
-      .map((row) => ({ rowid: row.rowid, work: workSchema.parse(JSON.parse(row.data)) }));
-    const completed = works.filter(({ work }) => work.status === 'done');
-    const workRowsToDelete = completed.slice(options.keepCompleted).map(({ rowid }) => rowid);
+      .map((row) => {
+        const work = workSchema.parse(JSON.parse(row.data));
+        return { rowid: row.rowid, work };
+      });
+    const completed = works.filter(({ work }) => work.status === "done");
+    const workRowsToDelete = completed
+      .slice(options.keepCompleted)
+      .map(({ rowid }) => rowid);
     const caches = this.db
-      .query<{ rowid: number }, []>('SELECT rowid FROM model_cache ORDER BY rowid DESC')
+      .query<
+        {
+          rowid: number;
+        },
+        []
+      >("SELECT rowid FROM model_cache ORDER BY rowid DESC")
       .all()
       .map(({ rowid }) => rowid);
     const cacheRowsToDelete = caches.slice(options.keepCaches);
     this.db.transaction(() => {
-      deleteRows(this.db, 'work', workRowsToDelete);
-      deleteRows(this.db, 'model_cache', cacheRowsToDelete);
+      deleteRows(this.db, "work", workRowsToDelete);
+      deleteRows(this.db, "model_cache", cacheRowsToDelete);
     })();
     return {
-      deletedCompletedWorks: workRowsToDelete.length,
       deletedCaches: cacheRowsToDelete.length,
-      retainedCompletedWorks: completed.length - workRowsToDelete.length,
+      deletedCompletedWorks: workRowsToDelete.length,
       retainedCaches: caches.length - cacheRowsToDelete.length,
-      unfinishedWorks: works.filter(({ work }) => work.status !== 'done').length,
+      retainedCompletedWorks: completed.length - workRowsToDelete.length,
+      unfinishedWorks: works.filter(({ work }) => work.status !== "done")
+        .length,
     };
   }
-
-  private allWorks() {
-    return this.db
-      .query<{ data: string }, []>('SELECT data FROM work')
-      .all()
-      .map(({ data }) => workSchema.parse(JSON.parse(data)));
-  }
-
-  private runningWorks() {
-    return this.allWorks().filter((work) => work.status === 'running');
-  }
-
-  private uncertainFailedWorks() {
-    return this.allWorks().flatMap((work) => {
-      if (work.status !== 'failed' || work.attempts.at(-1)?.recoveryAcknowledgement) return [];
-      const report = recordValue(work.attempts.at(-1)?.report);
-      if (report?.interruption !== 'unconfirmed' && report?.turnAccepted !== 'unknown') return [];
-      const nativeProcessId = processIdSchema.safeParse(report.nativeProcessId);
-      return [
-        { work, nativeProcessId: nativeProcessId.success ? nativeProcessId.data : undefined },
-      ];
-    });
-  }
-
-  private recoverChecked(options: RecoveryOptions): RecoveryReport {
-    const lock = this.recoveryLock();
-    if (lock !== null) this.assertOwnerEnded(lock.pid, 'held');
-    const running = this.runningWorksOrBlock();
-    const failed = this.uncertainFailedWorks();
-    if (!running.length && !failed.length) return this.releaseRecoveryLock(lock?.raw ?? null, 0, 0);
-    const lockState = lock === null ? 'absent' : 'held';
-    for (const work of running) this.assertRecoverable(work, work.nativeProcessId, lockState);
-    for (const entry of failed)
-      this.assertRecoverable(entry.work, entry.nativeProcessId, lockState);
-    const uncertain =
-      running.filter((work) => work.nativeProcessId !== undefined).length + failed.length;
-    if (uncertain && !options.acknowledgeUncertain)
-      throwRecovery(
-        lockState,
-        'Uncertain work is recoverable after its owner and native PIDs ended; rerun `hivex recover --acknowledge-uncertain --root <project>` to record an explicit acknowledgement.',
-      );
-    this.recordRecovery([
-      ...running.map((work) => ({ work, nativeProcessId: work.nativeProcessId })),
-      ...failed,
-    ]);
-    return this.releaseRecoveryLock(lock?.raw ?? null, running.length, uncertain);
-  }
-
-  private recoveryLock(): RecoveryLock | null {
-    const path = join(this.directory, 'knowledge.lock');
-    let raw: string;
-    try {
-      raw = readFileSync(path, 'utf8');
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT') return null;
-      throwRecovery(
-        'unreadable',
-        'knowledge.lock cannot be read safely; inspect the store before continuing.',
-      );
-    }
-    try {
-      const lock = lockSchema.parse(JSON.parse(raw));
-      return { raw, pid: lock.pid };
-    } catch {
-      throwRecovery(
-        'unreadable',
-        'knowledge.lock has no verifiable PID; do not delete it and inspect the process manually.',
-      );
-    }
-  }
-
-  private runningWorksOrBlock() {
-    try {
-      return this.runningWorks();
-    } catch {
-      throwRecovery(
-        'unreadable',
-        'Work state cannot be validated; preserve the store and inspect it manually.',
-      );
-    }
-  }
-
-  private assertOwnerEnded(
-    ownerPid: number,
-    lock: RecoveryReport['lock'],
-    label = 'The lock owner',
-  ) {
-    const state = processState(ownerPid);
-    if (state !== 'dead')
-      throwRecovery(
-        lock,
-        state === 'alive'
-          ? `${label} (PID ${ownerPid}) is still alive; no process was modified or terminated.`
-          : `${label} (PID ${ownerPid}) cannot be proven dead; no state was modified.`,
-      );
-  }
-
-  private assertRecoverable(
-    work: Work,
-    nativeProcessId: number | undefined,
-    lock: RecoveryReport['lock'],
-  ) {
-    if (work.ownerPid === undefined)
-      throwRecovery(
-        lock,
-        `Work ${work.id} has no recorded owner PID; its recovery state is unchanged.`,
-      );
-    this.assertOwnerEnded(work.ownerPid, lock, `Work ${work.id} owner`);
-    const attempt = work.attempts.at(-1);
-    if (!attempt)
-      throwRecovery(lock, `Work ${work.id} has no reserved attempt; no state was changed.`);
-    if (nativeProcessId === undefined && work.status === 'running') return;
-    if (nativeProcessId === undefined)
-      throwRecovery(
-        lock,
-        `Work ${work.id} has no native PID for its uncertain result; no state was changed.`,
-      );
-    const state = processState(nativeProcessId);
-    if (state !== 'dead')
-      throwRecovery(
-        lock,
-        state === 'alive'
-          ? `Native process PID ${nativeProcessId} for work ${work.id} is still alive; no process was killed.`
-          : `Native process PID ${nativeProcessId} for work ${work.id} cannot be checked; no state was changed.`,
-      );
-    const report = work.attempts.at(-1)?.report;
-    if (report !== undefined && recordValue(report) === null)
-      throwRecovery(
-        lock,
-        `Work ${work.id} has an unstructured running report; recovery left it unchanged.`,
-      );
-  }
-
-  private recordRecovery(works: Array<{ work: Work; nativeProcessId: number | undefined }>) {
-    this.db.transaction(() => {
-      for (const { work, nativeProcessId } of works) {
-        const row = this.db
-          .query<{ data: string }, [string]>('SELECT data FROM work WHERE id=?')
-          .get(work.id);
-        const current = row && workSchema.parse(JSON.parse(row.data));
-        const attempt = current?.attempts.at(-1);
-        if (!current || current.status !== work.status || current.calls !== work.calls || !attempt)
-          throwRecovery('changed', `Work ${work.id} changed during recovery; run recover again.`);
-        attempt.report ??=
-          nativeProcessId === undefined
-            ? {
-                outcome: 'interrupted',
-                code: 'MODEL_INTERRUPTED_BEFORE_TURN',
-                cleanup: 'not-observed',
-                usage: null,
-              }
-            : interruptedReport(undefined, nativeProcessId);
-        if (nativeProcessId !== undefined)
-          attempt.recoveryAcknowledgement = {
-            type: 'uncertain-invocation',
-            acknowledgedAt: new Date().toISOString(),
-            nativeProcessId,
-          };
-        current.status = 'failed';
-        this.save(current);
-      }
-    })();
-  }
-
-  private releaseRecoveryLock(
-    raw: string | null,
-    interruptedWorks: number,
-    acknowledgedWorks: number,
-  ): RecoveryReport {
-    if (raw === null)
-      return {
-        status: 'recovered',
-        lock: 'absent',
-        interruptedWorks,
-        acknowledgedWorks,
-        ...(acknowledgedWorks
-          ? {
-              guidance:
-                'Recovery preserved the work. Run `hivex update --retry-failed --root <project>` to retry it explicitly; recovery made zero model calls.',
-            }
-          : {}),
-      };
-    let released: boolean;
-    try {
-      released = this.releaseLock(raw);
-    } catch {
-      throwRecovery(
-        'unreadable',
-        acknowledgedWorks
-          ? 'Work was acknowledged, but knowledge.lock could not be released.'
-          : 'The owner is dead, but knowledge.lock could not be released atomically.',
-        interruptedWorks,
-      );
-    }
-    if (!released)
-      throwRecovery(
-        'changed',
-        acknowledgedWorks
-          ? 'Work was acknowledged, but knowledge.lock changed; run recover again before continuing.'
-          : 'knowledge.lock changed during recovery; inspect the store before continuing.',
-        interruptedWorks,
-      );
-    return {
-      status: 'recovered',
-      lock: 'released',
-      interruptedWorks,
-      acknowledgedWorks,
-      ...(acknowledgedWorks
-        ? {
-            guidance:
-              'Recovery preserved the work. Run `hivex update --retry-failed --root <project>` to retry it explicitly; recovery made zero model calls.',
-          }
-        : {}),
-    };
-  }
-
-  private releaseLock(expected: string) {
-    const path = join(this.directory, 'knowledge.lock');
-    try {
-      if (readFileSync(path, 'utf8') !== expected) return false;
-      unlinkSync(path);
-      return true;
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT') return true;
-      throw error;
-    }
-  }
-
   [Symbol.dispose]() {
-    this.db.close();
+    this.resources.dispose();
   }
 }

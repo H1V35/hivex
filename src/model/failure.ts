@@ -1,33 +1,58 @@
-import { z } from 'zod';
-import { AppServerRpcError } from './connection.ts';
-import type { ProfileEvidence } from './profile.ts';
+import { z } from "zod";
+import { AppServerRpcError } from "./rpc-error.ts";
+import type { ProfileEvidence } from "./profile.ts";
 
-export class ServerAdmissionFailure extends Error {
-  readonly cleanup: 'confirmed' | 'failed';
+class ServerAdmissionFailureError extends Error {
+  name = "ServerAdmissionFailureError";
+  readonly admission:
+    | (ProfileEvidence & { launchPolicyHash: string })
+    | undefined;
+  readonly cleanup: "confirmed" | "failed";
   readonly processId: number;
-  readonly admission: (ProfileEvidence & { launchPolicyHash: string }) | undefined;
-  constructor(options: {
-    cause: unknown;
-    cleanup: 'confirmed' | 'failed';
-    processId: number;
-    admission?: ProfileEvidence & { launchPolicyHash: string };
-  }) {
-    super('Native server admission failed', { cause: options.cause });
-    this.cleanup = options.cleanup;
-    this.processId = options.processId;
-    this.admission = options.admission;
+
+  constructor(
+    parameters: {
+      admission?: ProfileEvidence & { launchPolicyHash: string };
+      cause: unknown;
+      cleanup: "confirmed" | "failed";
+      processId: number;
+    },
+    options?: ErrorOptions
+  ) {
+    super("Native server admission failed", options);
+    Object.defineProperty(this, "cause", {
+      configurable: true,
+      enumerable: false,
+      value: parameters.cause,
+      writable: true,
+    });
+    this.admission = parameters.admission;
+    this.cleanup = parameters.cleanup;
+    this.processId = parameters.processId;
   }
 }
 
-export function failureDiagnostic(error: unknown): Record<string, unknown> {
-  if (error instanceof ServerAdmissionFailure) return failureDiagnostic(error.cause);
-  if (error instanceof z.ZodError)
-    return {
-      kind: 'invalid-native-response',
-      fields: error.issues.map((issue) => issue.path.join('.')),
+export { ServerAdmissionFailureError as ServerAdmissionFailure };
+
+export const failureDiagnostic = (error: unknown): Record<string, unknown> => {
+  let current = error;
+  while (current instanceof ServerAdmissionFailureError) {
+    current = current.cause;
+  }
+  if (current instanceof z.ZodError) {
+    const diagnosticKind = { kind: "invalid-native-response" };
+    const diagnosticFields = {
+      fields: current.issues.map((issue) => issue.path.join(".")),
     };
-  if (error instanceof AppServerRpcError) return { kind: 'rpc-rejection', code: error.code };
-  if (error instanceof Error && error.constructor === Error)
-    return { kind: 'native-admission', message: error.message };
-  return { kind: 'native-failure' };
-}
+    return { ...diagnosticKind, ...diagnosticFields };
+  }
+  if (current instanceof AppServerRpcError) {
+    const diagnosticKind = { kind: "rpc-rejection" };
+    const diagnosticCode = { code: current.code };
+    return { ...diagnosticKind, ...diagnosticCode };
+  }
+  if (Error.isError(current) && current.constructor === Error) {
+    return { kind: "native-admission", message: current.message };
+  }
+  return { kind: "native-failure" };
+};
