@@ -210,7 +210,7 @@ function collectCandidates(
       warnings.push({ path, message: 'Skipped symbolic link' });
       continue;
     }
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() && !matches(`${path}/`, config.exclude)) {
       candidates.push(...collectCandidates(root, absolutePath, config, warnings));
       continue;
     }

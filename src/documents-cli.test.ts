@@ -199,6 +199,30 @@ test('does not make an excluded historical source readable', () => {
   }
 });
 
+test('prunes excluded directories before inspecting their files and symlinks', () => {
+  const root = mkdtempSync(join(tmpdir(), 'hivex-excluded-directory-'));
+  try {
+    mkdirSync(join(root, 'app', 'ios'), { recursive: true });
+    writeFileSync(join(root, 'app', 'docs.md'), '# Legitimate\n', 'utf8');
+    writeFileSync(join(root, 'app', 'ios', 'README.md'), '# Generated\n', 'utf8');
+    symlinkSync(join(root, 'missing.md'), join(root, 'app', 'ios', 'broken.md'));
+    writeFileSync(
+      join(root, 'hivex.json'),
+      JSON.stringify({ include: ['app/**/*.md'], exclude: ['app/ios/**'] }),
+      'utf8',
+    );
+
+    const result = documentCommand(['sources', '--root', root]) as {
+      documents: Array<Record<string, unknown>>;
+      warnings: Array<{ path: string; message: string }>;
+    };
+    expect(result.documents.map((document) => document.path)).toEqual(['app/docs.md']);
+    expect(result.warnings).toEqual([]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('reports invalid UTF-8 and skips symlinked sources without reading outside the root', () => {
   const root = mkdtempSync(join(tmpdir(), 'hivex-documents-'));
   const outside = mkdtempSync(join(tmpdir(), 'hivex-documents-outside-'));
