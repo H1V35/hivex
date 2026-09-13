@@ -55,7 +55,7 @@ A clone without local knowledge can read the snapshot directly and reuse its mat
 
 When Markdown moves, use `hivex snapshot relocate <old-document> <new-document>` before updating knowledge. The old source must no longer be selected, and the destination must be selected current Markdown. This explicit operation preserves decision and relationship IDs and does not call the model or rewrite earlier work, answers, attempts or budgets. Unfinished work must be resolved through its normal lifecycle first.
 
-An identical document at a previously unknown destination reuses its knowledge and ingestion coverage. Changed content or consolidation into an existing destination leaves that destination pending for the normal update/check; it does not certify the old interpretation against new text. Retain the relocation report with the change and export the resulting graph alongside its Markdown. Do not relocate unrelated knowledge merely to hide unavailable evidence.
+An identical document at a previously unknown destination reuses its knowledge and ingestion coverage when retained evidence has matching, known source versions. Changed content, mixed or missing source versions, or consolidation into an existing destination leaves that destination pending for the normal update/check; it does not certify the old interpretation against new text. Retain the relocation report with the change and export the resulting graph alongside its Markdown. Do not relocate unrelated knowledge merely to hide unavailable evidence.
 
 ## Control consumption
 

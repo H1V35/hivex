@@ -188,8 +188,12 @@ export const relocateSource = function relocateSource(
   }
   const versions = sourceVersions(graph, from);
   const hasDestinationKnowledge = hasKnowledge(graph, to);
+  const hasUnversionedEvidence = graph.relationships
+    .flatMap((relationship) => relationship.evidence)
+    .some((evidence) => evidence.document === from && evidence.version === undefined);
   const isReused =
     !hasDestinationKnowledge &&
+    !hasUnversionedEvidence &&
     versions.length > 0 &&
     versions.every((version) => version === destination.hash);
   const documents = mapDocuments(graph, from, to, {

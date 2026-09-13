@@ -2829,6 +2829,40 @@ test('keeps relocated coverage pending when source evidence contains mixed versi
   });
 });
 
+test('keeps relocated coverage pending when a source citation has no version', () => {
+  project((root) => {
+    expect(invoke(root, ['update', '--codex', model(root)]).value.status).toBe('ready');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    const snapshotPath = nodePath.join(root, '.hivex/graph.json');
+    const graph = parseSnapshotGraph(readFileSync(snapshotPath, 'utf-8'));
+    const relationship = recordAt(arrayField(graph, 'relationships'), 0);
+    const citation = recordAt(arrayField(relationship, 'evidence'), 0);
+    expect(citation.document).toBe('cache.md');
+    Reflect.deleteProperty(citation, 'version');
+    writeFileSync(snapshotPath, JSON.stringify(graph));
+    expect(invoke(root, ['snapshot', 'import']).status).toBe(0);
+    rmSync(nodePath.join(root, 'cache.md'));
+    mkdirSync(nodePath.join(root, 'docs'));
+    writeFileSync(
+      nodePath.join(root, 'docs/cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n'
+    );
+
+    const relocated = invoke(root, ['snapshot', 'relocate', 'cache.md', 'docs/cache.md']);
+
+    expect(relocated.value).toMatchObject({
+      modelCalls: 0,
+      pendingUnits: ['docs/cache.md:1-3'],
+      reused: false,
+      sources: { stale: ['docs/cache.md'], unavailable: [] },
+    });
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    const exported = parseSnapshotGraph(readFileSync(snapshotPath, 'utf-8'));
+    const retained = recordAt(arrayField(exported, 'relationships'), 0);
+    expect(recordAt(arrayField(retained, 'evidence'), 0)).not.toHaveProperty('version');
+  });
+});
+
 test('consolidates source knowledge into an existing destination without certifying it', () => {
   project((root) => {
     const binary = model(root);
