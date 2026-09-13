@@ -31,7 +31,7 @@ Runtime settings identify Bun globals and Bun executables while keeping the pres
 
 ## Tests protect behavior
 
-Choose tests for value and risk, prioritizing critical flows, stable rules and demonstrated regressions. TDD is optional when behavior is sufficiently defined; explore unresolved behavior before committing its assumptions to tests. Do not require a test for every function, component, wrapper or line. A test must identify a supported behavior, meaningful invariant or regression it protects. Prefer the caller's observable interface and results that survive an internal refactor.
+Choose tests for value and risk, prioritizing critical flows, stable rules and demonstrated regressions. TDD is optional and reserved for critical flows whose behavior is sufficiently defined; explore unresolved behavior before committing its assumptions to tests. Do not require a test for every function, component, wrapper or line. A test must identify a supported behavior, meaningful invariant or regression it protects. Prefer the caller's observable interface and results that survive an internal refactor.
 
 For UI, test visible content, accessibility, interactions and loading/error/empty-state behavior. Do not freeze arbitrary child arrays, wrapper counts or class/style arrangements. A visual dimension needs a test only when it is an intentional requirement worth maintaining. For example, displaying "2 of 4" is a behavior; representing it as exactly three React children is not.
 

@@ -1,42 +1,30 @@
 ---
 name: hivex-git
-description: Manage issue triage, execution tickets, branches, commits, pull requests, CI follow-through and merge conflicts under the project's conventions and existing authorization.
+description: Manage issue triage, execution tickets, branches, commits, pull requests, CI, merge conflicts and completed-work cleanup under project conventions and existing authorization.
 ---
 
 # Keep work and Git coherent
 
-Read the repository's tracker and Git conventions, relevant issue and current working state. Preserve unrelated work. Use the configured tracker and native Git capabilities; do not introduce an orchestration framework to coordinate ordinary changes.
+Read the project's tracker/Git conventions, relevant issue and working state. Preserve unrelated work. Reuse an issue when its scope fits; read-only retrieval needs no new ticket. Define the outcome, boundaries and useful acceptance evidence, splitting only for independent results or actual dependencies.
 
-## Triage and plan execution
+## Triage
 
-Reuse an existing issue when its scope fits. Capture a clear outcome, boundaries and useful acceptance evidence. Split work only when independent results or actual dependencies make it easier to execute. Read-only retrieval does not need a new issue.
+Follow the project's guide or the [foundation triage guide](../hivex/assets/project/docs/guidelines/triage-labels.md). Recover relevant prior decisions, including why work was rejected, before reopening the question. Record durable reasons in their existing Markdown authority instead of another knowledge database.
 
-Use the project's triage guide. For an adopter without one, the [foundation triage guide](../hivex/assets/project/docs/guidelines/triage-labels.md) defines the baseline. Readiness, expected owner involvement, dependencies and risk are different dimensions; none selects a model or grants permission.
+Use the [common label catalogue](assets/labels.json) when adopting or aligning labels. Preserve useful project areas and transfer issue classification before retiring aliases. `epic`, `research`, `prototype` and `decision` describe work independently of a skill; a generic task label can be retired once its useful meaning is retained. Readiness, participation, dependencies and risk are distinct; labels grant no permissions and select no model.
 
-When adopting or aligning labels, use the [common catalogue](assets/labels.json) as the starting set and compare the live catalogue with the documented meaning. Preserve useful project-specific areas and reconcile aliases without losing issue classification. The shared names `epic`, `research`, `prototype` and `decision` describe work independently of a skill. The catalogue also identifies known legacy aliases. If a replacement label already exists, transfer useful issue classification before retiring the alias; do not discard dependencies or change issue scope. Retire a generic task label only when the remaining labels and issue retain its useful meaning.
+Use native blocking/sub-issue relationships when helpful. A label alone does not establish readiness, and defined work needs no decision-map hierarchy.
 
-Use native blocking/sub-issue relationships when they help coordination. Do not create a decision-map hierarchy for already defined work or declare something ready merely because a label is present.
+## Publish and integrate
 
-## Commit and open a PR
+Start a coherent branch from the current integration branch. Follow the project's commit format and language, with Conventional Commits as a useful default. Check the diff and applicable verification; link the PR to its issue and explain the resulting behavior, validation and material limits. Use structured arguments or a body file for multiline text and follow the project's draft convention.
 
-Start a coherent branch from the current integration branch, following the project's naming conventions. Use its commit format and language; Conventional Commits are a useful default. Check the diff and the relevant verification before publishing the branch.
+Follow CI to an actual result and confirm the independent review is current and matches the implementation agent's model/effort. Reuse valid verification. Resolve conflicts from both changes' intent and check affected behavior. Preserve shared history; avoid direct integration-branch pushes and force pushes.
 
-Keep the PR focused and linked to its owning issue. Lead with the concrete problem and resulting behavior, then the validation and material limits. Use a structured body argument or body file for multiline text. Follow the project's readiness convention for drafts.
+Merge when required checks/review pass and existing owner authorization covers it. Do not ask for the same permission again. If a tool blocks the action, explain the actual blocker and prepare the reviewable result before asking for what is missing. Update the appropriate checkout safely after integration.
 
-Track CI to an actual result. Fix demonstrated problems within scope, and preserve an honest distinction between failure, omission and success. Confirm that the independent review is current and uses the implementation agent's model and effort. Reuse a valid completed review instead of starting another; do not infer approval from an automated knowledge report.
+## Clean up completed work
 
-## Integrate and clean up
+Remove local/remote branches and worktrees belonging to completed work. Establish integration for implementation branches. Research, evidence and prototypes may have another end state: preserve useful results and required history before retiring them.
 
-Merge when the required checks and review pass and the owner's existing authorization covers the action. Do not ask for the same authorization again; if a tool blocks an otherwise authorized action, explain the actual blocker and prepare the concrete result before asking for what is missing.
-
-When resolving conflicts, read both changes and their intent, preserve needed behavior and run the checks affected by the resolution. Do not choose one side blindly or overwrite unrelated work.
-
-Preserve shared history and avoid direct integration-branch pushes or force pushes. After integration, update the appropriate checkout safely.
-
-## Finish the branch lifecycle
-
-Clean up the local and remote branches and worktrees belonging to completed work. For implementation work, establish that the intended changes were integrated. Research, evidence and prototype branches may have a different end state: preserve their useful results and required history in project documentation or an appropriate archive before retiring a completed branch.
-
-Keep unfinished work, including research, evidence and prototypes that have not reached their intended outcome. Branch age, absence of a PR or absence of an open issue is not enough to establish completion. Inspect the associated work and its disposition; leave uncertain or unrelated branches intact instead of treating cleanup as a repository-wide purge.
-
-Do not discard unmerged work merely to bypass a Git deletion refusal. Establish that it is integrated, its needed results/history are preserved, or discarding it is covered by the owner's explicit authorization. Preserve knowledge and required evidence before cleaning local execution state.
+Keep unfinished, uncertain or unrelated work. Age, no PR or no open issue does not prove completion. Do not discard unmerged work to bypass a deletion refusal; establish integration, preservation of needed results/history, or explicit authorization to discard it. Preserve required evidence before cleaning execution state.

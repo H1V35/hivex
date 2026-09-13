@@ -1,36 +1,26 @@
 ---
 name: hivex-document
-description: Establish or maintain project purpose, domain language, decisions, guidelines and procedures. Use for Hivex adoption, documentation migration, PRDs, glossaries, ADRs, or recording durable project knowledge.
+description: Establish or maintain project purpose, domain language, decisions, guidelines and procedures, including Hivex adoption and documentation migration.
 ---
 
-# Maintain the project's knowledge
+# Give knowledge an authoritative home
 
-Start with the project's documentation map, relevant sources and current owner decisions. Markdown owns intent and reasons; the graph helps recover them. Update the document that already owns the topic and scope. Create another only for a distinct purpose.
+Read the documentation map, relevant sources and current owner decisions. Update the document that owns the topic and scope; create another only for a distinct purpose. Markdown records intent and reasons; Hivex retrieves derived knowledge.
 
-## Adopt the foundation
+For adoption, use the installed `hivex init` when available and read its report. Complete missing meaning from evidence and the owner, keeping unresolved content provisional. Do not invent vision, requirements or vocabulary, or index empty scaffolding. The [foundation templates](../hivex/assets/project/docs/README.md) are starting material.
 
-Use the installed `hivex init` when available to prepare missing documents and configuration. The CLI scaffolds files; the principal agent completes their meaning. Read its report before continuing. Do not invent a project's vision, requirements or domain terms to fill a template.
+Prefer migration to the standard when reasonably possible. Preserve useful content, links, history and monorepo/package/module authority. Reuse shared rules rather than duplicating them; keep product, stack and host details in the adopting project. Inspect source selection before moving documents and use `hivex snapshot relocate` before normal incremental maintenance.
 
-Prefer migration to Hivex's standard structure when reasonably possible, preserving useful content, history, authority and links. Keep knowledge at its monorepo, package or module scope. Inspect existing instructions and source selection before moving files; when graph sources move, use the supported `hivex snapshot relocate` operation and normal incremental maintenance.
+## Keep documents useful
 
-Complete the PRD and glossary from existing evidence and the owner. Ask only for essential open decisions. Keep unresolved sections explicitly provisional, and finish meaningful content before spending calls to index empty scaffolding.
-
-Use the foundation [document templates](../hivex/assets/project/docs/README.md) as starting material. Apply the project's own product, stack and operating details; do not import another repository's identities, host paths or historical authorizations.
-
-## Give each document a purpose
-
-- PRD: why the project exists, who it serves, its vision, intended outcomes and scope.
-- CONTEXT: agreed domain terms with concise definitions; resolve ambiguity without adding a generic programming glossary.
-- ADR: a decision and its rationale, scope, alternatives or exceptions when they matter to future work.
+- PRD: purpose, users, vision, outcomes and scope.
+- CONTEXT: concise domain definitions and avoided synonyms where useful. Check vocabulary against rules and code; omit generic programming terms.
+- ADR: a consequential decision and its rationale, with scope, alternatives, dependencies and exceptions where they affect application.
 - Guideline: maintained rules for ongoing work.
-- Procedure: enough context, steps and verification to perform a particular operation. Add prerequisites or recovery details when they are relevant.
+- Procedure: steps and verification for an operation, with prerequisites or recovery when relevant.
 
-Keep rules with their conditions and exceptions. An accepted status or a historical quotation does not settle a later replacement. When a decision changes, make the change and history traceable; move replaced detail to an archive when that helps keep the current authority usable.
+Preserve conditions, exceptions and partial replacements. Keep proposed, current and historical decisions distinct. When replaced detail obscures the current authority, archive it with provenance and links while preserving referenced anchors or updating their callers.
 
-## Keep AGENTS.md lean
+Use a short [AGENTS.md entrypoint](../hivex/assets/project/AGENTS.md): orientation, development/verification guidance and indispensable project constraints. Explain when linked authorities matter; do not duplicate them or require every document on every task.
 
-Follow the open AGENTS.md convention with a consistent small entrypoint: orientation and knowledge pointers, development/verification guidance, and project-specific constraints only when needed. The [foundation entrypoint](../hivex/assets/project/AGENTS.md) provides the starting shape.
-
-Do not duplicate the PRD, glossary, guidelines or skills. A pointer should say when its target matters, not require every document on every task. Add local instructions only for real scope-specific needs. Use no arbitrary line-count gate.
-
-After documentation changes, check affected links and source selection. Use Hivex's installed maintenance and snapshot capabilities when knowledge changes, preserving existing work and accounting. Check the relevant sources before treating a graph warning as a new product decision.
+Check affected links and source selection. Maintain changed knowledge and export its snapshot using Hivex's installed capabilities, preserving work, history and accounting.
