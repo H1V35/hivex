@@ -16,7 +16,7 @@ Delegate suitable bounded subtasks when authorized and useful. Keep responsibili
 
 ## Tests and verification
 
-Choose checks for value and risk. Prioritize critical flows, stable rules and demonstrated regressions. TDD is optional when the behavior is sufficiently defined; use exploration first when product assumptions remain open.
+Choose checks for value and risk. Prioritize critical flows, stable rules and demonstrated regressions. TDD is optional and reserved for critical flows whose behavior is sufficiently defined; use exploration first when product assumptions remain open.
 
 Test observable behavior at useful interfaces with independent expected results. Avoid tests that freeze internal helpers, arbitrary structure or the implementation's own calculation. Investigate failures against the intended behavior before deciding whether the code or the test needs correction.
 

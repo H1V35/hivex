@@ -1,26 +1,20 @@
 ---
 name: hivex-design
-description: Resolve open product or architectural decisions, investigate uncertainty, and shape work into a useful specification or execution slices. Use for planning, a grill, design tradeoffs, focused research, or prototypes that answer a question.
+description: Resolve open product or architectural decisions through a grill, focused research or a useful prototype, and define scope or execution slices when needed.
 ---
 
-# Design useful work
+# Resolve what matters
 
-Recover the request, existing decisions and relevant project vocabulary first. Use the project's Markdown and Hivex's local retrieval. Inspect facts available in the repository or authoritative sources instead of asking the owner to rediscover them.
+Recover the request, relevant Markdown and Hivex's local evidence before asking questions. Reuse settled decisions and inspect facts available in the repository or primary sources. A defined change can proceed to implementation without an interview or another planning artifact.
 
-If the task is already defined, carry that scope into implementation. Do not start an interview or create planning artifacts merely to satisfy a pipeline.
+For a grill, ask one consequential question at a time, explain the tradeoff and recommend a course of action. Follow dependencies between decisions and wait for the owner's answer before implementing a design still under discussion.
 
-## Resolve what is open
+Use research to settle factual uncertainty and a small prototype to answer a behavior or design question. Make alternatives meaningfully different; expose the relevant states or interactions. Preserve the conclusion and useful evidence. A disposable presentation does not make validated domain logic disposable or establish production readiness.
 
-For a grill, ask one meaningful question at a time, explain the practical tradeoff and give a recommendation. Follow dependencies between decisions and wait for the owner's answer. Reuse prior answers. Close the shared understanding before implementing a design the owner is still deciding.
+## Shape the domain and the work
 
-Research a factual uncertainty using relevant primary sources. Build a small disposable prototype when seeing or exercising a behavior is the cheapest way to resolve a question. Keep either activity bounded to the decision it serves; preserve the useful conclusion and its evidence.
+Check terms and responsibilities against the project's glossary, code, rules and exceptions. Resolve ambiguity in the owning context instead of inventing synonyms. Prefer interfaces that hide useful complexity; question layers that only forward calls. Add an abstraction for a concrete responsibility, not to impose hexagonal architecture.
 
-Use the project's language and domain responsibilities. Prefer a small interface that hides meaningful internal complexity. Respect established architecture and identify concrete tradeoffs before introducing another abstraction.
+Capture the outcome, boundaries and useful acceptance evidence in the existing issue or spec. Split only for independently verifiable results or real dependencies. Cross-layer slices should deliver a meaningful behavior; a broad mechanical refactor may instead need introduction, migration and removal in stages.
 
-## Make execution clear
-
-Capture the intended outcome, scope, useful acceptance evidence and unresolved decisions at the level the change needs. Reuse an existing issue or spec when it already owns the work. Create extra execution tickets only for independently verifiable slices or dependencies that help coordination.
-
-A cross-layer feature slice should deliver a meaningful result. A mechanical refactor may need a different sequence; choose it from the actual affected code rather than forcing a template. Do not require exhaustive user stories, a decision-map hierarchy or one ticket per agent session.
-
-Record durable decisions through the project's documentation practice, using `hivex-document` when maintaining that knowledge. Use `hivex-git` for tracker publication within the owner's authorization.
+Use `hivex-document` for durable decisions and `hivex-git` for authorized tracker work. Neither extra tickets nor a fixed number of alternatives, agents or prototypes is required.
