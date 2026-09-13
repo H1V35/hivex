@@ -9,13 +9,13 @@ Hivex is a TypeScript/Bun product. Modules group behavior by domain responsibili
 
 ## Development and verification
 
-Work is issue-first in `H1V35/hivex`. New vertical work follows discovery where decisions remain open, then an agreed spec, verifiable execution tickets, implementation and code review. Reuse settled scope instead of reopening an interview. The owning repository carries the execution ticket; a cross-repository parent supplies context and coordination, not a substitute for native tracking.
+Work is issue-first in `H1V35/hivex`. Use design, documentation, implementation, review and Git as capabilities selected for the task. Resolve open decisions through discovery or a grill, and create additional specs or execution tickets when they help define or divide work. A defined change can proceed directly to implementation and review. Reuse settled scope instead of reopening an interview. The owning repository carries the execution ticket; a cross-repository parent supplies context and coordination, not a substitute for native tracking.
 
 Resolve the existing spec/ticket before changing code and link the PR and verification to it. Absorb review findings into the appropriate existing ticket whenever its scope permits. Open a separate issue only when strictly necessary to preserve independently actionable work, and record why it cannot be absorbed. Read-only retrieval does not need a new ticket. Specs and tickets track work and acceptance; resulting durable decisions also enter their repository authority.
 
 Use an existing issue for an already tracked requirement. Create a branch from the current remote main, keep each PR to one coherent change and preserve commit history when merging. Never push directly to main or force-push a shared branch. Apply review findings before acceptance; an invalid review can be rerun, while an adverse finding must be resolved on its merits. Current explicit owner authorization governs whether the agent may merge.
 
-Independent code reviewers use the coordinating agent's current model and reasoning effort. Pass that profile explicitly when the subagent default differs, and verify the effective configuration after dispatch. Do not substitute the cheaper knowledge model for code review. Routine implementation subtasks may use an explicitly authorized cheaper model; Hivex's internal knowledge extraction/checking uses the user's knowledge-model configuration independently of the development and code-review model.
+Use one independent review by default, covering scope, correctness and standards; add another when concrete risk or findings justify it. Independent code reviewers use the implementing agent's current model and reasoning effort. Pass that profile explicitly when the subagent default differs, and verify the effective configuration after dispatch. Do not substitute the cheaper knowledge model for code review. Routine implementation subtasks may use an explicitly authorized cheaper model; Hivex's internal knowledge extraction/checking uses the user's knowledge-model configuration independently of the development and code-review model.
 
 Choose verification for the affected surfaces. Code changes require typechecking, lint, formatting and relevant behavior tests; documentation-only changes need formatting and checks of affected references or declared sources. Record the exact revision and the checks actually completed. A later change invalidates the affected results. Do not claim an omitted, interrupted or truncated check passed.
 
@@ -31,7 +31,7 @@ Runtime settings identify Bun globals and Bun executables while keeping the pres
 
 ## Tests protect behavior
 
-TDD guides development through meaningful failing examples; it does not require a test for every function, component, wrapper or line. A test must identify a supported behavior, meaningful invariant or regression it protects. Prefer the caller's observable interface and results that survive an internal refactor.
+Choose tests for value and risk, prioritizing critical flows, stable rules and demonstrated regressions. TDD is optional when behavior is sufficiently defined; explore unresolved behavior before committing its assumptions to tests. Do not require a test for every function, component, wrapper or line. A test must identify a supported behavior, meaningful invariant or regression it protects. Prefer the caller's observable interface and results that survive an internal refactor.
 
 For UI, test visible content, accessibility, interactions and loading/error/empty-state behavior. Do not freeze arbitrary child arrays, wrapper counts or class/style arrangements. A visual dimension needs a test only when it is an intentional requirement worth maintaining. For example, displaying "2 of 4" is a behavior; representing it as exactly three React children is not.
 
@@ -59,7 +59,7 @@ Use repository decisions and review evidence for durable knowledge, not private 
 
 The replacement workflow follows [ADR 0010](../adr/0010-practical-knowledge-assistance.md). It processes bounded document batches with one additional knowledge check, keeps partial knowledge usable and preserves a work budget across phases and resumption. A consultation maintains one pending batch before answering, and a source-based repair replaces interpretations without changing doctrine. Keep check warnings scoped and public evidence limited to source coordinates, version and text. Avoid a new abstraction or protocol unless it protects a concrete requirement. The owner-authorized implementation can replace the earlier cohort/admission pipeline; its historical evidence remains unchanged.
 
-Hivex assists the principal reviewer with decisions, dependencies, exceptions and possible conflicts. The reviewer verifies its findings. Missing context or uncertainty limits the conclusions it affects; a definitive finding must refer to the actual document and implementation versions reviewed.
+Start knowledge support with local search, neighbors and source reading, reusing current context. Use model-assisted interpretation or review when it adds useful information rather than as a mandatory step for every change. Hivex assists the principal reviewer with decisions, dependencies, exceptions and possible conflicts. The reviewer verifies its findings. Missing context or uncertainty limits the conclusions it affects; a definitive finding must refer to the actual document and implementation versions reviewed.
 
 ## Retire mechanisms without losing knowledge
 
@@ -72,3 +72,9 @@ A replacement workflow can be used before every historical artifact is retired w
 The owner selected `@h1v35/hivex` for the npm package on 2026-09-08, retaining `hivex` as the installed command, and approved the MIT license. The scoped name avoids the unrelated existing unscoped npm package. Use an authenticated account authorized for that scope; do not infer npm ownership from a matching GitHub name. Release preparation must verify the packed contents and exclude private project evidence and runtime stores. Project integration follows the normal release process after the complete cycle is validated; this decision alone does not mean a package has been published.
 
 Before publication, inspect and scan the exact package archive for secrets and unintended private content. Record its hash and the completed scan result; a repack requires a fresh check. Publish the same verified artifact, not an unchecked reconstruction from a changed working tree.
+
+## Shared project foundation
+
+The [foundation decision](../adr/0012-project-foundation-and-workflow.md) adds a recommended documentation and workflow baseline to Hivex distribution. The CLI prepares missing files without model calls; the principal agent completes meaningful project content and migrates existing documentation when appropriate. Preserve monorepo, package and module authority and the adopting project's actual decisions.
+
+Keep AGENTS.md as a brief, consistent entrypoint with relevant pointers and indispensable project details. Use clear language, explaining a technical term when it matters to understanding or a decision, without explaining every term or changing the owner's requested level of detail.

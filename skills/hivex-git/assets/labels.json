@@ -1,0 +1,152 @@
+{
+  "labels": [
+    {
+      "name": "needs-triage",
+      "color": "d4c5f9",
+      "description": "The issue needs evaluation."
+    },
+    {
+      "name": "needs-info",
+      "color": "fbca04",
+      "description": "Essential information is missing."
+    },
+    {
+      "name": "ready-for-agent",
+      "color": "2ea44f",
+      "description": "Defined enough for an agent to begin; later decisions may still arise."
+    },
+    {
+      "name": "ready-for-human",
+      "color": "1d76db",
+      "description": "The work requires human implementation."
+    },
+    {
+      "name": "wontfix",
+      "color": "ffffff",
+      "description": "This issue will not be actioned."
+    },
+    {
+      "name": "AFK",
+      "color": "1a7f37",
+      "description": "Can finish without further owner participation; not a permission or model choice."
+    },
+    {
+      "name": "HITL",
+      "color": "0052cc",
+      "description": "Owner participation is expected before completion; not a model choice."
+    },
+    {
+      "name": "blocked",
+      "color": "e11d21",
+      "description": "Blocked by a dependency or unresolved decision."
+    },
+    {
+      "name": "deferred",
+      "color": "fbca04",
+      "description": "Decided, but intentionally not scheduled."
+    },
+    {
+      "name": "high-risk",
+      "color": "b60205",
+      "description": "Consequential change requiring particular review attention."
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Supported behavior is not working correctly."
+    },
+    {
+      "name": "enhancement",
+      "color": "a2eeef",
+      "description": "New or improved capability."
+    },
+    {
+      "name": "documentation",
+      "color": "0075ca",
+      "description": "Project documentation work."
+    },
+    {
+      "name": "refactor",
+      "color": "5319e7",
+      "description": "Code or structure changes preserving intended behavior."
+    },
+    {
+      "name": "testing",
+      "color": "0e8a16",
+      "description": "Test infrastructure or useful behavior coverage."
+    },
+    {
+      "name": "architecture",
+      "color": "0e8a16",
+      "description": "Domain model or architectural decisions."
+    },
+    {
+      "name": "security",
+      "color": "b60205",
+      "description": "Security findings or hardening."
+    },
+    {
+      "name": "performance",
+      "color": "d93f0b",
+      "description": "Performance, resource use or caching."
+    },
+    {
+      "name": "ci",
+      "color": "0366d6",
+      "description": "CI, build tooling or repository configuration."
+    },
+    {
+      "name": "ux/ui",
+      "color": "d4c5f9",
+      "description": "User-facing experience or interface behavior."
+    },
+    {
+      "name": "epic",
+      "color": "3e2f8c",
+      "description": "Coherent parent work tracking related child issues."
+    },
+    {
+      "name": "research",
+      "color": "0e8a16",
+      "description": "Investigate facts needed for a decision."
+    },
+    {
+      "name": "prototype",
+      "color": "fbca04",
+      "description": "A bounded experiment to resolve a design question."
+    },
+    {
+      "name": "decision",
+      "color": "d93f0b",
+      "description": "An unresolved product or engineering decision."
+    },
+    {
+      "name": "severity: critical",
+      "color": "b60205",
+      "description": "Security finding severity: critical."
+    },
+    {
+      "name": "severity: high",
+      "color": "d93f0b",
+      "description": "Security finding severity: high."
+    },
+    {
+      "name": "severity: moderate",
+      "color": "fbca04",
+      "description": "Security finding severity: moderate."
+    },
+    {
+      "name": "severity: low",
+      "color": "c2e0c6",
+      "description": "Security finding severity: low."
+    }
+  ],
+  "legacyAliases": {
+    "wayfinder:map": "epic",
+    "wayfinder:research": "research",
+    "wayfinder:prototype": "prototype",
+    "wayfinder:grilling": "decision",
+    "risk: high": "high-risk"
+  },
+  "retired": ["wayfinder:task"]
+}

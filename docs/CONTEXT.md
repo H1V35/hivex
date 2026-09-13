@@ -4,6 +4,12 @@ Hivex supplies project knowledge to the agents responsible for implementation an
 
 ## Language
 
+**Project foundation**: The recommended starting documents, workflow capabilities and knowledge practices that an adopting project tailors to its own purpose and decisions.
+
+**Initialization**: Preparing missing foundation files and configuration without supplying new project facts or replacing existing knowledge.
+
+**Adoption**: Fitting the foundation to a project by completing its meaning, preserving useful existing knowledge and aligning documentation and working practices.
+
 **Document**: A selected Markdown file, wherever its project, package or module keeps it.
 
 **Archived document**: Historical Markdown preserved as evidence of replaced decisions and their reasons. It remains available for focused retrieval without being presumed current authority.

@@ -1,27 +1,55 @@
 # Hivex
 
-Project decisions, dependencies and exceptions for the agent responsible for implementation and review. Markdown remains authority; Hivex supplies context so agents can act autonomously without reopening settled decisions.
+A project foundation and reusable knowledge for autonomous agents. Hivex provides recommended Markdown, focused workflow skills and retrieval of decisions, dependencies and exceptions. Project Markdown remains authority and the responsible agent directs the work.
 
 Hivex is a TypeScript/Bun CLI. The current knowledge profile is Luna/max through native Codex and the user's ChatGPT subscription, without silent fallback. The implementing agent may use another model. Model invocation is localized for future configuration; multiple providers are not yet validated.
 
-## Current delivery
+## Project foundation
 
-This release-in-development supplies initial updates and task consultation (#47), plus automatic incremental maintenance and interpretation repair (#48), and task/diff review assistance (#19). Release preparation remains separate from this CLI contract.
+Hivex combines incremental knowledge, local retrieval, optional model assistance and a small adoption workflow. Its five general skills cover design, documentation, implementation, independent review and Git/triage. Use the capabilities a task needs rather than a compulsory sequence.
 
-No installed command approves an implementation. The principal reviewer verifies findings, tests and the actual source evidence. See the [approved product decision](docs/adr/0010-practical-knowledge-assistance.md).
+No installed command approves an implementation. The principal reviewer checks findings, relevant tests and source evidence. The [knowledge decision](docs/adr/0010-practical-knowledge-assistance.md) and [foundation decision](docs/adr/0012-project-foundation-and-workflow.md) define these responsibilities.
 
-## Install the CLI and skill
+## Install the CLI and skills
 
-Requires Bun 1.4.2. Once the release is available from npm:
+Requires Bun 1.4.2:
 
 ```sh
 bun add --dev --exact @h1v35/hivex
 bun hivex --help
 ```
 
-Copy `node_modules/@h1v35/hivex/skills/hivex` into the skill directory used by your agent. For an agent that discovers project skills in `.agents/skills`, use `.agents/skills/hivex`. Keep the CLI and skill at the same release; upgrade the copied skill when upgrading the package. The skill and its Markdown guide are portable and do not require private tools or other installed skills.
+The package includes `hivex`, `hivex-design`, `hivex-document`, `hivex-implement`, `hivex-review` and `hivex-git` under `skills/`. Install the directories together in the skill location your agent discovers. Keep them at the same release as the CLI; the relative references between these bundled skills should stay intact.
 
-The current knowledge profile needs an authenticated Codex CLI session with the selected Luna/max model available. Native invocation checks that profile and stops rather than silently falling back. Document discovery and version checks work without a model. See the CLI help for bounded model work.
+For agents using project-local `.agents/skills`, package links avoid copied skills becoming stale. Run from the project root after installation:
+
+```sh
+mkdir -p .agents/skills
+for skill in hivex hivex-design hivex-document hivex-implement hivex-review hivex-git; do
+  target=".agents/skills/$skill"
+  if [ ! -e "$target" ] && [ ! -L "$target" ]; then
+    ln -s "../../node_modules/@h1v35/hivex/skills/$skill" "$target"
+  fi
+done
+```
+
+Existing skill entries are preserved; inspect them before replacing a custom or older installation. An agent using another discovery location can install the same directories there. The bundled skills do not require the former external general-workflow skill set.
+
+The current knowledge profile needs an authenticated Codex CLI session with Luna/max available. Invocation validates that profile without silent fallback. Document discovery, source/version checks, snapshot operations and initialization do not require a model.
+
+## Initialize a project
+
+```sh
+bun hivex init
+# Or prepare another existing project directory:
+bun hivex init --root /path/to/project
+```
+
+Initialization creates missing foundation documents, a source configuration and Git ignore rules that keep `.hivex/graph.json` shareable while local execution state stays ignored. It reports created, preserved and updated paths, makes no model calls, and does not install dependencies, configure global tools or write to GitHub. Repeating it preserves existing Markdown, configuration, graph and history.
+
+The foundation includes a short `AGENTS.md`, documentation map, draft PRD and glossary, ADR directory, engineering and triage guidelines, and a tracker procedure. The principal agent completes the project's actual purpose, vision and language from evidence and owner decisions. Draft headings do not stand in for those decisions.
+
+Use the documentation skill to migrate existing material to the standard when reasonably possible, preserving useful content, links, history and monorepo/package/module scope. The CLI does not infer semantic migrations or overwrite existing sources. The Git skill aligns useful labels and tracker conventions within the owner's authorization; project-specific areas remain local.
 
 ## Run
 
@@ -132,11 +160,13 @@ Keep only the shared graph under version control, for example:
 
 Read-only queries do not rewrite the snapshot. Export intentionally when reusable knowledge changes, not on every consultation. Invalid snapshots or symbolic-link paths fail without replacing local knowledge. Existing local stores continue to work without a shared file.
 
-## Agent skill and Markdown practice
+## Workflow skills and Markdown practice
 
-The [portable Hivex skill](skills/hivex/SKILL.md) teaches consultation before implementation, support to the principal reviewer, documentation maintenance, uncertainty and budget handling. It uses the installed CLI's actual interface and does not require private tools or other skills.
+The [Hivex skill](skills/hivex/SKILL.md) handles local retrieval, incremental knowledge, uncertainty and accounting. The additional capabilities are [design](skills/hivex-design/SKILL.md), [documentation](skills/hivex-document/SKILL.md), [implementation](skills/hivex-implement/SKILL.md), [review](skills/hivex-review/SKILL.md) and [Git/triage](skills/hivex-git/SKILL.md).
 
-The [optional Markdown convention](skills/hivex/references/markdown.md) describes authority maps, glossaries, ADRs, guidelines, process and procedures. Recommend it when useful; existing layouts, metadata conventions and writing styles remain valid. Create only the documents a project needs.
+The [Markdown foundation](skills/hivex/references/markdown.md) defines the recommended adoption layout, concise agent entrypoint, purpose, glossary, decisions, guidelines and procedures. Knowledge operations continue to accept other Markdown layouts. Preserve a project's useful rules and exceptions when adopting the baseline.
+
+Prefer DDD and meaningful responsibilities, risk/value-based tests with optional TDD, and one independent review by default. The reviewer matches the implementation agent's model and effort. Use local knowledge before model-assisted interpretation, and explain technical details clearly when they matter to the owner's understanding or decisions.
 
 ## Development
 
@@ -147,7 +177,7 @@ bun run format:check
 bun run test
 ```
 
-Tests use the public CLI and a simulated native transport. Real Luna evaluations are bounded and reported separately; simulated token usage is not a consumption measurement. Development is issue-first, with coherent PRs, independent Standards/Spec review and CI on the final commit. See the [engineering workflow](docs/guidelines/engineering.md).
+Tests use the public CLI and a simulated native transport. Real Luna evaluations are bounded and reported separately; simulated token usage is not a consumption measurement. Development is issue-first, with coherent PRs, an independent review covering scope/correctness/standards and CI on the final commit. See the [engineering workflow](docs/guidelines/engineering.md).
 
 Earlier candidate/fidelity/comparison/admission protocols and their tests are retired from the active CLI. Their code remains in Git history and historical evidence keeps its original results. They do not impose a requirement to reproduce an Opus graph or exhaustively replay an old gold suite.
 

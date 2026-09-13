@@ -1,70 +1,46 @@
 ---
 name: hivex
-description: Retrieve project decisions and their dependencies and exceptions with Hivex, support implementation and review, and maintain useful Markdown knowledge. Use when Hivex is requested or configured for a project.
+description: Adopt Hivex's project foundation, retrieve relevant project decisions and their dependencies or exceptions, and maintain reusable Markdown knowledge. Use when Hivex is requested or configured for a project.
 ---
 
-# Hivex
+# Project knowledge and foundation
 
-Hivex gives the implementing and reviewing agents project context. Markdown is documentary authority; the graph is derived assistance. The principal agent remains responsible for the work. Recover settled decisions before asking the owner to decide them again.
+Markdown records project intent and decisions. Hivex retrieves derived knowledge and its relationships for the agent responsible for design, implementation or review. Recover settled decisions before asking the owner to decide them again.
 
-## Start with the installed interface
+## Use the installed capabilities
 
-Read the project's agent instructions and source configuration. Run `hivex --help` when the installed interface is unfamiliar. In a Bun project, `bun hivex` resolves the installed CLI. The package is `@h1v35/hivex`; do not fetch the unrelated unscoped package.
+Read the project's brief agent entrypoint and source configuration. Use `hivex --help` when the installed interface is unfamiliar; in a Bun project, `bun hivex` resolves the installed CLI. The package is `@h1v35/hivex`, not the unrelated unscoped package. Do not invent commands or silently change the knowledge model.
 
-Use the capabilities advertised by that version. Do not invent commands, silently switch models or pretend a planned capability exists. Hivex's current validated knowledge profile is Luna/max through native Codex; the principal agent's model is independent of that choice.
+For adoption, use `init` when the installed version provides it. It prepares missing documents and configuration without model calls. Use `hivex-document` to complete project meaning and migrate existing documentation to the standard when appropriate, and `hivex-git` for the tracker and labels. The five workflow skills are independent capabilities, not compulsory phases.
 
-Projects may declare additional historical Markdown with `history` globs in `hivex.json`. Those sources are available to `sources` and `read`, but remain outside ordinary update and consultation selection. Use `--source <document>` with `ask` or `review` for a focused retrieval; a known graph relationship may bring back only the bounded evidence it needs. Explicit `exclude` globs still win, and the CLI continues to reject symlinks, protected directories and paths outside the project.
+## Retrieve before deciding
 
-Native Codex must be able to write its own local state. When the host sandbox prevents that, use its normal execution-approval mechanism within the existing authorized scope. Keep a failed launch in the same work history when resuming; an initialization failure is not a model verdict.
+Start with focused `search`, `neighbors` and `read`. Read the evidence and follow relevant dependencies, exceptions and replacements, including indirect ones. Reuse current context instead of repeating a query for every file.
 
-## Before implementation
+A preview, accepted label or isolated warning does not establish the full meaning. Check scope, conditions, versions and later decisions. If the sources settle the matter, apply it; otherwise explain the actual unresolved decision and recommend a course of action.
 
-For a coherent feature or behavior change, ask about the intended task and recover the relevant decisions. Read their evidence and follow relevant dependencies, exceptions and replacements, including indirect relationships. A search preview or accepted label alone does not settle scope.
+Use `ask` for model-assisted interpretation when it adds value. It may maintain one relevant pending batch before answering under the same work budget. Explicit `--source` selection can focus current or historical evidence. Ordinary queries do not require ingesting all declared history.
 
-Use Hivex's source/version references. Keep conditions with their rules; a partial exception does not revoke an entire document. If the evidence answers the question, apply it without asking the owner again. Ask only when information is missing, sources cannot resolve a real ambiguity or a new decision requires the owner's involvement. Present the sources, impact and your recommendation.
+## Maintain the derived knowledge
 
-Queries should be focused. Reuse context that remains current rather than asking again per file or implementation step. Respect declared incomplete exploration and unavailable evidence.
+The principal agent maintains the Markdown. Detect new, changed or removed sources before relying on related graph entries, and use incremental `update` when needed. Large documents are processed in bounded rounds; preserve partial progress and the same work's consumed budget. Do not resend the whole corpus when only a later round remains.
 
-## During review
+When sources move, use `snapshot relocate <old> <new>` before updating. It preserves identities, relationships, evidence versions and prior work without model calls. Only an identical source with matching known versions at a previously unknown destination reuses coverage; changes, mixed or missing versions and consolidation remain pending for normal maintenance. Do not relocate unrelated knowledge to hide a warning.
 
-The principal reviewer directs the review. Run `hivex review "<task>" --base <git-ref>` from the Git project root. It examines tracked and untracked working changes, recovers relevant documentary context and makes one review call after at most one update/check batch. The default total budget is three calls; resume the same task/base with the intended total limit to continue retained work. Expanding a partial report keeps its work identity and consumed budget; a larger context does not create another allowance.
+Repair a demonstrated interpretation error with `update --repair <document> --reason <correction>` after checking the source, its dependencies and replacements. Do not repair correct knowledge merely because a warning omits context, or change doctrine to satisfy the model. Keep unresolved limitations explicit.
 
-Check each finding against its cited before/after code and Markdown versions, including dependencies, conditions and exceptions. Resolve a demonstrated contradiction before closing the change, by correcting the implementation or recording an approved decision change. Uncertainty calls for focused investigation; absence of a finding is not implementation approval. Missing context may be addressed with a focused task, explicit `--source` or an appropriate context limit, not automatic semantic retries.
+## Support review
 
-Save a report outside the reviewed project or in an ignored path when it must survive the session. `hivex review --check <saved-report.json> --root <project>` checks documentary and implementation freshness without a model. A current report is not proof of correct code; a stale report does not cover subsequent changes. Review output never replaces general code review, lint or tests.
+The principal reviewer directs implementation review and uses the implementing agent's model and effort. Hivex's knowledge model is separate. Use local evidence first; run `review "<task>" --base <git-ref>` only when model-assisted support adds useful information.
 
-## Maintain knowledge
+Confirm any finding against the actual code and documentary versions. A lack of model findings is not implementation approval. Save a review report outside the reviewed project or in an ignored location when needed; `review --check <report>` verifies its documentary and implementation freshness without a model call.
 
-The implementing agent maintains the documents as part of the change. Hivex may identify affected documents or suggest a correction, but does not rewrite project decisions on its own. Correct an incorrect graph interpretation against its source; do not alter doctrine to satisfy the model.
+## Share progress and preserve accounting
 
-Keep documents at their monorepo, package or module authority. Follow the project's existing layout and format. When establishing or improving documentation, use the optional [Markdown convention](references/markdown.md); it is guidance, not an installation prerequisite.
+After useful knowledge changes, `snapshot export` writes `.hivex/graph.json` for Git alongside its sources. Local SQLite, attempts, locks and caches remain ignored. A fresh clone reuses a matching snapshot; existing local state takes precedence until an explicit `snapshot import`, which refuses unfinished work.
 
-Detect new, changed or removed documents before relying on the graph. Use the installed update workflow within the same work budget. Working documents may be queried without a commit, but that state is not approval; preserve the exact versions used by a review. Pending or uncertain knowledge limits the conclusions that depend on it, without making unrelated context unusable.
+Budgets cover all phases and attempts of a work item. Resume that work with its retained accounting; a larger total limit is not a fresh allowance. Existing owner authorization remains valid. Report actual completed usage and unknown consumption honestly, including failed or interrupted attempts.
 
-`ask` updates at most one relevant pending batch before answering, under the same total call/input budget. Its default is three calls. Omitted limits preserve a resumed work item's budget. Repeat the same task to resume; changing its budget changes the total ceiling, never the consumed count. Pending corpus coverage is explicit; use `update` when more rounds are needed, rather than issuing repeated identical questions to force indexing.
+Use `recover` for interrupted execution, not ordinary retrieval. An uncertainty acknowledgement preserves uncertainty and cost; it does not certify a remote outcome or authorize an automatic retry. Use `prune` for obsolete completed work/caches when appropriate, preserving unfinished work and required evidence. Do not wipe state, restart counters or repeat semantic checks merely to obtain approval.
 
-An ordinary consultation does not ingest every declared historical source. A focused source is marked as historical in supplied packets, decisions and evidence, and its extracted decisions retain historical status with their conditions, exceptions, warnings and source ranges. If a required historical dependency is outside the declared scope, inspect `unavailableDocuments` and the reported coverage instead of treating the answer as complete.
-
-Repair a demonstrably wrong interpretation with `update --repair <document> --reason <correction>`. Check the Markdown first. This revises derived knowledge and its relationships without changing the document or authorizing new policy. Do not use it to suppress a genuine contradiction. Review source-local warnings in their stated scope and inspect `unavailableDocuments` for changed or removed dependencies.
-
-## Share reusable knowledge
-
-`hivex snapshot export` saves the current graph to `.hivex/graph.json`, suitable for Git alongside its Markdown sources. It retains source versions, evidence, available provenance and partial/uncertain coverage; it does not export local attempts, budgets, process locks or model caches. Snapshot commands make no model calls. Keep the SQLite store and locks ignored while allowing the shared JSON file.
-
-A clone without local knowledge can read the snapshot directly and reuse its matching units on the first update. Existing local knowledge takes precedence; `hivex snapshot import` explicitly adopts the shared graph and refuses if work is unfinished. Preserve that work and its accounting rather than deleting the store to force import. Stale or unavailable source versions remain explicit, and source freshness is not semantic approval. Export when knowledge changes; ordinary reads do not dirty the shared artifact.
-
-When Markdown moves, use `hivex snapshot relocate <old-document> <new-document>` before updating knowledge. The old source must no longer be selected, and the destination must be selected current Markdown. This explicit operation preserves decision and relationship IDs and does not call the model or rewrite earlier work, answers, attempts or budgets. Unfinished work must be resolved through its normal lifecycle first.
-
-An identical document at a previously unknown destination reuses its knowledge and ingestion coverage when retained evidence has matching, known source versions. Changed content, mixed or missing source versions, or consolidation into an existing destination leaves that destination pending for the normal update/check; it does not certify the old interpretation against new text. Retain the relocation report with the change and export the resulting graph alongside its Markdown. Do not relocate unrelated knowledge merely to hide unavailable evidence.
-
-## Control consumption
-
-Large Markdown is ingested in bounded rounds. Inspect pending units and coverage, and resume the same work; do not wipe the store or resend the whole corpus when only a later round remains.
-
-A budget covers the complete work item, its phases and attempts. Resume retained progress with its original accounting; do not start a fresh counter to bypass an exhausted limit. Separate initial indexing, maintenance, consultation and review costs and report actual usage and unknown consumption. Deterministic reads do not require another model call, although the caller consumes context tokens.
-
-Do not automatically retry semantic disagreements or keep correcting until the model says green. After a crash, use `recover` to inspect retained work. It must not alter live owners or processes. An explicit `--acknowledge-uncertain` preserves uncertainty and cost; it does not certify a remote outcome or authorize an automatic retry. Resume only the intended work with its existing budget. Use `prune` for obsolete completed work and cached responses when needed; keep unfinished work and export evidence that must outlive cache retention.
-
-Preserve useful results and their limits. At a budget boundary, explain what remains and obtain an authorized extension before spending more. Existing user authorization remains valid; the skill does not require another permission question for already authorized work.
-
-If maintenance reports `context-limit`, inspect `work.contextLimit` for required documents and bytes. Restore missing evidence or adjust the context bound, then resume the same task. No extraction call is spent while its known relationship evidence is unavailable or exceeds that bound.
+If a result reports a context limit, inspect the required evidence and restore it or adjust the bound within scope before resuming the same work. Keep native execution permissions and timeouts appropriate to the task. For document layout and source conventions, consult [Markdown guidance](references/markdown.md) when establishing or reorganizing knowledge.
