@@ -67,7 +67,7 @@ const main = async (input: string[]) => {
         {
           modelCalls: 0,
           name: 'snapshot',
-          usage: 'snapshot export | import [--root <project>]',
+          usage: 'snapshot export | import | relocate <from> <to> [--root <project>]',
         },
         { modelCalls: 0, name: 'status', usage: 'status [--root <project>]' },
       ],

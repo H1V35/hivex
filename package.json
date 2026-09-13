@@ -1,6 +1,6 @@
 {
   "name": "@h1v35/hivex",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "Versioned project knowledge for people and agents.",
   "scripts": {
@@ -63,7 +63,8 @@
     "!src/**/*.test.ts",
     "docs/README.md",
     "docs/CONTEXT.md",
-    "docs/engineering.md",
+    "docs/guidelines/engineering.md",
+    "docs/procedures/self-hosted-runner.md",
     "docs/adr/0003-independent-bun-installation.md",
     "docs/adr/0010-practical-knowledge-assistance.md",
     "docs/adr/0011-shared-knowledge-and-selective-history.md",

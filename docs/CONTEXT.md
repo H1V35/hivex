@@ -34,6 +34,8 @@ Hivex supplies project knowledge to the agents responsible for implementation an
 
 **Interpretation repair**: Replacing a wrong derived interpretation by comparing it with unchanged Markdown. It preserves source authority and does not resolve a genuine policy conflict by itself.
 
+**Source relocation**: Moving existing knowledge to a document's new location, retaining its decisions and relationships while distinguishing reusable evidence from content that needs a new check.
+
 **Context**: The decisions, related evidence and remaining uncertainties relevant to a particular task.
 
 **Implementation version**: The captured change against a particular base together with the exact contents of the affected files. Later code changes are outside that review.

@@ -53,6 +53,10 @@ Repair a demonstrably wrong interpretation with `update --repair <document> --re
 
 A clone without local knowledge can read the snapshot directly and reuse its matching units on the first update. Existing local knowledge takes precedence; `hivex snapshot import` explicitly adopts the shared graph and refuses if work is unfinished. Preserve that work and its accounting rather than deleting the store to force import. Stale or unavailable source versions remain explicit, and source freshness is not semantic approval. Export when knowledge changes; ordinary reads do not dirty the shared artifact.
 
+When Markdown moves, use `hivex snapshot relocate <old-document> <new-document>` before updating knowledge. The old source must no longer be selected, and the destination must be selected current Markdown. This explicit operation preserves decision and relationship IDs and does not call the model or rewrite earlier work, answers, attempts or budgets. Unfinished work must be resolved through its normal lifecycle first.
+
+An identical document at a previously unknown destination reuses its knowledge and ingestion coverage when retained evidence has matching, known source versions. Changed content, mixed or missing source versions, or consolidation into an existing destination leaves that destination pending for the normal update/check; it does not certify the old interpretation against new text. Retain the relocation report with the change and export the resulting graph alongside its Markdown. Do not relocate unrelated knowledge merely to hide unavailable evidence.
+
 ## Control consumption
 
 Large Markdown is ingested in bounded rounds. Inspect pending units and coverage, and resume the same work; do not wipe the store or resend the whole corpus when only a later round remains.
