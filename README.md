@@ -147,7 +147,7 @@ bun run format:check
 bun run test
 ```
 
-Tests use the public CLI and a simulated native transport. Real Luna evaluations are bounded and reported separately; simulated token usage is not a consumption measurement. Development is issue-first, with coherent PRs, independent Standards/Spec review and CI on the final commit. See the [engineering workflow](docs/engineering.md).
+Tests use the public CLI and a simulated native transport. Real Luna evaluations are bounded and reported separately; simulated token usage is not a consumption measurement. Development is issue-first, with coherent PRs, independent Standards/Spec review and CI on the final commit. See the [engineering workflow](docs/guidelines/engineering.md).
 
 Earlier candidate/fidelity/comparison/admission protocols and their tests are retired from the active CLI. Their code remains in Git history and historical evidence keeps its original results. They do not impose a requirement to reproduce an Opus graph or exhaustively replay an old gold suite.
 
