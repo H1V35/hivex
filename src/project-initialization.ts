@@ -173,6 +173,29 @@ const destination = function destination(root: string, relativePath: string) {
   return { absolutePath, exists: true };
 };
 
+const validateNestedIgnore = function validateNestedIgnore(root: string) {
+  const relativePath = '.hivex/.gitignore';
+  const target = destination(root, relativePath);
+  if (!target.exists) {
+    return;
+  }
+  let text: string;
+  try {
+    text = readFileSync(target.absolutePath, 'utf-8');
+  } catch (error) {
+    throw new HivexError({
+      code: 'INIT_READ_FAILED',
+      message: `Unable to read ${relativePath}: ${errorMessage(error)}`,
+    });
+  }
+  if (text.split(/\r?\n/u).some((line) => line.trim() !== '' && !line.startsWith('#'))) {
+    fail(
+      'INIT_IGNORE_CONFLICT',
+      '.hivex/.gitignore contains rules that can override snapshot visibility or local state privacy.'
+    );
+  }
+};
+
 const hasFinalIgnoreRules = function hasFinalIgnoreRules(text: string) {
   const lines = text.split(/\r?\n/u);
   while (lines.at(-1) === '') {
@@ -285,6 +308,7 @@ export const projectInitializationCommand = function projectInitializationComman
     return fail('INVALID_ARGUMENT', 'Use init [--root <project>]');
   }
   const root = projectRoot(parsed.values.root ?? process.cwd());
+  validateNestedIgnore(root);
   const templates = readTemplateFiles(assetsPath);
   if (!templates.length) {
     return fail('INIT_ASSETS_UNAVAILABLE', 'No project templates are available');
