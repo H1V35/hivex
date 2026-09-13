@@ -2666,6 +2666,254 @@ test('shared snapshots expose changed sources and retain reusable neighboring kn
   });
 });
 
+test('relocates identical source knowledge with reusable coverage and no model calls', () => {
+  project((root) => {
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const before = invoke(root, ['search', 'seven days']);
+    const originalId = decisionId(before.value);
+    const sourceVersion = stringField(
+      recordAt(arrayField(before.value, 'decisions'), 0),
+      'version'
+    );
+    const callsBefore = readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8')
+      .trim()
+      .split('\n').length;
+    rmSync(nodePath.join(root, 'cache.md'));
+    mkdirSync(nodePath.join(root, 'docs'));
+    writeFileSync(
+      nodePath.join(root, 'docs/cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n'
+    );
+
+    const relocated = invoke(root, ['snapshot', 'relocate', 'cache.md', 'docs/cache.md']);
+
+    expect(relocated.value).toMatchObject({
+      command: 'snapshot',
+      from: { document: 'cache.md', versions: [sourceVersion] },
+      modelCalls: 0,
+      operation: 'relocate',
+      pendingUnits: [],
+      reused: true,
+      to: { document: 'docs/cache.md', version: sourceVersion },
+    });
+    const after = invoke(root, ['search', 'seven days']);
+    expect(arrayField(after.value, 'decisions')).toContainEqual(
+      expect.objectContaining({
+        document: 'docs/cache.md',
+        id: originalId,
+        quality: 'checked',
+      })
+    );
+    const update = invoke(root, ['update', '--max-calls', '0', '--codex', '/no-model']);
+    expect(update.value).toMatchObject({
+      pendingUnits: [],
+      status: 'ready',
+      work: { calls: 0 },
+    });
+    expect(
+      readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
+    ).toHaveLength(callsBefore);
+  });
+});
+
+test('relocates changed source knowledge while retaining relationship context', () => {
+  project((root) => {
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const privacyId = decisionId(invoke(root, ['search', 'revocation']).value);
+    const responsePath = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
+    responses.capturePackets = true;
+    responses.extract = {
+      ...responses.extract,
+      decisions: [
+        {
+          ...at(responses.extract.decisions, 0),
+          document: 'docs/cache.md',
+          text: 'Cached data expires after thirty days.',
+        },
+      ],
+      relationships: [
+        {
+          ...at(responses.extract.relationships, 0),
+          evidence: at(responses.extract.relationships, 0).evidence.map((evidence) => {
+            if (!isRecord(evidence)) {
+              throw new Error('Expected relationship evidence');
+            }
+            const document = stringField(evidence, 'document');
+            return {
+              ...evidence,
+              document: document === 'cache.md' ? 'docs/cache.md' : document,
+            };
+          }),
+          from: privacyId,
+        },
+      ],
+    };
+    writeFileSync(responsePath, JSON.stringify(responses));
+    rmSync(nodePath.join(root, 'cache.md'));
+    mkdirSync(nodePath.join(root, 'docs'));
+    writeFileSync(
+      nodePath.join(root, 'docs/cache.md'),
+      '# Cache\n\nCached data expires after thirty days.\n'
+    );
+
+    const relocated = invoke(root, ['snapshot', 'relocate', 'cache.md', 'docs/cache.md']);
+
+    expect(relocated.value).toMatchObject({
+      from: { document: 'cache.md' },
+      pendingUnits: ['docs/cache.md:1-3'],
+      reused: false,
+      to: { document: 'docs/cache.md' },
+    });
+    const updated = invoke(root, ['update', '--codex', binary]);
+    expect(arrayField(updated.value, 'warnings')).toEqual([]);
+    const packets = readFileSync(`${responsePath}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket);
+    const extraction = packets.findLast((packet) => packet.operation === 'extract');
+    if (extraction === undefined) {
+      throw new Error('Expected a changed-source extraction packet');
+    }
+    expect(JSON.stringify(extraction)).not.toContain('"document":"cache.md"');
+    const previousRelationships = arrayField(extraction, 'previousRelationships');
+    const relationship = previousRelationships.find(
+      (value) => isRecord(value) && Array.isArray(value.evidence)
+    );
+    if (relationship === undefined) {
+      throw new Error('Expected the relocated relationship in extraction context');
+    }
+    const evidenceDocuments = arrayField(relationship, 'evidence')
+      .filter(isRecord)
+      .map((evidence) => stringField(evidence, 'document'));
+    expect(evidenceDocuments).toEqual(['docs/cache.md', 'privacy.md']);
+  });
+});
+
+test('keeps relocated coverage pending when source evidence contains mixed versions', () => {
+  project((root) => {
+    expect(invoke(root, ['update', '--codex', model(root)]).value.status).toBe('ready');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    const snapshotPath = nodePath.join(root, '.hivex/graph.json');
+    const graph = parseSnapshotGraph(readFileSync(snapshotPath, 'utf-8'));
+    arrayField(graph, 'warnings').push({
+      message: 'A retained observation used an earlier source version.',
+      scope: [
+        {
+          document: 'cache.md',
+          lineEnd: 3,
+          lineStart: 1,
+          version: '0000000000000000000000000000000000000000000000000000000000000000',
+        },
+      ],
+    });
+    writeFileSync(snapshotPath, JSON.stringify(graph));
+    expect(invoke(root, ['snapshot', 'import']).status).toBe(0);
+    rmSync(nodePath.join(root, 'cache.md'));
+    mkdirSync(nodePath.join(root, 'docs'));
+    writeFileSync(
+      nodePath.join(root, 'docs/cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n'
+    );
+
+    const relocated = invoke(root, ['snapshot', 'relocate', 'cache.md', 'docs/cache.md']);
+
+    expect(relocated.value).toMatchObject({
+      modelCalls: 0,
+      pendingUnits: ['docs/cache.md:1-3'],
+      reused: false,
+      sources: { stale: ['docs/cache.md'], unavailable: [] },
+    });
+  });
+});
+
+test('consolidates source knowledge into an existing destination without certifying it', () => {
+  project((root) => {
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    const source = invoke(root, ['search', 'seven days']);
+    const sourceId = decisionId(source.value);
+    const target = invoke(root, ['search', 'revocation']);
+    const targetId = decisionId(target.value);
+    rmSync(nodePath.join(root, 'cache.md'));
+
+    const relocated = invoke(root, ['snapshot', 'relocate', 'cache.md', 'privacy.md']);
+
+    expect(relocated.value).toMatchObject({
+      pendingUnits: ['privacy.md:1-3'],
+      reused: false,
+    });
+    const exported = invoke(root, ['snapshot', 'export']);
+    expect(exported.status).toBe(0);
+    const graph = parseSnapshotGraph(
+      readFileSync(nodePath.join(root, '.hivex/graph.json'), 'utf-8')
+    );
+    const isRetainedDecision = function isRetainedDecision(id: string) {
+      return graph.decisions.some(
+        (decision) =>
+          decision.document === 'privacy.md' && decision.id === id && decision.quality === 'checked'
+      );
+    };
+    expect(isRetainedDecision(sourceId)).toBe(true);
+    expect(isRetainedDecision(targetId)).toBe(true);
+    expect(objectField(graph, 'documents')).not.toHaveProperty('cache.md');
+    expect(objectField(graph, 'documents')).not.toHaveProperty('privacy.md');
+    expect(
+      invoke(root, ['update', '--max-calls', '0', '--codex', '/no-model']).value
+    ).toMatchObject({
+      pendingDocuments: ['privacy.md'],
+      pendingUnits: ['privacy.md:1-3'],
+      work: { calls: 0 },
+    });
+  });
+});
+
+test('rejects protected or outside relocation destinations without changing knowledge', () => {
+  project((root) => {
+    const binary = model(root);
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    rmSync(nodePath.join(root, 'cache.md'));
+    const original = readFileSync(nodePath.join(root, '.hivex/graph.json'), 'utf-8');
+
+    for (const destination of ['../relocated.md', '.hivex/relocated.md']) {
+      const refused = invokeError(root, ['snapshot', 'relocate', 'cache.md', destination]);
+      expect(refused.status).toBe(1);
+      expect(parseError(refused.stderr).error.code).toBe('INVALID_ARGUMENT');
+      expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+      expect(readFileSync(nodePath.join(root, '.hivex/graph.json'), 'utf-8')).toBe(original);
+    }
+  });
+});
+
+test('rejects relocation while work is unfinished without replacing its graph', () => {
+  project((root) => {
+    const binary = model(root);
+    const pending = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
+    expect(pending.value).toMatchObject({ status: 'budget-exhausted', work: { calls: 1 } });
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    rmSync(nodePath.join(root, 'cache.md'));
+    mkdirSync(nodePath.join(root, 'docs'));
+    writeFileSync(
+      nodePath.join(root, 'docs/cache.md'),
+      '# Cache\n\nCached data expires after seven days.\n'
+    );
+    const original = readFileSync(nodePath.join(root, '.hivex/graph.json'), 'utf-8');
+
+    const refused = invokeError(root, ['snapshot', 'relocate', 'cache.md', 'docs/cache.md']);
+
+    expect(refused.status).toBe(1);
+    expect(parseError(refused.stderr).error.code).toBe('UNFINISHED_WORK');
+    expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+    expect(readFileSync(nodePath.join(root, '.hivex/graph.json'), 'utf-8')).toBe(original);
+    expect(
+      readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
+    ).toHaveLength(1);
+  });
+});
+
 test('rejects invalid snapshot relationships without corrupting local knowledge', () => {
   project((root) => {
     expect(invoke(root, ['update', '--codex', model(root)]).value.status).toBe('ready');

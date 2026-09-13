@@ -5,11 +5,17 @@ import { ingestionUnits } from './ingestion-units.ts';
 import { KnowledgeStore } from './knowledge-store.ts';
 import { readKnowledgeSnapshot, writeKnowledgeSnapshot } from './knowledge-snapshot.ts';
 import { loadProject } from './documents.ts';
+import { relocateSource } from './source-relocation.ts';
 import type { Graph } from './knowledge-model.ts';
 import type { Project } from './documents.ts';
+import type { SourceRelocation } from './source-relocation.ts';
 
 const sourceVersion = function sourceVersion([document, version]: [string, string]) {
   return { document, version };
+};
+
+const warningScopes = function warningScopes(warning: Graph['warnings'][number]) {
+  return typeof warning === 'string' ? [] : warning.scope;
 };
 
 const sourceVersions = function sourceVersions(project: Project, graph: Graph) {
@@ -18,6 +24,7 @@ const sourceVersions = function sourceVersions(project: Project, graph: Graph) {
     ...Object.values(graph.units),
     ...graph.decisions,
     ...graph.relationships.flatMap((edge) => edge.evidence),
+    ...graph.warnings.flatMap(warningScopes),
   ];
   const current = new Set<string>();
   const stale = new Set<string>();
@@ -68,6 +75,15 @@ const snapshotReport = function snapshotReport(project: Project, graph: Graph, o
   };
 };
 
+const relocationReport = function relocationReport(project: Project, relocation: SourceRelocation) {
+  return {
+    ...snapshotReport(project, relocation.graph, 'relocate'),
+    from: { document: relocation.from, versions: relocation.fromVersions },
+    reused: relocation.reused,
+    to: { document: relocation.to, version: relocation.destinationVersion },
+  };
+};
+
 export const snapshotCommand = function snapshotCommand(argumentsList: string[]) {
   const { positionals, values } = parseArgs({
     allowPositionals: true,
@@ -75,18 +91,27 @@ export const snapshotCommand = function snapshotCommand(argumentsList: string[])
     options: { root: { type: 'string' } },
     strict: true,
   });
-  const [, operation] = positionals;
+  const [, operation, from, to] = positionals;
+  const isRelocate = operation === 'relocate';
+  const expectedPositionals = isRelocate ? 4 : 2;
+  const isValidOperation = operation === 'export' || operation === 'import' || isRelocate;
   if (
-    positionals.length !== 2 ||
-    positionals[0] !== 'snapshot' ||
-    (operation !== 'export' && operation !== 'import')
+    !isValidOperation ||
+    positionals.length !== expectedPositionals ||
+    positionals[0] !== 'snapshot'
   ) {
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
-      message: 'Use snapshot export | import [--root <project>]',
+      message: 'Use snapshot export | import | relocate <from> <to> [--root <project>]',
     });
   }
   const project = loadProject(values.root ?? process.cwd());
+  if (isRelocate) {
+    using store = new KnowledgeStore(project.root, { update: true });
+    const relocation = relocateSource(store.graph(), project, from ?? '', to ?? '');
+    store.importGraph(relocation.graph);
+    return relocationReport(project, relocation);
+  }
   const incoming = operation === 'import' ? readKnowledgeSnapshot(project.root) : null;
   if (operation === 'import' && incoming === null) {
     throw new HivexError({
