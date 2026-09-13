@@ -1,6 +1,6 @@
 {
   "name": "@h1v35/hivex",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "type": "module",
   "description": "Versioned project knowledge for people and agents.",
   "scripts": {
@@ -68,6 +68,9 @@
     "docs/adr/0003-independent-bun-installation.md",
     "docs/adr/0010-practical-knowledge-assistance.md",
     "docs/adr/0011-shared-knowledge-and-selective-history.md",
+    "docs/adr/0012-project-foundation-and-workflow.md",
+    "docs/guidelines/triage-labels.md",
+    "docs/procedures/issue-tracker.md",
     "skills/",
     "README.md",
     "LICENSE"

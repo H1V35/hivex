@@ -138,7 +138,10 @@ export default [
         { category: 'retrieval', pattern: 'src/retrieval/**' },
         {
           category: 'commands',
-          pattern: ['src/{cli,knowledge,knowledge-maintenance,snapshot-command}.ts', 'src/cli/**'],
+          pattern: [
+            'src/{cli,knowledge,knowledge-maintenance,project-initialization,snapshot-command}.ts',
+            'src/cli/**',
+          ],
         },
         { category: 'shared', pattern: 'src/{errors,ordering,runtime.d}.ts' },
         { category: 'test', pattern: ['src/**/*.test.ts', 'test/**'] },
