@@ -713,7 +713,7 @@ test('discovers a cross-batch exception and follows its indirect dependents with
   });
 });
 
-for (const scenario of ['invalid-json', 'changed-effort']) {
+for (const scenario of ['invalid-json', 'changed-effort', 'unreadable-version']) {
   test(`retains ${scenario} failure and does not retry it just because the budget is increased`, () => {
     project((root) => {
       const binary = model(root, scenario);

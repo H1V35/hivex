@@ -14,6 +14,9 @@ if (
 }
 
 if (process.argv.includes('--version')) {
+  if (process.env.HIVEX_TEST_SCENARIO === 'unreadable-version') {
+    process.exit(Number('1'));
+  }
   console.log(
     process.env.HIVEX_TEST_SCENARIO === 'future-version' ? 'codex-cli 9.99.0' : 'codex-cli 0.153.2'
   );

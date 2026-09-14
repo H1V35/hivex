@@ -128,7 +128,10 @@ const launchServer = async (options: ServerOptions, disabledServers: string[]) =
     timeout: 10_000,
   });
   if (version.status !== 0 || version.stdout.trim() === '') {
-    throw new Error('Codex CLI version could not be read');
+    throw new ServerAdmissionFailure({
+      cause: new Error('Codex CLI version could not be read'),
+      cleanup: 'confirmed',
+    });
   }
   const nativeVersion = version.stdout.trim();
   const child = spawn(options.binary, launchArguments(disabledServers), {
