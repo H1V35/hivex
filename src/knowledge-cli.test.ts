@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
 import { captureImplementation } from './implementation.ts';
 import { KnowledgeStore } from './knowledge-store.ts';
@@ -289,6 +290,27 @@ const workId = (value: unknown): string => stringField(objectField(value, 'work'
 
 const workCalls = (value: unknown): number => numberField(objectField(value, 'work'), 'calls');
 
+const stringArrayField = (value: unknown, name: string): string[] => {
+  const entries = arrayField(value, name);
+  if (!isStringArray(entries)) {
+    throw new Error(`Expected string array field ${name}`);
+  }
+  return entries;
+};
+
+const storedWork = function storedWork(root: string, id: string): JsonRecord {
+  using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'), {
+    readonly: true,
+  });
+  const row = database
+    .query<{ data: string }, [string]>('SELECT data FROM work WHERE id=?')
+    .get(id);
+  if (row === null) {
+    throw new Error(`Missing fixture work ${id}`);
+  }
+  return parseRecord(row.data);
+};
+
 interface LegacyWorkFixture {
   command: 'ask' | 'update';
   key: string;
@@ -519,25 +541,44 @@ for (const fixture of legacyWorkFixtures) {
   });
 }
 
-test('resumes a checked knowledge batch without repeating its extraction or resetting its budget', () => {
+test('resumes a checked knowledge batch across compatible native versions without repeating extraction', () => {
   project((root) => {
-    const binary = model(root);
-    const first = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
+    const legacyBinary = model(root);
+    const first = invoke(root, ['update', '--max-calls', '1', '--codex', legacyBinary]);
     expect(first.value).toMatchObject({
+      pendingCheck: ['cache.md', 'privacy.md'],
       status: 'budget-exhausted',
       work: { calls: 1, maxCalls: 1 },
     });
-    const held = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
+    const held = invoke(root, ['update', '--max-calls', '1', '--codex', legacyBinary]);
     expect(workCalls(held.value)).toBe(1);
     expect(
       readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
     ).toHaveLength(1);
-    const resumed = invoke(root, ['update', '--max-calls', '2', '--codex', binary]);
+    const futureBinary = model(root, 'future-version');
+    const resumed = invoke(root, ['update', '--max-calls', '2', '--codex', futureBinary]);
     expect(resumed.status).toBe(0);
     expect(resumed.value).toMatchObject({
+      pendingCheck: [],
+      pendingUnits: [],
       status: 'ready',
-      work: { calls: 2, maxCalls: 2, totalTokens: 300 },
+      work: { calls: 2, id: workId(first.value), maxCalls: 2, totalTokens: 300 },
     });
+    const attempts = arrayField(storedWork(root, workId(first.value)), 'attempts');
+    expect(attempts).toHaveLength(2);
+    expect(attempts.map((attempt) => stringField(attempt, 'stage'))).toEqual(['extract', 'check']);
+    const reports = attempts.map((attempt) => objectField(attempt, 'report'));
+    expect(recordAt(reports, 0)).toMatchObject({
+      admission: { nativeVersion: 'codex-cli 0.153.2' },
+    });
+    expect(recordAt(reports, 1)).toMatchObject({
+      admission: { nativeVersion: 'codex-cli 9.99.0' },
+    });
+    const launchPolicyHashes = reports.map((report) =>
+      stringField(objectField(report, 'admission'), 'launchPolicyHash')
+    );
+    const distinctLaunchPolicyHashes = new Set(launchPolicyHashes);
+    expect(distinctLaunchPolicyHashes.size).toBe(2);
     const found = invoke(root, ['search', 'seven days']);
     expect(arrayField(found.value, 'decisions')).toContainEqual(
       expect.objectContaining({
@@ -551,8 +592,11 @@ test('resumes a checked knowledge batch without repeating its extraction or rese
         text: 'Access revocation immediately purges private cache.',
       })
     );
-    const repeated = invoke(root, ['update', '--max-calls', '2', '--codex', binary]);
+    const repeated = invoke(root, ['update', '--max-calls', '2', '--codex', futureBinary]);
     expect(workCalls(repeated.value)).toBe(2);
+    expect(
+      readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
+    ).toHaveLength(2);
   });
 });
 
@@ -699,6 +743,108 @@ for (const scenario of ['invalid-json', 'changed-effort']) {
     });
   });
 }
+
+test('explicitly retries a retained legacy pre-spawn admission failure with its pending check', () => {
+  project((root) => {
+    const legacyBinary = model(root);
+    const first = invoke(root, ['update', '--max-calls', '1', '--codex', legacyBinary]);
+    const id = workId(first.value);
+    const saved = storedWork(root, id);
+    expect(first.value).toMatchObject({
+      pendingCheck: ['cache.md', 'privacy.md'],
+      status: 'budget-exhausted',
+      work: { calls: 1, id },
+    });
+    expect(objectField(saved, 'pending')).toHaveProperty('extraction');
+
+    {
+      using store = new KnowledgeStore(root);
+      const work = store.begin({
+        key: stringField(saved, 'key'),
+        kind: 'update',
+        maxCalls: 2,
+        maxInputBytes: numberField(saved, 'maxInputBytes'),
+        remaining: stringArrayField(saved, 'remaining'),
+        snapshot: stringField(saved, 'snapshot'),
+      });
+      store.reserve(work, {
+        inputBytes: 1,
+        inputHash: 'legacy-admission-failure',
+        stage: 'check',
+      });
+      const attempt = work.attempts.at(-1);
+      if (attempt === undefined) {
+        throw new Error('Fixture did not reserve a failed check attempt');
+      }
+      attempt.report = {
+        cleanup: 'not-observed',
+        code: 'MODEL_ADMISSION_FAILED',
+        diagnostic: {
+          kind: 'native-admission',
+          message: 'Knowledge execution requires verified codex-cli 0.153.2',
+        },
+        outcome: 'failed',
+        usage: null,
+      };
+      work.status = 'failed';
+      store.save(work);
+    }
+
+    const failed = storedWork(root, id);
+    expect(failed).toMatchObject({
+      calls: 2,
+      id,
+      pending: { documents: ['cache.md', 'privacy.md'] },
+      status: 'failed',
+    });
+    const failedReport = objectField(recordAt(arrayField(failed, 'attempts'), 1), 'report');
+    expect(failedReport).toMatchObject({
+      cleanup: 'not-observed',
+      code: 'MODEL_ADMISSION_FAILED',
+      diagnostic: {
+        kind: 'native-admission',
+        message: 'Knowledge execution requires verified codex-cli 0.153.2',
+      },
+      outcome: 'failed',
+      usage: null,
+    });
+    expect(failedReport).not.toHaveProperty('nativeProcessId');
+    expect(failedReport).not.toHaveProperty('turnAccepted');
+    expect(failedReport).not.toHaveProperty('interruption');
+
+    const futureBinary = model(root, 'future-version');
+    const retried = invoke(root, [
+      'update',
+      '--max-calls',
+      '3',
+      '--retry-failed',
+      '--codex',
+      futureBinary,
+    ]);
+    expect(retried.status).toBe(0);
+    expect(retried.value).toMatchObject({
+      pendingCheck: [],
+      pendingUnits: [],
+      status: 'ready',
+      work: { calls: 3, id, maxCalls: 3 },
+    });
+    const completed = storedWork(root, id);
+    expect(completed).toMatchObject({ calls: 3, id, pending: null, status: 'done' });
+    const attempts = arrayField(completed, 'attempts');
+    expect(attempts.map((attempt) => stringField(attempt, 'stage'))).toEqual([
+      'extract',
+      'check',
+      'check',
+    ]);
+    expect(objectField(recordAt(attempts, 1), 'report')).toMatchObject(failedReport);
+    expect(objectField(objectField(recordAt(attempts, 2), 'report'), 'admission')).toMatchObject({
+      nativeVersion: 'codex-cli 9.99.0',
+    });
+    expect(
+      readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
+    ).toHaveLength(2);
+  });
+});
 
 test('reports a removed source and leaves its affected dependency unresolved', () => {
   project((root) => {

@@ -14,7 +14,9 @@ if (
 }
 
 if (process.argv.includes('--version')) {
-  console.log('codex-cli 0.153.2');
+  console.log(
+    process.env.HIVEX_TEST_SCENARIO === 'future-version' ? 'codex-cli 9.99.0' : 'codex-cli 0.153.2'
+  );
   process.exit(Number('0'));
 }
 if (process.env.HIVEX_TEST_SCENARIO === 'descendant') {

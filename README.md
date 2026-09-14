@@ -12,7 +12,7 @@ No installed command approves an implementation. The principal reviewer checks f
 
 ## Install the CLI and skills
 
-Requires Bun 1.4.2:
+Requires Bun 1.4.2 or newer:
 
 ```sh
 bun add --dev --exact @h1v35/hivex
@@ -37,6 +37,8 @@ Existing skill entries are preserved; inspect them before replacing a custom or 
 
 The current knowledge profile needs an authenticated Codex CLI session with Luna/max available. Invocation validates that profile without silent fallback. Document discovery, source/version checks, snapshot operations and initialization do not require a model.
 
+Codex CLI compatibility is established through the app-server protocol and the effective account, model and isolation settings, rather than an exact CLI version. Compatible tool updates remain usable; the actual CLI version is recorded with each admitted invocation. An incompatible protocol or profile stops execution instead of silently changing the knowledge model or its permissions.
+
 ## Initialize a project
 
 ```sh
@@ -55,7 +57,7 @@ Use the documentation skill to migrate existing material to the standard when re
 
 ## Run
 
-Use Bun 1.4.2. In this checkout:
+CI uses Bun 1.4.2 as the tested baseline; compatible newer runtimes are supported. In this checkout:
 
 ```sh
 bun install

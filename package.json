@@ -1,6 +1,6 @@
 {
   "name": "@h1v35/hivex",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "description": "Versioned project knowledge for people and agents.",
   "scripts": {
@@ -52,7 +52,7 @@
   "trustedDependencies": [],
   "packageManager": "bun@1.4.2",
   "engines": {
-    "bun": "1.4.2"
+    "bun": ">=1.4.2"
   },
   "license": "MIT",
   "bin": {

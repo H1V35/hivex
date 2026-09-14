@@ -6,7 +6,7 @@ Use the [documentation map](docs/README.md) and relevant decisions to recover pr
 
 ## Development
 
-Follow the [engineering guideline](docs/guidelines/engineering.md). Use Bun 1.4.2 and Git 2.45 or newer; setup and verification commands are in [README.md](README.md#development). Work is issue-first in `H1V35/hivex`, with coherent PRs and review under the owner's existing authorization.
+Follow the [engineering guideline](docs/guidelines/engineering.md). Use Bun 1.4.2 or newer and Git 2.45 or newer; setup and verification commands are in [README.md](README.md#development). Work is issue-first in `H1V35/hivex`, with coherent PRs and review under the owner's existing authorization.
 
 ## Project specifics
 
