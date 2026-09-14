@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { AppServerConnection } from './connection.ts';
 
-export const nativeVersion = 'codex-cli 0.153.2';
 const environmentKeys = [
   'HOME',
   'CODEX_HOME',
@@ -197,8 +196,12 @@ const readModelCatalog = async (rpc: AppServerConnection, signal: AbortSignal) =
   return catalog;
 };
 
-export const admitProfile = async (options: { rpc: AppServerConnection; signal: AbortSignal }) => {
-  const { rpc, signal } = options;
+export const admitProfile = async (options: {
+  rpc: AppServerConnection;
+  signal: AbortSignal;
+  nativeVersion: string;
+}) => {
+  const { rpc, signal, nativeVersion } = options;
   const account = z.looseObject({
     account: z.looseObject({ type: z.literal('chatgpt') }),
   });
@@ -269,6 +272,7 @@ export const admitProfile = async (options: { rpc: AppServerConnection; signal: 
   const evidenceEffort = { effort: config.model_reasoning_effort };
   const evidenceConfigOrigins = { configOrigins };
   const evidence = {
+    nativeVersion,
     ...evidenceAuthType,
     ...evidenceConfiguredEndpointOrigin,
     ...evidenceModel,
@@ -288,7 +292,10 @@ export const nativeEnvironment = () => {
   );
 };
 
-export const requestedPolicyHash = function requestedPolicyHash(disabledServers: string[] = []) {
+export const requestedPolicyHash = function requestedPolicyHash(
+  disabledServers: string[],
+  nativeVersion: string
+) {
   const fingerprintNativeVersion = { nativeVersion };
   const fingerprintEnvironment = {
     environment: { keys: environmentKeys, localeKey: localeKey.source },

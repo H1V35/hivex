@@ -5,7 +5,6 @@ import {
   admitProfile,
   launchArguments,
   nativeEnvironment,
-  nativeVersion,
   requestedPolicyHash,
 } from './profile.ts';
 
@@ -128,9 +127,13 @@ const launchServer = async (options: ServerOptions, disabledServers: string[]) =
     maxBuffer: 65_536,
     timeout: 10_000,
   });
-  if (version.status !== 0 || version.stdout.trim() !== nativeVersion) {
-    throw new Error('Knowledge execution requires verified codex-cli 0.153.2');
+  if (version.status !== 0 || version.stdout.trim() === '') {
+    throw new ServerAdmissionFailure({
+      cause: new Error('Codex CLI version could not be read'),
+      cleanup: 'confirmed',
+    });
   }
+  const nativeVersion = version.stdout.trim();
   const child = spawn(options.binary, launchArguments(disabledServers), {
     cwd: options.workspace,
     detached: true,
@@ -173,12 +176,12 @@ const launchServer = async (options: ServerOptions, disabledServers: string[]) =
       { signal: options.signal }
     );
     rpc.notify('initialized');
-    const profile = await admitProfile({ rpc, signal: options.signal });
+    const profile = await admitProfile({ nativeVersion, rpc, signal: options.signal });
     return {
       activeServers: profile.activeServers,
       admission: {
         ...profile.evidence,
-        launchPolicyHash: requestedPolicyHash(disabledServers),
+        launchPolicyHash: requestedPolicyHash(disabledServers, nativeVersion),
       },
       pid,
       rpc,

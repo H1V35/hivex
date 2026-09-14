@@ -519,6 +519,21 @@ const nextUnits = function nextUnits(units: IngestionUnit[], remaining: string[]
   }
   return selected;
 };
+// Earlier releases rejected the runtime before spawning an app-server process.
+const legacyVersionRejection = z.looseObject({
+  cleanup: z.literal('not-observed'),
+  code: z.literal('MODEL_ADMISSION_FAILED'),
+  diagnostic: z.looseObject({
+    kind: z.literal('native-admission'),
+    message: z.string().regex(/^Knowledge execution requires verified codex-cli \S+$/u),
+  }),
+  interruption: z.undefined().optional(),
+  nativeProcessId: z.undefined().optional(),
+  outcome: z.literal('failed'),
+  turnAccepted: z.undefined().optional(),
+  usage: z.null(),
+});
+
 const resumeFailed = function resumeFailed(
   work: Work,
   store: KnowledgeStore,
@@ -535,7 +550,9 @@ const resumeFailed = function resumeFailed(
     last.data.cleanup === 'confirmed' &&
     last.data.turnAccepted !== 'unknown' &&
     last.data.interruption !== 'unconfirmed';
-  const isBeforeTurn = last.success && last.data.code === 'MODEL_INTERRUPTED_BEFORE_TURN';
+  const isBeforeTurn =
+    (last.success && last.data.code === 'MODEL_INTERRUPTED_BEFORE_TURN') ||
+    legacyVersionRejection.safeParse(work.attempts.at(-1)?.report).success;
   if (!isConfirmed && !isAcknowledged && !isBeforeTurn) {
     throw new HivexError({
       code: 'WORK_UNCERTAIN',

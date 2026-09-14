@@ -6,14 +6,14 @@ class ServerAdmissionFailureError extends Error {
   name = 'ServerAdmissionFailureError';
   readonly admission: (ProfileEvidence & { launchPolicyHash: string }) | undefined;
   readonly cleanup: 'confirmed' | 'failed';
-  readonly processId: number;
+  readonly processId: number | undefined;
 
   constructor(
     parameters: {
       admission?: ProfileEvidence & { launchPolicyHash: string };
       cause: unknown;
       cleanup: 'confirmed' | 'failed';
-      processId: number;
+      processId?: number;
     },
     options?: ErrorOptions
   ) {
