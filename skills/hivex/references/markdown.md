@@ -18,6 +18,8 @@ A useful catalogue distinguishes:
 - Procedures for concrete operational or recovery tasks.
 - Research and evidence identified as dated support, not automatically current decisions.
 
+Prefer kebab-case for authored document and directory names, with numeric prefixes for ADRs where used. Keep conventional entrypoints such as `AGENTS.md`, `README.md`, `CONTEXT.md`, `PRD.md` and `SKILL.md`, and names required by the project's tools or language. Preserve links and history when renaming existing files.
+
 For example, a project may use `docs/README.md`, `docs/CONTEXT.md`, `docs/adr/`, `docs/guidelines/`, `docs/procedures/` and `docs/research/`. Keep standing rules and design guidance in `guidelines`, and instructions for carrying out tasks in `procedures`; avoid overlapping directories with indistinct purposes. These are the adoption defaults; an existing project may retain another arrangement where migration would not be appropriate. Multiple bounded contexts may have their own glossary and decisions with a small context map linking them; a monorepo need not duplicate one shared product glossary.
 
 ## Write decisions for the next reader

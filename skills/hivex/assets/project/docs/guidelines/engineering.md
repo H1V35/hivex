@@ -14,6 +14,14 @@ Prefer an existing library, standard facility or small direct implementation whe
 
 Delegate suitable bounded subtasks when authorized and useful. Keep responsibility for the integrated result. Model and effort choices belong to the task or project configuration, not to issue labels.
 
+## Names and TypeScript tooling
+
+Prefer kebab-case for authored files and directories. Preserve conventional Markdown entrypoints and names required by a framework, tool or language; apply idiomatic language conventions where they differ.
+
+For TypeScript projects, prefer Ultracite's ESLint and Prettier presets with `eslint-plugin-boundaries`. Define permitted imports from the project's real modules and responsibilities; keep useful framework-specific checks that the presets do not cover. Adapt code to the standard instead of disabling rules to silence findings. This foundation documents the preference; `hivex init` does not install or configure a linter.
+
+Retain these owner preferences over the presets: cyclomatic complexity 20, cognitive complexity 15, nesting depth 3, at most four function parameters, Prettier width 100 and single quotes. Allow unused identifiers beginning with `_` and loose comparisons with `null`; retain strict equality elsewhere. Respect an explicit project decision to defer adoption of this tooling.
+
 ## Tests and verification
 
 Choose checks for value and risk. Prioritize critical flows, stable rules and demonstrated regressions. TDD is optional and reserved for critical flows whose behavior is sufficiently defined; use exploration first when product assumptions remain open.
