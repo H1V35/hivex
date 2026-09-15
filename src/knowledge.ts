@@ -193,6 +193,17 @@ const hasRangeOverlap = function hasRangeOverlap(left: LineRange, right: LineRan
     left.lineEnd >= right.lineStart
   );
 };
+const isAffectedRange = function isAffectedRange(
+  project: Project,
+  units: IngestionUnit[],
+  entry: LineRange & { version?: string }
+) {
+  const hasTargetDocument = units.some((unit) => unit.document === entry.document);
+  return (
+    hasTargetDocument &&
+    (!isCurrentSource(project, entry) || units.some((unit) => hasRangeOverlap(unit, entry)))
+  );
+};
 const isWithinRange = function isWithinRange(range: LineRange, document: string, line: number) {
   return range.document === document && line >= range.lineStart && line <= range.lineEnd;
 };
@@ -355,13 +366,13 @@ const resolveContextReferences = function resolveContextReferences(
   }[] = [];
   const missing = new Set<string>();
   for (const citation of references) {
-    if (targets.has(citation.document)) {
-      continue;
-    }
     const document = project.documents.find((source) => source.id === citation.document);
     if (document === undefined) {
       missing.add(citation.document);
     } else {
+      if (targets.has(citation.document) && citation.version !== document.hash) {
+        continue;
+      }
       ranges.push(
         citation.version === document.hash
           ? citation
@@ -410,24 +421,34 @@ const batchContext = function batchContext(
       .flatMap((document) => document.links)
   );
   const targetNodes = new Set(
-    graph.decisions.filter((entry) => targetDocuments.has(entry.document)).map((entry) => entry.id)
+    graph.decisions
+      .filter((entry) => isAffectedRange(project, units, entry))
+      .map((entry) => entry.id)
   );
   const affectedRelations = graph.relationships.filter((edge) => {
     const hasTargetNode = targetNodes.has(edge.from) || targetNodes.has(edge.to);
     return (
-      hasTargetNode || edge.evidence.some((citation) => targetDocuments.has(citation.document))
+      hasTargetNode || edge.evidence.some((citation) => isAffectedRange(project, units, citation))
     );
   });
   const affected = affectedRelations.flatMap((edge) => [edge.from, edge.to]);
   const supporting = resolveContextReferences(project, targetDocuments, [
     ...affectedRelations.flatMap((edge) => edge.evidence),
-    ...[...new Set(Iterator.concat(retainedSources, contextSources))].map((document) => {
+    ...retainedSources.map((document) => {
       const firstLine = 1;
       return { document, lineEnd: firstLine, lineStart: firstLine };
     }),
   ]);
   const { missing } = supporting;
-  ranges.push(...supporting.ranges);
+  ranges.push(
+    ...supporting.ranges,
+    ...project.documents
+      .filter((document) => contextSources.includes(document.id))
+      .map((document) => {
+        const lineEnd = rawMarkdownLines(document.text).length;
+        return { document: document.id, lineEnd, lineStart: 1 };
+      })
+  );
   const byId = new Map(candidates.map((entry) => [entry.id, entry]));
   const required = new Set(
     Iterator.concat(

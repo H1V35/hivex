@@ -115,7 +115,7 @@ test('reuses v1 extraction and check caches with the original exhausted update b
   });
 });
 
-test('keeps the work budget when required neighbors invalidate an incomplete legacy cache', async () => {
+test('keeps the work budget when scoped relationship context changes a legacy packet', async () => {
   using cleanup = new DisposableStack();
   const root = mkdtempSync(path.join(tmpdir(), 'hivex-multiround-cache-compat-'));
   cleanup.defer(() => {

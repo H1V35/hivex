@@ -16,6 +16,9 @@ import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
 import { captureImplementation } from './implementation.ts';
 import { KnowledgeStore } from './knowledge-store.ts';
+import { loadProject } from './documents.ts';
+import { ingestionUnits } from './ingestion-units.ts';
+import { emptyGraph } from './knowledge-model.ts';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -3189,5 +3192,570 @@ test('reports unavailable snapshot sources and rejects malformed JSON without lo
     expect(malformed.status).toBe(1);
     expect(parseError(malformed.stderr).error.code).toBe('INVALID_SNAPSHOT');
     expect(invoke(root, ['search', 'seven days']).value.decisions).toHaveLength(1);
+  });
+});
+
+test('preserves affected relationship endpoints beyond the optional context cap', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    writeFileSync(nodePath.join(root, 'target.md'), '# Target\n\nTarget rules before revision.\n');
+    writeFileSync(
+      nodePath.join(root, 'endpoints.md'),
+      '# Endpoints\n\nEndpoint zero. Endpoint one.\n'
+    );
+    const binary = model(root);
+    const responsePath = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
+    const targetTemplate = at(responses.extract.decisions, 0);
+    const endpointTemplate = at(responses.extract.decisions, 1);
+    const relationshipTemplate = at(responses.extract.relationships, 0);
+    const targetDecision = function targetDecision(_value: unknown, index: number) {
+      return {
+        ...targetTemplate,
+        document: 'target.md',
+        id: `target-${index}`,
+        lineEnd: 3,
+        lineStart: 3,
+        text: `Target rule ${index} is revised with its endpoint.`,
+      };
+    };
+    const targetDecisions = Array.from({ length: 19 }, targetDecision);
+    const endpointDecision = function endpointDecision(_value: unknown, index: number) {
+      return {
+        ...endpointTemplate,
+        document: 'endpoints.md',
+        id: `endpoint-${index}`,
+        lineEnd: 3,
+        lineStart: 3,
+        text: `Endpoint ${index} remains available.`,
+      };
+    };
+    const endpointDecisions = Array.from({ length: 2 }, endpointDecision);
+    const targetRelationship = function targetRelationship(
+      decision: (typeof targetDecisions)[number],
+      index: number
+    ) {
+      return {
+        ...relationshipTemplate,
+        evidence: [
+          { document: 'target.md', lineEnd: 3, lineStart: 3 },
+          { document: 'endpoints.md', lineEnd: 3, lineStart: 3 },
+        ],
+        from: decision.id,
+        id: `old-edge-${index}`,
+        reason: 'Each target rule uses an existing endpoint.',
+        to: index === targetDecisions.length - 1 ? 'endpoint-1' : 'endpoint-0',
+        type: 'requires',
+      };
+    };
+    const relationships = targetDecisions.map(targetRelationship);
+    responses.capturePackets = true;
+    responses.byDocument = {
+      'endpoints.md': { decisions: endpointDecisions, relationships: [] },
+      'target.md': { decisions: targetDecisions, relationships },
+    };
+    writeFileSync(responsePath, JSON.stringify(responses));
+
+    expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value.status).toBe(
+      'ready'
+    );
+    expect(invoke(root, ['snapshot', 'export']).value.status).toBe('ready');
+    const initialGraph = parseSnapshotGraph(
+      readFileSync(nodePath.join(root, '.hivex/graph.json'), 'utf-8')
+    );
+    const endpoint = initialGraph.decisions.find((entry) => entry.localId === 'endpoint-1');
+    if (endpoint === undefined) {
+      throw new Error('Expected the second endpoint decision');
+    }
+    const endpointId = stringField(endpoint, 'id');
+
+    writeFileSync(nodePath.join(root, 'target.md'), '# Target\n\nTarget rules after revision.\n');
+    const targetResponse = documentResponse(responses, 'target.md');
+    const revisedTargetDecision = function revisedTargetDecision(
+      decision: (typeof targetDecisions)[number],
+      index: number
+    ) {
+      return {
+        ...decision,
+        text: index === 0 ? 'Restored target sentinel omega.' : decision.text,
+      };
+    };
+    targetResponse.decisions = targetDecisions.map(revisedTargetDecision);
+    targetResponse.relationships = [
+      {
+        ...relationshipTemplate,
+        evidence: [
+          { document: 'target.md', lineEnd: 3, lineStart: 3 },
+          { document: 'endpoints.md', lineEnd: 3, lineStart: 3 },
+        ],
+        from: 'target-0',
+        id: 'restored-edge',
+        reason: 'The revised target restores the endpoint relationship.',
+        to: endpointId,
+        type: 'requires',
+      },
+    ];
+    writeFileSync(responsePath, JSON.stringify(responses));
+
+    expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value.status).toBe(
+      'ready'
+    );
+    const packet = readFileSync(`${responsePath}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket)
+      .findLast(
+        (entry) => entry.operation === 'extract' && entry.targets?.includes('target.md') === true
+      );
+    if (packet === undefined) {
+      throw new Error('Expected the target extraction packet');
+    }
+    expect(packet.targets).toEqual(['target.md']);
+    expect(arrayField(packet, 'documents')).toContainEqual(
+      expect.objectContaining({ id: 'endpoints.md' })
+    );
+    expect(arrayField(packet, 'existing')).toContainEqual(
+      expect.objectContaining({ id: endpointId })
+    );
+
+    const restoredSnapshot = invoke(root, ['snapshot', 'export']);
+    expect(restoredSnapshot.value).toMatchObject({
+      decisions: 21,
+      relationships: 1,
+      status: 'ready',
+    });
+    const restoredGraph = parseSnapshotGraph(
+      readFileSync(nodePath.join(root, '.hivex/graph.json'), 'utf-8')
+    );
+    const target = restoredGraph.decisions.find(
+      (entry) => entry.document === 'target.md' && entry.localId === 'target-0'
+    );
+    if (target === undefined) {
+      throw new Error('Expected the restored target decision');
+    }
+    const neighbors = invoke(root, ['neighbors', stringField(target, 'id')]);
+    expect(arrayField(neighbors.value, 'relationships')).toContainEqual(
+      expect.objectContaining({ localId: 'restored-edge', to: endpointId })
+    );
+    expect(arrayField(neighbors.value, 'decisions')).toContainEqual(
+      expect.objectContaining({ document: 'endpoints.md', id: endpointId })
+    );
+  });
+});
+
+test('keeps large required context and stops before a model call when it exceeds the hard bound', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    const contextLines = Array.from(
+      { length: 8 },
+      (_, index) => `Context evidence ${index}: ${'synthetic detail '.repeat(80)}\n`
+    ).join('');
+    writeFileSync(nodePath.join(root, 'target.md'), '# Target\n\nTarget before revision.\n');
+    writeFileSync(nodePath.join(root, 'authority.md'), `# Authority\n\n${contextLines}`);
+    const binary = model(root);
+    const responsePath = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
+    const targetDecision = {
+      ...at(responses.extract.decisions, 0),
+      document: 'target.md',
+      id: 'target-node',
+      lineEnd: 3,
+      lineStart: 3,
+      text: 'Target rule before revision.',
+    };
+    const authorityDecision = {
+      ...at(responses.extract.decisions, 1),
+      document: 'authority.md',
+      id: 'authority-node',
+      lineEnd: 10,
+      lineStart: 3,
+      reason: 'The authority spans the supplied context.',
+      text: 'Authority rule covers the supplied context.',
+    };
+    const evidence = [
+      { document: 'target.md', lineEnd: 3, lineStart: 3 },
+      { document: 'authority.md', lineEnd: 10, lineStart: 3 },
+    ];
+    const relationshipTemplate = at(responses.extract.relationships, 0);
+    responses.capturePackets = true;
+    responses.byDocument = {
+      'authority.md': {
+        decisions: [authorityDecision],
+        relationships: [],
+      },
+      'target.md': {
+        decisions: [targetDecision],
+        relationships: [
+          {
+            ...relationshipTemplate,
+            evidence,
+            from: 'target-node',
+            id: 'target-authority',
+            reason: 'The target uses the authority context.',
+            to: 'authority-node',
+            type: 'requires',
+          },
+        ],
+      },
+    };
+    writeFileSync(responsePath, JSON.stringify(responses));
+
+    expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value.status).toBe(
+      'ready'
+    );
+    writeFileSync(nodePath.join(root, 'target.md'), '# Target\n\nTarget after revision.\n');
+    const targetResponse = documentResponse(responses, 'target.md');
+    targetResponse.decisions = [{ ...targetDecision, text: 'Target rule after revision.' }];
+    targetResponse.relationships = [
+      {
+        ...relationshipTemplate,
+        evidence,
+        from: 'target-node',
+        id: 'restored-authority',
+        reason: 'The revised target uses the authority context.',
+        to: '@existing:authority.md',
+        type: 'requires',
+      },
+    ];
+    writeFileSync(responsePath, JSON.stringify(responses));
+
+    const sufficient = invoke(root, [
+      'update',
+      '--max-context-bytes',
+      '32768',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    expect(sufficient.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    const packet = readFileSync(`${responsePath}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket)
+      .findLast(
+        (entry) => entry.operation === 'extract' && entry.targets?.includes('target.md') === true
+      );
+    if (packet === undefined) {
+      throw new Error('Expected the large-context extraction packet');
+    }
+    const authorityPacket = arrayField(packet, 'documents').find(
+      (entry) => isRecord(entry) && entry.id === 'authority.md'
+    );
+    if (authorityPacket === undefined) {
+      throw new Error('Expected authority context in the packet');
+    }
+    expect(Buffer.byteLength(JSON.stringify(arrayField(authorityPacket, 'lines')))).toBeGreaterThan(
+      8192
+    );
+    expect(arrayField(packet, 'existing')).toContainEqual(
+      expect.objectContaining({ document: 'authority.md', text: authorityDecision.text })
+    );
+
+    const callsBeforeLimit = readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8')
+      .trim()
+      .split('\n').length;
+    writeFileSync(nodePath.join(root, 'target.md'), '# Target\n\nTarget limited revision.\n');
+    const limited = invoke(root, [
+      'update',
+      '--max-context-bytes',
+      '1024',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    expect(limited.value).toMatchObject({
+      status: 'context-limit',
+      work: { calls: 0 },
+    });
+    expect(objectField(limited.value, 'work')).toMatchObject({
+      contextLimit: { maxBytes: 1024 },
+    });
+    expect(
+      readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
+    ).toHaveLength(callsBeforeLimit);
+  });
+});
+
+test('uses update source context without reextracting it and preserves its work identity', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    const fixtures = [
+      { document: '00-target.md', id: 'target-node', text: 'Revision alpha applies locally.' },
+      {
+        document: '01-authority.md',
+        id: 'authority-node',
+        text: 'Independent condition governs archival retention.',
+      },
+      ...Array.from({ length: 6 }, (_value: unknown, index: number) => {
+        const document = `0${index + 2}-optional.md`;
+        return {
+          document,
+          id: `optional-${index}`,
+          text: `Unrelated rule ${index} uses a separate token.`,
+        };
+      }),
+    ];
+    for (const fixture of fixtures) {
+      writeFileSync(nodePath.join(root, fixture.document), `# Synthetic\n\n${fixture.text}\n`);
+    }
+    const binary = model(root);
+    const responsePath = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
+    const decisionTemplate = at(responses.extract.decisions, 0);
+    responses.capturePackets = true;
+    const fixtureResponses: Record<string, ModelDocumentResponse> = {};
+    for (const fixture of fixtures) {
+      fixtureResponses[fixture.document] = {
+        decisions: [
+          {
+            ...decisionTemplate,
+            document: fixture.document,
+            id: fixture.id,
+            lineEnd: 3,
+            lineStart: 3,
+            reason: `The ${fixture.id} rule is supplied by its document.`,
+            text: fixture.text,
+          },
+        ],
+        relationships: [],
+      };
+    }
+    responses.byDocument = fixtureResponses;
+    writeFileSync(responsePath, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--max-calls', '8', '--codex', binary]).value.status).toBe(
+      'ready'
+    );
+
+    writeFileSync(
+      nodePath.join(root, '00-target.md'),
+      '# Synthetic\n\nRevision beta applies locally.\n'
+    );
+    const targetResponse = documentResponse(responses, '00-target.md');
+    const targetDecision = at(targetResponse.decisions, 0);
+    targetResponse.decisions = [
+      {
+        ...targetDecision,
+        text: 'Revision beta applies locally.',
+      },
+    ];
+    targetResponse.relationships = [
+      {
+        ...at(responses.extract.relationships, 0),
+        evidence: [
+          { document: '00-target.md', lineEnd: 3, lineStart: 3 },
+          { document: '01-authority.md', lineEnd: 3, lineStart: 3 },
+        ],
+        from: 'target-node',
+        id: 'target-authority',
+        reason: 'The target depends on the explicitly supplied authority.',
+        to: '@existing:01-authority.md',
+        type: 'requires',
+      },
+    ];
+    writeFileSync(responsePath, JSON.stringify(responses));
+
+    const first = invoke(root, [
+      'update',
+      '--source',
+      '01-authority.md',
+      '--max-calls',
+      '1',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value).toMatchObject({
+      pendingCheck: ['00-target.md'],
+      status: 'budget-exhausted',
+      work: { calls: 1 },
+    });
+    const resumed = invoke(root, [
+      'update',
+      '--source',
+      '01-authority.md',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    expect(resumed.value).toMatchObject({
+      pendingUnits: [],
+      status: 'ready',
+      work: { calls: 2, id: workId(first.value) },
+    });
+
+    const packet = readFileSync(`${responsePath}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket)
+      .findLast(
+        (entry) => entry.operation === 'extract' && entry.targets?.includes('00-target.md') === true
+      );
+    if (packet === undefined) {
+      throw new Error('Expected the source-context extraction packet');
+    }
+    expect(packet.targets).toEqual(['00-target.md']);
+    expect(arrayField(packet, 'documents')).toContainEqual(
+      expect.objectContaining({ id: '01-authority.md' })
+    );
+    expect(arrayField(packet, 'existing')).toContainEqual(
+      expect.objectContaining({
+        document: '01-authority.md',
+        text: 'Independent condition governs archival retention.',
+      })
+    );
+
+    const snapshot = invoke(root, ['snapshot', 'export']);
+    expect(snapshot.value).toMatchObject({
+      decisions: 8,
+      relationships: 1,
+      status: 'ready',
+    });
+    const graph = parseSnapshotGraph(
+      readFileSync(nodePath.join(root, '.hivex/graph.json'), 'utf-8')
+    );
+    const target = graph.decisions.find(
+      (entry) => entry.document === '00-target.md' && entry.localId === 'target-node'
+    );
+    if (target === undefined) {
+      throw new Error('Expected the source-context target decision');
+    }
+    const neighbors = invoke(root, ['neighbors', stringField(target, 'id')]);
+    expect(arrayField(neighbors.value, 'relationships')).toContainEqual(
+      expect.objectContaining({ localId: 'target-authority' })
+    );
+    expect(arrayField(neighbors.value, 'decisions')).toContainEqual(
+      expect.objectContaining({ document: '01-authority.md' })
+    );
+    expect(graph.decisions.filter((entry) => entry.document === '01-authority.md')).toHaveLength(1);
+    expect(graph.decisions.filter((entry) => entry.document === '00-target.md')).toHaveLength(1);
+
+    const changedSource = invoke(root, [
+      'update',
+      '--source',
+      '02-optional.md',
+      '--max-calls',
+      '0',
+      '--codex',
+      '/no-model',
+    ]);
+    expect(changedSource.value).toMatchObject({ status: 'ready', work: { calls: 0 } });
+    expect(workId(changedSource.value)).not.toBe(workId(resumed.value));
+  });
+});
+
+test('supplies a complete explicit source while ingesting only its bounded units', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    const text = Array.from(
+      { length: 8 },
+      (_, index) => `# Section ${index}\n\nRule ${index}. ${'Detail '.repeat(800)}\n`
+    ).join('\n');
+    writeFileSync(nodePath.join(root, 'notes.md'), text);
+    const binary = model(root);
+    const responsePath = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
+    responses.capturePackets = true;
+    responses.byDocument = { 'notes.md': { decisions: [], relationships: [] } };
+    writeFileSync(responsePath, JSON.stringify(responses));
+
+    const result = invoke(root, [
+      'update',
+      '--source',
+      'notes.md',
+      '--max-calls',
+      '1',
+      '--codex',
+      binary,
+    ]);
+    expect(result.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { calls: 1, contextLimit: null },
+    });
+    const packet = parsePacket(readFileSync(`${responsePath}.packets`, 'utf-8').trim());
+    const document = at(arrayField(packet, 'documents'), 0);
+    expect(arrayField(document, 'lines')).toHaveLength(numberField(document, 'lineCount'));
+    const firstUnit = at(arrayField(packet, 'units'), 0);
+    expect(numberField(firstUnit, 'lineEnd')).toBeLessThan(numberField(document, 'lineCount'));
+    expect(packet.targets).toEqual(['notes.md']);
+  });
+});
+
+test('does not make untouched later units mandatory for a pending unit', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    const text = Array.from(
+      { length: 16 },
+      (_, index) =>
+        `# Section ${index}\n\nRule ${index} requires bounded work. ${'Detail '.repeat(800)}\n`
+    ).join('\n');
+    writeFileSync(nodePath.join(root, 'notes.md'), text);
+    const binary = model(root);
+    const responsePath = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
+    responses.byDocument = { 'notes.md': { decisions: [], relationships: [] } };
+    writeFileSync(responsePath, JSON.stringify(responses));
+    invoke(root, ['update', '--max-calls', '0', '--codex', binary]);
+
+    const sources = loadProject(root);
+    const document = at(sources.currentDocuments, 0);
+    const plan = ingestionUnits(sources.currentDocuments);
+    const graph = emptyGraph();
+    for (let index = 1; index < 16; index += 1) {
+      const line = 4 * index + 3;
+      graph.decisions.push({
+        batch: 'synthetic-seed',
+        conditions: [],
+        document: document.id,
+        exceptions: [],
+        id: `node${index}`,
+        kind: 'constraint',
+        lineEnd: line,
+        lineStart: line,
+        localId: `c${index}`,
+        quality: 'checked',
+        reason: 'A synthetic independent rule.',
+        status: 'current',
+        text: `Rule ${index} requires bounded work.`,
+        version: document.hash,
+      });
+      if (index > 1) {
+        graph.relationships.push({
+          batch: 'synthetic-seed',
+          evidence: [
+            { document: document.id, lineEnd: line, lineStart: line, version: document.hash },
+          ],
+          from: `node${index - 1}`,
+          id: `edge${index}`,
+          localId: `r${index}`,
+          quality: 'checked',
+          reason: 'Related later rules.',
+          to: `node${index}`,
+          type: 'supports',
+        });
+      }
+    }
+    graph.units = Object.fromEntries(
+      plan.units
+        .slice(1)
+        .map((unit) => [unit.id, { document: unit.document, version: document.hash }])
+    );
+    using database = new Database(nodePath.join(root, '.hivex/knowledge.sqlite'));
+    database.run('UPDATE graph SET data=?', [JSON.stringify(graph)]);
+
+    const result = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
+    expect(result.value).toMatchObject({
+      decisions: 15,
+      pendingCheck: ['notes.md'],
+      relationships: 14,
+      status: 'budget-exhausted',
+      work: { calls: 1, contextLimit: null },
+    });
   });
 });
