@@ -115,7 +115,7 @@ test('reuses v1 extraction and check caches with the original exhausted update b
   });
 });
 
-test('reuses old caches across two update rounds with live graph neighbors', async () => {
+test('keeps the work budget when required neighbors invalidate an incomplete legacy cache', async () => {
   using cleanup = new DisposableStack();
   const root = mkdtempSync(path.join(tmpdir(), 'hivex-multiround-cache-compat-'));
   cleanup.defer(() => {
@@ -146,12 +146,12 @@ test('reuses old caches across two update rounds with live graph neighbors', asy
     path.join(root, 'model-must-not-start'),
   ]);
   expect(result).toMatchObject({
-    decisions: 3,
-    pendingUnits: [],
+    decisions: 2,
+    pendingUnits: ['notes.md:11-11'],
     relationships: 1,
-    status: 'ready',
+    status: 'budget-exhausted',
     work: {
-      cacheHits: 4,
+      cacheHits: 2,
       calls: 4,
       id: 'cc4bb47f-3512-40b0-8c6c-9ef5a326e2db',
       inputBytes: 55_743,

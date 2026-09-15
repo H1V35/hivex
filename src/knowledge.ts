@@ -378,7 +378,11 @@ const resolveContextReferences = function resolveContextReferences(
 const batchContext = function batchContext(
   project: Project,
   graph: Graph,
-  { units, retainedSources = [] }: { units: IngestionUnit[]; retainedSources?: string[] }
+  {
+    units,
+    retainedSources = [],
+    contextSources = [],
+  }: { units: IngestionUnit[]; retainedSources?: string[]; contextSources?: string[] }
 ) {
   const candidates = graph.decisions.filter((entry) => {
     const isCurrent = isCurrentSource(project, entry);
@@ -417,13 +421,20 @@ const batchContext = function batchContext(
   const affected = affectedRelations.flatMap((edge) => [edge.from, edge.to]);
   const supporting = resolveContextReferences(project, targetDocuments, [
     ...affectedRelations.flatMap((edge) => edge.evidence),
-    ...retainedSources.map((document) => {
+    ...[...new Set(Iterator.concat(retainedSources, contextSources))].map((document) => {
       const firstLine = 1;
       return { document, lineEnd: firstLine, lineStart: firstLine };
     }),
   ]);
   const { missing } = supporting;
   ranges.push(...supporting.ranges);
+  const byId = new Map(candidates.map((entry) => [entry.id, entry]));
+  const required = new Set(
+    Iterator.concat(
+      affected.filter((id) => byId.has(id)),
+      candidates.filter((entry) => contextSources.includes(entry.document)).map((entry) => entry.id)
+    )
+  );
   const allowed = new Set(
     candidates
       .filter((entry) => {
@@ -435,7 +446,7 @@ const batchContext = function batchContext(
   const priorities = [
     ...new Set(
       Iterator.concat(
-        affected,
+        required,
         candidates
           .filter((entry) => {
             const { document } = entry;
@@ -449,8 +460,7 @@ const batchContext = function batchContext(
           .map((entry) => entry.id)
       )
     ),
-  ].slice(0, 18);
-  const byId = new Map(candidates.map((entry) => [entry.id, entry]));
+  ];
   const existing: Graph['decisions'] = [];
   let contextBytes = 0;
   for (const id of priorities) {
@@ -459,7 +469,15 @@ const batchContext = function batchContext(
       continue;
     }
     const evidence = sourceEvidence(entry, project);
-    if (evidence !== null && contextBytes + Buffer.byteLength(evidence.text) <= 8192) {
+    const isRequired = required.has(id);
+    const canIncludeOptional =
+      existing.length < 18 &&
+      evidence !== null &&
+      contextBytes + Buffer.byteLength(evidence.text) <= 8192;
+    if (isRequired && evidence === null) {
+      missing.add(entry.document);
+    }
+    if (evidence !== null && (isRequired || canIncludeOptional)) {
       contextBytes += Buffer.byteLength(evidence.text);
       existing.push(entry);
       ranges.push({
@@ -643,9 +661,15 @@ const prepareUpdate = function prepareUpdate(options: {
     return runtime.repair.includes(document.id) || isPlanned;
   });
   const plan = ingestionUnits([...project.currentDocuments, ...selectedHistory]);
+  const contextSources = runtime.command === 'update' ? runtime.sources : [];
   const snapshot = knowledgeSnapshot(
     project,
-    new Set(selectedHistory.map((document) => document.id))
+    new Set(
+      Iterator.concat(
+        selectedHistory.map((document) => document.id),
+        contextSources
+      )
+    )
   );
   project.warnings.push(...plan.warnings);
   const key = digest(
@@ -657,6 +681,9 @@ const prepareUpdate = function prepareUpdate(options: {
         ['repair', runtime.repair],
         ['reason', runtime.repairReason],
         ['format', 3],
+        ...(contextSources.length
+          ? [['contextSources', [...new Set(contextSources)].toSorted(compareSerializedStrings)]]
+          : []),
       ])
     )
   );
@@ -709,6 +736,7 @@ const extractBatch = async function extractBatch(state: UpdateRound) {
   const units = nextUnits(plan.units, work.remaining);
   const documents = [...new Set(units.map((unit) => unit.document))];
   const context = batchContext(project, graph, {
+    contextSources: runtime.command === 'update' ? runtime.sources : [],
     retainedSources: work.pending?.context,
     units,
   });

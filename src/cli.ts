@@ -29,7 +29,7 @@ const main = async (input: string[]) => {
             'One extraction and one check per batch; retained work resumes within the same budget.',
           name: 'update',
           usage:
-            'update [--root <project>] [--max-calls <total>] [--max-input-bytes <total>] [--repair <document> --reason <correction>]',
+            'update [--root <project>] [--max-calls <total>] [--max-input-bytes <total>] [--max-context-bytes <bytes>] [--repair <document> --reason <correction>] [--source <context-document>]',
         },
         {
           modelCalls: 0,
