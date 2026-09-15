@@ -984,8 +984,36 @@ const suppliedDocumentsSchema = z.array(
     lines: z.array(z.tuple([z.number(), z.string()])),
   })
 );
-const materializePending = function materializePending(state: UpdateRound, pending: PendingBatch) {
+const materializePending = function materializePending(
+  state: UpdateRound,
+  pending: PendingBatch,
+  shouldRetainSuppliedEndpoints = true
+) {
   const documents = suppliedDocumentsSchema.parse(pending.packet?.documents);
+  const targets = state.plan.units.filter((unit) => pending.units.includes(unit.id));
+  const previousIds = new Set(
+    z
+      .array(z.object({ from: z.string(), to: z.string() }))
+      .parse(pending.packet?.previousRelationships ?? [])
+      .flatMap((entry) => [entry.from, entry.to])
+  );
+  const supplied = state.graph.decisions
+    .filter((entry) => {
+      const isCurrent =
+        isCurrentSource(state.project, entry) && validCitation(entry, state.project.documents);
+      return previousIds.has(entry.id) && isCurrent && suppliedCitation(entry, documents);
+    })
+    .map((entry) => entry.id);
+  const legacyIds = pending.existing.filter((id) => {
+    const node = state.graph.decisions.find((entry) => entry.id === id);
+    return (
+      !node ||
+      targets.every((range) => {
+        const isOutside = range.lineStart > node.lineEnd || range.lineEnd < node.lineStart;
+        return range.document !== node.document || isOutside;
+      })
+    );
+  });
   return applyExtraction({
     batch: pending.batch,
     contextDocuments: state.project.documents.filter((document) =>
@@ -997,10 +1025,12 @@ const materializePending = function materializePending(state: UpdateRound, pendi
     documents: state.project.documents.filter((document) =>
       pending.documents.includes(document.id)
     ),
-    existingIds: pending.existing,
+    existingIds: shouldRetainSuppliedEndpoints
+      ? [...new Set(Iterator.concat(pending.existing, supplied))]
+      : legacyIds,
     extraction: pending.extraction,
     graph: state.graph,
-    targetRanges: state.plan.units.filter((unit) => pending.units.includes(unit.id)),
+    targetRanges: targets,
   });
 };
 const lostCurrentRelationships = function lostCurrentRelationships(
@@ -1040,7 +1070,8 @@ const withoutExecutionState = function withoutExecutionState<
 const checkedPacket = function checkedPacket(
   graph: Graph,
   candidate: Graph,
-  pending: PendingBatch
+  pending: PendingBatch,
+  shouldIncludeReferencedDefinitions = true
 ) {
   if (pending.materializedCheck !== true) {
     return { ...pending.packet, extraction: pending.extraction };
@@ -1048,7 +1079,15 @@ const checkedPacket = function checkedPacket(
   const removedRelationships = graph.relationships.filter(
     (entry) => pending.protectedRelationships?.includes(entry.id) === true
   );
-  const endpointIds = new Set(removedRelationships.flatMap((entry) => [entry.from, entry.to]));
+  const referenced = candidate.relationships
+    .flatMap((entry) => (entry.batch === pending.batch ? [entry.from, entry.to] : []))
+    .filter((id) => !pending.existing.includes(id));
+  const endpointIds = new Set(
+    Iterator.concat(
+      removedRelationships.flatMap((entry) => [entry.from, entry.to]),
+      shouldIncludeReferencedDefinitions ? referenced : []
+    )
+  );
   const ranges = z.array(citationSchema).parse(pending.packet?.units);
   const validationWarnings = candidate.warnings.filter((warning) => {
     if (typeof warning === 'string' || warning.kind !== 'validation') {
@@ -1214,6 +1253,33 @@ const extractBatch = async function extractBatch(state: UpdateRound) {
 
   return graph;
 };
+const reassessOrCheckChangedCandidate = async function reassessOrCheckChangedCandidate(
+  state: UpdateRound,
+  request: KnowledgeRequest
+) {
+  try {
+    return retainedCheckResult(state.work, request);
+  } catch (error) {
+    if (
+      !(error instanceof HivexError) ||
+      error.code !== 'STALE_RETAINED_CHECK' ||
+      state.work.pending === null
+    ) {
+      throw error;
+    }
+    const legacy = materializePending(state, state.work.pending, false);
+    retainedCheckResult(state.work, {
+      ...request,
+      packet: checkedPacket(state.graph, legacy, state.work.pending, false),
+    });
+    return await runModel({
+      request,
+      runtime: state.runtime,
+      store: state.store,
+      work: state.work,
+    });
+  }
+};
 const checkBatch = async function checkBatch(state: UpdateRound, isRetainedOnly = false) {
   const { plan, project, runtime, store, work } = state;
   let { graph } = state;
@@ -1238,8 +1304,9 @@ const checkBatch = async function checkBatch(state: UpdateRound, isRetainedOnly 
     schema: isGuarded ? relationshipCheckSchema : checkSchema,
     stage: 'check',
   };
+  const priorCalls = work.calls;
   const value = isRetainedOnly
-    ? retainedCheckResult(work, request)
+    ? await reassessOrCheckChangedCandidate(state, request)
     : await runModel({ request, runtime, store, work });
   if (value === null) {
     return null;
@@ -1252,13 +1319,14 @@ const checkBatch = async function checkBatch(state: UpdateRound, isRetainedOnly 
     ),
   });
   const unresolved = unresolvedRelationshipChanges(state, candidate, value);
-  if (isRetainedOnly) {
+  const isLocalAssessment = isRetainedOnly && work.calls === priorCalls;
+  if (isLocalAssessment) {
     work.retainedCheckAssessment = unresolved.length > 0 ? 'blocked' : 'accepted';
   }
   if (unresolved.length > 0) {
     work.status = 'failed';
     const attempt = work.attempts.at(-1);
-    if (attempt && !isRetainedOnly) {
+    if (attempt && !isLocalAssessment) {
       attempt.error = 'RELATIONSHIP_LOSS';
       attempt.diagnostic = `Previous graph retained. Unresolved relationship changes: ${unresolved.join(', ')}. Inspect this result before proposing a different repair; no automatic retry.`;
     }
