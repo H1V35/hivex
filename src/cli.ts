@@ -5,6 +5,7 @@ import { knowledgeMaintenance } from './knowledge-maintenance.ts';
 import { knowledgeCommand } from './knowledge.ts';
 import { projectInitializationCommand } from './project-initialization.ts';
 import { snapshotCommand } from './snapshot-command.ts';
+import { warningCommand } from './knowledge-warnings.ts';
 import { diagnostic } from './cli/diagnostic.ts';
 
 const main = async (input: string[]) => {
@@ -70,6 +71,11 @@ const main = async (input: string[]) => {
           name: 'snapshot',
           usage: 'snapshot export | import | relocate <from> <to> [--root <project>]',
         },
+        {
+          modelCalls: 0,
+          name: 'warnings',
+          usage: 'warnings [--all] [--resolve <resolutions.json>] [--root <project>]',
+        },
         { modelCalls: 0, name: 'status', usage: 'status [--root <project>]' },
         { modelCalls: 0, name: 'init', usage: 'init [--root <project>]' },
       ],
@@ -85,6 +91,9 @@ const main = async (input: string[]) => {
   }
   if (input[0] === 'sources' || input[0] === 'read') {
     return documentCommand(input);
+  }
+  if (input[0] === 'warnings') {
+    return warningCommand(input);
   }
   if (input[0] === 'snapshot') {
     return snapshotCommand(input);

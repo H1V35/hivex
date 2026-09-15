@@ -104,6 +104,12 @@ const warningSchema = z.union([
   z.object({
     kind: warningKind.optional(),
     message: z.string(),
+    resolution: z
+      .object({
+        evidence: z.array(warningScopeSchema).min(1).max(32),
+        reason: explanation,
+      })
+      .optional(),
     scope: z.array(warningScopeSchema),
     target: z.string().optional(),
   }),
@@ -174,9 +180,74 @@ export const graphSchema = z.object({
 export type Graph = z.infer<typeof graphSchema>;
 export type Extraction = z.infer<typeof extractionSchema>;
 export type KnowledgeCheck = z.infer<typeof checkSchema>;
-export const warningSummary = function warningSummary(warnings: Graph['warnings']) {
-  const summary = { findings: 0, limitations: 0, unknown: 0, validation: 0 };
+export const validCitation = function validCitation(
+  entry: z.infer<typeof citationSchema>,
+  documents: Document[]
+) {
+  const document = documents.find((item) => item.id === entry.document);
+  return (
+    document !== undefined &&
+    entry.lineStart <= entry.lineEnd &&
+    entry.lineEnd <= rawMarkdownLines(document.text).length &&
+    sourceRange(document.text, entry.lineStart, entry.lineEnd).trim().length > 0
+  );
+};
+
+export const warningId = function warningId(warning: Graph['warnings'][number]) {
+  const value: Exclude<Graph['warnings'][number], string> =
+    typeof warning === 'string' ? { message: warning, scope: [] } : warning;
+  const { kind, message, scope, target } = value;
+  return digest(JSON.stringify({ kind, message, scope, target }));
+};
+
+const appendWarnings = function appendWarnings(
+  existing: Graph['warnings'],
+  incoming: Graph['warnings']
+) {
+  const known = new Set(existing.map(warningId));
+  return [
+    ...existing,
+    ...incoming.filter((warning) => {
+      const id = warningId(warning);
+      if (known.has(id)) {
+        return false;
+      }
+      known.add(id);
+      return true;
+    }),
+  ];
+};
+
+export const isWarningResolved = function isWarningResolved(
+  warning: Graph['warnings'][number],
+  documents: Document[]
+) {
+  if (typeof warning === 'string' || warning.resolution === undefined) {
+    return false;
+  }
+  return warning.resolution.evidence.every((citation) => {
+    const source = documents.find((document) => document.id === citation.document);
+    return source?.hash === citation.version && validCitation(citation, documents);
+  });
+};
+
+export const activeWarnings = function activeWarnings(
+  warnings: Graph['warnings'],
+  documents: Document[]
+) {
+  return warnings.filter((warning) => !isWarningResolved(warning, documents));
+};
+
+export const warningSummary = function warningSummary(
+  warnings: Graph['warnings'],
+  documents: Document[] = []
+) {
+  const summary = { findings: 0, limitations: 0, resolved: 0, unknown: 0, validation: 0 };
   for (const warning of warnings) {
+    if (isWarningResolved(warning, documents)) {
+      summary.resolved += 1;
+      continue;
+    }
     const kind = typeof warning === 'string' ? undefined : warning.kind;
     if (kind === undefined) {
       summary.unknown += 1;
@@ -195,19 +266,6 @@ export const emptyGraph = function emptyGraph(): Graph {
     version: 1,
     warnings: [],
   };
-};
-
-export const validCitation = function validCitation(
-  entry: z.infer<typeof citationSchema>,
-  documents: Document[]
-) {
-  const document = documents.find((item) => item.id === entry.document);
-  return (
-    document !== undefined &&
-    entry.lineStart <= entry.lineEnd &&
-    entry.lineEnd <= rawMarkdownLines(document.text).length &&
-    sourceRange(document.text, entry.lineStart, entry.lineEnd).trim().length > 0
-  );
 };
 
 export const sourceEvidence = function sourceEvidence(
@@ -262,7 +320,7 @@ interface ExtractionOptions {
 
 const retainedWarnings = function retainedWarnings(graph: Graph, scope: WarningScope[]) {
   return graph.warnings.filter((warning) => {
-    if (typeof warning === 'string') {
+    if (typeof warning === 'string' || warning.resolution !== undefined) {
       return true;
     }
     return warning.scope.every((old) => {
@@ -469,10 +527,10 @@ export const applyExtraction = function applyExtraction(options: ExtractionOptio
       })
     ),
     version: 1 as const,
-    warnings: [
-      ...retainedWarnings(graph, scope),
-      ...warnings.map((warning) => ({ ...warning, scope })),
-    ],
+    warnings: appendWarnings(
+      retainedWarnings(graph, scope),
+      warnings.map((warning) => ({ ...warning, scope }))
+    ),
   };
 };
 
@@ -604,9 +662,9 @@ export const applyCheck = function applyCheck(
     ...graph,
     decisions,
     relationships,
-    warnings: [
-      ...graph.warnings,
-      ...check.findings.map((finding) => {
+    warnings: appendWarnings(
+      graph.warnings,
+      check.findings.map((finding) => {
         const findingWarningScope = findingScope(graph, finding.target, {
           batch,
           fallback: scope,
@@ -617,7 +675,7 @@ export const applyCheck = function applyCheck(
           scope: findingWarningScope,
           target: finding.target,
         };
-      }),
-    ],
+      })
+    ),
   };
 };

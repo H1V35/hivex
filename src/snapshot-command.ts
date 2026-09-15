@@ -6,6 +6,7 @@ import { KnowledgeStore } from './knowledge-store.ts';
 import { readKnowledgeSnapshot, writeKnowledgeSnapshot } from './knowledge-snapshot.ts';
 import { loadProject } from './documents.ts';
 import { relocateSource } from './source-relocation.ts';
+import { activeWarnings, warningSummary } from './knowledge-model.ts';
 import type { Graph } from './knowledge-model.ts';
 import type { Project } from './documents.ts';
 import type { SourceRelocation } from './source-relocation.ts';
@@ -15,7 +16,9 @@ const sourceVersion = function sourceVersion([document, version]: [string, strin
 };
 
 const warningScopes = function warningScopes(warning: Graph['warnings'][number]) {
-  return typeof warning === 'string' ? [] : warning.scope;
+  return typeof warning === 'string'
+    ? []
+    : [...warning.scope, ...(warning.resolution?.evidence ?? [])];
 };
 
 const sourceVersions = function sourceVersions(project: Project, graph: Graph) {
@@ -53,7 +56,11 @@ const snapshotReport = function snapshotReport(project: Project, graph: Graph, o
     return graph.units[unit.id]?.version !== source?.hash;
   });
   const sources = sourceVersions(project, graph);
-  const warnings = [...graph.warnings, ...project.warnings, ...plan.warnings];
+  const warnings = [
+    ...activeWarnings(graph.warnings, project.documents),
+    ...project.warnings,
+    ...plan.warnings,
+  ];
   const isPartial = [
     pending.length > 0,
     warnings.length > 0,
@@ -71,6 +78,7 @@ const snapshotReport = function snapshotReport(project: Project, graph: Graph, o
     relationships: graph.relationships.length,
     sources,
     status: isPartial ? 'partial' : 'ready',
+    warningSummary: warningSummary(graph.warnings, project.documents),
     warnings,
   };
 };

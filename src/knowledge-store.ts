@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   closeSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -866,3 +867,11 @@ export class KnowledgeStore implements Disposable {
     this.resources.dispose();
   }
 }
+
+export const storedGraph = function storedGraph(root: string): Graph {
+  if (!existsSync(path.join(root, '.hivex/knowledge.sqlite'))) {
+    return sharedKnowledge(root);
+  }
+  using store = new KnowledgeStore(root, { readonly: true });
+  return store.graph();
+};

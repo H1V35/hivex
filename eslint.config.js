@@ -139,7 +139,7 @@ export default [
         {
           category: 'commands',
           pattern: [
-            'src/{cli,knowledge,knowledge-maintenance,project-initialization,snapshot-command}.ts',
+            'src/{cli,knowledge,knowledge-maintenance,knowledge-warnings,project-initialization,snapshot-command}.ts',
             'src/cli/**',
           ],
         },
