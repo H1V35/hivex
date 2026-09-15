@@ -3863,7 +3863,7 @@ test('retains current relationships across a staged repair and an unjustified ma
   });
 });
 
-test('repairs only selected source units and keeps unrelated knowledge and resumed cost', () => {
+test('repairs only selected source decisions and keeps unrelated knowledge and resumed cost', () => {
   project((root) => {
     const text = Array.from(
       { length: 24 },
@@ -3898,8 +3898,9 @@ test('repairs only selected source units and keeps unrelated knowledge and resum
     );
     const firstUnit = at(units, 0);
     expect(units.length).toBeGreaterThan(1);
+    expect(firstUnit.lineEnd).toBeGreaterThan(firstUnit.lineStart);
     const untouched = original.decisions.filter(
-      (entry) => entry.document !== 'large.md' || entry.lineStart > firstUnit.lineEnd
+      (entry) => entry.document !== 'large.md' || entry.lineStart !== firstUnit.lineStart
     );
     writeFileSync(`${file}.packets`, '');
     const repairArguments = [
@@ -3918,7 +3919,7 @@ test('repairs only selected source units and keeps unrelated knowledge and resum
     const packets = readFileSync(`${file}.packets`, 'utf-8').trim().split('\n').map(parsePacket);
     expect(packets.map((packet) => packet.operation)).toEqual(['extract', 'check']);
     expect(arrayField(at(packets, 0), 'units')).toEqual([
-      expect.objectContaining({ id: firstUnit.id }),
+      expect.objectContaining({ id: 'large.md:1-1', lineEnd: 1, lineStart: 1 }),
     ]);
     {
       using store = new KnowledgeStore(root, { readonly: true });
@@ -3926,7 +3927,7 @@ test('repairs only selected source units and keeps unrelated knowledge and resum
         store
           .graph()
           .decisions.filter(
-            (entry) => entry.document !== 'large.md' || entry.lineStart > firstUnit.lineEnd
+            (entry) => entry.document !== 'large.md' || entry.lineStart !== firstUnit.lineStart
           )
       ).toEqual(untouched);
     }
@@ -3936,6 +3937,332 @@ test('repairs only selected source units and keeps unrelated knowledge and resum
     });
     writeFileSync(nodePath.join(root, 'large.md'), `${text}Changed authority.\n`);
     expect(invokeError(root, repairArguments).stderr).toContain('SOURCE_NOT_CURRENT');
+  });
+});
+
+test('expands a partial repair to its full citation while preserving neighboring knowledge', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    writeFileSync(
+      nodePath.join(root, 'rules.md'),
+      `${[
+        '# Rules',
+        '',
+        'Target decision starts here.',
+        'Target decision continues with its condition.',
+        'Target decision ends with its scope.',
+        'Neighbor rule stays in the same source block.',
+      ].join('\n')}\n`
+    );
+    writeFileSync(
+      nodePath.join(root, 'authority.md'),
+      '# Authority\n\nThe authority remains independent.\n'
+    );
+    const binary = model(root);
+    const file = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(file, 'utf-8'));
+    const targetTemplate = at(responses.extract.decisions, 0);
+    const authorityTemplate = at(responses.extract.decisions, 1);
+    const relationshipTemplate = at(responses.extract.relationships, 0);
+    const targetDecision = {
+      ...targetTemplate,
+      document: 'rules.md',
+      id: 'target-node',
+      lineEnd: 5,
+      lineStart: 3,
+      text: 'Target decision covers its complete three-line passage.',
+    };
+    const neighborDecision = {
+      ...targetTemplate,
+      document: 'rules.md',
+      id: 'neighbor-node',
+      lineEnd: 6,
+      lineStart: 6,
+      text: 'Neighbor rule stays in the same source block.',
+    };
+    const authorityDecision = {
+      ...authorityTemplate,
+      document: 'authority.md',
+      id: 'authority-node',
+      lineEnd: 3,
+      lineStart: 3,
+      text: 'The authority remains independent.',
+    };
+    const unrelatedRelationship = {
+      ...relationshipTemplate,
+      evidence: [
+        { document: 'rules.md', lineEnd: 6, lineStart: 6 },
+        { document: 'authority.md', lineEnd: 3, lineStart: 3 },
+      ],
+      from: 'neighbor-node',
+      id: 'neighbor-authority',
+      reason: 'The neighboring rule uses the independent authority.',
+      to: 'authority-node',
+      type: 'requires' as const,
+    };
+    responses.capturePackets = true;
+    responses.byDocument = {
+      'authority.md': { decisions: [authorityDecision], relationships: [] },
+      'rules.md': {
+        decisions: [targetDecision, neighborDecision],
+        relationships: [unrelatedRelationship],
+      },
+    };
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value.status).toBe(
+      'ready'
+    );
+    let originalNeighbor;
+    let originalRelationship;
+    {
+      using store = new KnowledgeStore(root, { readonly: true });
+      originalNeighbor = store.graph().decisions.find((entry) => entry.localId === 'neighbor-node');
+      originalRelationship = store
+        .graph()
+        .relationships.find((entry) => entry.localId === 'neighbor-authority');
+    }
+    if (originalNeighbor === undefined || originalRelationship === undefined) {
+      throw new Error('Expected the neighboring decision and relationship');
+    }
+    responses.byDocument['rules.md'] = {
+      decisions: [{ ...targetDecision, text: 'Target decision is corrected from its source.' }],
+      relationships: [],
+    };
+    writeFileSync(file, JSON.stringify(responses));
+    writeFileSync(`${file}.packets`, '');
+
+    const repaired = invoke(root, [
+      'update',
+      '--repair-range',
+      'rules.md:4-4',
+      '--reason',
+      'Check the complete target decision citation.',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    const packets = readFileSync(`${file}.packets`, 'utf-8').trim().split('\n').map(parsePacket);
+    const extractionPacket = packets.find((packet) => packet.operation === 'extract');
+    if (extractionPacket === undefined) {
+      throw new Error('Expected the partial repair extraction packet');
+    }
+    expect(repaired.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    expect(arrayField(extractionPacket, 'units')).toEqual([
+      expect.objectContaining({ id: 'rules.md:3-5', lineEnd: 5, lineStart: 3 }),
+    ]);
+    using store = new KnowledgeStore(root, { readonly: true });
+    const graph = store.graph();
+    expect(graph.decisions.find((entry) => entry.localId === 'target-node')).toMatchObject({
+      lineEnd: 5,
+      lineStart: 3,
+      text: 'Target decision is corrected from its source.',
+    });
+    expect(graph.decisions.find((entry) => entry.localId === 'neighbor-node')).toEqual(
+      originalNeighbor
+    );
+    expect(graph.relationships.find((entry) => entry.localId === 'neighbor-authority')).toEqual(
+      originalRelationship
+    );
+  });
+});
+
+test('rejects a complete expanded repair range over 16 KiB before a model call', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    writeFileSync(
+      nodePath.join(root, 'oversized.md'),
+      `${[
+        '# Oversized decision',
+        '',
+        `The decision starts here. ${'a'.repeat(6000)}`,
+        `The decision continues here. ${'b'.repeat(6000)}`,
+        `The decision ends here. ${'c'.repeat(6000)}`,
+      ].join('\n')}\n`
+    );
+    const source = loadProject(root).currentDocuments.find(
+      (document) => document.id === 'oversized.md'
+    );
+    if (source === undefined) {
+      throw new Error('Expected the oversized source document');
+    }
+    const graph = emptyGraph();
+    graph.decisions.push({
+      batch: 'synthetic-seed',
+      conditions: [],
+      document: source.id,
+      exceptions: [],
+      id: 'oversized-node',
+      kind: 'constraint',
+      lineEnd: 5,
+      lineStart: 3,
+      localId: 'oversized-node',
+      quality: 'checked',
+      reason: 'The decision spans the complete source passage.',
+      status: 'current',
+      text: 'The decision spans the complete source passage.',
+      version: source.hash,
+    });
+    graph.documents[source.id] = source.hash;
+    {
+      using store = new KnowledgeStore(root);
+      store.saveGraph(graph);
+    }
+
+    const refused = invokeError(root, [
+      'update',
+      '--repair-range',
+      'oversized.md:4-4',
+      '--reason',
+      'Inspect the complete decision citation.',
+      '--max-calls',
+      '1',
+      '--codex',
+      '/model-must-not-start',
+    ]);
+
+    expect(refused.status).toBe(1);
+    expect(parseError(refused.stderr).error.code).toBe('REPAIR_RANGE_TOO_LARGE');
+    expect(existsSync(nodePath.join(root, 'model-calls.log'))).toBe(false);
+    using store = new KnowledgeStore(root, { readonly: true });
+    expect(store.graph()).toEqual(graph);
+  });
+});
+
+test('resumes a retained legacy full-unit repair from a precise range without reextracting', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    writeFileSync(
+      nodePath.join(root, 'legacy.md'),
+      '# Legacy\n\nRule 1 requires bounded retention.\nRule 2 remains outside the repair.\n'
+    );
+    const binary = model(root);
+    const file = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(file, 'utf-8'));
+    const template = at(responses.extract.decisions, 0);
+    responses.capturePackets = true;
+    responses.byDocument = {
+      'legacy.md': {
+        decisions: [
+          {
+            ...template,
+            document: 'legacy.md',
+            id: 'legacy-one',
+            lineEnd: 3,
+            lineStart: 3,
+            text: 'Rule 1 requires bounded retention.',
+          },
+          {
+            ...template,
+            document: 'legacy.md',
+            id: 'legacy-two',
+            lineEnd: 4,
+            lineStart: 4,
+            text: 'Rule 2 remains outside the repair.',
+          },
+        ],
+        relationships: [],
+      },
+    };
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value.status).toBe(
+      'ready'
+    );
+
+    const reason = 'Check Rule 1 against its source.';
+    const rangeArguments = ['update', '--repair-range', 'legacy.md:3-3', '--reason', reason];
+    const zeroPlan = invoke(root, [
+      ...rangeArguments,
+      '--max-calls',
+      '0',
+      '--codex',
+      '/model-must-not-start',
+    ]);
+    const zeroPlanId = workId(zeroPlan.value);
+    const zeroPlanWork = storedWork(root, zeroPlanId);
+    expect(zeroPlan.value).toMatchObject({
+      pendingUnits: ['legacy.md:3-3'],
+      status: 'budget-exhausted',
+      work: { calls: 0 },
+    });
+    expect(stringArrayField(zeroPlanWork, 'plannedUnits')).toEqual(['legacy.md:3-3']);
+
+    writeFileSync(`${file}.packets`, '');
+    const fullRepair = invoke(root, [
+      'update',
+      '--repair',
+      'legacy.md',
+      '--reason',
+      reason,
+      '--max-calls',
+      '1',
+      '--codex',
+      binary,
+    ]);
+    const fullRepairId = workId(fullRepair.value);
+    const fullWork = storedWork(root, fullRepairId);
+    const fullUnitId = at(stringArrayField(fullWork, 'plannedUnits'), 0);
+    const pending = objectField(fullWork, 'pending');
+    const pendingPacket = objectField(pending, 'packet');
+    const fullPackets = readFileSync(`${file}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket);
+    const fullExtractionPacket = at(fullPackets, 0);
+    const fullPacketUnit = recordAt(arrayField(fullExtractionPacket, 'units'), 0);
+    expect(fullRepair.value).toMatchObject({
+      pendingCheck: ['legacy.md'],
+      status: 'budget-exhausted',
+      work: { calls: 1, id: fullRepairId },
+    });
+    expect(fullExtractionPacket.operation).toBe('extract');
+    expect(fullExtractionPacket).not.toHaveProperty('ranges');
+    expect(pendingPacket).not.toHaveProperty('ranges');
+    expect(stringField(fullPacketUnit, 'id')).toBe(fullUnitId);
+    expect(numberField(fullPacketUnit, 'lineStart')).toBeLessThan(3);
+    expect(numberField(fullPacketUnit, 'lineEnd')).toBeGreaterThan(3);
+    const packetsBeforeResume = fullPackets.length;
+    const callsBeforeResume = readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8')
+      .trim()
+      .split('\n').length;
+    const rangeKey = stringField(zeroPlanWork, 'key');
+
+    // Recreate only the 0.3.6 retained full-unit state: retag its persisted row with the
+    // precise repair key while preserving its broad pending units, attempts and counters.
+    fullWork.key = rangeKey;
+    {
+      using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
+      database
+        .query('UPDATE work SET key=?, data=? WHERE id=?')
+        .run(rangeKey, JSON.stringify(fullWork), fullRepairId);
+    }
+
+    const resumed = invoke(root, [...rangeArguments, '--max-calls', '2', '--codex', binary]);
+    const packetsAfterResume = readFileSync(`${file}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket);
+    const resumedPacket = at(packetsAfterResume, packetsAfterResume.length - 1);
+    const callsAfterResume = readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8')
+      .trim()
+      .split('\n').length;
+    expect(resumed.value).toMatchObject({
+      pendingCheck: [],
+      pendingUnits: [],
+      status: 'ready',
+      work: { calls: 2, id: fullRepairId },
+    });
+    expect(packetsAfterResume.slice(packetsBeforeResume).map((packet) => packet.operation)).toEqual(
+      ['check']
+    );
+    expect(resumedPacket).not.toHaveProperty('ranges');
+    expect(arrayField(resumedPacket, 'units')).toEqual([
+      expect.objectContaining({ id: fullUnitId }),
+    ]);
+    expect(callsAfterResume).toBe(callsBeforeResume + 1);
   });
 });
 
