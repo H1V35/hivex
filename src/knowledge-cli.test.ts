@@ -3841,6 +3841,22 @@ test('retains current relationships across a staged repair and an unjustified ma
       status: 'failed',
       work: { calls: 2 },
     });
+    const retained = storedWork(root, workId(checked.value));
+    recordAt(arrayField(retained, 'attempts'), 1).diagnostic =
+      'Original admission rejected a broader set of relationships.';
+    {
+      using database = new Database(nodePath.join(root, '.hivex/knowledge.sqlite'));
+      database
+        .query('UPDATE work SET data=? WHERE id=?')
+        .run(JSON.stringify(retained), workId(checked.value));
+    }
+    expect(
+      invoke(root, [...repairArguments, '--retry-failed', '--max-calls', '0']).value
+    ).toMatchObject({
+      status: 'failed',
+      work: { calls: 2, retainedCheckAssessment: 'blocked' },
+    });
+    expect(storedWork(root, workId(checked.value)).attempts).toEqual(retained.attempts);
     expect(
       readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
     ).toHaveLength(4);
@@ -3999,3 +4015,113 @@ test('does not replace a current relationship with a replacement rejected by the
     expect(store.graph()).toEqual(original);
   });
 });
+
+test.each(['fresh', 'different-candidate', 'intervening-update'])(
+  'reassesses a retained check without calls only for matching state: %s',
+  (state) => {
+    project((root) => {
+      const binary = model(root);
+      const file = nodePath.join(root, 'responses.json');
+      const responses = parseModelResponses(readFileSync(file, 'utf-8'));
+      responses.check.findings = [
+        { reason: 'The transport for eviction acknowledgements is not described.', target: 'c2' },
+      ];
+      writeFileSync(file, JSON.stringify(responses));
+      expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('partial');
+      let baseline;
+      {
+        using store = new KnowledgeStore(root, { readonly: true });
+        baseline = store.graph();
+      }
+      responses.byDocument = {
+        'cache.md': {
+          decisions: [
+            {
+              ...at(responses.extract.decisions, 0),
+              text: 'Expire ordinary cached data after seven days.',
+            },
+          ],
+          relationships: [
+            { ...at(responses.extract.relationships, 0), from: '@existing:privacy.md', to: 'c1' },
+          ],
+        },
+      };
+      responses.check = {
+        findings: [],
+        relationshipChanges: [
+          {
+            evidence: [{ document: 'privacy.md', lineEnd: 3, lineStart: 3 }],
+            previousId: '@removed:0',
+            reason: 'The revocation exception is retained with the same evidence.',
+            replacements: ['@candidate:0'],
+          },
+        ],
+      };
+      writeFileSync(file, JSON.stringify(responses));
+      const repairArguments = [
+        'update',
+        '--repair-range',
+        'cache.md:3-3',
+        '--reason',
+        'Clarify the ordinary cache lifetime.',
+      ];
+      const extraction = invoke(root, [...repairArguments, '--max-calls', '1', '--codex', binary]);
+      const pendingWork = storedWork(root, workId(extraction.value));
+      expect(
+        invoke(root, [...repairArguments, '--max-calls', '2', '--codex', binary]).value.status
+      ).toBe('partial');
+      const retained = storedWork(root, workId(extraction.value));
+      // Recreate a 0.3.5 local-admission failure using synthetic retained results.
+      retained.pending = pendingWork.pending;
+      retained.remaining = pendingWork.remaining;
+      retained.status = 'failed';
+      recordAt(arrayField(retained, 'attempts'), 1).error = 'RELATIONSHIP_LOSS';
+      if (state === 'different-candidate') {
+        const pending = objectField(retained, 'pending');
+        recordAt(arrayField(objectField(pending, 'extraction'), 'decisions'), 0).text =
+          'A changed candidate cannot reuse the old check.';
+      } else if (state === 'intervening-update') {
+        baseline.lastExtraction = 'intervening-update';
+      }
+      {
+        using database = new Database(nodePath.join(root, '.hivex/knowledge.sqlite'));
+        database
+          .query('UPDATE work SET data=? WHERE id=?')
+          .run(JSON.stringify(retained), workId(extraction.value));
+        database.query('UPDATE graph SET data=? WHERE id=1').run(JSON.stringify(baseline));
+      }
+      const reassessmentArguments = [
+        ...repairArguments,
+        '--retry-failed',
+        '--max-calls',
+        '0',
+        '--codex',
+        '/model-must-not-start',
+      ];
+      if (state === 'fresh') {
+        const reassessed = invoke(root, reassessmentArguments);
+        expect(reassessed.value).toMatchObject({
+          status: 'partial',
+          work: { calls: 2, id: workId(extraction.value), retainedCheckAssessment: 'accepted' },
+        });
+        using store = new KnowledgeStore(root, { readonly: true });
+        expect(store.graph().relationships).toHaveLength(1);
+        expect(at(store.graph().relationships, 0).quality).toBe('uncertain');
+        expect(
+          recordAt(arrayField(storedWork(root, workId(extraction.value)), 'attempts'), 1).error
+        ).toBe('RELATIONSHIP_LOSS');
+        expect(invoke(root, reassessmentArguments).value).toMatchObject({
+          status: 'partial',
+          work: { calls: 2, id: workId(extraction.value), retainedCheckAssessment: 'accepted' },
+        });
+      } else {
+        expect(invokeError(root, reassessmentArguments).stderr).toContain('STALE_RETAINED_CHECK');
+        using store = new KnowledgeStore(root, { readonly: true });
+        expect(store.graph()).toEqual(baseline);
+      }
+      expect(
+        readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
+      ).toHaveLength(4);
+    });
+  }
+);

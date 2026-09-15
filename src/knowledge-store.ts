@@ -77,6 +77,7 @@ const workSchema = z.object({
   remaining: z.array(z.string()),
   result: z.unknown().optional(),
   resultKey: z.string().optional(),
+  retainedCheckAssessment: z.enum(['accepted', 'blocked']).optional(),
   snapshot: z.string(),
   status: z.enum(['pending', 'running', 'budget-exhausted', 'context-limit', 'failed', 'done']),
   totalTokens: z.number().int().nonnegative(),
@@ -797,6 +798,7 @@ export class KnowledgeStore implements Disposable {
       work.status = 'running';
       work.ownerPid = process.pid;
       delete work.nativeProcessId;
+      delete work.retainedCheckAssessment;
       work.attempts.push({ inputBytes, inputHash, stage });
       this.save(work);
     })();

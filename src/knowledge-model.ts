@@ -508,11 +508,11 @@ const findingScope = function findingScope(
   return documentScope.length > 0 ? documentScope : fallback;
 };
 
-export const applyCheck = function applyCheck(
+export const checkImpact = function checkImpact(
   graph: Graph,
   check: KnowledgeCheck,
   { batch, scope = [] }: { batch: string; scope?: WarningScope[] }
-): Graph {
+) {
   const targets = new Set(check.findings.map((finding) => finding.target));
   const known = new Set([
     'batch',
@@ -529,13 +529,41 @@ export const applyCheck = function applyCheck(
   ]);
   const isUncertainBatch =
     targets.has('batch') || [...targets].some((target) => !known.has(target));
+  const decisionIds = new Set(
+    graph.decisions
+      .filter((entry) => {
+        if (targets.has(entry.id)) {
+          return true;
+        }
+        return entry.batch === batch && (targets.has(entry.localId) || targets.has(entry.document));
+      })
+      .map((entry) => entry.id)
+  );
+  const relationshipIds = new Set(
+    graph.relationships
+      .filter((entry) => {
+        const isDirectTarget =
+          targets.has(entry.id) || (entry.batch === batch && targets.has(entry.localId));
+        return isDirectTarget || decisionIds.has(entry.from) || decisionIds.has(entry.to);
+      })
+      .map((entry) => entry.id)
+  );
+  return { decisionIds, isUncertainBatch, relationshipIds };
+};
+
+export const applyCheck = function applyCheck(
+  graph: Graph,
+  check: KnowledgeCheck,
+  { batch, scope = [] }: { batch: string; scope?: WarningScope[] }
+): Graph {
+  const targets = new Set(check.findings.map((finding) => finding.target));
+  const impact = checkImpact(graph, check, { batch, scope });
   const decisions = graph.decisions.map((entry) => {
     if (entry.batch !== batch && !targets.has(entry.id)) {
       return entry;
     }
-    const isTargeted =
-      targets.has(entry.id) || targets.has(entry.localId) || targets.has(entry.document);
-    const isUncertain = isTargeted || entry.quality === 'uncertain' || isUncertainBatch;
+    const isUncertain =
+      impact.decisionIds.has(entry.id) || entry.quality === 'uncertain' || impact.isUncertainBatch;
     return {
       ...entry,
       quality: quality.parse(isUncertain ? 'uncertain' : 'checked'),
@@ -546,9 +574,8 @@ export const applyCheck = function applyCheck(
       return entry;
     }
     const isUncertain =
-      targets.has(entry.id) ||
-      isUncertainBatch ||
-      targets.has(entry.localId) ||
+      impact.relationshipIds.has(entry.id) ||
+      impact.isUncertainBatch ||
       decisions.some((node) => {
         if (node.id !== entry.from && node.id !== entry.to) {
           return false;

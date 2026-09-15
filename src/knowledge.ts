@@ -25,6 +25,7 @@ import {
   applyCheck,
   applyExtraction,
   checkSchema,
+  checkImpact,
   digest,
   extractionSchema,
   citationSchema,
@@ -169,6 +170,7 @@ const workSummary = function workSummary(work: Work) {
     maxInputBytes: work.maxInputBytes,
     phase: work.phase,
     recoveryAcknowledgement: last?.recoveryAcknowledgement ?? null,
+    retainedCheckAssessment: work.retainedCheckAssessment ?? null,
     totalTokens: work.totalTokens,
     unmeasuredAttempts: work.attempts.filter((attempt) => {
       const parsed = reportSummary.safeParse(attempt.report);
@@ -267,18 +269,13 @@ const historicalExtraction = function historicalExtraction(
     }),
   };
 };
-const runModel = async function runModel(options: {
-  work: Work;
-  store: KnowledgeStore;
-  runtime: Options;
-  request: {
-    stage: string;
-    instruction: string;
-    packet: unknown;
-    schema: z.ZodType;
-  };
-}) {
-  const { work, store, runtime, request } = options;
+interface KnowledgeRequest {
+  instruction: string;
+  packet: unknown;
+  schema: z.ZodType;
+  stage: string;
+}
+const modelInput = function modelInput(request: KnowledgeRequest) {
   const prompt = `${commonInstructions}\n${request.instruction}\n\n${stringifyKnowledge(request.packet)}`;
   const bytes = Buffer.byteLength(prompt);
   const schema = schemaForKnowledge(z.toJSONSchema(request.schema));
@@ -291,6 +288,35 @@ const runModel = async function runModel(options: {
       ])
     )
   );
+  return { bytes, fingerprint, prompt, schema };
+};
+const retainedCheckResult = function retainedCheckResult(work: Work, request: KnowledgeRequest) {
+  const attempt = work.attempts.at(-1);
+  const report = reportSummary.safeParse(attempt?.report);
+  const isComplete =
+    report.success && report.data.outcome === 'completed' && report.data.cleanup === 'confirmed';
+  if (
+    !isComplete ||
+    attempt?.stage !== 'check' ||
+    attempt.inputHash !== modelInput(request).fingerprint ||
+    attempt.result === undefined
+  ) {
+    throw new HivexError({
+      code: 'STALE_RETAINED_CHECK',
+      message:
+        'The retained check does not match this candidate and evidence. No model call was made.',
+    });
+  }
+  return request.schema.parse(attempt.result);
+};
+const runModel = async function runModel(options: {
+  work: Work;
+  store: KnowledgeStore;
+  runtime: Options;
+  request: KnowledgeRequest;
+}) {
+  const { work, store, runtime, request } = options;
+  const { bytes, fingerprint, prompt, schema } = modelInput(request);
   const retained = work.attempts.findLast(
     (attempt) => attempt.inputHash === fingerprint && attempt.result !== undefined
   );
@@ -811,6 +837,16 @@ const prepareUpdate = function prepareUpdate(options: {
       ? (graph.lastExtraction ?? null) !== work.pending.baseExtraction
       : graph.lastExtraction !== work.pending?.batch)
   ) {
+    if (
+      runtime.retryFailed &&
+      work.status === 'failed' &&
+      work.attempts.at(-1)?.error === 'RELATIONSHIP_LOSS'
+    ) {
+      throw new HivexError({
+        code: 'STALE_RETAINED_CHECK',
+        message: 'The graph changed after the retained check. No model call was made.',
+      });
+    }
     work.pending = null;
   }
   work.remaining = remaining;
@@ -939,8 +975,36 @@ const unresolvedRelationshipChanges = function unresolvedRelationshipChanges(
   }
   const check = relationshipCheckSchema.parse(value);
   const documents = suppliedDocumentsSchema.parse(pending.packet?.documents);
+  const impact = checkImpact(candidate, check, {
+    batch: pending.batch,
+    scope: warningScope(
+      state.project.documents,
+      state.plan.units.filter((unit) => pending.units.includes(unit.id))
+    ),
+  });
+  const supportedNodes = new Set(
+    candidate.decisions
+      .filter((node) => {
+        const isUnlocated = node.batch === pending.batch && node.quality === 'uncertain';
+        return (
+          !isUnlocated &&
+          validCitation(node, state.project.documents) &&
+          isCurrentSource(state.project, node)
+        );
+      })
+      .map((node) => node.id)
+  );
   const available = new Set(
-    candidate.relationships.filter((entry) => entry.quality === 'checked').map((entry) => entry.id)
+    candidate.relationships
+      .filter((entry) => {
+        const hasEndpoints = supportedNodes.has(entry.from) && supportedNodes.has(entry.to);
+        const hasEvidence = entry.evidence.every((citation) => {
+          const isLocated = validCitation(citation, state.project.documents);
+          return isLocated && isCurrentSource(state.project, citation);
+        });
+        return hasEndpoints && hasEvidence && !impact.relationshipIds.has(entry.id);
+      })
+      .map((entry) => entry.id)
   );
   const isJustified = function isJustified(
     change: z.infer<typeof relationshipCheckSchema>['relationshipChanges'][number]
@@ -953,7 +1017,7 @@ const unresolvedRelationshipChanges = function unresolvedRelationshipChanges(
       const isValid = validCitation(citation, state.project.documents);
       return isValid && suppliedCitation(citation, documents);
     });
-    return !hasFinding && hasReplacements && hasEvidence;
+    return !impact.isUncertainBatch && !hasFinding && hasReplacements && hasEvidence;
   };
   const justified = new Set(
     check.relationshipChanges.filter(isJustified).map((change) => change.previousId)
@@ -1035,7 +1099,7 @@ const extractBatch = async function extractBatch(state: UpdateRound) {
 
   return graph;
 };
-const checkBatch = async function checkBatch(state: UpdateRound) {
+const checkBatch = async function checkBatch(state: UpdateRound, isRetainedOnly = false) {
   const { plan, project, runtime, store, work } = state;
   let { graph } = state;
 
@@ -1045,25 +1109,23 @@ const checkBatch = async function checkBatch(state: UpdateRound) {
   }
   const candidate = pending.staged === true ? materializePending(state, pending) : graph;
   const isGuarded = (pending.protectedRelationships?.length ?? 0) > 0;
-  const value = await runModel({
-    request: {
-      instruction: `Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.${
-        pending.materializedCheck === true
-          ? ' The extraction is the materialized candidate, after local validation. Check meaningful decisions, dependencies and exceptions; reading the cited Markdown supplies incidental details. Missing live deployment evidence or unexpanded background alone is not a defect. Use the supplied canonical IDs.'
-          : ''
-      }${
-        isGuarded
-          ? ' For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.'
-          : ''
-      }`,
-      packet: checkedPacket(graph, candidate, pending),
-      schema: isGuarded ? relationshipCheckSchema : checkSchema,
-      stage: 'check',
-    },
-    runtime,
-    store,
-    work,
-  });
+  const request = {
+    instruction: `Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.${
+      pending.materializedCheck === true
+        ? ' The extraction is the materialized candidate, after local validation. Check meaningful decisions, dependencies and exceptions; reading the cited Markdown supplies incidental details. Missing live deployment evidence or unexpanded background alone is not a defect. Use the supplied canonical IDs.'
+        : ''
+    }${
+      isGuarded
+        ? ' For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.'
+        : ''
+    }`,
+    packet: checkedPacket(graph, candidate, pending),
+    schema: isGuarded ? relationshipCheckSchema : checkSchema,
+    stage: 'check',
+  };
+  const value = isRetainedOnly
+    ? retainedCheckResult(work, request)
+    : await runModel({ request, runtime, store, work });
   if (value === null) {
     return null;
   }
@@ -1074,11 +1136,14 @@ const checkBatch = async function checkBatch(state: UpdateRound) {
       plan.units.filter((unit) => pending.units.includes(unit.id))
     ),
   });
-  const unresolved = unresolvedRelationshipChanges(state, checked, value);
+  const unresolved = unresolvedRelationshipChanges(state, candidate, value);
+  if (isRetainedOnly) {
+    work.retainedCheckAssessment = unresolved.length > 0 ? 'blocked' : 'accepted';
+  }
   if (unresolved.length > 0) {
     work.status = 'failed';
     const attempt = work.attempts.at(-1);
-    if (attempt) {
+    if (attempt && !isRetainedOnly) {
       attempt.error = 'RELATIONSHIP_LOSS';
       attempt.diagnostic = `Previous graph retained. Unresolved relationship changes: ${unresolved.join(', ')}. Inspect this result before proposing a different repair; no automatic retry.`;
     }
@@ -1086,6 +1151,7 @@ const checkBatch = async function checkBatch(state: UpdateRound) {
     return graph;
   }
   graph = checked;
+  work.status = 'pending';
   finishRound({ graph, plan, project, units: pending.units, work });
   store.commit(work, graph);
 
@@ -1132,11 +1198,25 @@ const updateWithStore = async function updateWithStore(options: {
     sharedWork,
     store,
   });
+  const state: UpdateRound = { graph, plan, project, runtime, store, work };
+  const isReassessment =
+    runtime.retryFailed &&
+    work.status === 'failed' &&
+    work.attempts.at(-1)?.error === 'RELATIONSHIP_LOSS';
+  if (isReassessment) {
+    if (!pendingContextCurrent(project, work.pending)) {
+      throw new HivexError({
+        code: 'STALE_RETAINED_CHECK',
+        message: 'The evidence changed after the retained check. No model call was made.',
+      });
+    }
+    graph = (await checkBatch(state, true)) ?? graph;
+    return updateResponse(project, work, { graph, units: plan.units });
+  }
   if (['done', 'failed'].includes(work.status)) {
     return updateResponse(project, work, { graph, units: plan.units });
   }
 
-  const state: UpdateRound = { graph, plan, project, runtime, store, work };
   graph = await advanceUpdate(state);
 
   if (!work.remaining.length && !work.pending) {
