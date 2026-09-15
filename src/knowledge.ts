@@ -193,6 +193,17 @@ const hasRangeOverlap = function hasRangeOverlap(left: LineRange, right: LineRan
     left.lineEnd >= right.lineStart
   );
 };
+const isAffectedRange = function isAffectedRange(
+  project: Project,
+  units: IngestionUnit[],
+  entry: LineRange & { version?: string }
+) {
+  const hasTargetDocument = units.some((unit) => unit.document === entry.document);
+  return (
+    hasTargetDocument &&
+    (!isCurrentSource(project, entry) || units.some((unit) => hasRangeOverlap(unit, entry)))
+  );
+};
 const isWithinRange = function isWithinRange(range: LineRange, document: string, line: number) {
   return range.document === document && line >= range.lineStart && line <= range.lineEnd;
 };
@@ -355,13 +366,13 @@ const resolveContextReferences = function resolveContextReferences(
   }[] = [];
   const missing = new Set<string>();
   for (const citation of references) {
-    if (targets.has(citation.document)) {
-      continue;
-    }
     const document = project.documents.find((source) => source.id === citation.document);
     if (document === undefined) {
       missing.add(citation.document);
     } else {
+      if (targets.has(citation.document) && citation.version !== document.hash) {
+        continue;
+      }
       ranges.push(
         citation.version === document.hash
           ? citation
@@ -378,7 +389,11 @@ const resolveContextReferences = function resolveContextReferences(
 const batchContext = function batchContext(
   project: Project,
   graph: Graph,
-  { units, retainedSources = [] }: { units: IngestionUnit[]; retainedSources?: string[] }
+  {
+    units,
+    retainedSources = [],
+    contextSources = [],
+  }: { units: IngestionUnit[]; retainedSources?: string[]; contextSources?: string[] }
 ) {
   const candidates = graph.decisions.filter((entry) => {
     const isCurrent = isCurrentSource(project, entry);
@@ -406,12 +421,14 @@ const batchContext = function batchContext(
       .flatMap((document) => document.links)
   );
   const targetNodes = new Set(
-    graph.decisions.filter((entry) => targetDocuments.has(entry.document)).map((entry) => entry.id)
+    graph.decisions
+      .filter((entry) => isAffectedRange(project, units, entry))
+      .map((entry) => entry.id)
   );
   const affectedRelations = graph.relationships.filter((edge) => {
     const hasTargetNode = targetNodes.has(edge.from) || targetNodes.has(edge.to);
     return (
-      hasTargetNode || edge.evidence.some((citation) => targetDocuments.has(citation.document))
+      hasTargetNode || edge.evidence.some((citation) => isAffectedRange(project, units, citation))
     );
   });
   const affected = affectedRelations.flatMap((edge) => [edge.from, edge.to]);
@@ -423,7 +440,22 @@ const batchContext = function batchContext(
     }),
   ]);
   const { missing } = supporting;
-  ranges.push(...supporting.ranges);
+  ranges.push(
+    ...supporting.ranges,
+    ...project.documents
+      .filter((document) => contextSources.includes(document.id))
+      .map((document) => {
+        const lineEnd = rawMarkdownLines(document.text).length;
+        return { document: document.id, lineEnd, lineStart: 1 };
+      })
+  );
+  const byId = new Map(candidates.map((entry) => [entry.id, entry]));
+  const required = new Set(
+    Iterator.concat(
+      affected.filter((id) => byId.has(id)),
+      candidates.filter((entry) => contextSources.includes(entry.document)).map((entry) => entry.id)
+    )
+  );
   const allowed = new Set(
     candidates
       .filter((entry) => {
@@ -435,7 +467,7 @@ const batchContext = function batchContext(
   const priorities = [
     ...new Set(
       Iterator.concat(
-        affected,
+        required,
         candidates
           .filter((entry) => {
             const { document } = entry;
@@ -449,8 +481,7 @@ const batchContext = function batchContext(
           .map((entry) => entry.id)
       )
     ),
-  ].slice(0, 18);
-  const byId = new Map(candidates.map((entry) => [entry.id, entry]));
+  ];
   const existing: Graph['decisions'] = [];
   let contextBytes = 0;
   for (const id of priorities) {
@@ -459,7 +490,15 @@ const batchContext = function batchContext(
       continue;
     }
     const evidence = sourceEvidence(entry, project);
-    if (evidence !== null && contextBytes + Buffer.byteLength(evidence.text) <= 8192) {
+    const isRequired = required.has(id);
+    const canIncludeOptional =
+      existing.length < 18 &&
+      evidence !== null &&
+      contextBytes + Buffer.byteLength(evidence.text) <= 8192;
+    if (isRequired && evidence === null) {
+      missing.add(entry.document);
+    }
+    if (evidence !== null && (isRequired || canIncludeOptional)) {
       contextBytes += Buffer.byteLength(evidence.text);
       existing.push(entry);
       ranges.push({
@@ -643,9 +682,15 @@ const prepareUpdate = function prepareUpdate(options: {
     return runtime.repair.includes(document.id) || isPlanned;
   });
   const plan = ingestionUnits([...project.currentDocuments, ...selectedHistory]);
+  const contextSources = runtime.command === 'update' ? runtime.sources : [];
   const snapshot = knowledgeSnapshot(
     project,
-    new Set(selectedHistory.map((document) => document.id))
+    new Set(
+      Iterator.concat(
+        selectedHistory.map((document) => document.id),
+        contextSources
+      )
+    )
   );
   project.warnings.push(...plan.warnings);
   const key = digest(
@@ -657,6 +702,9 @@ const prepareUpdate = function prepareUpdate(options: {
         ['repair', runtime.repair],
         ['reason', runtime.repairReason],
         ['format', 3],
+        ...(contextSources.length
+          ? [['contextSources', [...new Set(contextSources)].toSorted(compareSerializedStrings)]]
+          : []),
       ])
     )
   );
@@ -709,6 +757,7 @@ const extractBatch = async function extractBatch(state: UpdateRound) {
   const units = nextUnits(plan.units, work.remaining);
   const documents = [...new Set(units.map((unit) => unit.document))];
   const context = batchContext(project, graph, {
+    contextSources: runtime.command === 'update' ? runtime.sources : [],
     retainedSources: work.pending?.context,
     units,
   });
