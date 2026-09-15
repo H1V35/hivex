@@ -3360,6 +3360,151 @@ test('preserves affected relationship endpoints beyond the optional context cap'
   });
 });
 
+test('retains supplied current endpoints referenced by an identical repair relationship', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    writeFileSync(
+      nodePath.join(root, 'scope.md'),
+      '# Scope\n\nAlpha uses Beta.\nBeta provides shared policy.\n'
+    );
+    const binary = model(root);
+    const responsePath = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
+    const decisionTemplate = at(responses.extract.decisions, 0);
+    const relationshipTemplate = at(responses.extract.relationships, 0);
+    const evidence = [
+      { document: 'scope.md', lineEnd: 3, lineStart: 3 },
+      { document: 'scope.md', lineEnd: 4, lineStart: 4 },
+    ];
+    responses.capturePackets = true;
+    responses.extract = {
+      decisions: [
+        {
+          ...decisionTemplate,
+          document: 'scope.md',
+          id: 'alpha',
+          kind: 'definition',
+          lineEnd: 3,
+          lineStart: 3,
+          reason: 'Define Alpha.',
+          text: 'Alpha uses Beta.',
+        },
+        {
+          ...decisionTemplate,
+          document: 'scope.md',
+          id: 'beta',
+          kind: 'definition',
+          lineEnd: 4,
+          lineStart: 4,
+          reason: 'Define Beta.',
+          text: 'Beta provides shared policy.',
+        },
+      ],
+      relationships: [
+        {
+          ...relationshipTemplate,
+          evidence,
+          from: 'alpha',
+          id: 'alpha-uses-beta',
+          reason: 'Alpha uses Beta through shared policy.',
+          to: 'beta',
+          type: 'requires',
+        },
+      ],
+      uncertainties: [],
+    };
+    writeFileSync(responsePath, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value.status).toBe(
+      'ready'
+    );
+
+    let seeded: ReturnType<typeof emptyGraph>;
+    {
+      using store = new KnowledgeStore(root, { readonly: true });
+      seeded = store.graph();
+    }
+    const alpha = seeded.decisions.find((entry) => entry.localId === 'alpha');
+    const beta = seeded.decisions.find((entry) => entry.localId === 'beta');
+    if (alpha === undefined || beta === undefined) {
+      throw new Error('Expected the seeded endpoint decisions');
+    }
+    const alphaId = alpha.id;
+    const betaId = beta.id;
+    responses.extract = {
+      decisions: [],
+      relationships: [
+        {
+          ...relationshipTemplate,
+          evidence,
+          from: alphaId,
+          id: 'alpha-uses-beta',
+          reason: 'Alpha uses Beta through shared policy.',
+          to: betaId,
+          type: 'requires',
+        },
+      ],
+      uncertainties: [],
+    };
+    writeFileSync(responsePath, JSON.stringify(responses));
+
+    const repaired = invoke(root, [
+      'update',
+      '--repair-range',
+      'scope.md:3-4',
+      '--reason',
+      'Retain the Alpha to Beta dependency.',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    expect(repaired.value).toMatchObject({
+      decisions: 2,
+      pendingCheck: [],
+      pendingUnits: [],
+      relationships: 1,
+      status: 'ready',
+      warningSummary: { validation: 0 },
+      work: { calls: 2 },
+    });
+
+    const packets = readFileSync(`${responsePath}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket);
+    const check = packets.findLast(
+      (packet) => packet.operation === 'check' && packet.targets?.includes('scope.md') === true
+    );
+    if (check === undefined) {
+      throw new Error('Expected the materialized repair check');
+    }
+    expect(arrayField(check, 'previousDecisions')).toContainEqual(
+      expect.objectContaining({ id: alphaId, text: 'Alpha uses Beta.' })
+    );
+    expect(arrayField(check, 'previousDecisions')).toContainEqual(
+      expect.objectContaining({ id: betaId, text: 'Beta provides shared policy.' })
+    );
+    expect(arrayField(check, 'validationWarnings')).toEqual([]);
+
+    using store = new KnowledgeStore(root, { readonly: true });
+    const graph = store.graph();
+    expect(
+      graph.relationships.some((relationship) => {
+        if (relationship.from !== alphaId || relationship.quality !== 'checked') {
+          return false;
+        }
+        return relationship.to === betaId;
+      })
+    ).toBe(true);
+    expect(
+      graph.warnings.filter(
+        (warning) => typeof warning !== 'string' && warning.kind === 'validation'
+      )
+    ).toEqual([]);
+  });
+});
+
 test('keeps large required context and stops before a model call when it exceeds the hard bound', () => {
   project((root) => {
     rmSync(nodePath.join(root, 'cache.md'));
@@ -4452,3 +4597,153 @@ test.each(['fresh', 'different-candidate', 'intervening-update'])(
     });
   }
 );
+
+test('replays a retained relationship repair from a portable failed work fixture', () => {
+  project((root) => {
+    rmSync(nodePath.join(root, 'cache.md'));
+    rmSync(nodePath.join(root, 'privacy.md'));
+    writeFileSync(
+      nodePath.join(root, 'scope.md'),
+      '# Scope\n\nAlpha uses Beta.\nBeta provides shared policy.\n'
+    );
+    mkdirSync(nodePath.join(root, '.hivex'));
+    const fixture = readFileSync(
+      new URL('../test/fixtures/retained-endpoint-check.sql', import.meta.url),
+      'utf-8'
+    );
+    {
+      using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
+      database.run(fixture);
+    }
+    let retainedId: string;
+    let beforeGraph: ReturnType<typeof emptyGraph>;
+    {
+      using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'), {
+        readonly: true,
+      });
+      const row = database.query<{ id: string }, []>('SELECT id FROM work').get();
+      if (row === null) {
+        throw new Error('Expected the retained replay work');
+      }
+      retainedId = row.id;
+      using store = new KnowledgeStore(root, { readonly: true });
+      beforeGraph = store.graph();
+    }
+    const oldEdgeId = at(beforeGraph.relationships, 0).id;
+    const alphaId = beforeGraph.decisions.find((entry) => entry.localId === 'c1')?.id;
+    const betaId = beforeGraph.decisions.find((entry) => entry.localId === 'c2')?.id;
+    if (alphaId === undefined || betaId === undefined) {
+      throw new Error('Expected the retained replay endpoint decisions');
+    }
+    const originalWork = storedWork(root, retainedId);
+    expect(originalWork.status).toBe('failed');
+    expect(recordAt(arrayField(originalWork, 'attempts'), 1).error).toBe('RELATIONSHIP_LOSS');
+    const binary = model(root);
+    const responsePath = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
+    responses.capturePackets = true;
+    responses.check = {
+      findings: [],
+      relationshipChanges: [
+        {
+          evidence: [{ document: 'scope.md', lineEnd: 4, lineStart: 3 }],
+          previousId: '@removed:0',
+          reason: 'The corrected relationship is supported by both definitions.',
+          replacements: ['@candidate:0'],
+        },
+      ],
+    };
+    writeFileSync(responsePath, JSON.stringify(responses));
+
+    const exhausted = invoke(root, [
+      'update',
+      '--repair-range',
+      'scope.md:3-4',
+      '--reason',
+      'Correct the Alpha to Beta dependency.',
+      '--retry-failed',
+      '--max-calls',
+      '2',
+      '--codex',
+      binary,
+    ]);
+    expect(exhausted.value).toMatchObject({
+      pendingCheck: ['scope.md'],
+      pendingUnits: ['scope.md:3-4'],
+      status: 'budget-exhausted',
+      work: { calls: 2, id: retainedId, maxCalls: 2 },
+    });
+    expect(existsSync(nodePath.join(root, 'model-calls.log'))).toBe(false);
+    const afterExhaustion = storedWork(root, retainedId);
+    expect(afterExhaustion).toMatchObject({
+      attempts: originalWork.attempts,
+      calls: 2,
+      id: retainedId,
+      pending: originalWork.pending,
+      status: 'budget-exhausted',
+    });
+
+    const repaired = invoke(root, [
+      'update',
+      '--repair-range',
+      'scope.md:3-4',
+      '--reason',
+      'Correct the Alpha to Beta dependency.',
+      '--retry-failed',
+      '--max-calls',
+      '3',
+      '--codex',
+      binary,
+    ]);
+    expect(repaired.value).toMatchObject({
+      decisions: 2,
+      pendingCheck: [],
+      pendingUnits: [],
+      relationships: 1,
+      status: 'ready',
+      work: { calls: 3, id: retainedId, maxCalls: 3 },
+    });
+    expect(readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim()).toBe('called');
+
+    const completed = storedWork(root, retainedId);
+    const attempts = arrayField(completed, 'attempts');
+    expect(attempts).toHaveLength(3);
+    expect(attempts.slice(0, 2)).toEqual(arrayField(originalWork, 'attempts'));
+    expect(stringField(recordAt(attempts, 2), 'stage')).toBe('check');
+    const result = objectField(recordAt(attempts, 2), 'result');
+    const changes = arrayField(result, 'relationshipChanges');
+    expect(changes).toHaveLength(1);
+    using store = new KnowledgeStore(root, { readonly: true });
+    const graph = store.graph();
+    const corrected = graph.relationships.find((relationship) => {
+      if (relationship.from !== alphaId || relationship.to !== betaId) {
+        return false;
+      }
+      return relationship.quality === 'checked';
+    });
+    if (corrected === undefined) {
+      throw new Error('Expected the corrected relationship');
+    }
+    expect(recordAt(changes, 0)).toMatchObject({
+      previousId: oldEdgeId,
+      replacements: [corrected.id],
+    });
+    expect(
+      graph.warnings.filter(
+        (warning) => typeof warning !== 'string' && warning.kind === 'validation'
+      )
+    ).toEqual([]);
+
+    const packets = readFileSync(`${responsePath}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket);
+    expect(packets.map((packet) => packet.operation)).toEqual(['check']);
+    expect(arrayField(at(packets, 0), 'previousDecisions')).toContainEqual(
+      expect.objectContaining({ id: alphaId, text: 'Alpha uses Beta.' })
+    );
+    expect(arrayField(at(packets, 0), 'previousDecisions')).toContainEqual(
+      expect.objectContaining({ id: betaId, text: 'Beta provides shared policy.' })
+    );
+  });
+});

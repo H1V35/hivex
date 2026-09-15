@@ -366,6 +366,9 @@ const extractedRelationships = function extractedRelationships(input: {
 
 export const applyExtraction = function applyExtraction(options: ExtractionOptions) {
   const { graph, extraction, documents, batch } = options;
+  const referencedIds = new Set(
+    extraction.relationships.flatMap((entry) => [entry.from, entry.to])
+  );
   const decisions = graph.decisions.filter((entry) => {
     const source = documents.find((document) => document.id === entry.document);
     const isTargetRange =
@@ -375,9 +378,14 @@ export const applyExtraction = function applyExtraction(options: ExtractionOptio
         }
         return range.lineStart <= entry.lineEnd && range.lineEnd >= entry.lineStart;
       }) === true;
+    const isReferenced =
+      options.existingIds?.includes(entry.id) === true &&
+      referencedIds.has(entry.id) &&
+      inRanges(entry, options.contextRanges);
+    const isRetained = !isTargetRange || isReferenced;
     return (
       source === undefined ||
-      (source.hash === entry.version && validCitation(entry, [source]) && !isTargetRange)
+      (source.hash === entry.version && validCitation(entry, [source]) && isRetained)
     );
   });
   const ids = new Map(
@@ -514,6 +522,9 @@ export const checkImpact = function checkImpact(
   { batch, scope = [] }: { batch: string; scope?: WarningScope[] }
 ) {
   const targets = new Set(check.findings.map((finding) => finding.target));
+  const referencedIds = new Set(
+    graph.relationships.flatMap((entry) => (entry.batch === batch ? [entry.from, entry.to] : []))
+  );
   const known = new Set([
     'batch',
     ...scope.map((entry) => entry.document),
@@ -535,7 +546,9 @@ export const checkImpact = function checkImpact(
         if (targets.has(entry.id)) {
           return true;
         }
-        return entry.batch === batch && (targets.has(entry.localId) || targets.has(entry.document));
+        const isCheckedDocument =
+          targets.has(entry.document) && (entry.batch === batch || referencedIds.has(entry.id));
+        return isCheckedDocument || (entry.batch === batch && targets.has(entry.localId));
       })
       .map((entry) => entry.id)
   );
@@ -559,7 +572,7 @@ export const applyCheck = function applyCheck(
   const targets = new Set(check.findings.map((finding) => finding.target));
   const impact = checkImpact(graph, check, { batch, scope });
   const decisions = graph.decisions.map((entry) => {
-    if (entry.batch !== batch && !targets.has(entry.id)) {
+    if (entry.batch !== batch && !impact.decisionIds.has(entry.id)) {
       return entry;
     }
     const isUncertain =

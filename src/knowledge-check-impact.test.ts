@@ -187,3 +187,27 @@ test('resolves current document findings and scoped known targets', () => {
     }).isUncertainBatch
   ).toBe(false);
 });
+
+test('applies a document finding to retained endpoints without changing their provenance', () => {
+  const graph = graphFor();
+  const check = checkFor('neighbor.md');
+  const options = {
+    batch: 'batch-current',
+    scope: [{ document: 'neighbor.md', lineEnd: 1, lineStart: 1, version: 'v1' }],
+  };
+  const impact = checkImpact(graph, check, options);
+  expect(impact.decisionIds).toEqual(new Set(['d-neighbor']));
+  expect(impact.relationshipIds).toEqual(new Set(['r-current', 'r-preexisting']));
+  expect(impact.isUncertainBatch).toBe(false);
+  const applied = applyCheck(graph, check, options);
+  expect(applied.decisions.find((entry) => entry.id === 'd-neighbor')).toMatchObject({
+    batch: 'batch-previous',
+    quality: 'uncertain',
+  });
+  expect(applied.relationships.find((entry) => entry.id === 'r-current')?.quality).toBe(
+    'uncertain'
+  );
+  expect(applied.relationships.find((entry) => entry.id === 'r-preexisting')?.quality).toBe(
+    'checked'
+  );
+});
