@@ -98,10 +98,25 @@ const provenance = {
 };
 const warningScopeSchema = citationSchema.extend({ version: z.string() });
 export type WarningScope = z.infer<typeof warningScopeSchema>;
+const warningKind = z.enum(['limitation', 'finding', 'validation']);
 const warningSchema = z.union([
   z.string(),
-  z.object({ message: z.string(), scope: z.array(warningScopeSchema) }),
+  z.object({
+    kind: warningKind.optional(),
+    message: z.string(),
+    scope: z.array(warningScopeSchema),
+    target: z.string().optional(),
+  }),
 ]);
+interface ExtractionWarning {
+  kind: 'limitation' | 'validation';
+  message: string;
+}
+const warningCategories = {
+  finding: 'findings',
+  limitation: 'limitations',
+  validation: 'validation',
+} as const;
 
 const fullWarningScope = function fullWarningScope(document: Document) {
   return {
@@ -159,6 +174,18 @@ export const graphSchema = z.object({
 export type Graph = z.infer<typeof graphSchema>;
 export type Extraction = z.infer<typeof extractionSchema>;
 export type KnowledgeCheck = z.infer<typeof checkSchema>;
+export const warningSummary = function warningSummary(warnings: Graph['warnings']) {
+  const summary = { findings: 0, limitations: 0, unknown: 0, validation: 0 };
+  for (const warning of warnings) {
+    const kind = typeof warning === 'string' ? undefined : warning.kind;
+    if (kind === undefined) {
+      summary.unknown += 1;
+    } else {
+      summary[warningCategories[kind]] += 1;
+    }
+  }
+  return summary;
+};
 export const emptyGraph = function emptyGraph(): Graph {
   return {
     decisions: [],
@@ -257,7 +284,7 @@ const extractedRelationships = function extractedRelationships(input: {
   options: ExtractionOptions;
   decisions: Graph['decisions'];
   ids: Map<string, string>;
-  warnings: string[];
+  warnings: ExtractionWarning[];
 }) {
   const { options, decisions, ids, warnings } = input;
   const { graph, extraction, documents, batch } = options;
@@ -293,10 +320,17 @@ const extractedRelationships = function extractedRelationships(input: {
     });
     const hasMissingEndpoint = from === undefined || to === undefined;
     const isDuplicate = seen.has(entry.id);
+    const messageWithoutEndpoint = isDuplicate
+      ? `Relationship ${entry.id} has a duplicate ID.`
+      : `Relationship ${entry.id} has invalid evidence.`;
+    const message = hasMissingEndpoint
+      ? `Relationship ${entry.id} has an unknown endpoint.`
+      : messageWithoutEndpoint;
     if (hasMissingEndpoint || isDuplicate || hasInvalidEvidence) {
-      warnings.push(
-        `Relationship ${entry.id} has an unknown endpoint, duplicate ID or invalid reference.`
-      );
+      warnings.push({
+        kind: 'validation',
+        message,
+      });
       continue;
     }
     seen.add(entry.id);
@@ -351,18 +385,27 @@ export const applyExtraction = function applyExtraction(options: ExtractionOptio
       .filter((entry) => options.existingIds?.includes(entry.id) === true)
       .map((entry) => [entry.id, entry.id])
   );
-  const warnings = [...extraction.uncertainties];
+  const warnings: ExtractionWarning[] = extraction.uncertainties.map(
+    (message): ExtractionWarning => ({ kind: 'limitation', message })
+  );
   for (const entry of extraction.decisions) {
     const source = documents.find((document) => document.id === entry.document);
     if (source === undefined || ids.has(entry.id)) {
-      warnings.push(`Decision ${entry.id} has an unknown, duplicate or invalid source reference.`);
+      warnings.push({
+        kind: 'validation',
+        message:
+          source === undefined
+            ? `Decision ${entry.id} has an unknown source.`
+            : `Decision ${entry.id} has a duplicate ID.`,
+      });
       continue;
     }
     const isLocated = validCitation(entry, documents) && inRanges(entry, options.targetRanges);
     if (!isLocated) {
-      warnings.push(
-        `Decision ${entry.id} has an unverified line range; its document remains available.`
-      );
+      warnings.push({
+        kind: 'validation',
+        message: `Decision ${entry.id} has an unverified line range; its document remains available.`,
+      });
     }
     const id = digest(JSON.stringify({ version: source.hash, ...entry }, decisionIdentityFields));
     ids.set(entry.id, id);
@@ -390,6 +433,7 @@ export const applyExtraction = function applyExtraction(options: ExtractionOptio
     options,
     warnings,
   });
+  const scope = warningScope(documents, options.targetRanges);
   return {
     decisions,
     documents: Object.fromEntries(
@@ -418,11 +462,8 @@ export const applyExtraction = function applyExtraction(options: ExtractionOptio
     ),
     version: 1 as const,
     warnings: [
-      ...retainedWarnings(graph, warningScope(documents, options.targetRanges)),
-      ...warnings.map((message) => {
-        const scope = warningScope(documents, options.targetRanges);
-        return { message, scope };
-      }),
+      ...retainedWarnings(graph, scope),
+      ...warnings.map((warning) => ({ ...warning, scope })),
     ],
   };
 };
@@ -530,7 +571,12 @@ export const applyCheck = function applyCheck(
           batch,
           fallback: scope,
         });
-        return { message: finding.reason, scope: findingWarningScope };
+        return {
+          kind: 'finding' as const,
+          message: finding.reason,
+          scope: findingWarningScope,
+          target: finding.target,
+        };
       }),
     ],
   };

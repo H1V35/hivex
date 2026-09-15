@@ -1769,6 +1769,14 @@ test('repairs a wrong interpretation without changing Markdown or repeating an i
       },
     };
     responses.check.findings = [];
+    responses.check.relationshipChanges = [
+      {
+        evidence: [{ document: 'privacy.md', lineEnd: 3, lineStart: 3 }],
+        previousId: '@removed:0',
+        reason: 'The corrected seven-day lifetime retains the revocation exception.',
+        replacements: ['@candidate:0'],
+      },
+    ];
     writeFileSync(file, JSON.stringify(responses));
     const commandArguments = [
       'update',
@@ -1923,6 +1931,14 @@ test('repair removes an unsupported relationship even when its endpoints are in 
     expect(invoke(root, ['update', '--codex', binary]).value.relationships).toBe(1);
     responses.byDocument = { 'scope.md': { decisions: [], relationships: [] } };
     responses.check.findings = [];
+    responses.check.relationshipChanges = [
+      {
+        evidence: [{ document: 'scope.md', lineEnd: 3, lineStart: 3 }],
+        previousId: '@removed:0',
+        reason: 'The scope explicitly excludes the claimed exception.',
+        replacements: [],
+      },
+    ];
     writeFileSync(file, JSON.stringify(responses));
     const repaired = invoke(root, [
       'update',
@@ -3757,5 +3773,229 @@ test('does not make untouched later units mandatory for a pending unit', () => {
       status: 'budget-exhausted',
       work: { calls: 1, contextLimit: null },
     });
+  });
+});
+
+test('retains current relationships across a staged repair and an unjustified materialized check', () => {
+  project((root) => {
+    const binary = model(root);
+    const file = nodePath.join(root, 'responses.json');
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    let original;
+    {
+      using store = new KnowledgeStore(root, { readonly: true });
+      original = store.graph();
+    }
+    const responses = parseModelResponses(readFileSync(file, 'utf-8'));
+    responses.capturePackets = true;
+    responses.byDocument = {
+      'cache.md': {
+        decisions: [at(responses.extract.decisions, 0)],
+        relationships: [
+          { ...at(responses.extract.relationships, 0), from: 'not-supplied', to: 'c1' },
+        ],
+      },
+    };
+    responses.check.relationshipChanges = [];
+    writeFileSync(file, JSON.stringify(responses));
+    const repairArguments = [
+      'update',
+      '--repair-range',
+      'cache.md:3-3',
+      '--reason',
+      'Preserve the retention exception.',
+      '--codex',
+      binary,
+    ];
+    const first = invoke(root, [...repairArguments, '--max-calls', '1']);
+    expect(first.value).toMatchObject({
+      relationships: 1,
+      status: 'budget-exhausted',
+      work: { calls: 1 },
+    });
+    {
+      using store = new KnowledgeStore(root, { readonly: true });
+      expect(store.graph()).toEqual(original);
+    }
+    const checked = invoke(root, [...repairArguments, '--max-calls', '2']);
+    expect(workId(checked.value)).toBe(workId(first.value));
+    expect(checked.value).toMatchObject({
+      relationships: 1,
+      status: 'failed',
+      work: { calls: 2, lastAttempt: { code: 'RELATIONSHIP_LOSS' } },
+    });
+    {
+      using store = new KnowledgeStore(root, { readonly: true });
+      expect(store.graph()).toEqual(original);
+    }
+    const packets = readFileSync(`${file}.packets`, 'utf-8').trim().split('\n').map(parsePacket);
+    const check = packets.find((packet) => packet.operation === 'check');
+    if (!check) {
+      throw new Error('Expected the single materialized check');
+    }
+    expect(objectField(check, 'extraction').relationships).toEqual([]);
+    expect(arrayField(check, 'removedRelationships')).toHaveLength(1);
+    expect(arrayField(check, 'previousDecisions')).toHaveLength(2);
+    expect(arrayField(check, 'validationWarnings')).toHaveLength(1);
+    expect(invoke(root, repairArguments).value).toMatchObject({
+      status: 'failed',
+      work: { calls: 2 },
+    });
+    expect(
+      readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
+    ).toHaveLength(4);
+  });
+});
+
+test('repairs only selected source units and keeps unrelated knowledge and resumed cost', () => {
+  project((root) => {
+    const text = Array.from(
+      { length: 24 },
+      (_, index) =>
+        `Rule ${index + 1} requires bounded retention. ${'Background context. '.repeat(40)}\n\n`
+    ).join('');
+    writeFileSync(nodePath.join(root, 'large.md'), text);
+    const binary = model(root);
+    const file = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(file, 'utf-8'));
+    responses.fromVisibleRules = true;
+    responses.capturePackets = true;
+    writeFileSync(file, JSON.stringify(responses));
+    expect(
+      invoke(root, [
+        'update',
+        '--max-calls',
+        '12',
+        '--max-input-bytes',
+        '1048576',
+        '--codex',
+        binary,
+      ]).value.status
+    ).toBe('ready');
+    let original;
+    {
+      using store = new KnowledgeStore(root, { readonly: true });
+      original = store.graph();
+    }
+    const units = ingestionUnits(loadProject(root).documents).units.filter(
+      (unit) => unit.document === 'large.md'
+    );
+    const firstUnit = at(units, 0);
+    expect(units.length).toBeGreaterThan(1);
+    const untouched = original.decisions.filter(
+      (entry) => entry.document !== 'large.md' || entry.lineStart > firstUnit.lineEnd
+    );
+    writeFileSync(`${file}.packets`, '');
+    const repairArguments = [
+      'update',
+      '--repair-range',
+      'large.md:1-1',
+      '--reason',
+      'Check the first rule against its source.',
+      '--codex',
+      binary,
+    ];
+    const first = invoke(root, [...repairArguments, '--max-calls', '1']);
+    const second = invoke(root, [...repairArguments, '--max-calls', '2']);
+    expect(workId(second.value)).toBe(workId(first.value));
+    expect(second.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    const packets = readFileSync(`${file}.packets`, 'utf-8').trim().split('\n').map(parsePacket);
+    expect(packets.map((packet) => packet.operation)).toEqual(['extract', 'check']);
+    expect(arrayField(at(packets, 0), 'units')).toEqual([
+      expect.objectContaining({ id: firstUnit.id }),
+    ]);
+    {
+      using store = new KnowledgeStore(root, { readonly: true });
+      expect(
+        store
+          .graph()
+          .decisions.filter(
+            (entry) => entry.document !== 'large.md' || entry.lineStart > firstUnit.lineEnd
+          )
+      ).toEqual(untouched);
+    }
+    expect(invoke(root, repairArguments).value).toMatchObject({
+      status: 'ready',
+      work: { calls: 2 },
+    });
+    writeFileSync(nodePath.join(root, 'large.md'), `${text}Changed authority.\n`);
+    expect(invokeError(root, repairArguments).stderr).toContain('SOURCE_NOT_CURRENT');
+  });
+});
+
+test('reports informational limits separately from ingestion coverage and check findings', () => {
+  project((root) => {
+    const binary = model(root);
+    const file = nodePath.join(root, 'responses.json');
+    const responses = parseModelResponses(readFileSync(file, 'utf-8'));
+    responses.extract.uncertainties = [
+      'This policy does not establish the current deployment state.',
+    ];
+    writeFileSync(file, JSON.stringify(responses));
+    expect(invoke(root, ['update', '--codex', binary]).value).toMatchObject({
+      coverage: 'current',
+      status: 'ready',
+      warningSummary: { findings: 0, limitations: 1, unknown: 0, validation: 0 },
+    });
+    expect(invoke(root, ['status']).value).toMatchObject({ warningSummary: { limitations: 1 } });
+    writeFileSync(nodePath.join(root, 'oversized.md'), `${'x'.repeat(9000)}\n`);
+    expect(invoke(root, ['update', '--max-calls', '0', '--codex', binary]).value).toMatchObject({
+      coverage: 'pending',
+      pendingUnits: [],
+      status: 'partial',
+      warningSummary: { limitations: 1, sources: 1 },
+      work: { calls: 0 },
+    });
+  });
+});
+
+test('does not replace a current relationship with a replacement rejected by the same check', () => {
+  project((root) => {
+    const binary = model(root);
+    const file = nodePath.join(root, 'responses.json');
+    expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
+    let original;
+    {
+      using store = new KnowledgeStore(root, { readonly: true });
+      original = store.graph();
+    }
+    const responses = parseModelResponses(readFileSync(file, 'utf-8'));
+    responses.byDocument = {
+      'cache.md': {
+        decisions: [{ ...at(responses.extract.decisions, 0), text: 'Cached data never expires.' }],
+        relationships: [
+          { ...at(responses.extract.relationships, 0), from: '@existing:privacy.md', to: 'c1' },
+        ],
+      },
+    };
+    responses.check = {
+      findings: [{ reason: 'The lifetime contradicts the seven-day source rule.', target: 'c1' }],
+      relationshipChanges: [
+        {
+          evidence: [{ document: 'privacy.md', lineEnd: 3, lineStart: 3 }],
+          previousId: '@removed:0',
+          reason: 'The proposed replacement still represents the revocation exception.',
+          replacements: ['@candidate:0'],
+        },
+      ],
+    };
+    writeFileSync(file, JSON.stringify(responses));
+    expect(
+      invoke(root, [
+        'update',
+        '--repair',
+        'cache.md',
+        '--reason',
+        'Retain the documented seven-day lifetime.',
+        '--codex',
+        binary,
+      ]).value
+    ).toMatchObject({
+      status: 'failed',
+      work: { calls: 2, lastAttempt: { code: 'RELATIONSHIP_LOSS' } },
+    });
+
+    using store = new KnowledgeStore(root, { readonly: true });
+    expect(store.graph()).toEqual(original);
   });
 });
