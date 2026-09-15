@@ -71,6 +71,7 @@ test('warningSummary counts legacy warnings as unknown without deduplicating tex
   expect(warningSummary(graph.warnings)).toEqual({
     findings: 1,
     limitations: 2,
+    resolved: 0,
     unknown: 3,
     validation: 1,
   });

@@ -36,7 +36,10 @@ const warningVersions = function warningVersions(
   if (typeof warning === 'string') {
     return [];
   }
-  return warning.scope.filter((scope) => scope.document === document).map((scope) => scope.version);
+  return Iterator.concat(warning.scope, warning.resolution?.evidence ?? [])
+    .filter((scope) => scope.document === document)
+    .map((scope) => scope.version)
+    .toArray();
 };
 
 const sourceVersions = function sourceVersions(graph: Graph, document: string) {
@@ -72,8 +75,7 @@ const hasKnowledge = function hasKnowledge(graph: Graph, document: string) {
     return true;
   }
   return graph.warnings.some(
-    (warning) =>
-      typeof warning !== 'string' && warning.scope.some((scope) => scope.document === document)
+    (warning) => typeof warning !== 'string' && warningVersions(warning, document).length > 0
   );
 };
 
@@ -101,7 +103,18 @@ const mapWarning = function mapWarning(
 ): Graph['warnings'][number] {
   return typeof warning === 'string'
     ? warning
-    : { ...warning, scope: warning.scope.map((scope) => mapCitation(scope, from, to)) };
+    : {
+        ...warning,
+        ...(warning.resolution && {
+          resolution: {
+            ...warning.resolution,
+            evidence: warning.resolution.evidence.map((citation) =>
+              mapCitation(citation, from, to)
+            ),
+          },
+        }),
+        scope: warning.scope.map((scope) => mapCitation(scope, from, to)),
+      };
 };
 
 const mapDecision = function mapDecision(

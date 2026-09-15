@@ -1,6 +1,4 @@
 import { parseArgs } from 'node:util';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import { schemaForKnowledge, stringifyKnowledge } from './knowledge-serialization.ts';
 import { compareSerializedStrings } from './ordering.ts';
@@ -24,8 +22,7 @@ import { HivexError } from './errors.ts';
 import { invokeModel } from './model/invoke.ts';
 import { knowledgeModel } from './model/profile.ts';
 import { rankLexically } from './retrieval/lexical.ts';
-import { KnowledgeStore } from './knowledge-store.ts';
-import { sharedKnowledge } from './knowledge-snapshot.ts';
+import { storedGraph, KnowledgeStore } from './knowledge-store.ts';
 import {
   applyCheck,
   applyExtraction,
@@ -36,6 +33,7 @@ import {
   citationSchema,
   sourceEvidence,
   suppliedCitation,
+  activeWarnings,
   warningScope,
   warningSummary,
   validCitation,
@@ -388,7 +386,7 @@ const updateResponse = function updateResponse(
   { graph, units }: { graph: Graph; units: IngestionUnit[] }
 ) {
   let { status }: { status: string } = work;
-  const summary = warningSummary(graph.warnings);
+  const summary = warningSummary(graph.warnings, project.documents);
   if (work.status === 'done') {
     const hasProblems =
       summary.findings + summary.validation + summary.unknown + project.warnings.length > 0;
@@ -419,7 +417,7 @@ const updateResponse = function updateResponse(
     snapshot: project.snapshot,
     status,
     warningSummary: { ...summary, sources: project.warnings.length },
-    warnings: [...project.warnings, ...graph.warnings],
+    warnings: [...project.warnings, ...activeWarnings(graph.warnings, project.documents)],
     work: workSummary(work),
   };
 };
@@ -1441,13 +1439,6 @@ const unavailableDocuments = function unavailableDocuments(
     ),
   ];
 };
-const storedGraph = function storedGraph(root: string): Graph {
-  if (!existsSync(path.join(root, '.hivex/knowledge.sqlite'))) {
-    return sharedKnowledge(root);
-  }
-  using store = new KnowledgeStore(root, { readonly: true });
-  return store.graph();
-};
 const currentGraph = function currentGraph(project: Project): AvailableGraph {
   const graph = historicalGraph(project, storedGraph(project.root));
   const decisions = graph.decisions.filter((entry) => isCurrentSource(project, entry));
@@ -1520,8 +1511,8 @@ const contextWarnings = function contextWarnings(
 ) {
   return [
     ...project.warnings.filter((warning) => warning.path === '.' || documents.has(warning.path)),
-    ...graph.warnings.filter((warning) => {
-      if (typeof warning === 'string') {
+    ...activeWarnings(graph.warnings, project.documents).filter((warning) => {
+      if (typeof warning === 'string' || warning.scope.length === 0) {
         return true;
       }
       return warning.scope.some((source) => {
@@ -2111,8 +2102,11 @@ export const knowledgeCommand = async function knowledgeCommand(input: string[])
       uncheckedDecisions: graph.decisions
         .filter((entry) => entry.quality !== 'checked')
         .map((entry) => entry.id),
-      warningSummary: { ...warningSummary(graph.warnings), sources: project.warnings.length },
-      warnings: [...project.warnings, ...graph.warnings],
+      warningSummary: {
+        ...warningSummary(graph.warnings, project.documents),
+        sources: project.warnings.length,
+      },
+      warnings: [...project.warnings, ...activeWarnings(graph.warnings, project.documents)],
     };
   }
   return queryGraph(project, options);

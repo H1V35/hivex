@@ -49,7 +49,9 @@ const validateGraph = function validateGraph(graph: Graph) {
       if (typeof warning === 'string') {
         return [];
       }
-      return warning.scope.map((entry) => entry.document);
+      return [...warning.scope, ...(warning.resolution?.evidence ?? [])].map(
+        (entry) => entry.document
+      );
     }),
   ];
   if (isInvalid || references.some((id) => !isPortableDocument(id))) {
