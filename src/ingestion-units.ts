@@ -1,5 +1,7 @@
-import { digest } from './knowledge-model.ts';
+import { digest, validCitation } from './knowledge-model.ts';
+import { HivexError } from './errors.ts';
 import { rawMarkdownLines } from './markdown.ts';
+import type { Graph } from './knowledge-model.ts';
 import type { Document } from './documents.ts';
 
 const maxBytes = 8192;
@@ -195,4 +197,84 @@ export const ingestionUnits = function ingestionUnits(documents: Document[]): {
     units.push(...documentUnits);
   }
   return { units, warnings };
+};
+
+export type RepairRange = Pick<IngestionUnit, 'document' | 'lineStart' | 'lineEnd'>;
+
+export const unitFromRange = function unitFromRange(document: Document, range: RepairRange) {
+  const lines = sourceLines(document.text).slice(range.lineStart - 1, range.lineEnd);
+  if (lines.length === 0) {
+    throw new HivexError({
+      code: 'INVALID_REPAIR_RANGE',
+      message: 'The repair range must contain source text.',
+    });
+  }
+  const unit = makeUnit(document, lines);
+  if (unit.lineStart !== range.lineStart || unit.lineEnd !== range.lineEnd) {
+    throw new HivexError({
+      code: 'INVALID_REPAIR_RANGE',
+      message: 'The repair range must contain complete source lines.',
+    });
+  }
+  return unit;
+};
+
+const expandedRanges = function expandedRanges(
+  document: Document,
+  decisions: Graph['decisions'],
+  requested: RepairRange[]
+) {
+  const ranges = requested.map((range) => ({ ...range }));
+  const current = decisions.filter((entry) => {
+    const isCurrent = entry.document === document.id && entry.version === document.hash;
+    return isCurrent && validCitation(entry, [document]);
+  });
+  let hasChanges = true;
+  while (hasChanges) {
+    hasChanges = false;
+    for (const range of ranges) {
+      const overlaps = current.filter(
+        (entry) => entry.lineStart <= range.lineEnd && entry.lineEnd >= range.lineStart
+      );
+      const start = Math.min(range.lineStart, ...overlaps.map((entry) => entry.lineStart));
+      const end = Math.max(range.lineEnd, ...overlaps.map((entry) => entry.lineEnd));
+      hasChanges ||= start !== range.lineStart || end !== range.lineEnd;
+      range.lineStart = start;
+      range.lineEnd = end;
+    }
+  }
+  const merged: RepairRange[] = [];
+  const ordered = ranges.toSorted((a, b) => a.lineStart - b.lineStart);
+  for (const range of ordered) {
+    const previous = merged.at(-1);
+    if (previous && previous.lineEnd >= range.lineStart) {
+      previous.lineEnd = Math.max(previous.lineEnd, range.lineEnd);
+    } else {
+      merged.push(range);
+    }
+  }
+  return merged;
+};
+
+export const repairUnits = function repairUnits(
+  documents: Document[],
+  decisions: Graph['decisions'],
+  ranges: RepairRange[]
+) {
+  return documents.flatMap((document) => {
+    const selected = ranges.filter((range) => range.document === document.id);
+    return expandedRanges(document, decisions, selected).map((range) =>
+      unitFromRange(document, range)
+    );
+  });
+};
+
+export const validateRepairUnitSize = function validateRepairUnitSize(units: IngestionUnit[]) {
+  if (units.some((unit) => Buffer.byteLength(unit.text) > 2 * maxBytes)) {
+    throw new HivexError({
+      code: 'REPAIR_RANGE_TOO_LARGE',
+      message:
+        'A complete decision range exceeds the 16 KiB round limit. Inspect its source scope before repairing it.',
+    });
+  }
 };

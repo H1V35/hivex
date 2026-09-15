@@ -14,7 +14,12 @@ import {
 import { captureImplementation } from './implementation.ts';
 import { rawMarkdownLines, lineContent } from './markdown.ts';
 import { loadProject } from './documents.ts';
-import { ingestionUnits } from './ingestion-units.ts';
+import {
+  ingestionUnits,
+  repairUnits,
+  unitFromRange,
+  validateRepairUnitSize,
+} from './ingestion-units.ts';
 import { HivexError } from './errors.ts';
 import { invokeModel } from './model/invoke.ts';
 import { knowledgeModel } from './model/profile.ts';
@@ -38,7 +43,7 @@ import {
 import type { Work } from './knowledge-store.ts';
 import type { IngestionUnit } from './ingestion-units.ts';
 import type { Implementation } from './implementation.ts';
-import type { Project } from './documents.ts';
+import type { Document, Project } from './documents.ts';
 import type { Graph } from './knowledge-model.ts';
 
 // Persisted work keys use this field order from the first knowledge release.
@@ -395,7 +400,7 @@ const updateResponse = function updateResponse(
       project.warnings.length > 0 ||
       units.some((unit) => {
         const source = project.documents.find((entry) => entry.id === unit.document);
-        return graph.units[unit.id]?.version !== source?.hash;
+        return graph.documents[unit.document] !== source?.hash;
       })
         ? 'pending'
         : 'current',
@@ -669,6 +674,23 @@ const resumeFailed = function resumeFailed(
   work.status = 'pending';
   store.save(work);
 };
+const invalidateRepairCoverage = function invalidateRepairCoverage(
+  graph: Graph,
+  unit: IngestionUnit,
+  key: string
+) {
+  for (const [id, coverage] of Object.entries(graph.units)) {
+    if (coverage.document !== unit.document || coverage.workKey === key) {
+      continue;
+    }
+    const match = /:(?<start>\d+)-(?<end>\d+)$/u.exec(id);
+    const hasOverlap =
+      Number(match?.groups?.start) <= unit.lineEnd && Number(match?.groups?.end) >= unit.lineStart;
+    if (hasOverlap) {
+      delete coverage.workKey;
+    }
+  }
+};
 const finishRound = function finishRound(options: {
   project: Project;
   graph: Graph;
@@ -684,6 +706,7 @@ const finishRound = function finishRound(options: {
     }
     const source = project.documents.find((document) => document.id === unit.document);
     if (source) {
+      invalidateRepairCoverage(graph, unit, work.key);
       graph.units[unit.id] = {
         document: source.id,
         version: source.hash,
@@ -757,6 +780,81 @@ const validateRepairRanges = function validateRepairRanges(
     }
   }
 };
+const hasRepairCoverage = function hasRepairCoverage(
+  graph: Graph,
+  unit: IngestionUnit,
+  key: string
+) {
+  const spans = Object.entries(graph.units)
+    .flatMap(([id, covered]) => {
+      if (
+        !id.startsWith(`${unit.document}:`) ||
+        covered.document !== unit.document ||
+        covered.workKey !== key ||
+        covered.version !== graph.documents[unit.document]
+      ) {
+        return [];
+      }
+      const match = /:(?<start>\d+)-(?<end>\d+)$/u.exec(id);
+      const lineStart = Number(match?.groups?.start);
+      const lineEnd = Number(match?.groups?.end);
+      const hasIntegerBounds = Number.isSafeInteger(lineStart) && Number.isSafeInteger(lineEnd);
+      return hasIntegerBounds && lineStart > 0 && lineEnd >= lineStart
+        ? [{ lineEnd, lineStart }]
+        : [];
+    })
+    .toSorted((a, b) => a.lineStart - b.lineStart);
+  let next = unit.lineStart;
+  for (const span of spans) {
+    if (span.lineEnd < next) {
+      continue;
+    }
+    if (span.lineStart > next) {
+      return false;
+    }
+    next = span.lineEnd + 1;
+    if (next > unit.lineEnd) {
+      return true;
+    }
+  }
+  return false;
+};
+const replaceRangeUnits = function replaceRangeUnits(
+  base: IngestionUnit[],
+  selected: IngestionUnit[],
+  sources: Set<string>
+) {
+  const documents = [...new Set(base.map((unit) => unit.document))];
+  return documents.flatMap((document) =>
+    (sources.has(document) ? selected : base).filter((unit) => unit.document === document)
+  );
+};
+const reconcileRepairUnits = function reconcileRepairUnits(options: {
+  documents: Document[];
+  remaining: string[];
+  sources: Set<string>;
+  work: Work;
+}) {
+  const { documents, remaining, sources, work } = options;
+  if (sources.size === 0 || work.status === 'done') {
+    return null;
+  }
+  if (work.calls === 0 && work.pending === null) {
+    work.plannedUnits = [...remaining];
+    return null;
+  }
+  return work.plannedUnits.map((id) => {
+    const range = parseRepairRange(id);
+    const document = documents.find((entry) => entry.id === range.document);
+    if (!document) {
+      throw new HivexError({
+        code: 'STALE_RETAINED_CHECK',
+        message: 'A retained repair source is unavailable.',
+      });
+    }
+    return unitFromRange(document, range);
+  });
+};
 const prepareUpdate = function prepareUpdate(options: {
   project: Project;
   runtime: Options;
@@ -770,7 +868,14 @@ const prepareUpdate = function prepareUpdate(options: {
     const isPlanned = sharedWork?.plannedUnits.some((id) => id.startsWith(prefix)) ?? false;
     return runtime.repair.includes(document.id) || isPlanned;
   });
-  const plan = ingestionUnits([...project.currentDocuments, ...selectedHistory]);
+  const documents = [...project.currentDocuments, ...selectedHistory];
+  const plan = ingestionUnits(documents);
+  const originalUnits = plan.units;
+  const rangeSources = new Set(runtime.repairRanges.map((range) => range.document));
+  if (rangeSources.size > 0) {
+    const selected = repairUnits(documents, graph.decisions, runtime.repairRanges);
+    plan.units = replaceRangeUnits(originalUnits, selected, rangeSources);
+  }
   const contextSources = runtime.command === 'update' ? runtime.sources : [];
   const snapshot = knowledgeSnapshot(
     project,
@@ -799,7 +904,7 @@ const prepareUpdate = function prepareUpdate(options: {
     )
   );
   const scoped = sharedWork ? new Set(sharedWork.plannedUnits) : null;
-  const remaining = plan.units
+  let remaining = plan.units
     .filter((unit) => {
       if (scoped && !scoped.has(unit.id)) {
         return false;
@@ -815,7 +920,9 @@ const prepareUpdate = function prepareUpdate(options: {
         return (
           runtime.repair.includes(unit.document) &&
           isSelected &&
-          graph.units[unit.id]?.workKey !== key
+          !(rangeSources.has(unit.document)
+            ? hasRepairCoverage(graph, unit, key)
+            : graph.units[unit.id]?.workKey === key)
         );
       }
       return graph.units[unit.id]?.version !== source?.hash;
@@ -831,6 +938,14 @@ const prepareUpdate = function prepareUpdate(options: {
       remaining,
       snapshot,
     });
+  const retained = reconcileRepairUnits({ documents, remaining, sources: rangeSources, work });
+  if (retained) {
+    plan.units = replaceRangeUnits(originalUnits, retained, rangeSources);
+    remaining = [...work.remaining];
+  }
+  if (rangeSources.size > 0) {
+    validateRepairUnitSize(plan.units.filter((unit) => remaining.includes(unit.id)));
+  }
   if (
     remaining.some((id) => !work.remaining.includes(id)) ||
     (work.pending?.staged === true
