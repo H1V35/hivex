@@ -27,7 +27,7 @@ The principal agent maintains the Markdown. Detect new, changed or removed sourc
 
 When sources move, use `snapshot relocate <old> <new>` before updating. It preserves identities, relationships, evidence versions and prior work without model calls. Only an identical source with matching known versions at a previously unknown destination reuses coverage; changes, mixed or missing versions and consolidation remain pending for normal maintenance. Do not relocate unrelated knowledge to hide a warning.
 
-Repair a demonstrated interpretation error with `update --repair <document> --reason <correction>` after checking the source, its dependencies and replacements. Do not repair correct knowledge merely because a warning omits context, or change doctrine to satisfy the model. Keep unresolved limitations explicit.
+Repair a demonstrated interpretation error with `update --repair-range <document>:<start>-<end> --reason <correction>` for affected units of a current source, or `--repair <document>` when the whole document needs revisiting. A `RELATIONSHIP_LOSS` result retains the previous graph and needs inspection, not automatic retries. Correct the interpretation after checking the source, its dependencies and replacements. Do not repair correct knowledge merely because a warning omits context, or change doctrine to satisfy the model. Keep unresolved limitations explicit.
 
 ## Support review
 

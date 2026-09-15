@@ -86,6 +86,28 @@ const payloadFromPrompt = function payloadFromPrompt(prompt) {
   }
 };
 
+const relationshipCheckResponse = function relationshipCheckResponse(check, packet) {
+  if (!check.relationshipChanges) {
+    return check;
+  }
+  return {
+    ...check,
+    relationshipChanges: check.relationshipChanges.map((change) => {
+      const previousId =
+        change.previousId === '@removed:0'
+          ? packet.removedRelationships[firstIndex].id
+          : change.previousId;
+      return {
+        ...change,
+        previousId,
+        replacements: change.replacements.map((id) => {
+          const replacement = packet.extraction.relationships[firstIndex]?.id;
+          return id === '@candidate:0' ? replacement : id;
+        }),
+      };
+    }),
+  };
+};
 const responseForPrompt = function responseForPrompt(prompt) {
   if (process.env.HIVEX_TEST_RESPONSES) {
     const responses = JSON.parse(readFileSync(process.env.HIVEX_TEST_RESPONSES, 'utf-8'));
@@ -172,7 +194,9 @@ const responseForPrompt = function responseForPrompt(prompt) {
         uncertainties: [],
       };
     }
-    return responses[packet?.operation];
+    return packet?.operation === 'check'
+      ? relationshipCheckResponse(responses.check, packet)
+      : responses[packet?.operation];
   }
   return null;
 };

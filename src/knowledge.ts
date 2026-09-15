@@ -31,6 +31,8 @@ import {
   sourceEvidence,
   suppliedCitation,
   warningScope,
+  warningSummary,
+  validCitation,
 } from './knowledge-model.ts';
 import type { Work } from './knowledge-store.ts';
 import type { IngestionUnit } from './ingestion-units.ts';
@@ -57,6 +59,20 @@ const bounded = function bounded(value: string | undefined, minimum: number, max
   }
   return number;
 };
+const parseRepairRange = function parseRepairRange(value: string) {
+  const match = /^(?<document>.+):(?<start>\d+)-(?<end>\d+)$/u.exec(value);
+  const document = match?.groups?.document ?? '';
+  const lineStart = Number(match?.groups?.start);
+  const lineEnd = Number(match?.groups?.end);
+  const hasInvalidLines = !Number.isSafeInteger(lineStart) || !Number.isSafeInteger(lineEnd);
+  if (!document || hasInvalidLines || lineStart < 1 || lineEnd < lineStart) {
+    throw new HivexError({
+      code: 'INVALID_ARGUMENT',
+      message: 'Use --repair-range <document>:<start>-<end> with positive, ordered line numbers.',
+    });
+  }
+  return { document, lineEnd, lineStart };
+};
 const optionsFor = function optionsFor(input: string[]) {
   const parsed = parseArgs({
     allowPositionals: true,
@@ -71,16 +87,18 @@ const optionsFor = function optionsFor(input: string[]) {
       'max-input-bytes': { type: 'string' },
       reason: { type: 'string' },
       repair: { multiple: true, type: 'string' },
+      'repair-range': { multiple: true, type: 'string' },
       'retry-failed': { type: 'boolean' },
       root: { type: 'string' },
       source: { multiple: true, type: 'string' },
     },
     strict: true,
   });
-  const [command, query] = parsed.positionals;
-  const { reason = '' } = parsed.values;
+  const [command, query = ''] = parsed.positionals;
+  const { reason = '', repair = [] } = parsed.values;
+  const repairRanges = (parsed.values['repair-range'] ?? []).map(parseRepairRange);
   const isQueryRequired = ['search', 'neighbors', 'ask', 'review'].includes(command ?? '');
-  const isMissingQuery = isQueryRequired && (query?.trim() ?? '') === '';
+  const isMissingQuery = isQueryRequired && query.trim() === '';
   if (
     isMissingQuery ||
     !['update', 'search', 'neighbors', 'ask', 'review', 'status'].includes(command ?? '') ||
@@ -100,8 +118,16 @@ const optionsFor = function optionsFor(input: string[]) {
     maxCalls: bounded(parsed.values['max-calls'], 0, 4096),
     maxContextBytes: bounded(parsed.values['max-context-bytes'], 1024, 262_144) ?? 65_536,
     maxInputBytes: bounded(parsed.values['max-input-bytes'], 1024, 1_073_741_824),
-    query: (query ?? '').trim(),
-    repair: parsed.values.repair ?? [],
+    query: query.trim(),
+    repair: [
+      ...new Set(
+        Iterator.concat(
+          repair,
+          repairRanges.map((range) => range.document)
+        )
+      ),
+    ],
+    repairRanges,
     repairReason: reason.trim(),
     retryFailed: parsed.values['retry-failed'] ?? false,
     root: parsed.values.root ?? process.cwd(),
@@ -331,11 +357,22 @@ const updateResponse = function updateResponse(
   { graph, units }: { graph: Graph; units: IngestionUnit[] }
 ) {
   let { status }: { status: string } = work;
+  const summary = warningSummary(graph.warnings);
   if (work.status === 'done') {
-    status = graph.warnings.length || project.warnings.length ? 'partial' : 'ready';
+    const hasProblems =
+      summary.findings + summary.validation + summary.unknown + project.warnings.length > 0;
+    status = hasProblems ? 'partial' : 'ready';
   }
   return {
     command: 'update',
+    coverage:
+      project.warnings.length > 0 ||
+      units.some((unit) => {
+        const source = project.documents.find((entry) => entry.id === unit.document);
+        return graph.units[unit.id]?.version !== source?.hash;
+      })
+        ? 'pending'
+        : 'current',
     decisions: graph.decisions.length,
     model: knowledgeModel,
     pendingCheck: work.pending?.documents ?? [],
@@ -350,6 +387,7 @@ const updateResponse = function updateResponse(
     relationships: graph.relationships.length,
     snapshot: project.snapshot,
     status,
+    warningSummary: { ...summary, sources: project.warnings.length },
     warnings: [...project.warnings, ...graph.warnings],
     work: workSummary(work),
   };
@@ -578,7 +616,11 @@ const resumeFailed = function resumeFailed(
   store: KnowledgeStore,
   isRequested: boolean
 ) {
-  if (!isRequested || work.status !== 'failed') {
+  if (
+    !isRequested ||
+    work.status !== 'failed' ||
+    work.attempts.at(-1)?.error === 'RELATIONSHIP_LOSS'
+  ) {
     return;
   }
   const last = reportSummary.safeParse(work.attempts.at(-1)?.report);
@@ -668,6 +710,27 @@ const knowledgeSnapshot = function knowledgeSnapshot(project: Project, relevant:
     .map((document) => [document.id, document.hash]);
   return digest(JSON.stringify([project.currentSnapshot, history]));
 };
+const validateRepairRanges = function validateRepairRanges(
+  project: Project,
+  graph: Graph,
+  ranges: Options['repairRanges']
+) {
+  for (const range of ranges) {
+    const document = project.documents.find((source) => source.id === range.document);
+    if (!document || range.lineEnd > rawMarkdownLines(document.text).length) {
+      throw new HivexError({
+        code: 'INVALID_ARGUMENT',
+        message: `Repair range is outside ${range.document}.`,
+      });
+    }
+    if (graph.documents[document.id] !== document.hash) {
+      throw new HivexError({
+        code: 'SOURCE_NOT_CURRENT',
+        message: `Finish updating ${document.id} before repairing selected ranges; its unchanged knowledge must be current.`,
+      });
+    }
+  }
+};
 const prepareUpdate = function prepareUpdate(options: {
   project: Project;
   runtime: Options;
@@ -702,6 +765,7 @@ const prepareUpdate = function prepareUpdate(options: {
         ['repair', runtime.repair],
         ['reason', runtime.repairReason],
         ['format', 3],
+        ...(runtime.repairRanges.length ? [['repairRanges', runtime.repairRanges]] : []),
         ...(contextSources.length
           ? [['contextSources', [...new Set(contextSources)].toSorted(compareSerializedStrings)]]
           : []),
@@ -716,7 +780,17 @@ const prepareUpdate = function prepareUpdate(options: {
       }
       const source = project.documents.find((document) => document.id === unit.document);
       if (runtime.repair.length) {
-        return runtime.repair.includes(unit.document) && graph.units[unit.id]?.workKey !== key;
+        const ranges = runtime.repairRanges.filter((range) => range.document === unit.document);
+        const isSelected =
+          ranges.length === 0 ||
+          ranges.some(
+            (range) => range.lineStart <= unit.lineEnd && range.lineEnd >= unit.lineStart
+          );
+        return (
+          runtime.repair.includes(unit.document) &&
+          isSelected &&
+          graph.units[unit.id]?.workKey !== key
+        );
       }
       return graph.units[unit.id]?.version !== source?.hash;
     })
@@ -733,7 +807,9 @@ const prepareUpdate = function prepareUpdate(options: {
     });
   if (
     remaining.some((id) => !work.remaining.includes(id)) ||
-    graph.lastExtraction !== work.pending?.batch
+    (work.pending?.staged === true
+      ? (graph.lastExtraction ?? null) !== work.pending.baseExtraction
+      : graph.lastExtraction !== work.pending?.batch)
   ) {
     work.pending = null;
   }
@@ -750,6 +826,140 @@ interface UpdateRound {
   store: KnowledgeStore;
   work: Work;
 }
+type PendingBatch = NonNullable<Work['pending']>;
+const suppliedDocumentsSchema = z.array(
+  z.object({
+    id: z.string(),
+    lines: z.array(z.tuple([z.number(), z.string()])),
+  })
+);
+const materializePending = function materializePending(state: UpdateRound, pending: PendingBatch) {
+  const documents = suppliedDocumentsSchema.parse(pending.packet?.documents);
+  return applyExtraction({
+    batch: pending.batch,
+    contextDocuments: state.project.documents.filter((document) =>
+      pending.context.includes(document.id)
+    ),
+    contextRanges: documents.flatMap((document) =>
+      document.lines.map(([line]) => ({ document: document.id, lineEnd: line, lineStart: line }))
+    ),
+    documents: state.project.documents.filter((document) =>
+      pending.documents.includes(document.id)
+    ),
+    existingIds: pending.existing,
+    extraction: pending.extraction,
+    graph: state.graph,
+    targetRanges: state.plan.units.filter((unit) => pending.units.includes(unit.id)),
+  });
+};
+const lostCurrentRelationships = function lostCurrentRelationships(
+  before: Graph,
+  after: Graph,
+  project: Project
+) {
+  const currentNodes = new Set(
+    before.decisions.filter((node) => isCurrentSource(project, node)).map((node) => node.id)
+  );
+  const remaining = new Set(after.relationships.map((entry) => entry.id));
+  return before.relationships.filter((entry) => {
+    const hasCurrentEndpoints = currentNodes.has(entry.from) && currentNodes.has(entry.to);
+    return (
+      !remaining.has(entry.id) &&
+      hasCurrentEndpoints &&
+      entry.evidence.every((citation) => isCurrentSource(project, citation))
+    );
+  });
+};
+const relationshipCheckSchema = checkSchema.extend({
+  relationshipChanges: z.array(
+    z.object({
+      evidence: z.array(citationSchema).min(1).max(8),
+      previousId: z.string().min(1),
+      reason: z.string().min(1).max(2048),
+      replacements: z.array(z.string().min(1)),
+    })
+  ),
+});
+const withoutExecutionState = function withoutExecutionState<
+  T extends { batch: string; quality: string; localId: string },
+>(entry: T) {
+  const { batch: _batch, quality: _quality, localId: _localId, ...value } = entry;
+  return value;
+};
+const checkedPacket = function checkedPacket(
+  graph: Graph,
+  candidate: Graph,
+  pending: PendingBatch
+) {
+  if (pending.materializedCheck !== true) {
+    return { ...pending.packet, extraction: pending.extraction };
+  }
+  const removedRelationships = graph.relationships.filter(
+    (entry) => pending.protectedRelationships?.includes(entry.id) === true
+  );
+  const endpointIds = new Set(removedRelationships.flatMap((entry) => [entry.from, entry.to]));
+  const ranges = z.array(citationSchema).parse(pending.packet?.units);
+  const validationWarnings = candidate.warnings.filter((warning) => {
+    if (typeof warning === 'string' || warning.kind !== 'validation') {
+      return false;
+    }
+    return warning.scope.some((scope) => {
+      const selected = ranges.filter((range) => range.document === scope.document);
+      return selected.some(
+        (range) => range.lineStart <= scope.lineEnd && range.lineEnd >= scope.lineStart
+      );
+    });
+  });
+  return {
+    ...pending.packet,
+    extraction: {
+      decisions: candidate.decisions
+        .filter((entry) => entry.batch === pending.batch)
+        .map(withoutExecutionState),
+      relationships: candidate.relationships
+        .filter((entry) => entry.batch === pending.batch)
+        .map(withoutExecutionState),
+      uncertainties: pending.extraction.uncertainties,
+    },
+    previousDecisions: graph.decisions
+      .filter((entry) => endpointIds.has(entry.id))
+      .map(withoutExecutionState),
+    removedRelationships: removedRelationships.map(withoutExecutionState),
+    validationWarnings,
+  };
+};
+const unresolvedRelationshipChanges = function unresolvedRelationshipChanges(
+  state: UpdateRound,
+  candidate: Graph,
+  value: unknown
+) {
+  const { pending } = state.work;
+  if (!pending || (pending.protectedRelationships?.length ?? 0) === 0) {
+    return [];
+  }
+  const check = relationshipCheckSchema.parse(value);
+  const documents = suppliedDocumentsSchema.parse(pending.packet?.documents);
+  const available = new Set(
+    candidate.relationships.filter((entry) => entry.quality === 'checked').map((entry) => entry.id)
+  );
+  const isJustified = function isJustified(
+    change: z.infer<typeof relationshipCheckSchema>['relationshipChanges'][number]
+  ) {
+    const hasFinding = check.findings.some(
+      (finding) => finding.target === change.previousId || finding.target === 'batch'
+    );
+    const hasReplacements = change.replacements.every((id) => available.has(id));
+    const hasEvidence = change.evidence.every((citation) => {
+      const isValid = validCitation(citation, state.project.documents);
+      return isValid && suppliedCitation(citation, documents);
+    });
+    return !hasFinding && hasReplacements && hasEvidence;
+  };
+  const justified = new Set(
+    check.relationshipChanges.filter(isJustified).map((change) => change.previousId)
+  );
+  return (pending.protectedRelationships ?? []).filter((id) => !justified.has(id));
+};
 const extractBatch = async function extractBatch(state: UpdateRound) {
   const { plan, project, runtime, store, work } = state;
   let { graph } = state;
@@ -799,34 +1009,29 @@ const extractBatch = async function extractBatch(state: UpdateRound) {
   }
   const extraction = historicalExtraction(project, extractionSchema.parse(value));
   const batch = `${work.id}:${digest(stringifyKnowledge(packet))}`;
-  graph = applyExtraction({
-    batch,
-    contextDocuments: project.documents.filter((document) =>
-      context.documents.some((entry) => entry.id === document.id)
-    ),
-    contextRanges: context.documents.flatMap((document) => {
-      const { id } = document;
-      return document.lines.map(([number]) => {
-        const line = Number(number);
-        return { document: id, lineEnd: line, lineStart: line };
-      });
-    }),
-    documents: project.documents.filter((document) => documents.includes(document.id)),
-    existingIds: context.existing.map((entry) => entry.id),
-    extraction,
-    graph,
-    targetRanges: units,
-  });
   work.pending = {
+    baseExtraction: graph.lastExtraction ?? null,
     batch,
     context: context.documents.map((document) => document.id),
     documents,
     existing: context.existing.map((entry) => entry.id),
     extraction,
+    materializedCheck: work.materializedChecks === true,
     packet: { ...packet, operation: 'check' },
     units: units.map((unit) => unit.id),
   };
-  store.commit(work, graph);
+  const candidate = materializePending(state, work.pending);
+  work.pending.protectedRelationships =
+    work.materializedChecks === true
+      ? lostCurrentRelationships(graph, candidate, project).map((entry) => entry.id)
+      : [];
+  work.pending.staged = work.pending.protectedRelationships.length > 0;
+  if (work.pending.staged) {
+    store.save(work);
+  } else {
+    graph = candidate;
+    store.commit(work, graph);
+  }
 
   return graph;
 };
@@ -838,12 +1043,21 @@ const checkBatch = async function checkBatch(state: UpdateRound) {
   if (pending === null) {
     throw new Error('A check requires a pending extraction');
   }
+  const candidate = pending.staged === true ? materializePending(state, pending) : graph;
+  const isGuarded = (pending.protectedRelationships?.length ?? 0) > 0;
   const value = await runModel({
     request: {
-      instruction:
-        'Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.',
-      packet: { ...pending.packet, extraction: pending.extraction },
-      schema: checkSchema,
+      instruction: `Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.${
+        pending.materializedCheck === true
+          ? ' The extraction is the materialized candidate, after local validation. Check meaningful decisions, dependencies and exceptions; reading the cited Markdown supplies incidental details. Missing live deployment evidence or unexpanded background alone is not a defect. Use the supplied canonical IDs.'
+          : ''
+      }${
+        isGuarded
+          ? ' For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.'
+          : ''
+      }`,
+      packet: checkedPacket(graph, candidate, pending),
+      schema: isGuarded ? relationshipCheckSchema : checkSchema,
       stage: 'check',
     },
     runtime,
@@ -853,13 +1067,25 @@ const checkBatch = async function checkBatch(state: UpdateRound) {
   if (value === null) {
     return null;
   }
-  graph = applyCheck(graph, checkSchema.parse(value), {
+  const checked = applyCheck(candidate, checkSchema.parse(value), {
     batch: pending.batch,
     scope: warningScope(
       project.documents,
       plan.units.filter((unit) => pending.units.includes(unit.id))
     ),
   });
+  const unresolved = unresolvedRelationshipChanges(state, checked, value);
+  if (unresolved.length > 0) {
+    work.status = 'failed';
+    const attempt = work.attempts.at(-1);
+    if (attempt) {
+      attempt.error = 'RELATIONSHIP_LOSS';
+      attempt.diagnostic = `Previous graph retained. Unresolved relationship changes: ${unresolved.join(', ')}. Inspect this result before proposing a different repair; no automatic retry.`;
+    }
+    store.save(work);
+    return graph;
+  }
+  graph = checked;
   finishRound({ graph, plan, project, units: pending.units, work });
   store.commit(work, graph);
 
@@ -877,7 +1103,7 @@ const advanceUpdate = async function advanceUpdate(state: UpdateRound): Promise<
     return state.graph;
   }
   const checked = await checkBatch({ ...state, graph });
-  if (checked === null) {
+  if (checked === null || work.status === 'failed') {
     return graph;
   }
   return await advanceUpdate({ ...state, graph: checked });
@@ -898,6 +1124,7 @@ const updateWithStore = async function updateWithStore(options: {
   graph.units = Object.fromEntries(
     Object.entries(graph.units).filter(([, unit]) => currentDocuments.has(unit.document))
   );
+  validateRepairRanges(project, graph, runtime.repairRanges);
   const { plan, work } = prepareUpdate({
     graph,
     project,
@@ -1574,7 +1801,8 @@ export const knowledgeCommand = async function knowledgeCommand(input: string[])
   if (isInvalidRepair) {
     throw new HivexError({
       code: 'INVALID_ARGUMENT',
-      message: 'Use update --repair <document> --reason <correction up to 2048 characters>.',
+      message:
+        'Use update --repair <document> or --repair-range <document>:<start>-<end> with --reason <correction up to 2048 characters>.',
     });
   }
   const project = loadProject(options.root);
@@ -1620,6 +1848,7 @@ export const knowledgeCommand = async function knowledgeCommand(input: string[])
       uncheckedDecisions: graph.decisions
         .filter((entry) => entry.quality !== 'checked')
         .map((entry) => entry.id),
+      warningSummary: { ...warningSummary(graph.warnings), sources: project.warnings.length },
       warnings: [...project.warnings, ...graph.warnings],
     };
   }
