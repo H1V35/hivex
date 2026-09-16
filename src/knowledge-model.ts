@@ -99,17 +99,17 @@ const provenance = {
 const warningScopeSchema = citationSchema.extend({ version: z.string() });
 export type WarningScope = z.infer<typeof warningScopeSchema>;
 const warningKind = z.enum(['limitation', 'finding', 'validation']);
+const warningResolutionSchema = z.object({
+  evidence: z.array(warningScopeSchema).min(1).max(32),
+  reason: explanation,
+});
 const warningSchema = z.union([
   z.string(),
   z.object({
     kind: warningKind.optional(),
     message: z.string(),
-    resolution: z
-      .object({
-        evidence: z.array(warningScopeSchema).min(1).max(32),
-        reason: explanation,
-      })
-      .optional(),
+    previousResolutions: z.array(warningResolutionSchema).optional(),
+    resolution: warningResolutionSchema.optional(),
     scope: z.array(warningScopeSchema),
     target: z.string().optional(),
   }),
@@ -229,6 +229,20 @@ export const isWarningResolved = function isWarningResolved(
     const source = documents.find((document) => document.id === citation.document);
     return source?.hash === citation.version && validCitation(citation, documents);
   });
+};
+
+export const withWarningResolution = function withWarningResolution(
+  warning: Graph['warnings'][number],
+  resolution: z.infer<typeof warningResolutionSchema>
+): Graph['warnings'][number] {
+  const original = typeof warning === 'string' ? { message: warning, scope: [] } : warning;
+  return {
+    ...original,
+    ...(original.resolution !== undefined && {
+      previousResolutions: [...(original.previousResolutions ?? []), original.resolution],
+    }),
+    resolution,
+  };
 };
 
 export const activeWarnings = function activeWarnings(

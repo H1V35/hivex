@@ -24,6 +24,13 @@ import { knowledgeModel } from './model/profile.ts';
 import { rankLexically } from './retrieval/lexical.ts';
 import { storedGraph, KnowledgeStore } from './knowledge-store.ts';
 import {
+  applyWarningReview,
+  warningChanges,
+  warningResolutionsSchema,
+  warningReviewCandidates,
+  warningReviewInstruction,
+} from './knowledge-warning-review.ts';
+import {
   applyCheck,
   applyExtraction,
   checkSchema,
@@ -416,6 +423,9 @@ const updateResponse = function updateResponse(
     relationships: graph.relationships.length,
     snapshot: project.snapshot,
     status,
+    ...(work.warningBaseline !== undefined && {
+      warningChanges: warningChanges(graph, project.documents, work.warningBaseline),
+    }),
     warningSummary: { ...summary, sources: project.warnings.length },
     warnings: [...project.warnings, ...activeWarnings(graph.warnings, project.documents)],
     work: workSummary(work),
@@ -1210,8 +1220,11 @@ const extractBatch = async function extractBatch(state: UpdateRound) {
   }
   const value = await runModel({
     request: {
-      instruction:
-        'For a repair, check repairReason against Markdown; it is not new authority. Extract meaningful decisions, constraints, definitions and lessons, not every sentence or incidental numeric value. Use c1,c2,... decision IDs and r1,r2,... relationship IDs. Discover supported semantic relationships even without authored links. Extract decisions only within the target unit line ranges. Other ranges are context; do not duplicate their decisions. Existing decision IDs may be relationship endpoints. Cite each decision in its own document and relationships in the documents supporting their scope.',
+      instruction: `For a repair, check repairReason against Markdown; it is not new authority. Extract meaningful decisions, constraints, definitions and lessons, not every sentence or incidental numeric value. Use c1,c2,... decision IDs and r1,r2,... relationship IDs. Discover supported semantic relationships even without authored links. Extract decisions only within the target unit line ranges. Other ranges are context; do not duplicate their decisions. Existing decision IDs may be relationship endpoints. Cite each decision in its own document and relationships in the documents supporting their scope.${
+        work.warningBaseline === undefined
+          ? ''
+          : ' Report uncertainties only when an unanswered choice, contradiction or missing condition affects the interpretation or application of a decision, dependency or exception. Explain that consequence. Missing deployment proof, incidental detail or background alone is not a warning. Preserve genuine uncertainty and do not infer answers from absence. Keep descriptive facts descriptive; do not turn a current setup into a permanent obligation. For A requires B, A is the dependent and B the prerequisite. Each decision citation must support its conditions and exceptions too.'
+      }`,
       packet,
       schema: extractionSchema,
       stage: 'extract',
@@ -1242,6 +1255,29 @@ const extractBatch = async function extractBatch(state: UpdateRound) {
       ? lostCurrentRelationships(graph, candidate, project).map((entry) => entry.id)
       : [];
   work.pending.staged = work.pending.protectedRelationships.length > 0;
+  if (work.warningBaseline !== undefined) {
+    work.pending.packet = {
+      ...work.pending.packet,
+      warningCandidates: warningReviewCandidates(
+        candidate,
+        {
+          documents: project.documents,
+          supplied: context.documents,
+          uncertainties: extraction.uncertainties,
+        },
+        Math.max(
+          0,
+          runtime.maxContextBytes -
+            Buffer.byteLength(
+              stringifyKnowledge({
+                ...checkedPacket(graph, candidate, work.pending),
+                warningCandidates: [],
+              })
+            )
+        )
+      ),
+    };
+  }
   if (work.pending.staged) {
     store.save(work);
   } else {
@@ -1278,6 +1314,71 @@ const reassessOrCheckChangedCandidate = async function reassessOrCheckChangedCan
     });
   }
 };
+const batchCheckRequest = function batchCheckRequest(
+  graph: Graph,
+  candidate: Graph,
+  pending: PendingBatch
+) {
+  const isGuarded = (pending.protectedRelationships?.length ?? 0) > 0;
+  const hasWarningReview = pending.packet?.warningCandidates !== undefined;
+  const schema = isGuarded ? relationshipCheckSchema : checkSchema;
+  return {
+    instruction: `Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.${
+      pending.materializedCheck === true
+        ? ' The extraction is the materialized candidate, after local validation. Check meaningful decisions, dependencies and exceptions; reading the cited Markdown supplies incidental details. Missing live deployment evidence or unexpanded background alone is not a defect. Use the supplied canonical IDs.'
+        : ''
+    }${
+      isGuarded
+        ? ' For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.'
+        : ''
+    }${hasWarningReview ? warningReviewInstruction : ''}`,
+    packet: checkedPacket(graph, candidate, pending),
+    schema: hasWarningReview
+      ? schema.extend({ warningResolutions: warningResolutionsSchema.default([]) })
+      : schema,
+    stage: 'check',
+  };
+};
+const reviewBatchWarnings = function reviewBatchWarnings(
+  state: UpdateRound,
+  candidate: Graph,
+  checked: Graph,
+  value: unknown
+) {
+  const { pending } = state.work;
+  const hasValidation = candidate.warnings.some((warning) => {
+    const isValidation = typeof warning !== 'string' && warning.kind === 'validation';
+    return (
+      isValidation &&
+      warning.scope.some((scope) => pending?.documents.includes(scope.document) === true)
+    );
+  });
+  if (
+    hasValidation ||
+    pending?.packet?.warningCandidates === undefined ||
+    checkSchema.parse(value).findings.length > 0
+  ) {
+    return checked;
+  }
+  const supplied = suppliedDocumentsSchema.parse(pending.packet.documents);
+  const offered = new Set(
+    z
+      .array(z.object({ id: z.string() }))
+      .parse(pending.packet.warningCandidates)
+      .map((entry) => entry.id)
+  );
+  return applyWarningReview(checked, {
+    candidates: warningReviewCandidates(candidate, {
+      documents: state.project.documents,
+      supplied,
+      uncertainties: pending.extraction.uncertainties,
+    }).filter((entry) => offered.has(entry.id)),
+    documents: state.project.documents,
+    resolutions: z.object({ warningResolutions: warningResolutionsSchema.default([]) }).parse(value)
+      .warningResolutions,
+    supplied,
+  });
+};
 const checkBatch = async function checkBatch(state: UpdateRound, isRetainedOnly = false) {
   const { plan, project, runtime, store, work } = state;
   let { graph } = state;
@@ -1287,21 +1388,7 @@ const checkBatch = async function checkBatch(state: UpdateRound, isRetainedOnly 
     throw new Error('A check requires a pending extraction');
   }
   const candidate = pending.staged === true ? materializePending(state, pending) : graph;
-  const isGuarded = (pending.protectedRelationships?.length ?? 0) > 0;
-  const request = {
-    instruction: `Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.${
-      pending.materializedCheck === true
-        ? ' The extraction is the materialized candidate, after local validation. Check meaningful decisions, dependencies and exceptions; reading the cited Markdown supplies incidental details. Missing live deployment evidence or unexpanded background alone is not a defect. Use the supplied canonical IDs.'
-        : ''
-    }${
-      isGuarded
-        ? ' For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.'
-        : ''
-    }`,
-    packet: checkedPacket(graph, candidate, pending),
-    schema: isGuarded ? relationshipCheckSchema : checkSchema,
-    stage: 'check',
-  };
+  const request = batchCheckRequest(graph, candidate, pending);
   const priorCalls = work.calls;
   const value = isRetainedOnly
     ? await reassessOrCheckChangedCandidate(state, request)
@@ -1331,7 +1418,7 @@ const checkBatch = async function checkBatch(state: UpdateRound, isRetainedOnly 
     store.save(work);
     return graph;
   }
-  graph = checked;
+  graph = reviewBatchWarnings(state, candidate, checked, value);
   work.status = 'pending';
   finishRound({ graph, plan, project, units: pending.units, work });
   store.commit(work, graph);

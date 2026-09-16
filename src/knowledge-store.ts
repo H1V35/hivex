@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { HivexError } from './errors.ts';
 import { sharedKnowledge } from './knowledge-snapshot.ts';
 import { emptyGraph, extractionSchema, graphSchema } from './knowledge-model.ts';
+import { warningBaseline } from './knowledge-warning-review.ts';
 import type { Graph } from './knowledge-model.ts';
 
 const processIdSchema = z.number().int().positive();
@@ -82,6 +83,7 @@ const workSchema = z.object({
   snapshot: z.string(),
   status: z.enum(['pending', 'running', 'budget-exhausted', 'context-limit', 'failed', 'done']),
   totalTokens: z.number().int().nonnegative(),
+  warningBaseline: z.record(z.string(), z.enum(['active', 'resolved'])).optional(),
 });
 export type Work = z.infer<typeof workSchema>;
 interface StoreOptions {
@@ -693,6 +695,7 @@ export class KnowledgeStore implements Disposable {
             plannedUnits: [...options.remaining],
             status: 'pending',
             totalTokens: 0,
+            warningBaseline: warningBaseline(this.graph()),
           };
           this.save(work);
           return work;

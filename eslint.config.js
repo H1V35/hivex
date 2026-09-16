@@ -131,7 +131,7 @@ export default [
         {
           category: 'knowledge',
           pattern:
-            'src/{knowledge-model,ingestion-units,knowledge-store,knowledge-snapshot,knowledge-serialization,source-relocation}.ts',
+            'src/{knowledge-model,knowledge-warning-review,ingestion-units,knowledge-store,knowledge-snapshot,knowledge-serialization,source-relocation}.ts',
         },
         { category: 'review', pattern: 'src/{implementation,review}.ts' },
         { category: 'model', pattern: 'src/model/**' },

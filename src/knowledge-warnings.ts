@@ -9,6 +9,7 @@ import {
   validCitation,
   warningId,
   warningSummary,
+  withWarningResolution,
 } from './knowledge-model.ts';
 import { KnowledgeStore, storedGraph } from './knowledge-store.ts';
 import type { Graph } from './knowledge-model.ts';
@@ -67,7 +68,6 @@ const resolveWarnings = function resolveWarnings(
     ...graph,
     warnings: graph.warnings.map((warning): Graph['warnings'][number] => {
       const resolution = resolved.get(warningId(warning));
-      const original = typeof warning === 'string' ? { message: warning, scope: [] } : warning;
       const applied =
         resolution === undefined
           ? null
@@ -75,7 +75,7 @@ const resolveWarnings = function resolveWarnings(
               evidence: resolution.evidence,
               reason: resolution.reason,
             };
-      return applied === null ? warning : { ...original, resolution: applied };
+      return applied === null ? warning : withWarningResolution(warning, applied);
     }),
   };
 };
