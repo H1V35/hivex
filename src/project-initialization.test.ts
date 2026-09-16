@@ -37,7 +37,9 @@ const temporaryProject = function temporaryProject(run: (root: string) => void) 
 };
 
 const invoke = function invoke(root: string, argumentsList: string[]) {
-  return spawnSync(process.execPath, [cli, ...argumentsList, '--root', root], {
+  const executable = process.env.HIVEX_TEST_BINARY ?? process.execPath;
+  const prefix = process.env.HIVEX_TEST_BINARY === undefined ? [cli] : [];
+  return spawnSync(executable, [...prefix, ...argumentsList, '--root', root], {
     encoding: 'utf-8',
     timeout: 10_000,
   });

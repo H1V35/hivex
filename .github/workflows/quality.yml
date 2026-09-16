@@ -16,6 +16,8 @@ concurrency:
 jobs:
   quality:
     runs-on: [self-hosted, macOS, ARM64, hivex]
+    env:
+      DEVELOPER_DIR: /Library/Developer/CommandLineTools
     timeout-minutes: 15
     permissions:
       contents: read
@@ -39,3 +41,15 @@ jobs:
         run: bun run --bun format:check
       - name: Test
         run: bun run test
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy --component rustfmt
+      - name: Rust format
+        run: cargo fmt --check
+      - name: Rust lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Rust test
+        run: cargo test --locked
+      - name: Rust CLI compatibility
+        run: |
+          cargo build --locked
+          HIVEX_TEST_BINARY="$PWD/target/debug/hivex-rust" bun test --timeout 15000 src/documents-cli.test.ts src/project-initialization.test.ts src/knowledge-maintenance.test.ts src/rust-compatibility.test.ts
