@@ -42,7 +42,9 @@ jobs:
       - name: Test
         run: bun run test
       - name: Rust toolchain
-        run: rustup toolchain install stable --profile minimal --component clippy --component rustfmt
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal --component clippy --component rustfmt
       - name: Rust format
         run: cargo fmt --check
       - name: Rust lint
