@@ -1,6 +1,8 @@
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
-use serde_json::Value;
+use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
+use std::fmt;
 use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -107,8 +109,473 @@ fn frontmatter(text: &str) -> Option<Frontmatter<'_>> {
     None
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum YamlKey {
+    Boolean(bool),
+    Null,
+    Number(u64),
+    Other,
+    String(String),
+}
+
+fn number_key(value: f64) -> u64 {
+    if value == 0.0 {
+        0.0f64.to_bits()
+    } else if value.is_nan() {
+        f64::NAN.to_bits()
+    } else {
+        value.to_bits()
+    }
+}
+
+struct YamlKeyVisitor;
+
+impl<'de> Visitor<'de> for YamlKeyVisitor {
+    type Value = YamlKey;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a YAML mapping key")
+    }
+
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::Boolean(value))
+    }
+
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::Number(number_key(value as f64)))
+    }
+
+    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::Number(number_key(value as f64)))
+    }
+
+    fn visit_i128<E>(self, value: i128) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::Number(number_key(value as f64)))
+    }
+
+    fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::Number(number_key(value as f64)))
+    }
+
+    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::Number(number_key(value)))
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::Null)
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::Null)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::String(value.to_owned()))
+    }
+
+    fn visit_borrowed_str<E>(self, value: &'de str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::String(value.to_owned()))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(YamlKey::String(value))
+    }
+
+    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        while sequence.next_element::<SkipValue>()?.is_some() {}
+        Ok(YamlKey::Other)
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut seen = HashSet::new();
+        while let Some(key) = map.next_key::<YamlKey>()? {
+            if !matches!(key, YamlKey::Other) && !seen.insert(key) {
+                return Err(de::Error::custom("duplicate mapping key"));
+            }
+            map.next_value::<SkipValue>()?;
+        }
+        Ok(YamlKey::Other)
+    }
+}
+
+impl<'de> Deserialize<'de> for YamlKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(YamlKeyVisitor)
+    }
+}
+
+struct SkipValue;
+
+struct SkipValueVisitor;
+
+impl<'de> Visitor<'de> for SkipValueVisitor {
+    type Value = SkipValue;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("any YAML value")
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_i128<E>(self, _: i128) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_u128<E>(self, _: u128) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_f32<E>(self, _: f32) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_str<E>(self, _: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_borrowed_str<E>(self, _: &'de str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_string<E>(self, _: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_bytes<E>(self, _: &[u8]) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_byte_buf<E>(self, _: Vec<u8>) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(SkipValue)
+    }
+
+    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        while sequence.next_element::<SkipValue>()?.is_some() {}
+        Ok(SkipValue)
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut seen = HashSet::new();
+        while let Some(key) = map.next_key::<YamlKey>()? {
+            if !matches!(key, YamlKey::Other) && !seen.insert(key) {
+                return Err(de::Error::custom("duplicate mapping key"));
+            }
+            map.next_value::<SkipValue>()?;
+        }
+        Ok(SkipValue)
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        SkipValue::deserialize(deserializer)
+    }
+
+    fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        SkipValue::deserialize(deserializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SkipValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(SkipValueVisitor)
+    }
+}
+
+struct Metadata {
+    status: Option<String>,
+    title: Option<String>,
+}
+
+struct MetadataVisitor;
+
+struct OptionalString(Option<String>);
+
+struct OptionalStringVisitor;
+
+impl<'de> Visitor<'de> for OptionalStringVisitor {
+    type Value = OptionalString;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a YAML scalar")
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(Some(value.to_owned())))
+    }
+
+    fn visit_borrowed_str<E>(self, value: &'de str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(Some(value.to_owned())))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(Some(value)))
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(None))
+    }
+
+    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(None))
+    }
+
+    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(None))
+    }
+
+    fn visit_i128<E>(self, _: i128) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(None))
+    }
+
+    fn visit_u128<E>(self, _: u128) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(None))
+    }
+
+    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(None))
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(None))
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(OptionalString(None))
+    }
+
+    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        while sequence.next_element::<SkipValue>()?.is_some() {}
+        Ok(OptionalString(None))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        while map.next_key::<YamlKey>()?.is_some() {
+            map.next_value::<SkipValue>()?;
+        }
+        Ok(OptionalString(None))
+    }
+}
+
+impl<'de> Deserialize<'de> for OptionalString {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(OptionalStringVisitor)
+    }
+}
+
+impl<'de> Visitor<'de> for MetadataVisitor {
+    type Value = Metadata;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a YAML mapping")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut seen = HashSet::new();
+        let mut status = None;
+        let mut title = None;
+        while let Some(key) = map.next_key::<YamlKey>()? {
+            if !matches!(key, YamlKey::Other) && !seen.insert(key.clone()) {
+                return Err(de::Error::custom("duplicate mapping key"));
+            }
+            match key {
+                YamlKey::String(key) if key == "status" => {
+                    status = map.next_value::<OptionalString>()?.0;
+                }
+                YamlKey::String(key) if key == "title" => {
+                    title = map.next_value::<OptionalString>()?.0;
+                }
+                _ => {
+                    map.next_value::<SkipValue>()?;
+                }
+            }
+        }
+        Ok(Metadata { status, title })
+    }
+}
+
+impl<'de> Deserialize<'de> for Metadata {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_map(MetadataVisitor)
+    }
+}
+
 fn metadata(yaml: &str) -> (Option<String>, Option<String>) {
+    let max_depth = yaml.len().saturating_add(1).max(256);
     let options = serde_saphyr::options! {
+        budget: serde_saphyr::budget! {
+            max_depth: max_depth,
+            flow_nesting_limit: max_depth,
+        },
+        // Typed visitors retain JavaScript's numeric key equality without
+        // conflating numbers and explicitly tagged strings.
         duplicate_keys: serde_saphyr::DuplicateKeyPolicy::Error,
         merge_keys: serde_saphyr::MergeKeyPolicy::AsOrdinary,
         alias_limits: serde_saphyr::alias_limits! {
@@ -116,22 +583,21 @@ fn metadata(yaml: &str) -> (Option<String>, Option<String>) {
         },
         strict_booleans: true,
     };
-    let Ok(value) = serde_saphyr::from_str_with_options::<serde_json::Value>(yaml, options) else {
+    let value =
+        serde_saphyr::with_deserializer_from_str_with_options(yaml, options, |deserializer| {
+            let mut deserializer = serde_stacker::Deserializer::new(deserializer);
+            // YAML's debug deserializer frames exceed the adapter's 64 KiB default.
+            deserializer.red_zone = 1024 * 1024;
+            deserializer.stack_size = 8 * 1024 * 1024;
+            Metadata::deserialize(deserializer)
+        });
+    let Ok(value) = value else {
         return (None, None);
     };
-    let Some(value) = value.as_object() else {
-        return (None, None);
-    };
-    let status = value
-        .get("status")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let title = value
-        .get("title")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .filter(|value| !value.trim().is_empty());
-    (status, title)
+    (
+        value.status,
+        value.title.filter(|value| !value.trim().is_empty()),
+    )
 }
 
 fn heading_text(events: impl IntoIterator<Item = Event<'static>>) -> Option<String> {

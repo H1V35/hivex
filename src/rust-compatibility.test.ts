@@ -132,6 +132,36 @@ compatibility('Rust bounds deeply nested YAML metadata while retaining selected 
   });
 });
 
+compatibility('Rust preserves YAML key types when checking metadata duplicates', () => {
+  using fixture = project({
+    'numeric-duplicate.md': '---\n1: a\n1.0: b\ntitle: Main\n---\n# Fallback\n',
+    'typed-string-key.md': '---\n1: a\n!!str 1: b\ntitle: Main\n---\n# Fallback\n',
+  });
+  compare(['sources', '--root', fixture.root]);
+});
+
+compatibility('Rust accepts one hundred YAML nesting levels around metadata', () => {
+  const metadata = ['---', 'title: Deep metadata', 'status: accepted', 'nested:'];
+  for (let level = 1; level <= 100; level += 1) {
+    metadata.push(`${'  '.repeat(level)}nested:`);
+  }
+  metadata.push(`${'  '.repeat(101)}unknown: value`, '---', '# Fallback heading', '');
+  using fixture = project({ 'deep-metadata-100.md': metadata.join('\n') });
+  compare(['sources', '--root', fixture.root]);
+});
+
+compatibility('Rust preserves metadata through deeply nested flow collections', () => {
+  const flow = `${'['.repeat(1000)}value${']'.repeat(1000)}`;
+  using fixture = project({
+    'flow.md': `---\ntitle: Flow metadata\nstatus: accepted\nnested: ${flow}\n---\n# Fallback\n`,
+  });
+  compare(['sources', '--root', fixture.root]);
+  expect(invoke(['sources', '--root', fixture.root], true)).toMatchObject({
+    status: 0,
+    stdout: { documents: [{ status: 'accepted', title: 'Flow metadata' }] },
+  });
+});
+
 compatibility('Rust keeps explicit directory, brace, negation and exclusion glob behavior', () => {
   using fixture = project({
     '.decisions/e.md': '# E\n',
@@ -146,6 +176,9 @@ compatibility('Rust keeps explicit directory, brace, negation and exclusion glob
     { include: ['**/*.{md,markdown}'] },
     { include: ['docs/?.md', '.decisions/**', 'vendor/**'] },
     { include: ['docs/[bc].*'] },
+    { include: ['!!a.md'] },
+    { include: ['!!!a.md'] },
+    { exclude: ['!!docs/**'] },
     { exclude: ['!docs/deep/**'] },
     { exclude: ['docs/*'] },
     { exclude: ['docs/**'], history: ['docs/deep/**'] },
@@ -181,4 +214,14 @@ compatibility('Rust maintenance accepts SQL v1 fixtures without rewriting retain
     expect(database.query('SELECT * FROM graph').all()).toEqual(graph);
     expect(database.query('SELECT * FROM model_cache').all()).toEqual(cache);
   }
+});
+
+compatibility('Rust keeps CJK source ordering and page boundaries', () => {
+  using fixture = project({
+    '中.md': '# First common ideograph\n',
+    '文.md': '# Second common ideograph\n',
+    '𠀀.md': '# Supplementary ideograph\n',
+  });
+  compare(['sources', '--root', fixture.root]);
+  compare(['sources', '--root', fixture.root, '--limit', '1']);
 });

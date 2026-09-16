@@ -2,13 +2,16 @@ use crate::arguments;
 use crate::error::{HivexError, Result};
 use crate::markdown;
 use globset::{GlobBuilder, GlobMatcher};
+#[cfg(not(target_os = "macos"))]
 use icu_collator::{Collator, options::CollatorOptions};
+#[cfg(not(target_os = "macos"))]
 use icu_locale_core::locale;
 use serde_json::{Map, Value, json};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+#[cfg(not(target_os = "macos"))]
 use std::sync::OnceLock;
 
 const DEFAULT_INCLUDE: [&str; 3] = ["**/*.md", "**/*.markdown", "**/*.mdown"];
@@ -98,6 +101,83 @@ pub fn compare_serialized_strings(left: &str, right: &str) -> Ordering {
     utf16_units(left).cmp(&utf16_units(right))
 }
 
+#[cfg(target_os = "macos")]
+mod system_collation {
+    // Bun links macOS's ICU 78.1 directly; use the same ICU4C service here.
+    use std::ffi::c_char;
+    use std::sync::OnceLock;
+
+    #[repr(C)]
+    struct UCollator {
+        _private: [u8; 0],
+    }
+
+    // Safety: these declarations match the stable ICU4C C ABI shipped in the
+    // macOS SDK and use an opaque collator pointer only through ICU calls.
+    #[link(name = "icucore")]
+    unsafe extern "C" {
+        fn ucol_open(locale: *const c_char, status: *mut i32) -> *mut UCollator;
+        fn ucol_strcollUTF8(
+            collator: *const UCollator,
+            left: *const c_char,
+            left_length: i32,
+            right: *const c_char,
+            right_length: i32,
+            status: *mut i32,
+        ) -> i32;
+    }
+
+    static COLLATOR: OnceLock<usize> = OnceLock::new();
+
+    fn collator() -> *const UCollator {
+        let pointer = *COLLATOR.get_or_init(|| {
+            let locale = b"en_US\0";
+            let mut status = 0;
+            // Safety: `locale` is a static NUL-terminated C string and the
+            // status pointer is valid for the duration of the call.
+            let collator = unsafe { ucol_open(locale.as_ptr().cast(), &mut status) };
+            assert!(
+                status <= 0 && !collator.is_null(),
+                "macOS ICU could not open the en_US collator"
+            );
+            collator as usize
+        });
+        pointer as *const UCollator
+    }
+
+    pub(super) fn compare(left: &str, right: &str) -> std::cmp::Ordering {
+        let collator = collator();
+        let left_length = i32::try_from(left.len()).expect("left path exceeds ICU's byte length");
+        let right_length =
+            i32::try_from(right.len()).expect("right path exceeds ICU's byte length");
+        let mut status = 0;
+        // Safety: Rust strings are valid UTF-8, their explicit byte lengths fit
+        // ICU's i32 API, and the collator remains alive in the process singleton.
+        let result = unsafe {
+            ucol_strcollUTF8(
+                collator,
+                left.as_ptr().cast(),
+                left_length,
+                right.as_ptr().cast(),
+                right_length,
+                &mut status,
+            )
+        };
+        assert!(status <= 0, "macOS ICU failed to compare UTF-8 paths");
+        match result {
+            value if value < 0 => std::cmp::Ordering::Less,
+            0 => std::cmp::Ordering::Equal,
+            _ => std::cmp::Ordering::Greater,
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn locale_compare(left: &str, right: &str) -> Ordering {
+    system_collation::compare(left, right)
+}
+
+#[cfg(not(target_os = "macos"))]
 fn locale_compare(left: &str, right: &str) -> Ordering {
     static COLLATOR: OnceLock<icu_collator::CollatorBorrowed<'static>> = OnceLock::new();
     let collator = COLLATOR.get_or_init(|| {
@@ -195,7 +275,7 @@ fn read_source(path: &Path, source_path: &str) -> Result<String> {
 }
 
 fn compile_glob(pattern: &str) -> Option<GlobMatcher> {
-    GlobBuilder::new(pattern.strip_prefix('!').unwrap_or(pattern))
+    GlobBuilder::new(pattern.trim_start_matches('!'))
         .literal_separator(true)
         .backslash_escape(false)
         .build()
@@ -226,7 +306,7 @@ fn validate_pattern(pattern: &Value, field: &str, index: usize) -> Result<String
             format!("{field}[{index}] must stay inside the project root"),
         ));
     }
-    let glob = GlobBuilder::new(normalized.strip_prefix('!').unwrap_or(&normalized))
+    let glob = GlobBuilder::new(normalized.trim_start_matches('!'))
         .literal_separator(true)
         .backslash_escape(false)
         .build()
@@ -338,7 +418,7 @@ fn config_from(root: &Path) -> Result<Config> {
 
 fn pattern_matches(path: &str, patterns: &[String]) -> bool {
     patterns.iter().any(|pattern| {
-        let negated = pattern.starts_with('!');
+        let negated = pattern.bytes().take_while(|byte| *byte == b'!').count() % 2 == 1;
         compile_glob(pattern).is_some_and(|glob| {
             let matches = glob.is_match(path);
             if negated { !matches } else { matches }

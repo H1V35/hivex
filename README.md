@@ -202,6 +202,8 @@ HIVEX_TEST_BINARY="$PWD/target/debug/hivex-rust" bun test --timeout 15000 src/do
 
 The compatibility suite exercises the existing source, initialization and maintenance contracts through both CLIs. SQLite recovery fixtures are still created by the reference implementation so Rust must preserve existing work accounting and reports.
 
+This development slice is verified on macOS ARM64, using the same system ICU as Bun for source ordering. Other targets require compatibility validation before publishing Rust packages.
+
 ```sh
 bun run typecheck
 bun run lint
