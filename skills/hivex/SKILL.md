@@ -27,7 +27,11 @@ The principal agent maintains the Markdown. Detect new, changed or removed sourc
 
 When sources move, use `snapshot relocate <old> <new>` before updating. It preserves identities, relationships, evidence versions and prior work without model calls. Only an identical source with matching known versions at a previously unknown destination reuses coverage; changes, mixed or missing versions and consolidation remain pending for normal maintenance. Do not relocate unrelated knowledge to hide a warning.
 
+New work uses its normal check to review new uncertainties and expired closures only when complete in-scope documents and prior closure evidence are in context. Missing evidence leaves the warning pending; update may still finish with limitations. Matching text or an identical paragraph is insufficient. No extra call, retry or automatic repair is added.
+
 Repair a demonstrated interpretation error with `update --repair-range <document>:<start>-<end> --reason <correction>` for complete affected decisions of a current source, or `--repair <document>` when the whole document needs revisiting. A `RELATIONSHIP_LOSS` result retains the previous graph and needs inspection, not automatic retries. Correct the interpretation after checking the source, its dependencies and replacements. Do not repair correct knowledge merely because a warning omits context, or change doctrine to satisfy the model. Keep unresolved limitations explicit.
+
+After `update`, review `warningChanges.new` entries with `state: "active"` and `warningChanges.reopened` in that work. Repair demonstrated implementation or relationship findings, or record an evidenced closure with `warnings --resolve`; use `warnings --all` for history. See the [README warning guidance](../../README.md). Do not require closure of a real question or repeat the model for green output.
 
 ## Support review
 
@@ -37,7 +41,7 @@ Confirm any finding against the actual code and documentary versions. A lack of 
 
 ## Share progress and preserve accounting
 
-After useful knowledge changes, `snapshot export` writes `.hivex/graph.json` for Git alongside its sources. Local SQLite, attempts, locks and caches remain ignored. A fresh clone reuses a matching snapshot; existing local state takes precedence until an explicit `snapshot import`, which refuses unfinished work.
+After useful knowledge changes, `snapshot export` writes `.hivex/graph.json` for Git alongside the Markdown it describes. Export that snapshot in the same change as the Markdown. Local SQLite, attempts, locks and caches remain ignored. A fresh clone reuses a matching snapshot; existing local state takes precedence until an explicit `snapshot import`, which refuses unfinished work.
 
 Budgets cover all phases and attempts of a work item. Resume that work with its retained accounting; a larger total limit is not a fresh allowance. Existing owner authorization remains valid. Report actual completed usage and unknown consumption honestly, including failed or interrupted attempts.
 

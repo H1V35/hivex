@@ -18,7 +18,7 @@ import { captureImplementation } from './implementation.ts';
 import { KnowledgeStore } from './knowledge-store.ts';
 import { loadProject } from './documents.ts';
 import { ingestionUnits } from './ingestion-units.ts';
-import { emptyGraph } from './knowledge-model.ts';
+import { emptyGraph, warningId } from './knowledge-model.ts';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -469,6 +469,144 @@ await import(${JSON.stringify(
   );
   return binary;
 };
+
+const storedGraphFixture = function storedGraphFixture(root: string) {
+  using store = new KnowledgeStore(root, { readonly: true });
+  return store.graph();
+};
+const firstWarningId = function firstWarningId(root: string) {
+  const warning = storedGraphFixture(root).warnings.at(0);
+  if (warning === undefined) {
+    throw new Error('Expected a fixture warning');
+  }
+  return warningId(warning);
+};
+
+test.each([false, true])(
+  'reviews new warnings across resumption without masking validation failures: %s',
+  (hasValidation) => {
+    project((root) => {
+      const binary = model(root);
+      const responsesPath = nodePath.join(root, 'responses.json');
+      const responses = parseModelResponses(readFileSync(responsesPath, 'utf-8'));
+      responses.extract.uncertainties = [
+        'The document does not demonstrate a live deployment.',
+        'The refund responsibility between the parties is undecided.',
+      ];
+      if (hasValidation) {
+        for (const entry of responses.extract.decisions) {
+          entry.lineEnd = 999;
+        }
+      }
+      writeFileSync(responsesPath, JSON.stringify(responses));
+      const paused = invoke(root, ['update', '--max-calls', '1', '--codex', binary]).value;
+      expect(paused).toMatchObject({ status: 'budget-exhausted', work: { calls: 1 } });
+      const updateWorkId = stringField(objectField(paused, 'work'), 'id');
+      const descriptiveId = firstWarningId(root);
+      responses.check.warningResolutions = [
+        {
+          evidence: [{ document: 'cache.md', lineEnd: 3, lineStart: 3 }],
+          id: descriptiveId,
+          reason: 'A cache retention rule does not assert that a deployment has occurred.',
+        },
+      ];
+      writeFileSync(responsesPath, JSON.stringify(responses));
+      const completed = invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value;
+      if (hasValidation) {
+        expect(completed).toMatchObject({
+          warningChanges: { resolved: [] },
+          warningSummary: { limitations: 2, resolved: 0 },
+          work: { calls: 2, id: updateWorkId },
+        });
+        expect(objectField(completed, 'warningSummary').validation).toBeGreaterThan(0);
+        return;
+      }
+      expect(completed).toMatchObject({
+        warningChanges: {
+          reopened: [],
+          resolved: [{ id: descriptiveId, state: 'resolved' }],
+        },
+        warningSummary: { limitations: 1, resolved: 1 },
+        work: { calls: 2, id: updateWorkId },
+      });
+      expect(arrayField(objectField(completed, 'warningChanges'), 'new')).toHaveLength(2);
+      expect(storedGraphFixture(root).warnings).toHaveLength(2);
+      expect(invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value).toMatchObject({
+        warningSummary: { limitations: 1, resolved: 1 },
+        work: { calls: 2, id: updateWorkId },
+      });
+    });
+  }
+);
+
+test.each([false, true])(
+  'revalidates a prior closure unless the changed source has a finding: %s',
+  (hasFinding) => {
+    project((root) => {
+      rmSync(nodePath.join(root, 'privacy.md'));
+      const binary = model(root);
+      const responsesPath = nodePath.join(root, 'responses.json');
+      const responses = parseModelResponses(readFileSync(responsesPath, 'utf-8'));
+      responses.extract.decisions = responses.extract.decisions.filter(
+        (entry) => entry.document === 'cache.md'
+      );
+      responses.extract.relationships = [];
+      responses.extract.uncertainties = ['No production deployment evidence is provided.'];
+      writeFileSync(responsesPath, JSON.stringify(responses));
+      invoke(root, ['update', '--max-calls', '2', '--codex', binary]);
+      const graph = storedGraphFixture(root);
+      const id = firstWarningId(root);
+      const original = {
+        evidence: [
+          { document: 'cache.md', lineEnd: 3, lineStart: 3, version: graph.documents['cache.md'] },
+        ],
+        reason: 'The document specifies retention, not delivery evidence.',
+      };
+      const manifest = nodePath.join(root, 'resolutions.json');
+      writeFileSync(manifest, JSON.stringify([{ id, ...original }]));
+      invoke(root, ['warnings', '--resolve', manifest]);
+      const text = readFileSync(nodePath.join(root, 'cache.md'), 'utf-8');
+      writeFileSync(
+        nodePath.join(root, 'cache.md'),
+        `${text}\n${hasFinding ? 'Amendment: regulated records must be retained for thirty days.' : 'Examples use synthetic records.'}\n`
+      );
+      responses.extract.uncertainties = [];
+      responses.check.findings = hasFinding
+        ? [
+            {
+              reason: 'The later amendment changes retention for regulated records.',
+              target: 'batch',
+            },
+          ]
+        : [];
+      responses.check.warningResolutions = [
+        {
+          evidence: [{ document: 'cache.md', lineEnd: 5, lineStart: 3 }],
+          id,
+          reason: 'The updated document still does not require deployment proof.',
+        },
+      ];
+      writeFileSync(responsesPath, JSON.stringify(responses));
+      const result = invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value;
+      expect(result).toMatchObject({ work: { calls: 2 } });
+      const current = storedGraphFixture(root).warnings.find((entry) => warningId(entry) === id);
+      if (hasFinding) {
+        expect(current).toMatchObject({ resolution: original });
+        expect(result).toMatchObject({
+          warningChanges: { reopened: [{ id, state: 'active' }] },
+          warningSummary: { findings: 1, resolved: 0 },
+        });
+      } else {
+        expect(current).toMatchObject({ previousResolutions: [original] });
+        expect(result).toMatchObject({
+          warningChanges: { reopened: [] },
+          warningSummary: { limitations: 0, resolved: 1 },
+        });
+        expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
+      }
+    });
+  }
+);
 
 test('plans an initial knowledge update without spending when its work budget is zero', () => {
   project((root) => {
