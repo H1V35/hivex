@@ -19,9 +19,9 @@ Use native blocking/sub-issue relationships when helpful. A label alone does not
 
 Start a coherent branch from the current integration branch. Follow the project's commit format and language, with Conventional Commits as a useful default. Check the diff and applicable verification; link the PR to its issue and explain the resulting behavior, validation and material limits. Use structured arguments or a body file for multiline text and follow the project's draft convention.
 
-Follow CI to an actual result and confirm the independent review is current and matches the implementation agent's model/effort. Reuse valid verification. Resolve conflicts from both changes' intent and check affected behavior. Preserve shared history; avoid direct integration-branch pushes and force pushes.
+Follow CI to an actual result and confirm the independent review covers the revision being integrated under the project's engineering policy. Reuse valid verification. Resolve conflicts from both changes' intent and check affected behavior. Preserve shared history; avoid direct integration-branch pushes and force pushes.
 
-Merge when required checks/review pass and existing owner authorization covers it. Do not ask for the same permission again. If a tool blocks the action, explain the actual blocker and prepare the reviewable result before asking for what is missing. Update the appropriate checkout safely after integration.
+Merge when required checks/review pass and existing owner authorization covers it. Update the appropriate checkout safely after integration.
 
 ## Clean up completed work
 

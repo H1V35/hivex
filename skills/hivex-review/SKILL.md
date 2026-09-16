@@ -7,7 +7,7 @@ description: Independently review a change for intended scope, correctness and p
 
 Establish the comparison base, reviewed revision and intended outcome from the issue or specification. For a branch review, inspect the diff from its merge base with the relevant integration revision. Read the surrounding code and affected authorities needed to assess behavior.
 
-Use one independent reviewer by default. If already assigned as reviewer, perform that review directly. Match the responsible implementation agent's actual model and effort, passing them explicitly when defaults differ and verifying the effective profile. Hivex's knowledge model is a separate role. State any inability to perform independent review.
+Assess the change independently under the project's engineering policy and state any limit to that independence.
 
 Assess scope, correctness, regressions and relevant standards. Ground findings in an affected scenario and evidence; omit speculative defects, existing problems outside scope and style preferences handled by configured tools. Identify simpler solutions when they materially improve the result.
 

@@ -7,7 +7,7 @@ description: Implement a defined change, diagnose a bug or refactor code with us
 
 Recover the request, owning issue and relevant project decisions through local Hivex evidence as needed. Apply settled scope, domain language and module boundaries. Ask only when evidence leaves a consequential decision open.
 
-Prefer existing capabilities or a direct solution over speculative layers and dependencies. Delegate suitable bounded work when authorized, retaining responsibility for the integrated result. For a difficult bug, reproduce the failure, use a falsifiable hypothesis and observe what distinguishes causes before changing code; remove temporary diagnostics when finished.
+Prefer existing capabilities or a direct solution over speculative layers and dependencies. For a difficult bug, reproduce the failure, use a falsifiable hypothesis and observe what distinguishes causes before changing code; remove temporary diagnostics when finished.
 
 ## Verify for value
 
@@ -17,4 +17,4 @@ Each test must protect an important behavior, meaningful invariant or demonstrat
 
 Run applicable repository checks and report actual results and material limits. Repeat or broaden verification only when changes, failures or unresolved concerns warrant it.
 
-Record durable decisions through `hivex-document`. Obtain one independent `hivex-review` by default, supplying the responsible implementation agent's actual model and effort; add another only for concrete value. Resolve findings on their merits, then use `hivex-git` to complete authorized commit, PR and CI work.
+Record durable decisions through `hivex-document`. Obtain an independent `hivex-review` under the project's engineering policy. Resolve findings on their merits, then use `hivex-git` to complete commit, PR and CI work under the project's Git procedure.
