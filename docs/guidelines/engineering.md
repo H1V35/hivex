@@ -7,6 +7,8 @@ status: accepted
 
 Hivex is a TypeScript/Bun product. Modules group behavior by domain responsibility and hide internal details behind small interfaces. Do not add a second development-session orchestrator or require an adopting project's layout, tracker or product packages. Codex, Git/GitHub and CI coordinate work.
 
+Skills provide task knowledge and judgment. The host harness handles agent coordination, effective model/effort configuration, execution permissions and process/session lifecycle. Project Markdown owns workflow policy; Hivex's CLI owns its knowledge state and work accounting. Keep these responsibilities distinct rather than duplicating harness mechanics in each skill, as recorded in [ADR 0012](../adr/0012-project-foundation-and-workflow.md#amendment-skill-and-execution-responsibilities).
+
 ## Development and verification
 
 Work is issue-first in `H1V35/hivex`. Use design, documentation, implementation, review and Git as capabilities selected for the task. Resolve open decisions through discovery or a grill, and create additional specs or execution tickets when they help define or divide work. A defined change can proceed directly to implementation and review. Reuse settled scope instead of reopening an interview. The owning repository carries the execution ticket; a cross-repository parent supplies context and coordination, not a substitute for native tracking.

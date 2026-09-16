@@ -25,3 +25,9 @@ Skills use focused descriptions and conditional references, preserving the user'
 The owner clarified this foundation on 2026-09-13: replace the former external general skill set completely after covering active callers, including its generic personal, writing and provider-specific utilities. Preserve only non-obvious guidance that improves the adopted workflow; keep unrelated technical specialties separate. Handoff needs no dedicated skill or reference.
 
 Apply the same economy to entrypoints and supporting references. Do not recreate the old catalogue as a reference library, prescribe an arbitrary line cap, or include tutorials for capabilities the model already provides. Existing guidance can be sufficient without porting another resource. TDD remains optional even for critical flows and is reserved for sufficiently defined critical behavior. Other checks and tests require concrete value, not compliance with a testing ritual.
+
+## Amendment: skill and execution responsibilities
+
+On 2026-09-16, the owner approved separating reusable task guidance from execution mechanics. Skills provide domain knowledge and criteria for their capability. The host agent harness coordinates agents, applies their model/effort configuration and manages execution permissions, processes and session limits. Skills do not implement another orchestration or permission layer.
+
+Project Markdown retains workflow policy, including independent review and matching the responsible implementer's model and effort. The harness must support that policy; removing duplicated skill instructions does not configure it automatically. Hivex's own versioned evidence, persisted work budgets, recovery and uncertainty remain CLI contracts. Its skill retains the conditions needed to use those capabilities correctly and routes advanced mechanics to the existing CLI manual.
