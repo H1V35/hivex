@@ -30,7 +30,7 @@ assert.equal(report.version, manifest.version);
 const temporary = mkdtempSync(path.join(tmpdir(), 'hivex-package-test-'));
 const execute = function execute(command, argumentsList, options = {}) {
   const result = spawnSync(command, argumentsList, { encoding: 'utf-8', ...options });
-  assert.equal(result.status, successfulExitCode, result.stderr);
+  assert.equal(result.status, successfulExitCode, result.error?.message ?? result.stderr);
   return result.stdout;
 };
 const run = (binary, argumentsList) =>

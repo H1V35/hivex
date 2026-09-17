@@ -34,7 +34,7 @@ const execute = function execute(command, argumentsList, cwd = root, environment
     maxBuffer: maximumOutputBytes,
   });
   if (result.status !== successfulExitCode) {
-    throw new Error(result.stderr || result.stdout || `${command} failed`);
+    throw result.error ?? new Error(result.stderr || result.stdout || `${command} failed`);
   }
   return result.stdout;
 };
