@@ -14,11 +14,7 @@ import nodePath from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
-import { captureImplementation } from './implementation.ts';
-import { KnowledgeStore } from './knowledge-store.ts';
-import { loadProject } from './documents.ts';
-import { ingestionUnits } from './ingestion-units.ts';
-import { emptyGraph, warningId } from './knowledge-model.ts';
+import { emptyGraph, readGraph, seedWork, writeGraph, writeWork } from './rust-fixtures.ts';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -352,7 +348,10 @@ const legacyWorkFixtures: LegacyWorkFixture[] = [
   },
 ];
 
-const cli = nodePath.join(import.meta.dirname, 'cli.ts');
+const rustBinary = process.env.HIVEX_TEST_BINARY;
+if (rustBinary === undefined) {
+  throw new Error('HIVEX_TEST_BINARY is required');
+}
 
 const project = (run: (root: string) => void) => {
   const root = mkdtempSync(nodePath.join(tmpdir(), 'hivex-knowledge-'));
@@ -372,15 +371,10 @@ const project = (run: (root: string) => void) => {
 };
 
 const runCli = function runCli(root: string, cliArguments: string[]) {
-  const binary = process.env.HIVEX_TEST_BINARY;
-  return spawnSync(
-    binary ?? process.execPath,
-    [...(binary === undefined ? [cli] : []), ...cliArguments, '--root', root],
-    {
-      encoding: 'utf-8',
-      timeout: 12_000,
-    }
-  );
+  return spawnSync(rustBinary, [...cliArguments, '--root', root], {
+    encoding: 'utf-8',
+    timeout: 12_000,
+  });
 };
 
 const invoke = (root: string, cliArguments: string[]) => {
@@ -468,7 +462,7 @@ const model = function model(root: string, scenario = '') {
 process.env.HIVEX_TEST_CALLS_FILE = ${JSON.stringify(nodePath.join(root, 'model-calls.log'))};
 process.env.HIVEX_TEST_RESPONSES = ${JSON.stringify(responses)};
 await import(${JSON.stringify(
-      pathToFileURL(nodePath.join(import.meta.dirname, '../test/codex-server.mjs')).href
+      pathToFileURL(nodePath.join(import.meta.dirname, 'codex-server.mjs')).href
     )});
 `
   );
@@ -476,15 +470,15 @@ await import(${JSON.stringify(
 };
 
 const storedGraphFixture = function storedGraphFixture(root: string) {
-  using store = new KnowledgeStore(root, { readonly: true });
-  return store.graph();
+  return readGraph(root);
 };
 const firstWarningId = function firstWarningId(root: string) {
-  const warning = storedGraphFixture(root).warnings.at(0);
+  const report = invoke(root, ['warnings', '--all']);
+  const warning = arrayField(report.value, 'warnings').find(isRecord);
   if (warning === undefined) {
     throw new Error('Expected a fixture warning');
   }
-  return warningId(warning);
+  return stringField(warning, 'id');
 };
 
 test.each([false, true])(
@@ -505,7 +499,10 @@ test.each([false, true])(
       }
       writeFileSync(responsesPath, JSON.stringify(responses));
       const paused = invoke(root, ['update', '--max-calls', '1', '--codex', binary]).value;
-      expect(paused).toMatchObject({ status: 'budget-exhausted', work: { calls: 1 } });
+      expect(paused).toMatchObject({
+        status: 'budget-exhausted',
+        work: { calls: 1 },
+      });
       const updateWorkId = stringField(objectField(paused, 'work'), 'id');
       const descriptiveId = firstWarningId(root);
       responses.check.warningResolutions = [
@@ -563,7 +560,12 @@ test.each([false, true])(
       const id = firstWarningId(root);
       const original = {
         evidence: [
-          { document: 'cache.md', lineEnd: 3, lineStart: 3, version: graph.documents['cache.md'] },
+          {
+            document: 'cache.md',
+            lineEnd: 3,
+            lineStart: 3,
+            version: graph.documents['cache.md'],
+          },
         ],
         reason: 'The document specifies retention, not delivery evidence.',
       };
@@ -594,7 +596,10 @@ test.each([false, true])(
       writeFileSync(responsesPath, JSON.stringify(responses));
       const result = invoke(root, ['update', '--max-calls', '2', '--codex', binary]).value;
       expect(result).toMatchObject({ work: { calls: 2 } });
-      const current = storedGraphFixture(root).warnings.find((entry) => warningId(entry) === id);
+      const current = storedGraphFixture(root).warnings.find(
+        (entry) =>
+          isRecord(entry) && entry.message === 'No production deployment evidence is provided.'
+      );
       if (hasFinding) {
         expect(current).toMatchObject({ resolution: original });
         expect(result).toMatchObject({
@@ -660,18 +665,15 @@ for (const fixture of legacyWorkFixtures) {
         '# Private cache\n\nRemove cached private data when access is revoked.\n',
         'utf-8'
       );
-      let oldWorkId: string;
-      {
-        using store = new KnowledgeStore(root);
-        oldWorkId = store.begin({
-          key: fixture.key,
-          kind: fixture.kind,
-          maxCalls: fixture.maxCalls,
-          maxInputBytes: fixture.maxInputBytes,
-          remaining: fixture.remaining,
-          snapshot: fixture.snapshot,
-        }).id;
-      }
+      const oldWorkId = seedWork(root, {
+        id: `${fixture.kind}-legacy-work`,
+        key: fixture.key,
+        kind: fixture.kind,
+        maxCalls: fixture.maxCalls,
+        maxInputBytes: fixture.maxInputBytes,
+        remaining: fixture.remaining,
+        snapshot: fixture.snapshot,
+      });
 
       const commandArguments =
         fixture.command === 'ask'
@@ -708,7 +710,12 @@ test('resumes a checked knowledge batch across compatible native versions withou
       pendingCheck: [],
       pendingUnits: [],
       status: 'ready',
-      work: { calls: 2, id: workId(first.value), maxCalls: 2, totalTokens: 300 },
+      work: {
+        calls: 2,
+        id: workId(first.value),
+        maxCalls: 2,
+        totalTokens: 300,
+      },
     });
     const attempts = arrayField(storedWork(root, workId(first.value)), 'attempts');
     expect(attempts).toHaveLength(2);
@@ -903,26 +910,14 @@ test('explicitly retries a retained legacy pre-spawn admission failure with its 
     });
     expect(objectField(saved, 'pending')).toHaveProperty('extraction');
 
-    {
-      using store = new KnowledgeStore(root);
-      const work = store.begin({
-        key: stringField(saved, 'key'),
-        kind: 'update',
-        maxCalls: 2,
-        maxInputBytes: numberField(saved, 'maxInputBytes'),
-        remaining: stringArrayField(saved, 'remaining'),
-        snapshot: stringField(saved, 'snapshot'),
-      });
-      store.reserve(work, {
-        inputBytes: 1,
-        inputHash: 'legacy-admission-failure',
-        stage: 'check',
-      });
-      const attempt = work.attempts.at(-1);
-      if (attempt === undefined) {
-        throw new Error('Fixture did not reserve a failed check attempt');
-      }
-      attempt.report = {
+    const failedWork = structuredClone(saved);
+    failedWork.maxCalls = 2;
+    failedWork.calls = numberField(saved, 'calls') + 1;
+    failedWork.inputBytes = numberField(saved, 'inputBytes') + 1;
+    arrayField(failedWork, 'attempts').push({
+      inputBytes: 1,
+      inputHash: 'legacy-admission-failure',
+      report: {
         cleanup: 'not-observed',
         code: 'MODEL_ADMISSION_FAILED',
         diagnostic: {
@@ -931,10 +926,11 @@ test('explicitly retries a retained legacy pre-spawn admission failure with its 
         },
         outcome: 'failed',
         usage: null,
-      };
-      work.status = 'failed';
-      store.save(work);
-    }
+      },
+      stage: 'check',
+    });
+    failedWork.status = 'failed';
+    writeWork(root, id, failedWork);
 
     const failed = storedWork(root, id);
     expect(failed).toMatchObject({
@@ -975,7 +971,12 @@ test('explicitly retries a retained legacy pre-spawn admission failure with its 
       work: { calls: 3, id, maxCalls: 3 },
     });
     const completed = storedWork(root, id);
-    expect(completed).toMatchObject({ calls: 3, id, pending: null, status: 'done' });
+    expect(completed).toMatchObject({
+      calls: 3,
+      id,
+      pending: null,
+      status: 'done',
+    });
     const attempts = arrayField(completed, 'attempts');
     expect(attempts.map((attempt) => stringField(attempt, 'stage'))).toEqual([
       'extract',
@@ -2588,18 +2589,10 @@ test('review keeps 200 KiB binary versions bounded with digest-only warnings', (
     const binary = reviewProject(root);
     writeFileSync(assetPath, after);
 
-    const implementation = captureImplementation(root, 'HEAD');
     const warnings = [
       'Unsupported binary or invalid UTF-8 content: before asset.bin (13f85ed26dc953b0410f9b1ab4ada10cc9f1719924804a2662cd46f8977e76e0)',
       'Unsupported binary or invalid UTF-8 content: after asset.bin (1b49c45eb2cce0c9af787939a85d848590b8383da07333bf8ecc56d57b5dfd75)',
     ];
-    expect(implementation.files).toContainEqual({
-      after: null,
-      before: null,
-      path: 'asset.bin',
-    });
-    expect(implementation.warnings).toEqual(warnings);
-    expect(Buffer.byteLength(JSON.stringify(implementation))).toBeLessThan(256 * 1024);
 
     const result = invoke(root, ['review', 'cache', '--base', 'HEAD', '--codex', binary]);
     expect(result.status).toBe(0);
@@ -3234,7 +3227,10 @@ test('rejects relocation while work is unfinished without replacing its graph', 
   project((root) => {
     const binary = model(root);
     const pending = invoke(root, ['update', '--max-calls', '1', '--codex', binary]);
-    expect(pending.value).toMatchObject({ status: 'budget-exhausted', work: { calls: 1 } });
+    expect(pending.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { calls: 1 },
+    });
     expect(invoke(root, ['snapshot', 'export']).status).toBe(0);
     rmSync(nodePath.join(root, 'cache.md'));
     mkdirSync(nodePath.join(root, 'docs'));
@@ -3562,11 +3558,7 @@ test('retains supplied current endpoints referenced by an identical repair relat
       'ready'
     );
 
-    let seeded: ReturnType<typeof emptyGraph>;
-    {
-      using store = new KnowledgeStore(root, { readonly: true });
-      seeded = store.graph();
-    }
+    const seeded = readGraph(root);
     const alpha = seeded.decisions.find((entry) => entry.localId === 'alpha');
     const beta = seeded.decisions.find((entry) => entry.localId === 'beta');
     if (alpha === undefined || beta === undefined) {
@@ -3626,12 +3618,14 @@ test('retains supplied current endpoints referenced by an identical repair relat
       expect.objectContaining({ id: alphaId, text: 'Alpha uses Beta.' })
     );
     expect(arrayField(check, 'previousDecisions')).toContainEqual(
-      expect.objectContaining({ id: betaId, text: 'Beta provides shared policy.' })
+      expect.objectContaining({
+        id: betaId,
+        text: 'Beta provides shared policy.',
+      })
     );
     expect(arrayField(check, 'validationWarnings')).toEqual([]);
 
-    using store = new KnowledgeStore(root, { readonly: true });
-    const graph = store.graph();
+    const graph = readGraph(root);
     expect(
       graph.relationships.some((relationship) => {
         if (relationship.from !== alphaId || relationship.quality !== 'checked') {
@@ -3734,7 +3728,10 @@ test('keeps large required context and stops before a model call when it exceeds
       '--codex',
       binary,
     ]);
-    expect(sufficient.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    expect(sufficient.value).toMatchObject({
+      status: 'ready',
+      work: { calls: 2 },
+    });
     const packet = readFileSync(`${responsePath}.packets`, 'utf-8')
       .trim()
       .split('\n')
@@ -3755,7 +3752,10 @@ test('keeps large required context and stops before a model call when it exceeds
       8192
     );
     expect(arrayField(packet, 'existing')).toContainEqual(
-      expect.objectContaining({ document: 'authority.md', text: authorityDecision.text })
+      expect.objectContaining({
+        document: 'authority.md',
+        text: authorityDecision.text,
+      })
     );
 
     const callsBeforeLimit = readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8')
@@ -3789,7 +3789,11 @@ test('uses update source context without reextracting it and preserves its work 
     rmSync(nodePath.join(root, 'cache.md'));
     rmSync(nodePath.join(root, 'privacy.md'));
     const fixtures = [
-      { document: '00-target.md', id: 'target-node', text: 'Revision alpha applies locally.' },
+      {
+        document: '00-target.md',
+        id: 'target-node',
+        text: 'Revision alpha applies locally.',
+      },
       {
         document: '01-authority.md',
         id: 'authority-node',
@@ -3947,7 +3951,10 @@ test('uses update source context without reextracting it and preserves its work 
       '--codex',
       '/no-model',
     ]);
-    expect(changedSource.value).toMatchObject({ status: 'ready', work: { calls: 0 } });
+    expect(changedSource.value).toMatchObject({
+      status: 'ready',
+      work: { calls: 0 },
+    });
     expect(workId(changedSource.value)).not.toBe(workId(resumed.value));
   });
 });
@@ -4005,11 +4012,13 @@ test('does not make untouched later units mandatory for a pending unit', () => {
     const responses = parseModelResponses(readFileSync(responsePath, 'utf-8'));
     responses.byDocument = { 'notes.md': { decisions: [], relationships: [] } };
     writeFileSync(responsePath, JSON.stringify(responses));
-    invoke(root, ['update', '--max-calls', '0', '--codex', binary]);
-
-    const sources = loadProject(root);
-    const document = at(sources.currentDocuments, 0);
-    const plan = ingestionUnits(sources.currentDocuments);
+    const planned = invoke(root, ['update', '--max-calls', '0', '--codex', binary]).value;
+    const source = recordAt(arrayField(invoke(root, ['sources']).value, 'documents'), 0);
+    const document = {
+      hash: stringField(source, 'hash'),
+      id: stringField(source, 'id'),
+    };
+    const plannedUnits = stringArrayField(planned, 'pendingUnits');
     const graph = emptyGraph();
     for (let index = 1; index < 16; index += 1) {
       const line = 4 * index + 3;
@@ -4033,7 +4042,12 @@ test('does not make untouched later units mandatory for a pending unit', () => {
         graph.relationships.push({
           batch: 'synthetic-seed',
           evidence: [
-            { document: document.id, lineEnd: line, lineStart: line, version: document.hash },
+            {
+              document: document.id,
+              lineEnd: line,
+              lineStart: line,
+              version: document.hash,
+            },
           ],
           from: `node${index - 1}`,
           id: `edge${index}`,
@@ -4046,9 +4060,7 @@ test('does not make untouched later units mandatory for a pending unit', () => {
       }
     }
     graph.units = Object.fromEntries(
-      plan.units
-        .slice(1)
-        .map((unit) => [unit.id, { document: unit.document, version: document.hash }])
+      plannedUnits.slice(1).map((id) => [id, { document: document.id, version: document.hash }])
     );
     using database = new Database(nodePath.join(root, '.hivex/knowledge.sqlite'));
     database.run('UPDATE graph SET data=?', [JSON.stringify(graph)]);
@@ -4069,18 +4081,18 @@ test('retains current relationships across a staged repair and an unjustified ma
     const binary = model(root);
     const file = nodePath.join(root, 'responses.json');
     expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
-    let original;
-    {
-      using store = new KnowledgeStore(root, { readonly: true });
-      original = store.graph();
-    }
+    const original = readGraph(root);
     const responses = parseModelResponses(readFileSync(file, 'utf-8'));
     responses.capturePackets = true;
     responses.byDocument = {
       'cache.md': {
         decisions: [at(responses.extract.decisions, 0)],
         relationships: [
-          { ...at(responses.extract.relationships, 0), from: 'not-supplied', to: 'c1' },
+          {
+            ...at(responses.extract.relationships, 0),
+            from: 'not-supplied',
+            to: 'c1',
+          },
         ],
       },
     };
@@ -4101,10 +4113,7 @@ test('retains current relationships across a staged repair and an unjustified ma
       status: 'budget-exhausted',
       work: { calls: 1 },
     });
-    {
-      using store = new KnowledgeStore(root, { readonly: true });
-      expect(store.graph()).toEqual(original);
-    }
+    expect(readGraph(root)).toEqual(original);
     const checked = invoke(root, [...repairArguments, '--max-calls', '2']);
     expect(workId(checked.value)).toBe(workId(first.value));
     expect(checked.value).toMatchObject({
@@ -4112,10 +4121,7 @@ test('retains current relationships across a staged repair and an unjustified ma
       status: 'failed',
       work: { calls: 2, lastAttempt: { code: 'RELATIONSHIP_LOSS' } },
     });
-    {
-      using store = new KnowledgeStore(root, { readonly: true });
-      expect(store.graph()).toEqual(original);
-    }
+    expect(readGraph(root)).toEqual(original);
     const packets = readFileSync(`${file}.packets`, 'utf-8').trim().split('\n').map(parsePacket);
     const check = packets.find((packet) => packet.operation === 'check');
     if (!check) {
@@ -4176,19 +4182,21 @@ test('repairs only selected source decisions and keeps unrelated knowledge and r
         binary,
       ]).value.status
     ).toBe('ready');
-    let original;
-    {
-      using store = new KnowledgeStore(root, { readonly: true });
-      original = store.graph();
-    }
-    const units = ingestionUnits(loadProject(root).documents).units.filter(
-      (unit) => unit.document === 'large.md'
-    );
-    const firstUnit = at(units, 0);
+    const original = readGraph(root);
+    const units = readFileSync(`${file}.packets`, 'utf-8')
+      .trim()
+      .split('\n')
+      .map(parsePacket)
+      .filter((packet) => packet.operation === 'extract')
+      .flatMap((packet) => arrayField(packet, 'units'))
+      .filter((unit) => isRecord(unit) && unit.document === 'large.md');
+    const firstUnit = recordAt(units, 0);
+    const firstUnitStart = numberField(firstUnit, 'lineStart');
+    const firstUnitEnd = numberField(firstUnit, 'lineEnd');
     expect(units.length).toBeGreaterThan(1);
-    expect(firstUnit.lineEnd).toBeGreaterThan(firstUnit.lineStart);
+    expect(firstUnitEnd).toBeGreaterThan(firstUnitStart);
     const untouched = original.decisions.filter(
-      (entry) => entry.document !== 'large.md' || entry.lineStart !== firstUnit.lineStart
+      (entry) => entry.document !== 'large.md' || entry.lineStart !== firstUnitStart
     );
     writeFileSync(`${file}.packets`, '');
     const repairArguments = [
@@ -4210,13 +4218,11 @@ test('repairs only selected source decisions and keeps unrelated knowledge and r
       expect.objectContaining({ id: 'large.md:1-1', lineEnd: 1, lineStart: 1 }),
     ]);
     {
-      using store = new KnowledgeStore(root, { readonly: true });
+      const graph = readGraph(root);
       expect(
-        store
-          .graph()
-          .decisions.filter(
-            (entry) => entry.document !== 'large.md' || entry.lineStart !== firstUnit.lineStart
-          )
+        graph.decisions.filter(
+          (entry) => entry.document !== 'large.md' || entry.lineStart !== firstUnitStart
+        )
       ).toEqual(untouched);
     }
     expect(invoke(root, repairArguments).value).toMatchObject({
@@ -4304,17 +4310,22 @@ test('expands a partial repair to its full citation while preserving neighboring
     let originalNeighbor;
     let originalRelationship;
     {
-      using store = new KnowledgeStore(root, { readonly: true });
-      originalNeighbor = store.graph().decisions.find((entry) => entry.localId === 'neighbor-node');
-      originalRelationship = store
-        .graph()
-        .relationships.find((entry) => entry.localId === 'neighbor-authority');
+      const graph = readGraph(root);
+      originalNeighbor = graph.decisions.find((entry) => entry.localId === 'neighbor-node');
+      originalRelationship = graph.relationships.find(
+        (entry) => entry.localId === 'neighbor-authority'
+      );
     }
     if (originalNeighbor === undefined || originalRelationship === undefined) {
       throw new Error('Expected the neighboring decision and relationship');
     }
     responses.byDocument['rules.md'] = {
-      decisions: [{ ...targetDecision, text: 'Target decision is corrected from its source.' }],
+      decisions: [
+        {
+          ...targetDecision,
+          text: 'Target decision is corrected from its source.',
+        },
+      ],
       relationships: [],
     };
     writeFileSync(file, JSON.stringify(responses));
@@ -4336,12 +4347,14 @@ test('expands a partial repair to its full citation while preserving neighboring
     if (extractionPacket === undefined) {
       throw new Error('Expected the partial repair extraction packet');
     }
-    expect(repaired.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    expect(repaired.value).toMatchObject({
+      status: 'ready',
+      work: { calls: 2 },
+    });
     expect(arrayField(extractionPacket, 'units')).toEqual([
       expect.objectContaining({ id: 'rules.md:3-5', lineEnd: 5, lineStart: 3 }),
     ]);
-    using store = new KnowledgeStore(root, { readonly: true });
-    const graph = store.graph();
+    const graph = readGraph(root);
     expect(graph.decisions.find((entry) => entry.localId === 'target-node')).toMatchObject({
       lineEnd: 5,
       lineStart: 3,
@@ -4370,8 +4383,8 @@ test('rejects a complete expanded repair range over 16 KiB before a model call',
         `The decision ends here. ${'c'.repeat(6000)}`,
       ].join('\n')}\n`
     );
-    const source = loadProject(root).currentDocuments.find(
-      (document) => document.id === 'oversized.md'
+    const source = arrayField(invoke(root, ['sources']).value, 'documents').find(
+      (document) => isRecord(document) && document.id === 'oversized.md'
     );
     if (source === undefined) {
       throw new Error('Expected the oversized source document');
@@ -4380,7 +4393,7 @@ test('rejects a complete expanded repair range over 16 KiB before a model call',
     graph.decisions.push({
       batch: 'synthetic-seed',
       conditions: [],
-      document: source.id,
+      document: stringField(source, 'id'),
       exceptions: [],
       id: 'oversized-node',
       kind: 'constraint',
@@ -4391,13 +4404,10 @@ test('rejects a complete expanded repair range over 16 KiB before a model call',
       reason: 'The decision spans the complete source passage.',
       status: 'current',
       text: 'The decision spans the complete source passage.',
-      version: source.hash,
+      version: stringField(source, 'hash'),
     });
-    graph.documents[source.id] = source.hash;
-    {
-      using store = new KnowledgeStore(root);
-      store.saveGraph(graph);
-    }
+    graph.documents[stringField(source, 'id')] = stringField(source, 'hash');
+    writeGraph(root, graph);
 
     const refused = invokeError(root, [
       'update',
@@ -4414,8 +4424,7 @@ test('rejects a complete expanded repair range over 16 KiB before a model call',
     expect(refused.status).toBe(1);
     expect(parseError(refused.stderr).error.code).toBe('REPAIR_RANGE_TOO_LARGE');
     expect(existsSync(nodePath.join(root, 'model-calls.log'))).toBe(false);
-    using store = new KnowledgeStore(root, { readonly: true });
-    expect(store.graph()).toEqual(graph);
+    expect(readGraph(root)).toEqual(graph);
   });
 });
 
@@ -4566,9 +4575,16 @@ test('reports informational limits separately from ingestion coverage and check 
     expect(invoke(root, ['update', '--codex', binary]).value).toMatchObject({
       coverage: 'current',
       status: 'ready',
-      warningSummary: { findings: 0, limitations: 1, unknown: 0, validation: 0 },
+      warningSummary: {
+        findings: 0,
+        limitations: 1,
+        unknown: 0,
+        validation: 0,
+      },
     });
-    expect(invoke(root, ['status']).value).toMatchObject({ warningSummary: { limitations: 1 } });
+    expect(invoke(root, ['status']).value).toMatchObject({
+      warningSummary: { limitations: 1 },
+    });
     writeFileSync(nodePath.join(root, 'oversized.md'), `${'x'.repeat(9000)}\n`);
     expect(invoke(root, ['update', '--max-calls', '0', '--codex', binary]).value).toMatchObject({
       coverage: 'pending',
@@ -4585,22 +4601,32 @@ test('does not replace a current relationship with a replacement rejected by the
     const binary = model(root);
     const file = nodePath.join(root, 'responses.json');
     expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('ready');
-    let original;
-    {
-      using store = new KnowledgeStore(root, { readonly: true });
-      original = store.graph();
-    }
+    const original = readGraph(root);
     const responses = parseModelResponses(readFileSync(file, 'utf-8'));
     responses.byDocument = {
       'cache.md': {
-        decisions: [{ ...at(responses.extract.decisions, 0), text: 'Cached data never expires.' }],
+        decisions: [
+          {
+            ...at(responses.extract.decisions, 0),
+            text: 'Cached data never expires.',
+          },
+        ],
         relationships: [
-          { ...at(responses.extract.relationships, 0), from: '@existing:privacy.md', to: 'c1' },
+          {
+            ...at(responses.extract.relationships, 0),
+            from: '@existing:privacy.md',
+            to: 'c1',
+          },
         ],
       },
     };
     responses.check = {
-      findings: [{ reason: 'The lifetime contradicts the seven-day source rule.', target: 'c1' }],
+      findings: [
+        {
+          reason: 'The lifetime contradicts the seven-day source rule.',
+          target: 'c1',
+        },
+      ],
       relationshipChanges: [
         {
           evidence: [{ document: 'privacy.md', lineEnd: 3, lineStart: 3 }],
@@ -4626,8 +4652,7 @@ test('does not replace a current relationship with a replacement rejected by the
       work: { calls: 2, lastAttempt: { code: 'RELATIONSHIP_LOSS' } },
     });
 
-    using store = new KnowledgeStore(root, { readonly: true });
-    expect(store.graph()).toEqual(original);
+    expect(readGraph(root)).toEqual(original);
   });
 });
 
@@ -4639,15 +4664,14 @@ test.each(['fresh', 'different-candidate', 'intervening-update'])(
       const file = nodePath.join(root, 'responses.json');
       const responses = parseModelResponses(readFileSync(file, 'utf-8'));
       responses.check.findings = [
-        { reason: 'The transport for eviction acknowledgements is not described.', target: 'c2' },
+        {
+          reason: 'The transport for eviction acknowledgements is not described.',
+          target: 'c2',
+        },
       ];
       writeFileSync(file, JSON.stringify(responses));
       expect(invoke(root, ['update', '--codex', binary]).value.status).toBe('partial');
-      let baseline;
-      {
-        using store = new KnowledgeStore(root, { readonly: true });
-        baseline = store.graph();
-      }
+      const baseline = readGraph(root);
       responses.byDocument = {
         'cache.md': {
           decisions: [
@@ -4657,7 +4681,11 @@ test.each(['fresh', 'different-candidate', 'intervening-update'])(
             },
           ],
           relationships: [
-            { ...at(responses.extract.relationships, 0), from: '@existing:privacy.md', to: 'c1' },
+            {
+              ...at(responses.extract.relationships, 0),
+              from: '@existing:privacy.md',
+              to: 'c1',
+            },
           ],
         },
       };
@@ -4717,22 +4745,29 @@ test.each(['fresh', 'different-candidate', 'intervening-update'])(
         const reassessed = invoke(root, reassessmentArguments);
         expect(reassessed.value).toMatchObject({
           status: 'partial',
-          work: { calls: 2, id: workId(extraction.value), retainedCheckAssessment: 'accepted' },
+          work: {
+            calls: 2,
+            id: workId(extraction.value),
+            retainedCheckAssessment: 'accepted',
+          },
         });
-        using store = new KnowledgeStore(root, { readonly: true });
-        expect(store.graph().relationships).toHaveLength(1);
-        expect(at(store.graph().relationships, 0).quality).toBe('uncertain');
+        const graph = readGraph(root);
+        expect(graph.relationships).toHaveLength(1);
+        expect(at(graph.relationships, 0).quality).toBe('uncertain');
         expect(
           recordAt(arrayField(storedWork(root, workId(extraction.value)), 'attempts'), 1).error
         ).toBe('RELATIONSHIP_LOSS');
         expect(invoke(root, reassessmentArguments).value).toMatchObject({
           status: 'partial',
-          work: { calls: 2, id: workId(extraction.value), retainedCheckAssessment: 'accepted' },
+          work: {
+            calls: 2,
+            id: workId(extraction.value),
+            retainedCheckAssessment: 'accepted',
+          },
         });
       } else {
         expect(invokeError(root, reassessmentArguments).stderr).toContain('STALE_RETAINED_CHECK');
-        using store = new KnowledgeStore(root, { readonly: true });
-        expect(store.graph()).toEqual(baseline);
+        expect(readGraph(root)).toEqual(baseline);
       }
       expect(
         readFileSync(nodePath.join(root, 'model-calls.log'), 'utf-8').trim().split('\n')
@@ -4751,7 +4786,7 @@ test('replays a retained relationship repair from a portable failed work fixture
     );
     mkdirSync(nodePath.join(root, '.hivex'));
     const fixture = readFileSync(
-      new URL('../test/fixtures/retained-endpoint-check.sql', import.meta.url),
+      new URL('fixtures/retained-endpoint-check.sql', import.meta.url),
       'utf-8'
     );
     {
@@ -4769,8 +4804,7 @@ test('replays a retained relationship repair from a portable failed work fixture
         throw new Error('Expected the retained replay work');
       }
       retainedId = row.id;
-      using store = new KnowledgeStore(root, { readonly: true });
-      beforeGraph = store.graph();
+      beforeGraph = readGraph(root);
     }
     const oldEdgeId = at(beforeGraph.relationships, 0).id;
     const alphaId = beforeGraph.decisions.find((entry) => entry.localId === 'c1')?.id;
@@ -4856,8 +4890,7 @@ test('replays a retained relationship repair from a portable failed work fixture
     const result = objectField(recordAt(attempts, 2), 'result');
     const changes = arrayField(result, 'relationshipChanges');
     expect(changes).toHaveLength(1);
-    using store = new KnowledgeStore(root, { readonly: true });
-    const graph = store.graph();
+    const graph = readGraph(root);
     const corrected = graph.relationships.find((relationship) => {
       if (relationship.from !== alphaId || relationship.to !== betaId) {
         return false;
@@ -4886,7 +4919,10 @@ test('replays a retained relationship repair from a portable failed work fixture
       expect.objectContaining({ id: alphaId, text: 'Alpha uses Beta.' })
     );
     expect(arrayField(at(packets, 0), 'previousDecisions')).toContainEqual(
-      expect.objectContaining({ id: betaId, text: 'Beta provides shared policy.' })
+      expect.objectContaining({
+        id: betaId,
+        text: 'Beta provides shared policy.',
+      })
     );
   });
 });
@@ -4929,7 +4965,10 @@ test('resumes automatic maintenance for legacy consultations without a stored ph
       '--codex',
       binary,
     ]);
-    expect(resumed.value).toMatchObject({ status: 'ready', work: { calls: 3, phase: 'ask' } });
+    expect(resumed.value).toMatchObject({
+      status: 'ready',
+      work: { calls: 3, phase: 'ask' },
+    });
     expect(invoke(root, ['status']).value.availableDecisions).toBe(2);
   });
 });
@@ -4938,7 +4977,10 @@ for (const scenario of ['catalog-21-pages', 'empty-managed-origin', 'normalized-
   test(`admits compatible profile evidence for ${scenario}`, () => {
     project((root) => {
       const result = invoke(root, ['update', '--codex', model(root, scenario)]);
-      expect(result.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+      expect(result.value).toMatchObject({
+        status: 'ready',
+        work: { calls: 2 },
+      });
     });
   });
 }

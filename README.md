@@ -2,7 +2,7 @@
 
 A project foundation and reusable knowledge for autonomous agents. Hivex provides recommended Markdown, focused workflow skills and retrieval of decisions, dependencies and exceptions. Project Markdown remains authority and the responsible agent directs the work.
 
-Hivex is a TypeScript/Bun CLI. The current knowledge profile is Luna/max through native Codex and the user's ChatGPT subscription, without silent fallback. The implementing agent may use another model. Model invocation is localized for future configuration; multiple providers are not yet validated.
+Hivex is a native Rust CLI. The current knowledge profile is Luna/max through native Codex and the user's ChatGPT subscription, without silent fallback. The implementing agent may use another model. Model invocation is localized for future configuration; multiple providers are not yet validated.
 
 ## Project foundation
 
@@ -12,11 +12,11 @@ No installed command approves an implementation. The principal reviewer checks f
 
 ## Install the CLI and skills
 
-Requires Bun 1.4.2 or newer:
+The native package targets macOS ARM64. The installed executable does not require Bun, Node.js or Rust; npm (or Bun) is used only to install the package. Other targets need native compatibility validation before distribution.
 
 ```sh
-bun add --dev --exact @h1v35/hivex
-bun hivex --help
+npm install --save-dev --save-exact @h1v35/hivex
+./node_modules/.bin/hivex --help
 ```
 
 The package includes `hivex`, `hivex-design`, `hivex-document`, `hivex-implement`, `hivex-review` and `hivex-git` under `skills/`. Install the directories together in the skill location your agent discovers. Keep them at the same release as the CLI; the relative references between these bundled skills should stay intact.
@@ -42,9 +42,9 @@ Codex CLI compatibility is established through the app-server protocol and the e
 ## Initialize a project
 
 ```sh
-bun hivex init
+./node_modules/.bin/hivex init
 # Or prepare another existing project directory:
-bun hivex init --root /path/to/project
+./node_modules/.bin/hivex init --root /path/to/project
 ```
 
 Initialization creates missing foundation documents, a source configuration and Git ignore rules that keep `.hivex/graph.json` shareable while local execution state stays ignored. It reports created, preserved and updated paths, makes no model calls, and does not install dependencies, configure global tools or write to GitHub. Repeating it preserves existing Markdown, configuration, graph and history.
@@ -57,13 +57,13 @@ Use the documentation skill to migrate existing material to the standard when re
 
 ## Run
 
-CI uses Bun 1.4.2 as the tested baseline; compatible newer runtimes are supported. In this checkout:
+From a source checkout with the stable Rust toolchain:
 
 ```sh
-bun install
-bun hivex --help
-bun hivex sources --root /path/to/project
-bun hivex update --root /path/to/project --max-calls 0
+cargo build --locked
+./target/debug/hivex --help
+./target/debug/hivex sources --root /path/to/project
+./target/debug/hivex update --root /path/to/project --max-calls 0
 ```
 
 The scoped package name is `@h1v35/hivex`, with command `hivex` and MIT license. Publication and registry installation are tracked separately; do not fetch the unrelated unscoped npm package.
@@ -83,13 +83,13 @@ Without configuration, Hivex selects Markdown files under the project. It skips 
 ## Recover context
 
 ```sh
-bun hivex sources --root /path/to/project --limit 20
-bun hivex read docs/policy.md --root /path/to/project
-bun hivex read docs/archive/old-policy.md --root /path/to/project
-bun hivex search "cache access revocation" --root /path/to/project
-bun hivex neighbors <decision-id> --root /path/to/project --limit 24
-bun hivex ask "What did the old cache policy require?" --source docs/archive/old-policy.md --root /path/to/project
-bun hivex ask "How should private cached data behave when access is revoked?" --root /path/to/project
+./node_modules/.bin/hivex sources --root /path/to/project --limit 20
+./node_modules/.bin/hivex read docs/policy.md --root /path/to/project
+./node_modules/.bin/hivex read docs/archive/old-policy.md --root /path/to/project
+./node_modules/.bin/hivex search "cache access revocation" --root /path/to/project
+./node_modules/.bin/hivex neighbors <decision-id> --root /path/to/project --limit 24
+./node_modules/.bin/hivex ask "What did the old cache policy require?" --source docs/archive/old-policy.md --root /path/to/project
+./node_modules/.bin/hivex ask "How should private cached data behave when access is revoked?" --root /path/to/project
 ```
 
 `sources` returns document metadata without their full text and a snapshot-bound continuation when more records remain. Resume with `--cursor`. `read` returns original text, its version and line ranges; use `--from`, `--to` and `--max-bytes` for a bounded passage. Continuation and omitted content remain explicit. A working version is not evidence of approval.
@@ -107,7 +107,7 @@ Hivex does not compact, move or rewrite Markdown. Authors preserve the original 
 ## Update and repair knowledge
 
 ```sh
-bun hivex update --root /path/to/project --max-calls 2
+./node_modules/.bin/hivex update --root /path/to/project --max-calls 2
 ```
 
 An update splits large Markdown into line-preserving units of at most 8 KiB, preferring Markdown boundaries. Each round selects at most four units and 16 KiB of target text, then performs one additional check. Optional neighbor discovery is limited to 18 decisions and 8 KiB of evidence. Current endpoints of affected relationships and their evidence are required context, so those discovery limits do not silently remove them. If the complete packet exceeds `--max-context-bytes`, Hivex reports a context limit before starting the extraction. Original document IDs and line numbers survive splitting. Earlier rounds remain queryable while `pendingUnits` and `pendingDocuments` show unfinished coverage. Sources up to 32 MiB can be split, within a 64 MiB loaded-corpus limit; narrow the selected paths if that limit is reached. A line too large to fit is explicitly reported as unread, never silently cut.
@@ -119,7 +119,7 @@ Each extraction and check is checkpointed. Resuming continues the same work and 
 To correct derived knowledge against unchanged Markdown, use:
 
 ```sh
-bun hivex update --root /path/to/project --repair docs/cache.md --reason "The source specifies seven days, not indefinite retention."
+./node_modules/.bin/hivex update --root /path/to/project --repair docs/cache.md --reason "The source specifies seven days, not indefinite retention."
 ```
 
 Use `--repair-range docs/cache.md:20-35` instead of `--repair docs/cache.md` to revisit only the decisions overlapping those one-based lines and their affected relationships. The range expands to include each affected decision’s complete source passage, including overlapping passages; other knowledge in the same ingestion block stays intact. Repeat the option for multiple ranges. A complete repair range must fit the existing 16 KiB round limit; oversized ranges fail before a model call. The source must already be fully ingested at its current version; finish a normal update first if it changed. Whole-document repair remains available when needed. Retained work keeps its original planned ranges and budget, and repeating a completed range request reuses it even when an earlier CLI processed a broader block.
@@ -153,8 +153,8 @@ Native operations accept `--codex` and `--deadline-ms`; the default deadline is 
 ## Share knowledge through Git
 
 ```sh
-bun hivex snapshot export --root /path/to/project
-bun hivex snapshot import --root /path/to/project
+./node_modules/.bin/hivex snapshot export --root /path/to/project
+./node_modules/.bin/hivex snapshot import --root /path/to/project
 ```
 
 `snapshot export` writes `.hivex/graph.json` atomically as stable, readable JSON. Commit that file alongside the Markdown it describes to share decisions, relationships, source versions, evidence, available provenance and coverage. It exports the graph, not work records, process identities, budgets or cached model answers. Snapshot operations make zero model calls.
@@ -164,7 +164,7 @@ A fresh clone can use `search`, `neighbors` and `status` directly from the share
 When Markdown moves, explicitly relocate its knowledge before the next update:
 
 ```sh
-bun hivex snapshot relocate docs/old-guide.md docs/guidelines/guide.md --root /path/to/project
+./node_modules/.bin/hivex snapshot relocate docs/old-guide.md docs/guidelines/guide.md --root /path/to/project
 ```
 
 The old source must no longer be selected, and the destination must be selected current Markdown. Relocation preserves IDs, relationships, source versions and uncertainty, leaving existing work, cached answers and budgets intact. It makes zero model calls and refuses unfinished local work. An identical move to a destination without prior knowledge reuses ingestion coverage when all retained source evidence has matching, known versions. If content changed, source versions are mixed or missing, or the destination already had knowledge, its coverage becomes pending so the usual update/check can validate the result. Mismatched evidence remains stale until then. Keep the relocation report with the change and export the final graph; do not use relocation to hide unrelated missing evidence.
@@ -190,26 +190,24 @@ Prefer DDD and meaningful responsibilities, risk/value-based tests with TDD opti
 
 ## Development
 
-The Rust migration is being delivered in stages under [#80](https://github.com/H1V35/hivex/issues/80). The development binary `hivex-rust` implements the CLI, including knowledge updates, queries, implementation reviews, snapshots and warning resolution. It reads the existing SQLite and shared snapshot v1 formats and retains work budgets, attempts and model caches. npm distribution and the published TypeScript version are unchanged until the distribution stage is verified.
+The Rust CLI reads the existing SQLite and shared snapshot v1 formats and retains work budgets, attempts and model caches. The TypeScript runtime was retired after compatibility validation under [#80](https://github.com/H1V35/hivex/issues/80). Its fixed SQL fixtures and synthetic protocol server remain as independent compatibility evidence.
+
+Use the stable Rust toolchain, Git 2.45 or newer and Bun 1.4.2 or newer for development. Bun runs the TypeScript CLI tests and JavaScript support scripts; it is not a runtime dependency of the installed CLI.
 
 ```sh
-cargo build --locked
+bun ci
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
-HIVEX_TEST_BINARY="$PWD/target/debug/hivex-rust" bun test --timeout 15000 src/documents-cli.test.ts src/project-initialization.test.ts src/knowledge-maintenance.test.ts src/knowledge-cli.test.ts src/knowledge-cache-compatibility.test.ts src/knowledge-warning-resolution.test.ts src/rust-compatibility.test.ts
-```
-
-The compatibility suite exercises the existing contracts through both CLIs. SQLite fixtures remain authored by the reference implementation, including retained answers and extraction/check caches with exhausted budgets. Model execution tests use the synthetic app-server in `test/codex-server.mjs`; they do not consume real model calls.
-
-This development slice is verified on macOS ARM64, using the same system ICU as Bun for source ordering. Other targets require compatibility validation before publishing Rust packages.
-
-```sh
 bun run typecheck
 bun run lint
 bun run format:check
 bun run test
 ```
+
+The CLI suite requires the native binary and has no fallback to another implementation. Its SQLite fixtures include retained answers and extraction/check caches with exhausted budgets. Model execution tests use `test/codex-server.mjs` and consume no real model calls.
+
+The native artifact is verified on macOS ARM64, using system ICU for source ordering. Package preparation, archive inspection and publication of the exact approved bytes follow the [release procedure](docs/procedures/releasing.md).
 
 Tests use the public CLI and a simulated native transport. Real Luna evaluations are bounded and reported separately; simulated token usage is not a consumption measurement. Development is issue-first, with coherent PRs, an independent review covering scope/correctness/standards and CI on the final commit. See the [engineering workflow](docs/guidelines/engineering.md).
 
@@ -220,8 +218,8 @@ Earlier candidate/fidelity/comparison/admission protocols and their tests are re
 From the Git project root, supply the task and the base revision. Hivex captures the working change, including untracked files, and provides findings tied to code and Markdown versions:
 
 ```sh
-hivex review "Change cache behavior" --base main --max-calls 3 > /tmp/hivex-review.json
-hivex review --check /tmp/hivex-review.json
+./node_modules/.bin/hivex review "Change cache behavior" --base main --max-calls 3 > /tmp/hivex-review.json
+./node_modules/.bin/hivex review --check /tmp/hivex-review.json
 ```
 
 Use the same task and base to resume or reuse retained work. Update, knowledge check and review share one budget, including expansion of a partial report. Context is bounded; large changes must be narrowed or split into coherent reviews. Larger existing text files contribute diff excerpts with original line numbers and explicit omissions; their full-file versions still detect later changes. The principal reviewer verifies conflicts and exceptions and resolves supported contradictions before closing the change. A `ready` result means assistance is available, never that the implementation is approved. A saved report can be checked without a model; changed code or documents make it stale. Keep reports outside the project or in an ignored path so they do not become part of the change.

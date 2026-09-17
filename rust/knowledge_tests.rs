@@ -468,6 +468,11 @@ mod tests {
             scope: vec![scope.clone()],
             ..WarningRecord::default()
         });
+        // Fixed identifier from the v0.3.11 TypeScript warningId contract.
+        assert_eq!(
+            warning_id(&warning),
+            "5a41ab5c5e1d50b8b61ab55737ef36c53bc2523f6f53b1db790fe18a5355fe52"
+        );
         let first = with_warning_resolution(
             &warning,
             crate::knowledge_model::WarningResolution {
@@ -805,5 +810,87 @@ mod tests {
         });
         graph.decisions[0].line_end = maximum + 1;
         assert!(!validate_graph(&graph));
+    }
+    #[test]
+    fn check_targets_preserve_the_scope_and_provenance_of_retained_knowledge() {
+        let source = source();
+        let mut graph = apply_extraction(ExtractionOptions {
+            batch: "current",
+            context_documents: None,
+            context_ranges: None,
+            documents: std::slice::from_ref(&source),
+            existing_ids: None,
+            extraction: &extraction(),
+            graph: &empty_graph(),
+            target_ranges: None,
+        });
+        for decision in &mut graph.decisions {
+            decision.quality = "checked".to_owned();
+        }
+        let mut neighbor = graph.decisions[0].clone();
+        neighbor.id = "retained-neighbor".to_owned();
+        neighbor.document = "neighbor.md".to_owned();
+        neighbor.batch = "previous".to_owned();
+        neighbor.local_id = "neighbor-local".to_owned();
+        graph.decisions.push(neighbor);
+        graph.relationships[0].to = "retained-neighbor".to_owned();
+        graph.relationships[0].quality = "checked".to_owned();
+        let mut previous_edge = graph.relationships[0].clone();
+        previous_edge.id = "previous-edge".to_owned();
+        previous_edge.batch = "previous".to_owned();
+        graph.relationships.push(previous_edge);
+        let check = |target: &str| KnowledgeCheck {
+            findings: vec![CheckFinding {
+                reason: "Inspect this scope.".to_owned(),
+                target: target.to_owned(),
+            }],
+        };
+        for target in [&graph.decisions[0].id, &graph.decisions[0].local_id] {
+            let impact = check_impact(&graph, &check(target), "current", &[]);
+            assert_eq!(
+                impact.decision_ids,
+                [graph.decisions[0].id.clone()].into_iter().collect()
+            );
+            assert_eq!(impact.relationship_ids.len(), 2);
+            assert!(!impact.is_uncertain_batch);
+        }
+        for target in ["unknown-target", "batch"] {
+            let impact = check_impact(&graph, &check(target), "current", &[]);
+            assert!(impact.is_uncertain_batch);
+            assert!(impact.decision_ids.is_empty());
+            let applied = apply_check(&graph, &check(target), "current", &[]);
+            assert!(
+                applied.decisions[..2]
+                    .iter()
+                    .all(|entry| entry.quality == "uncertain")
+            );
+            assert_eq!(applied.relationships[0].quality, "uncertain");
+            assert_eq!(applied.relationships[1].quality, "checked");
+        }
+        let impact = check_impact(&graph, &check(&source.id), "current", &[]);
+        assert_eq!(impact.decision_ids.len(), 2);
+        assert_eq!(impact.relationship_ids.len(), 2);
+        let scope = [WarningScope {
+            document: "neighbor.md".to_owned(),
+            line_start: 1,
+            line_end: 1,
+            version: "v1".to_owned(),
+        }];
+        let applied = apply_check(&graph, &check("neighbor.md"), "current", &scope);
+        assert_eq!(applied.decisions[2].batch, "previous");
+        assert_eq!(applied.decisions[2].quality, "uncertain");
+        assert_eq!(applied.relationships[1].quality, "checked");
+        graph.decisions[2].quality = "uncertain".to_owned();
+        let check = KnowledgeCheck {
+            findings: Vec::new(),
+        };
+        let impact = check_impact(&graph, &check, "current", &[]);
+        assert!(!impact.is_uncertain_batch);
+        assert!(impact.decision_ids.is_empty());
+        assert!(impact.relationship_ids.is_empty());
+        assert_eq!(
+            apply_check(&graph, &check, "current", &[]).relationships[0].quality,
+            "uncertain"
+        );
     }
 }

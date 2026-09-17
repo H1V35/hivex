@@ -4,8 +4,15 @@ import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
-import { emptyGraph } from './knowledge-model.ts';
-import { KnowledgeStore } from './knowledge-store.ts';
+import {
+  emptyGraph,
+  readGraph,
+  readWork,
+  seedWork,
+  updateWork,
+  writeCache,
+  writeGraph,
+} from './rust-fixtures.ts';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -29,12 +36,11 @@ const isRecord = (value: unknown): value is JsonRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const knowledgeMaintenance = function knowledgeMaintenance(argumentsList: string[]): unknown {
-  const executable = process.env.HIVEX_TEST_BINARY ?? process.execPath;
-  const prefix =
-    process.env.HIVEX_TEST_BINARY === undefined
-      ? [nodePath.join(import.meta.dirname, 'cli.ts')]
-      : [];
-  const result = spawnSync(executable, [...prefix, ...argumentsList], {
+  const executable = process.env.HIVEX_TEST_BINARY;
+  if (executable === undefined) {
+    throw new Error('HIVEX_TEST_BINARY is required');
+  }
+  const result = spawnSync(executable, argumentsList, {
     encoding: 'utf-8',
     timeout: 10_000,
   });
@@ -86,8 +92,6 @@ const isStoredWork = function isStoredWork(value: unknown): value is StoredWork 
   );
 };
 
-const parseJson = (text: string): unknown => JSON.parse(text);
-
 const temporaryProject = function temporaryProject(run: (root: string) => void) {
   const root = mkdtempSync(nodePath.join(tmpdir(), 'hivex-maintenance-'));
   try {
@@ -111,16 +115,7 @@ const deadPid = function deadPid() {
 };
 
 const storedWork = function storedWork(root: string, id: string): StoredWork {
-  using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'), {
-    readonly: true,
-  });
-  const row = database
-    .query<{ data: string }, [string]>('SELECT data FROM work WHERE id=?')
-    .get(id);
-  if (!row) {
-    throw new Error(`Missing fixture work ${id}`);
-  }
-  const value = parseJson(row.data);
+  const value = readWork(root, id);
   if (!isStoredWork(value)) {
     throw new Error(`Malformed fixture work ${id}`);
   }
@@ -129,29 +124,25 @@ const storedWork = function storedWork(root: string, id: string): StoredWork {
 
 test('recover marks a dead native invocation failed and preserves its work state', () => {
   temporaryProject((root) => {
-    let id: string;
-    {
-      using store = new KnowledgeStore(root);
-      const work = store.begin({
-        key: 'fixture',
-        kind: 'ask',
-        remaining: [],
-        snapshot: 'fixture',
-      });
-      store.reserve(work, {
+    const id = seedWork(root, {
+      key: 'fixture',
+      kind: 'ask',
+      remaining: [],
+      snapshot: 'fixture',
+    });
+    updateWork(root, id, (work) => {
+      work.calls = 1;
+      work.inputBytes = 123;
+      work.status = 'running';
+      work.ownerPid = deadPid();
+      work.nativeProcessId = deadPid();
+      work.attempts.push({
         inputBytes: 123,
         inputHash: 'input-hash',
+        result: { retained: true },
         stage: 'extract',
       });
-      const attempt = work.attempts.at(-1);
-      if (!attempt) {
-        throw new Error('Fixture did not reserve an attempt');
-      }
-      attempt.result = { retained: true };
-      work.ownerPid = deadPid();
-      store.recordNativeProcess(work, deadPid());
-      ({ id } = work);
-    }
+    });
 
     const inspection = knowledgeMaintenance(['recover', '--root', root]);
     expect(inspection).toMatchObject({
@@ -211,40 +202,33 @@ test('recover marks a dead native invocation failed and preserves its work state
 
 test('acknowledges a saved uncertain failure without rewriting its report', () => {
   temporaryProject((root) => {
-    let id: string;
-    let originalReport: Record<string, unknown>;
-    {
-      using store = new KnowledgeStore(root);
-      const work = store.begin({
-        key: 'saved-failure',
-        kind: 'ask',
-        remaining: [],
-        snapshot: 'fixture',
-      });
-      store.reserve(work, {
+    const id = seedWork(root, {
+      key: 'saved-failure',
+      kind: 'ask',
+      remaining: [],
+      snapshot: 'fixture',
+    });
+    const originalReport: Record<string, unknown> = {
+      cleanup: 'not-observed',
+      code: 'MODEL_TIMEOUT',
+      interruption: 'unconfirmed',
+      nativeProcessId: deadPid(),
+      outcome: 'failed',
+      turnAccepted: 'unknown',
+      usage: null,
+    };
+    updateWork(root, id, (work) => {
+      work.calls = 1;
+      work.inputBytes = 17;
+      work.ownerPid = deadPid();
+      work.status = 'failed';
+      work.attempts.push({
         inputBytes: 17,
         inputHash: 'input-hash',
+        report: originalReport,
         stage: 'ask',
       });
-      const attempt = work.attempts.at(-1);
-      if (!attempt) {
-        throw new Error('Fixture did not reserve an attempt');
-      }
-      work.ownerPid = deadPid();
-      originalReport = {
-        cleanup: 'not-observed',
-        code: 'MODEL_TIMEOUT',
-        interruption: 'unconfirmed',
-        nativeProcessId: deadPid(),
-        outcome: 'failed',
-        turnAccepted: 'unknown',
-        usage: null,
-      };
-      attempt.report = originalReport;
-      work.status = 'failed';
-      store.save(work);
-      ({ id } = work);
-    }
+    });
 
     expect(knowledgeMaintenance(['recover', '--root', root])).toMatchObject({
       acknowledgedWorks: 0,
@@ -271,23 +255,24 @@ test('acknowledges a saved uncertain failure without rewriting its report', () =
 
 test('recover leaves a live owner and its work untouched', () => {
   temporaryProject((root) => {
-    let id: string;
-    {
-      using store = new KnowledgeStore(root);
-      const work = store.begin({
-        key: 'fixture',
-        kind: 'update',
-        remaining: ['unit-1'],
-        snapshot: 'fixture',
-      });
-      store.reserve(work, {
+    const id = seedWork(root, {
+      key: 'fixture',
+      kind: 'update',
+      remaining: ['unit-1'],
+      snapshot: 'fixture',
+    });
+    updateWork(root, id, (work) => {
+      work.calls = 1;
+      work.inputBytes = 10;
+      work.status = 'running';
+      work.ownerPid = process.pid;
+      work.nativeProcessId = process.pid;
+      work.attempts.push({
         inputBytes: 10,
         inputHash: 'input-hash',
         stage: 'extract',
       });
-      store.recordNativeProcess(work, process.pid);
-      ({ id } = work);
-    }
+    });
     writeFileSync(
       nodePath.join(root, '.hivex', 'knowledge.lock'),
       JSON.stringify({ id: 'live-owner', pid: process.pid })
@@ -307,44 +292,40 @@ test('recover leaves a live owner and its work untouched', () => {
 
 test('prune removes only old completed work and caches', () => {
   temporaryProject((root) => {
-    let unfinishedId: string;
-    {
-      using store = new KnowledgeStore(root);
-      store.saveGraph(emptyGraph());
-      const unfinished = store.begin({
-        key: 'unfinished',
-        kind: 'update',
-        remaining: ['unit-1'],
-        snapshot: 'fixture',
-      });
-      unfinished.calls = 4;
-      unfinished.inputBytes = 321;
-      unfinished.totalTokens = 19;
-      unfinished.status = 'failed';
-      unfinished.attempts.push({
+    writeGraph(root, emptyGraph());
+    const unfinishedId = seedWork(root, {
+      key: 'unfinished',
+      kind: 'update',
+      remaining: ['unit-1'],
+      snapshot: 'fixture',
+    });
+    updateWork(root, unfinishedId, (work) => {
+      work.calls = 4;
+      work.inputBytes = 321;
+      work.totalTokens = 19;
+      work.status = 'failed';
+      work.attempts.push({
         inputBytes: 7,
         inputHash: 'retained',
         result: { retained: true },
         stage: 'extract',
       });
-      store.save(unfinished);
-      unfinishedId = unfinished.id;
-
-      for (const key of ['done-1', 'done-2', 'done-3']) {
-        const completed = store.begin({
-          key,
-          kind: 'ask',
-          remaining: [],
-          snapshot: 'fixture',
-        });
-        completed.status = 'done';
-        completed.result = { key };
-        store.save(completed);
-      }
-      store.cache('cache-1', { value: 1 });
-      store.cache('cache-2', { value: 2 });
-      store.cache('cache-3', { value: 3 });
+    });
+    for (const key of ['done-1', 'done-2', 'done-3']) {
+      const id = seedWork(root, {
+        key,
+        kind: 'ask',
+        remaining: [],
+        snapshot: 'fixture',
+      });
+      updateWork(root, id, (work) => {
+        work.status = 'done';
+        work.result = { key };
+      });
     }
+    writeCache(root, 'cache-1', { value: 1 });
+    writeCache(root, 'cache-2', { value: 2 });
+    writeCache(root, 'cache-3', { value: 3 });
 
     const result = knowledgeMaintenance([
       'prune',
@@ -372,31 +353,29 @@ test('prune removes only old completed work and caches', () => {
       status: 'failed',
       totalTokens: 19,
     });
-    using store = new KnowledgeStore(root);
-    expect(store.graph()).toEqual(emptyGraph());
+    expect(readGraph(root)).toEqual(emptyGraph());
   });
 });
 
 test('recover handles a dead owner before the native turn starts, without an acknowledgement', () => {
   temporaryProject((root) => {
-    let id: string;
-    {
-      using store = new KnowledgeStore(root);
-      const work = store.begin({
-        key: 'before-turn',
-        kind: 'ask',
-        remaining: [],
-        snapshot: 'fixture',
-      });
-      store.reserve(work, {
+    const id = seedWork(root, {
+      key: 'before-turn',
+      kind: 'ask',
+      remaining: [],
+      snapshot: 'fixture',
+    });
+    updateWork(root, id, (work) => {
+      work.calls = 1;
+      work.inputBytes = 40;
+      work.ownerPid = deadPid();
+      work.status = 'running';
+      work.attempts.push({
         inputBytes: 40,
         inputHash: 'input',
         stage: 'ask',
       });
-      work.ownerPid = deadPid();
-      store.save(work);
-      ({ id } = work);
-    }
+    });
     const result = knowledgeMaintenance(['recover', '--root', root]);
     expect(result).toMatchObject({
       acknowledgedWorks: 0,
@@ -422,26 +401,28 @@ test('recover handles a dead owner before the native turn starts, without an ack
 
 test('recover keeps an uncertain failure without a native PID blocked and unchanged', () => {
   temporaryProject((root) => {
-    let id: string;
-    {
-      using store = new KnowledgeStore(root);
-      const work = store.begin({
-        key: 'missing-native-pid',
-        kind: 'ask',
-        remaining: [],
-        snapshot: 'fixture',
-      });
-      store.reserve(work, { inputBytes: 25, inputHash: 'retained-input', stage: 'ask' });
+    const id = seedWork(root, {
+      key: 'missing-native-pid',
+      kind: 'ask',
+      remaining: [],
+      snapshot: 'fixture',
+    });
+    updateWork(root, id, (work) => {
+      work.calls = 1;
+      work.inputBytes = 25;
       work.ownerPid = deadPid();
       work.status = 'failed';
-      const attempt = work.attempts.at(-1);
-      if (!attempt) {
-        throw new Error('Expected a reserved attempt');
-      }
-      attempt.report = { interruption: 'unconfirmed', turnAccepted: 'unknown', usage: null };
-      store.save(work);
-      ({ id } = work);
-    }
+      work.attempts.push({
+        inputBytes: 25,
+        inputHash: 'retained-input',
+        report: {
+          interruption: 'unconfirmed',
+          turnAccepted: 'unknown',
+          usage: null,
+        },
+        stage: 'ask',
+      });
+    });
     const before = storedWork(root, id);
     expect(
       knowledgeMaintenance(['recover', '--acknowledge-uncertain', '--root', root])
@@ -456,10 +437,7 @@ test('recover keeps an uncertain failure without a native PID blocked and unchan
 
 test('recover refuses an unreadable lock and preserves it', () => {
   temporaryProject((root) => {
-    {
-      using store = new KnowledgeStore(root);
-      store.saveGraph(emptyGraph());
-    }
+    writeGraph(root, emptyGraph());
     const lockPath = nodePath.join(root, '.hivex', 'knowledge.lock');
     writeFileSync(lockPath, '{"id":"unknown-owner"}');
     expect(knowledgeMaintenance(['recover', '--root', root])).toMatchObject({
@@ -474,20 +452,16 @@ test('recover refuses an unreadable lock and preserves it', () => {
 
 test('prune rejects a corrupt retained extraction before deleting any rows', () => {
   temporaryProject((root) => {
-    let id: string;
-    {
-      using store = new KnowledgeStore(root);
-      const work = store.begin({
-        key: 'corrupt-extraction',
-        kind: 'update',
-        remaining: [],
-        snapshot: 'fixture',
-      });
+    const id = seedWork(root, {
+      key: 'corrupt-extraction',
+      kind: 'update',
+      remaining: [],
+      snapshot: 'fixture',
+    });
+    updateWork(root, id, (work) => {
       work.status = 'done';
-      store.save(work);
-      store.cache('retained-cache', { useful: true });
-      ({ id } = work);
-    }
+    });
+    writeCache(root, 'retained-cache', { useful: true });
     using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
     database.run("UPDATE work SET data=json_set(data,'$.pending',json(?)) WHERE id=?", [
       JSON.stringify({ batch: 'batch', documents: [], extraction: {} }),
@@ -505,20 +479,16 @@ test('prune rejects a corrupt retained extraction before deleting any rows', () 
 
 test('prune rejects invalid extraction explanations before deleting any rows', () => {
   temporaryProject((root) => {
-    let id: string;
-    {
-      using store = new KnowledgeStore(root);
-      const work = store.begin({
-        key: 'invalid-explanation',
-        kind: 'update',
-        remaining: [],
-        snapshot: 'fixture',
-      });
+    const id = seedWork(root, {
+      key: 'invalid-explanation',
+      kind: 'update',
+      remaining: [],
+      snapshot: 'fixture',
+    });
+    updateWork(root, id, (work) => {
       work.status = 'done';
-      store.save(work);
-      ({ id } = work);
-      store.cache('retained-cache', { useful: true });
-    }
+    });
+    writeCache(root, 'retained-cache', { useful: true });
 
     using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
     const decision = {
@@ -558,7 +528,12 @@ test('prune rejects invalid extraction explanations before deleting any rows', (
         uncertainties: [],
       },
       {
-        decisions: [{ ...decision, conditions: Array.from({ length: 17 }, () => 'condition') }],
+        decisions: [
+          {
+            ...decision,
+            conditions: Array.from({ length: 17 }, () => 'condition'),
+          },
+        ],
         relationships: [],
         uncertainties: [],
       },
@@ -598,10 +573,7 @@ test('prune rejects invalid extraction explanations before deleting any rows', (
 
 test('prune preserves JavaScript whitespace coercion before deleting caches', () => {
   temporaryProject((root) => {
-    {
-      using store = new KnowledgeStore(root);
-      store.cache('retained', { answer: 'Keep this result.' });
-    }
+    writeCache(root, 'retained', { answer: 'Keep this result.' });
     expect(
       knowledgeMaintenance.bind(null, ['prune', '--root', root, '--keep-caches', '\u{85}'])
     ).toThrow(/integer/u);

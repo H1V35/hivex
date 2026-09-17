@@ -61,7 +61,7 @@ export default [
     },
   },
   {
-    files: ['src/**/*.ts', 'test/**/*.mjs'],
+    files: ['test/**/*.{ts,mjs}', 'scripts/**/*.mjs'],
     plugins: { boundaries: publicInterface },
     rules: {
       ...publicInterface.configs.strict.rules,
@@ -72,54 +72,12 @@ export default [
           policies: [
             { allow: { to: { module: { origin: ['external', 'core'] } } } },
             {
-              allow: {
-                to: {
-                  file: { categories: { anyOf: ['documents', 'shared'] } },
-                },
-              },
-              from: { file: { categories: 'documents' } },
-            },
-            {
-              allow: {
-                to: {
-                  file: {
-                    categories: { anyOf: ['knowledge', 'documents', 'shared'] },
-                  },
-                },
-              },
-              from: { file: { categories: 'knowledge' } },
-            },
-            {
-              allow: {
-                to: {
-                  file: {
-                    categories: {
-                      anyOf: ['review', 'knowledge', 'documents', 'shared'],
-                    },
-                  },
-                },
-              },
-              from: { file: { categories: 'review' } },
-            },
-            {
-              allow: { to: { file: { categories: 'model' } } },
-              from: { file: { categories: 'model' } },
-            },
-            {
-              allow: {
-                to: {
-                  file: { categories: { anyOf: ['retrieval', 'shared'] } },
-                },
-              },
-              from: { file: { categories: 'retrieval' } },
-            },
-            {
-              allow: { to: { file: { categories: { noneOf: ['test'] } } } },
-              from: { file: { categories: 'commands' } },
-            },
-            {
-              allow: { to: { file: { categories: '*' } } },
+              allow: { to: { file: { categories: 'test' } } },
               from: { file: { categories: 'test' } },
+            },
+            {
+              allow: { to: { file: { categories: { anyOf: ['scripts', 'configuration'] } } } },
+              from: { file: { categories: 'scripts' } },
             },
           ],
         },
@@ -127,24 +85,9 @@ export default [
     },
     settings: {
       'boundaries/files': [
-        { category: 'documents', pattern: 'src/{documents,markdown}.ts' },
-        {
-          category: 'knowledge',
-          pattern:
-            'src/{knowledge-model,knowledge-warning-review,ingestion-units,knowledge-store,knowledge-snapshot,knowledge-serialization,source-relocation}.ts',
-        },
-        { category: 'review', pattern: 'src/{implementation,review}.ts' },
-        { category: 'model', pattern: 'src/model/**' },
-        { category: 'retrieval', pattern: 'src/retrieval/**' },
-        {
-          category: 'commands',
-          pattern: [
-            'src/{cli,knowledge,knowledge-maintenance,knowledge-warnings,project-initialization,snapshot-command}.ts',
-            'src/cli/**',
-          ],
-        },
-        { category: 'shared', pattern: 'src/{errors,ordering,runtime.d}.ts' },
-        { category: 'test', pattern: ['src/**/*.test.ts', 'test/**'] },
+        { category: 'test', pattern: 'test/**' },
+        { category: 'scripts', pattern: 'scripts/**' },
+        { category: 'configuration', pattern: 'package.json' },
       ],
       'boundaries/root-path': import.meta.dirname,
       'import/resolver': { typescript: { project: './tsconfig.json' } },

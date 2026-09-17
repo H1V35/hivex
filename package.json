@@ -1,25 +1,16 @@
 {
   "name": "@h1v35/hivex",
-  "version": "0.3.11",
+  "version": "0.4.0",
   "type": "module",
   "description": "Versioned project knowledge for people and agents.",
   "scripts": {
-    "hivex": "bun src/cli.ts",
-    "test": "bun test --timeout 15000 ./src",
+    "hivex": "cargo run --bin hivex --",
+    "test": "cargo build --locked && HIVEX_TEST_BINARY=\"$PWD/target/debug/hivex\" bun test --timeout 15000 ./test",
     "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
-    "lint": "eslint src test eslint.config.js prettier.config.js",
-    "format:check": "prettier --check ."
-  },
-  "dependencies": {
-    "mdast-util-from-markdown": "2.0.3",
-    "mdast-util-frontmatter": "2.0.1",
-    "mdast-util-gfm": "3.1.0",
-    "mdast-util-to-string": "4.0.0",
-    "micromark-extension-frontmatter": "2.0.0",
-    "micromark-extension-gfm": "3.0.0",
-    "micromark-util-normalize-identifier": "2.0.1",
-    "yaml": "2.9.0",
-    "zod": "4.4.3"
+    "lint": "eslint test scripts eslint.config.js prettier.config.js",
+    "format:check": "prettier --check .",
+    "pack:native": "bun scripts/package.mjs",
+    "verify:package": "bun scripts/verify-package.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -51,16 +42,12 @@
   },
   "trustedDependencies": [],
   "packageManager": "bun@1.4.2",
-  "engines": {
-    "bun": ">=1.4.2"
-  },
   "license": "MIT",
   "bin": {
-    "hivex": "src/cli.ts"
+    "hivex": "bin/hivex"
   },
   "files": [
-    "src/**/*.ts",
-    "!src/**/*.test.ts",
+    "bin/hivex",
     "docs/README.md",
     "docs/CONTEXT.md",
     "docs/guidelines/engineering.md",
@@ -71,10 +58,12 @@
     "docs/adr/0012-project-foundation-and-workflow.md",
     "docs/guidelines/triage-labels.md",
     "docs/procedures/issue-tracker.md",
+    "docs/procedures/releasing.md",
     "skills/",
     "templates/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.txt"
   ],
   "repository": {
     "type": "git",
@@ -86,5 +75,11 @@
   },
   "browserslist": [
     "node 25"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
   ]
 }

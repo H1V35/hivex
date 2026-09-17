@@ -278,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "hivex"
-version = "0.3.11"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "globset",
