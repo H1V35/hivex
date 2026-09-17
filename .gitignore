@@ -4,3 +4,11 @@
 !/.hivex/graph.json
 
 /dist
+
+# Local configuration and credentials; examples remain shareable.
+.env
+.env.*
+!.env.example
+!.env.sample
+.npmrc
+.DS_Store
