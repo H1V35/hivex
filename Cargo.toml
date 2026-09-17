@@ -5,10 +5,20 @@ edition = "2024"
 rust-version = "1.89"
 license = "MIT"
 publish = false
+default-run = "hivex"
 
 [[bin]]
 name = "hivex"
 path = "rust/main.rs"
+
+[[bin]]
+name = "hivex-dev"
+path = "tools/development.rs"
+
+[[bin]]
+name = "hivex-test-codex"
+path = "tools/test_codex.rs"
+test = false
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

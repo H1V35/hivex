@@ -6,6 +6,8 @@ date: 2026-09-07
 
 # Independent Bun installation
 
+> Historical decision. The runtime and development requirements below are superseded by the [complete Rust migration](0010-practical-knowledge-assistance.md#complete-rust-development-toolchain-80-owner-clarification-2026-09-17).
+
 ## Context
 
 The owner selected Bun 1.4.2 as Hivex's runtime and package manager. The first independent version added a custom installer, registry verifier and generated bootstrap to reproduce a prior dependency policy. The owner explicitly rejected that extra machinery: installation should work as in a project that started with Bun. This amendment replaces the initial decision; its original implementation and evidence remain in Git history, while the current tree keeps only reusable decisions.

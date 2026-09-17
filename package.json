@@ -1,47 +1,7 @@
 {
   "name": "@h1v35/hivex",
   "version": "0.4.0",
-  "type": "module",
   "description": "Versioned project knowledge for people and agents.",
-  "scripts": {
-    "hivex": "cargo run --bin hivex --",
-    "test": "cargo build --locked && HIVEX_TEST_BINARY=\"$PWD/target/debug/hivex\" bun test --timeout 15000 ./test",
-    "typecheck": "node_modules/typescript-native/bin/tsc --noEmit",
-    "lint": "eslint test scripts eslint.config.js prettier.config.js",
-    "format:check": "prettier --check .",
-    "pack:native": "bun scripts/package.mjs",
-    "verify:package": "bun scripts/verify-package.mjs"
-  },
-  "devDependencies": {
-    "@eslint/js": "10.0.1",
-    "@types/bun": "1.4.0",
-    "@typescript-eslint/eslint-plugin": "8.69.0",
-    "@typescript-eslint/parser": "8.69.0",
-    "eslint": "10.9.1",
-    "eslint-config-prettier": "10.1.8",
-    "eslint-import-resolver-typescript": "4.4.5",
-    "eslint-plugin-boundaries": "7.2.0",
-    "eslint-plugin-compat": "7.0.2",
-    "eslint-plugin-cypress": "7.0.1",
-    "eslint-plugin-github": "6.1.2",
-    "eslint-plugin-html": "8.2.0",
-    "eslint-plugin-import-x": "4.17.1",
-    "eslint-plugin-jsdoc": "64.3.5",
-    "eslint-plugin-n": "18.3.0",
-    "eslint-plugin-prettier": "5.5.6",
-    "eslint-plugin-promise": "7.3.0",
-    "eslint-plugin-sonarjs": "4.2.0",
-    "eslint-plugin-storybook": "10.6.0",
-    "eslint-plugin-unicorn": "74.0.0",
-    "eslint-plugin-unused-imports": "4.4.1",
-    "globals": "17.12.0",
-    "prettier": "3.8.4",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
-    "typescript-native": "npm:typescript@7.0.2",
-    "ultracite": "7.10.8"
-  },
-  "trustedDependencies": [],
-  "packageManager": "bun@1.4.2",
   "license": "MIT",
   "bin": {
     "hivex": "bin/hivex"
@@ -73,9 +33,6 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "browserslist": [
-    "node 25"
-  ],
   "os": [
     "darwin"
   ],
