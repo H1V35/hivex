@@ -1,11 +1,6 @@
-mod arguments;
-mod documents;
-mod error;
-mod initialization;
-mod maintenance;
-mod markdown;
+use hivex::{documents, error, initialization, knowledge, maintenance};
 
-use error::{HivexError, Result};
+use error::Result;
 use serde_json::Value;
 use std::io::{self, Write};
 
@@ -17,35 +12,10 @@ fn run(args: &[String]) -> Result<Value> {
         "sources" | "read" => documents::command(args),
         "init" => initialization::command(args),
         "recover" | "prune" => maintenance::command(args),
-        "update" | "search" | "neighbors" | "ask" | "review" | "snapshot" | "warnings"
-        | "status" => Err(HivexError::new(
-            "MIGRATION_INCOMPLETE",
-            "This development binary currently implements sources, read, init, recover and prune. Use the published CLI for knowledge operations until the Rust migration is complete.",
-        )),
-        _ => {
-            arguments::parse(
-                args,
-                &[
-                    "base",
-                    "codex",
-                    "deadline-ms",
-                    "limit",
-                    "max-calls",
-                    "max-context-bytes",
-                    "max-input-bytes",
-                    "reason",
-                    "repair",
-                    "repair-range",
-                    "root",
-                    "source",
-                ],
-                &["retry-failed"],
-            )?;
-            Err(HivexError::new(
-                "INVALID_ARGUMENT",
-                "Use update, status, or search/ask/neighbors with one query or ID",
-            ))
-        }
+        "snapshot" => hivex::snapshot_command::command(args),
+        "warnings" => hivex::knowledge_warnings::command(args),
+        "review" if args.iter().any(|arg| arg == "--check") => hivex::review::check_review(args),
+        _ => knowledge::command(args),
     }
 }
 

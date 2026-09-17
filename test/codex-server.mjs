@@ -504,6 +504,9 @@ const handleFrame = async function handleFrame(frame) {
     await observeModelRequest();
   }
   const result = captureHandlerFailure(frame);
+  if (process.env.HIVEX_TEST_SCENARIO === 'terminal-before-response') {
+    await Promise.resolve();
+  }
   if ('error' in result) {
     emit({
       error: { code: invalidRequestCode, message: 'invalid fixture request' },

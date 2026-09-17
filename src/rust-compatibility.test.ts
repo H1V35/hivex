@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { loadProject } from './documents.ts';
 
 const rustBinary = process.env.HIVEX_TEST_BINARY;
 const compatibility = test.skipIf(rustBinary === undefined);
@@ -253,4 +254,77 @@ compatibility('Rust keeps CJK source ordering and page boundaries', () => {
   });
   compare(['sources', '--root', fixture.root]);
   compare(['sources', '--root', fixture.root, '--limit', '1']);
+});
+
+compatibility('Rust queries retain current and historical graph evidence', () => {
+  using fixture = project({
+    'current.md': '# Safety\r\nKeep the bounded budget.\r\n[old](old.md)\r\n',
+    'hivex.json': JSON.stringify({ history: ['old.md'] }),
+    'old.md': '# Safety before migration\nA historical alternative.\n',
+    'other.md': '# Persistence\nPreserve existing data.\n',
+  });
+  const sources = loadProject(fixture.root);
+  const versions = new Map(sources.documents.map((document) => [document.id, document.hash]));
+  const retainedDecision = function retainedDecision(document: string, index: number) {
+    return {
+      batch: 'fixture',
+      conditions: [],
+      document,
+      exceptions: [],
+      id: `decision-${index}`,
+      kind: 'decision',
+      lineEnd: 2,
+      lineStart: 2,
+      localId: `local-${index}`,
+      quality: index === 1 ? 'unchecked' : 'checked',
+      reason: 'Preserve intent',
+      status: 'current',
+      text: index === 1 ? 'Preserve existing data.' : 'Keep the bounded budget.',
+      version: versions.get(document),
+    };
+  };
+  const decisions = ['current.md', 'other.md', 'old.md'].map(retainedDecision);
+  const graph = {
+    decisions,
+    documents: Object.fromEntries(versions),
+    relationships: [
+      {
+        batch: 'fixture',
+        evidence: [
+          { document: 'current.md', lineEnd: 2, lineStart: 2, version: versions.get('current.md') },
+        ],
+        from: 'decision-0',
+        id: 'relationship-0',
+        localId: 'edge',
+        quality: 'checked',
+        reason: 'Budget protects persistence',
+        to: 'decision-1',
+        type: 'requires',
+      },
+    ],
+    units: {},
+    version: 1,
+    warnings: ['Retained uncertainty'],
+  };
+  mkdirSync(path.join(fixture.root, '.hivex'));
+  using database = new Database(path.join(fixture.root, '.hivex', 'knowledge.sqlite'));
+  database.run('CREATE TABLE graph(id INTEGER PRIMARY KEY, data TEXT NOT NULL)');
+  database.run('CREATE TABLE work(id TEXT PRIMARY KEY, kind TEXT, key TEXT, data TEXT)');
+  database.run('CREATE TABLE model_cache(key TEXT PRIMARY KEY, value TEXT)');
+  database.run('INSERT INTO graph VALUES(1,?)', [JSON.stringify(graph)]);
+  for (const argumentsList of [
+    ['status'],
+    ['search', 'budget'],
+    ['search', 'ＢＵＤＧＥＴ'],
+    ['search', 'safety', '--source', 'old.md'],
+    ['neighbors', 'decision-0'],
+    ['neighbors', 'decision-0', '--limit', '1'],
+    ['search', 'missing'],
+    ['search', 'budget', '--source', 'other.md', '--source', 'old.md'],
+  ]) {
+    compare([...argumentsList, '--root', fixture.root]);
+  }
+  writeFileSync(path.join(fixture.root, 'other.md'), '# Changed\nDifferent current content.\n');
+  compare(['status', '--root', fixture.root]);
+  compare(['neighbors', 'decision-0', '--root', fixture.root]);
 });

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
@@ -14,12 +15,59 @@ import {
   warningId,
 } from './knowledge-model.ts';
 import { readKnowledgeSnapshot, writeKnowledgeSnapshot } from './knowledge-snapshot.ts';
-import { knowledgeCommand } from './knowledge.ts';
+import { knowledgeCommand as referenceKnowledgeCommand } from './knowledge.ts';
 import { KnowledgeStore } from './knowledge-store.ts';
-import { snapshotCommand } from './snapshot-command.ts';
-import { warningCommand } from './knowledge-warnings.ts';
+import { snapshotCommand as referenceSnapshotCommand } from './snapshot-command.ts';
+import { warningCommand as referenceWarningCommand } from './knowledge-warnings.ts';
 import type { Document } from './documents.ts';
 import type { Graph, WarningScope } from './knowledge-model.ts';
+
+const rustBinary = process.env.HIVEX_TEST_BINARY;
+const nodeWarningsKey = 'NODE_NO_WARNINGS';
+
+const invokeRust = function invokeRust(argumentsList: string[]): unknown {
+  if (rustBinary === undefined) {
+    throw new Error('HIVEX_TEST_BINARY is required');
+  }
+  const result = spawnSync(rustBinary, argumentsList, {
+    encoding: 'utf-8',
+    env: { ...process.env, [nodeWarningsKey]: '1' },
+    timeout: 10_000,
+  });
+  if (result.status !== 0 || result.stdout === '') {
+    throw new Error(result.stderr || 'Rust command failed');
+  }
+  const value: unknown = JSON.parse(result.stdout);
+  return value;
+};
+
+const runWarningCommand = function runWarningCommand(argumentsList: string[]): unknown {
+  return rustBinary === undefined
+    ? referenceWarningCommand(argumentsList)
+    : invokeRust(argumentsList);
+};
+
+const runSnapshotCommand = function runSnapshotCommand(argumentsList: string[]): unknown {
+  return rustBinary === undefined
+    ? referenceSnapshotCommand(argumentsList)
+    : invokeRust(argumentsList);
+};
+
+const runKnowledgeCommand = function runKnowledgeCommand(argumentsList: string[]): unknown {
+  return rustBinary === undefined
+    ? referenceKnowledgeCommand(argumentsList)
+    : invokeRust(argumentsList);
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const arrayField = function arrayField(value: unknown, name: string): unknown[] {
+  if (!isRecord(value) || !Array.isArray(value[name])) {
+    throw new Error(`Expected array field ${name}`);
+  }
+  return value[name];
+};
 
 interface Resolution {
   evidence: WarningScope[];
@@ -151,8 +199,16 @@ const temporaryProject = async function temporaryProject(
   }
 };
 
-const messagesOf = function messagesOf(warnings: (string | { message: string })[]) {
-  return warnings.map((warning) => (typeof warning === 'string' ? warning : warning.message));
+const messagesOf = function messagesOf(warnings: unknown[]) {
+  return warnings.map((warning) => {
+    if (typeof warning === 'string') {
+      return warning;
+    }
+    if (isRecord(warning) && typeof warning.message === 'string') {
+      return warning.message;
+    }
+    throw new Error('Expected a warning message');
+  });
 };
 
 const warningFor = function warningFor(graph: Graph, message: string) {
@@ -191,24 +247,30 @@ test('resolves current evidence while preserving knowledge and reactivating afte
     const reason = 'Current source evidence closes the first warning.';
     const beforeWork = workCounts(root, snapshot);
 
-    expect(warningCommand(['warnings', '--root', root])).toMatchObject({
+    expect(runWarningCommand(['warnings', '--root', root])).toMatchObject({
       warningSummary: { limitations: 2, resolved: 0 },
     });
     const manifest = writeManifest(root, [{ evidence, id: firstId, reason }]);
-    const resolved = warningCommand(['warnings', '--resolve', manifest, '--root', root]);
+    const resolved = runWarningCommand(['warnings', '--resolve', manifest, '--root', root]);
 
     expect(resolved).toMatchObject({
       resolved: 1,
       warningSummary: { limitations: 1, resolved: 1 },
     });
-    expect(resolved.warnings).toHaveLength(1);
-    expect(resolved.warnings.find((warning) => warning.id === secondId)).toMatchObject({
+    expect(arrayField(resolved, 'warnings')).toHaveLength(1);
+    expect(
+      arrayField(resolved, 'warnings').find(
+        (warning) => isRecord(warning) && warning.id === secondId
+      )
+    ).toMatchObject({
       id: secondId,
       message: secondMessage,
       state: 'active',
     });
-    const all = warningCommand(['warnings', '--all', '--root', root]);
-    expect(all.warnings.find((warning) => warning.id === firstId)).toMatchObject({
+    const all = runWarningCommand(['warnings', '--all', '--root', root]);
+    expect(
+      arrayField(all, 'warnings').find((warning) => isRecord(warning) && warning.id === firstId)
+    ).toMatchObject({
       id: firstId,
       kind: 'limitation',
       message: firstMessage,
@@ -235,29 +297,33 @@ test('resolves current evidence while preserving knowledge and reactivating afte
     expect(warningFor(reextracted, firstMessage).resolution).toEqual({ evidence, reason });
     expect(workCounts(root, snapshot)).toEqual(beforeWork);
 
-    const status = await knowledgeCommand(['status', '--root', root]);
+    const status = await runKnowledgeCommand(['status', '--root', root]);
     expect(status).toMatchObject({
       warningSummary: { limitations: 1, resolved: 1, sources: 0 },
     });
-    expect(messagesOf(status.warnings)).toContain(secondMessage);
-    expect(messagesOf(status.warnings)).not.toContain(firstMessage);
+    expect(messagesOf(arrayField(status, 'warnings'))).toContain(secondMessage);
+    expect(messagesOf(arrayField(status, 'warnings'))).not.toContain(firstMessage);
 
-    const search = await knowledgeCommand(['search', 'evidence', '--root', root]);
-    expect(messagesOf(search.warnings)).toContain(secondMessage);
-    expect(messagesOf(search.warnings)).not.toContain(firstMessage);
+    const search = await runKnowledgeCommand(['search', 'evidence', '--root', root]);
+    expect(messagesOf(arrayField(search, 'warnings'))).toContain(secondMessage);
+    expect(messagesOf(arrayField(search, 'warnings'))).not.toContain(firstMessage);
 
-    const exported = snapshotCommand(['snapshot', 'export', '--root', root]);
+    const exported = runSnapshotCommand(['snapshot', 'export', '--root', root]);
     expect(exported).toMatchObject({
       status: 'partial',
       warningSummary: { limitations: 1, resolved: 1 },
     });
-    expect(messagesOf(exported.warnings)).toContain(secondMessage);
-    expect(messagesOf(exported.warnings)).not.toContain(firstMessage);
+    expect(messagesOf(arrayField(exported, 'warnings'))).toContain(secondMessage);
+    expect(messagesOf(arrayField(exported, 'warnings'))).not.toContain(firstMessage);
 
     writeFileSync(nodePath.join(root, document.path), `${document.text}Changed source.\n`, 'utf-8');
-    const reactivated = warningCommand(['warnings', '--all', '--root', root]);
+    const reactivated = runWarningCommand(['warnings', '--all', '--root', root]);
     expect(reactivated).toMatchObject({ warningSummary: { limitations: 2, resolved: 0 } });
-    expect(reactivated.warnings.find((warning) => warning.id === firstId)).toMatchObject({
+    expect(
+      arrayField(reactivated, 'warnings').find(
+        (warning) => isRecord(warning) && warning.id === firstId
+      )
+    ).toMatchObject({
       id: firstId,
       resolution: { evidence, reason },
       state: 'active',
@@ -299,7 +365,9 @@ test('rejects invalid IDs, citations, and versions without partially applying a 
 
     for (const resolutions of invalidManifests) {
       const manifest = writeManifest(root, resolutions);
-      expect(() => warningCommand(['warnings', '--resolve', manifest, '--root', root])).toThrow();
+      expect(() =>
+        runWarningCommand(['warnings', '--resolve', manifest, '--root', root])
+      ).toThrow();
       using store = new KnowledgeStore(root, { readonly: true });
       expect(store.graph()).toEqual(graph);
       expect(workCounts(root, snapshot)).toEqual(beforeWork);
@@ -314,9 +382,9 @@ test('roundtrips resolutions through snapshots and accepts a legacy warning with
     const evidence = [citationFor(document)];
     const reason = 'Snapshot evidence closes the first warning.';
     const manifest = writeManifest(root, [{ evidence, id: warningId(first), reason }]);
-    warningCommand(['warnings', '--resolve', manifest, '--root', root]);
+    runWarningCommand(['warnings', '--resolve', manifest, '--root', root]);
 
-    const exported = snapshotCommand(['snapshot', 'export', '--root', root]);
+    const exported = runSnapshotCommand(['snapshot', 'export', '--root', root]);
     expect(exported).toMatchObject({ warningSummary: { limitations: 1, resolved: 1 } });
     const snapshot = readKnowledgeSnapshot(root);
     if (snapshot === null) {
@@ -330,7 +398,7 @@ test('roundtrips resolutions through snapshots and accepts a legacy warning with
     try {
       writeFileSync(nodePath.join(clone, document.id), document.text);
       writeKnowledgeSnapshot(clone, snapshot);
-      expect(warningCommand(['warnings', '--root', clone])).toMatchObject({
+      expect(runWarningCommand(['warnings', '--root', clone])).toMatchObject({
         warningSummary: { limitations: 1, resolved: 1 },
       });
       expect(existsSync(nodePath.join(clone, '.hivex', 'knowledge.sqlite'))).toBe(false);
@@ -346,12 +414,12 @@ test('roundtrips resolutions through snapshots and accepts a legacy warning with
       'utf-8'
     );
 
-    const imported = snapshotCommand(['snapshot', 'import', '--root', root]);
+    const imported = runSnapshotCommand(['snapshot', 'import', '--root', root]);
     expect(imported).toMatchObject({
       operation: 'import',
       warningSummary: { limitations: 2, resolved: 0 },
     });
-    expect(messagesOf(imported.warnings)).toContain(firstMessage);
+    expect(messagesOf(arrayField(imported, 'warnings'))).toContain(firstMessage);
     expect(readKnowledgeSnapshot(root)).toEqual(legacy);
     using store = new KnowledgeStore(root, { readonly: true });
     expect(warningFor(store.graph(), firstMessage)).not.toHaveProperty('resolution');

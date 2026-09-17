@@ -26,7 +26,7 @@ const PROTECTED_DIRECTORIES: [&str; 3] = [".git", ".hivex", "node_modules"];
 const EXCLUDED_DIRECTORIES: [&str; 3] = ["vendor", "dist", "build"];
 const SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Warning {
     pub path: String,
     pub message: String,

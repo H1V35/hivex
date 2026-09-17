@@ -1,10 +1,24 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
 import { stringifyKnowledge } from './knowledge-serialization.ts';
-import { knowledgeCommand } from './knowledge.ts';
+import { knowledgeCommand as referenceKnowledgeCommand } from './knowledge.ts';
+
+const knowledgeCommand = async function knowledgeCommand(input: string[]) {
+  const binary = process.env.HIVEX_TEST_BINARY;
+  if (binary === undefined) {
+    return await referenceKnowledgeCommand(input);
+  }
+  const result = spawnSync(binary, input, { encoding: 'utf-8', timeout: 12_000 });
+  if (!result.stdout) {
+    throw new Error(result.stderr || 'Expected CLI JSON output');
+  }
+  const value: unknown = JSON.parse(result.stdout);
+  return value;
+};
 
 const fixture = readFileSync(
   new URL('../test/fixtures/knowledge-cache-v1.sql', import.meta.url),

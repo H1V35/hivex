@@ -83,6 +83,23 @@ pub fn line_content(line: &str) -> &str {
     line_without_ending(line)
 }
 
+pub fn source_range(text: &str, from: usize, to: usize) -> String {
+    if from == 0 || to < from {
+        return String::new();
+    }
+    let lines = raw_markdown_lines(text);
+    let selected: Vec<_> = lines.iter().skip(from - 1).take(to - from + 1).collect();
+    let Some(last) = selected.last() else {
+        return String::new();
+    };
+    let mut result = selected[..selected.len() - 1]
+        .iter()
+        .map(|line| line.as_str())
+        .collect::<String>();
+    result.push_str(line_content(last));
+    result
+}
+
 struct Frontmatter<'a> {
     body: &'a str,
     yaml: &'a str,

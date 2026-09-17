@@ -54,4 +54,4 @@ jobs:
       - name: Rust CLI compatibility
         run: |
           cargo build --locked
-          HIVEX_TEST_BINARY="$PWD/target/debug/hivex-rust" bun test --timeout 15000 src/documents-cli.test.ts src/project-initialization.test.ts src/knowledge-maintenance.test.ts src/rust-compatibility.test.ts
+          HIVEX_TEST_BINARY="$PWD/target/debug/hivex-rust" bun test --timeout 15000 src/documents-cli.test.ts src/project-initialization.test.ts src/knowledge-maintenance.test.ts src/knowledge-cli.test.ts src/knowledge-cache-compatibility.test.ts src/knowledge-warning-resolution.test.ts src/rust-compatibility.test.ts

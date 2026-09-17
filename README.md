@@ -190,17 +190,17 @@ Prefer DDD and meaningful responsibilities, risk/value-based tests with TDD opti
 
 ## Development
 
-The Rust migration is being delivered in stages under [#80](https://github.com/H1V35/hivex/issues/80). The development binary `hivex-rust` currently implements `sources`, `read`, `init`, `recover` and `prune`. Other commands fail explicitly with `MIGRATION_INCOMPLETE`; use the published TypeScript CLI for knowledge operations. npm distribution and the published version are unchanged.
+The Rust migration is being delivered in stages under [#80](https://github.com/H1V35/hivex/issues/80). The development binary `hivex-rust` implements the CLI, including knowledge updates, queries, implementation reviews, snapshots and warning resolution. It reads the existing SQLite and shared snapshot v1 formats and retains work budgets, attempts and model caches. npm distribution and the published TypeScript version are unchanged until the distribution stage is verified.
 
 ```sh
 cargo build --locked
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
-HIVEX_TEST_BINARY="$PWD/target/debug/hivex-rust" bun test --timeout 15000 src/documents-cli.test.ts src/project-initialization.test.ts src/knowledge-maintenance.test.ts src/rust-compatibility.test.ts
+HIVEX_TEST_BINARY="$PWD/target/debug/hivex-rust" bun test --timeout 15000 src/documents-cli.test.ts src/project-initialization.test.ts src/knowledge-maintenance.test.ts src/knowledge-cli.test.ts src/knowledge-cache-compatibility.test.ts src/knowledge-warning-resolution.test.ts src/rust-compatibility.test.ts
 ```
 
-The compatibility suite exercises the existing source, initialization and maintenance contracts through both CLIs. SQLite recovery fixtures are still created by the reference implementation so Rust must preserve existing work accounting and reports.
+The compatibility suite exercises the existing contracts through both CLIs. SQLite fixtures remain authored by the reference implementation, including retained answers and extraction/check caches with exhausted budgets. Model execution tests use the synthetic app-server in `test/codex-server.mjs`; they do not consume real model calls.
 
 This development slice is verified on macOS ARM64, using the same system ICU as Bun for source ordering. Other targets require compatibility validation before publishing Rust packages.
 

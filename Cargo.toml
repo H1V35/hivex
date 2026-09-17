@@ -6,6 +6,9 @@ rust-version = "1.89"
 license = "MIT"
 publish = false
 
+[lib]
+path = "rust/lib.rs"
+
 [[bin]]
 name = "hivex-rust"
 path = "rust/main.rs"
@@ -18,6 +21,8 @@ libc = "0.2"
 pulldown-cmark = "0.13"
 rusqlite = { version = "0.37", features = ["bundled"] }
 regex = "1"
+serde = { version = "1", features = ["derive"] }
+unicode-normalization = "0.1"
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }

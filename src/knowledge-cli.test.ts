@@ -372,16 +372,21 @@ const project = (run: (root: string) => void) => {
 };
 
 const runCli = function runCli(root: string, cliArguments: string[]) {
-  return spawnSync(process.execPath, [cli, ...cliArguments, '--root', root], {
-    encoding: 'utf-8',
-    timeout: 12_000,
-  });
+  const binary = process.env.HIVEX_TEST_BINARY;
+  return spawnSync(
+    binary ?? process.execPath,
+    [...(binary === undefined ? [cli] : []), ...cliArguments, '--root', root],
+    {
+      encoding: 'utf-8',
+      timeout: 12_000,
+    }
+  );
 };
 
 const invoke = (root: string, cliArguments: string[]) => {
   const result = runCli(root, cliArguments);
   if (!result.stdout) {
-    throw new Error('Expected CLI JSON output');
+    throw new Error(`Expected CLI JSON output: ${result.stderr}`);
   }
   return { ...result, value: parseRecord(result.stdout) };
 };
@@ -4883,5 +4888,13 @@ test('replays a retained relationship repair from a portable failed work fixture
     expect(arrayField(at(packets, 0), 'previousDecisions')).toContainEqual(
       expect.objectContaining({ id: betaId, text: 'Beta provides shared policy.' })
     );
+  });
+});
+
+test('retains a terminal delivered before the turn start acknowledgement', () => {
+  project((root) => {
+    const binary = model(root, 'terminal-before-response');
+    const result = invoke(root, ['update', '--codex', binary]);
+    expect(result.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
   });
 });
