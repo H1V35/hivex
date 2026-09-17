@@ -23,3 +23,13 @@ npm publish /absolute/path/to/h1v35-hivex-VERSION.tgz --access public --registry
 ```
 
 Record the published version, exact artifact hash and registry result. Do not rebuild or repack between approval and publication. Keep the artifact until publication and any required verification complete. Git integration and completed branch cleanup follow the [tracker procedure](issue-tracker.md).
+
+## GitHub release and linked package
+
+After the owner approves integration and the exact archive is published on npm, create a new `vVERSION` tag on the reviewed release revision and publish its GitHub release. Never move an existing release tag. Link the notes to the exact npm version and record the archive hash.
+
+The `Publish GitHub Package` workflow mirrors that stable npm version into GitHub Packages so it appears in the repository's Packages section. It runs only for owner-triggered published releases or an explicit dispatch for an existing release. The workflow uses a repository-scoped `GITHUB_TOKEN`, checks package identity and SHA-512, and publishes the same archive without extracting executable code, rebuilding it or running installation scripts. An existing mirror must have identical integrity; a mismatched or unauthorized registry response fails instead of being silently replaced.
+
+Node/npm is used only as the registry client in this publication job. Rust still owns development, package preparation and verification. The pinned npm client honors the explicit GitHub registry flag over the archive's default npmjs publish configuration; the primary archive is not rewritten. npmjs.org remains the normal installation source for consuming projects.
+
+On the first GitHub Packages publication, verify its repository association and visibility. GitHub packages start private even when linked to a public repository; set this package public in its settings before claiming that visitors can see it. GitHub's npm registry still requires authentication to download public packages. npmjs.org installation remains available without that requirement.
