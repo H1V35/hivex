@@ -192,12 +192,13 @@ Prefer DDD and meaningful responsibilities, risk/value-based tests with TDD opti
 
 The Rust CLI reads the existing SQLite and shared snapshot v1 formats and retains work budgets, attempts and model caches. The TypeScript runtime was retired after compatibility validation under [#80](https://github.com/H1V35/hivex/issues/80). Its fixed SQL fixtures and synthetic protocol server remain as independent compatibility evidence.
 
-Use the stable Rust toolchain and Git 2.45 or newer for development. Cargo runs all unit and CLI integration tests, including the synthetic Codex server. No TypeScript, JavaScript, Bun or Node.js tooling is required.
+Use the stable Rust toolchain and Git 2.45 or newer for development. The [Rust quality standard](guidelines/rust-quality.md) describes formatting, Clippy, metrics and domain boundaries. Cargo runs all unit and CLI integration tests, including the synthetic Codex server. No TypeScript, JavaScript, Bun or Node.js tooling is required.
 
 ```sh
 cargo fmt --check
 cargo check --locked --all-targets
 cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked --test quality --test architecture
 cargo test --locked
 cargo run --locked --bin hivex-dev -- pack
 cargo run --locked --bin hivex-dev -- verify
