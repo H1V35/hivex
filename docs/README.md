@@ -2,6 +2,7 @@
 
 - [Domain language](CONTEXT.md): documents, decisions, relationships, evidence and bounded work.
 - [Engineering guidelines](guidelines/engineering.md): development, verification and knowledge maintenance.
+- [Rust quality standard](guidelines/rust-quality.md): maintained lint baseline, readability, metrics and domain boundaries.
 - [Triage labels](guidelines/triage-labels.md) and [tracker procedure](procedures/issue-tracker.md): work selection, Git and review.
 - [CI procedure](procedures/self-hosted-runner.md): hosted execution, native verification and runner retirement.
 - [Release procedure](procedures/releasing.md): prepare, inspect and publish the exact native npm archive.

@@ -12,6 +12,7 @@
     "docs/guide.md",
     "docs/CONTEXT.md",
     "docs/guidelines/engineering.md",
+    "docs/guidelines/rust-quality.md",
     "docs/procedures/self-hosted-runner.md",
     "docs/adr/0003-independent-bun-installation.md",
     "docs/adr/0010-practical-knowledge-assistance.md",
