@@ -164,7 +164,7 @@ fn retention(value: Option<&String>, name: &str, fallback: usize) -> Result<usiz
 }
 
 fn parse_number(value: &str) -> Option<f64> {
-    let value = value.trim();
+    let value = arguments::trim_js_whitespace(value);
     if value.is_empty() {
         return Some(0.0);
     }

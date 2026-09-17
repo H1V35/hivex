@@ -206,7 +206,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 fn absolute_root(root: &str) -> Result<PathBuf> {
-    if root.trim().is_empty() {
+    if arguments::trim_js_whitespace(root).is_empty() {
         return Err(error(
             "INVALID_ROOT",
             "Project root must be a non-empty path",
@@ -290,7 +290,7 @@ fn validate_pattern(pattern: &Value, field: &str, index: usize) -> Result<String
             format!("{field}[{index}] must be a non-empty relative glob"),
         ));
     };
-    if value.trim().is_empty() {
+    if arguments::trim_js_whitespace(value).is_empty() {
         return Err(error(
             "INVALID_CONFIG",
             format!("{field}[{index}] must be a non-empty relative glob"),

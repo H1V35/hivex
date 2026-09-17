@@ -14,8 +14,10 @@ const invoke = function invoke(argumentsList: string[], isRust = false) {
     throw new Error('HIVEX_TEST_BINARY is required');
   }
   const prefix = isRust ? [] : [path.join(import.meta.dirname, 'cli.ts')];
+  const nodeWarningsKey = 'NODE_NO_WARNINGS';
   const result = spawnSync(executable, [...prefix, ...argumentsList], {
     encoding: 'utf-8',
+    env: { ...process.env, [nodeWarningsKey]: '1' },
     timeout: 10_000,
   });
   return {
@@ -136,6 +138,33 @@ compatibility('Rust preserves YAML key types when checking metadata duplicates',
   using fixture = project({
     'numeric-duplicate.md': '---\n1: a\n1.0: b\ntitle: Main\n---\n# Fallback\n',
     'typed-string-key.md': '---\n1: a\n!!str 1: b\ntitle: Main\n---\n# Fallback\n',
+  });
+  compare(['sources', '--root', fixture.root]);
+});
+
+compatibility('Rust preserves metadata around tagged scalars and object keys', () => {
+  using fixture = project({
+    'binary.md': '---\ntitle: !!binary SGVsbG8=\nstatus: accepted\n---\n# Fallback\n',
+    'blank-title.md': '---\ntitle: "  "\nstatus: ""\n---\n# Fallback\n',
+    'bom-title.md': '---\ntitle: "\u{FEFF}"\n---\n# Fallback\n',
+    'empty-title.md': '---\ntitle: ""\n---\n# Fallback\n',
+    'infinity.md': '---\ntitle: Main\nstatus: .inf\n---\n# Fallback\n',
+    'invalid-timestamp.md': '---\ntitle: Main\nstatus: !!timestamp invalid\n---\n# Fallback\n',
+    'large-hex.md': '---\ntitle: 0x10000000000000000\nstatus: accepted\n---\n# Fallback\n',
+    'large-integer-keys.md':
+      '---\n0x2000000000000101: one\n2305843009213694464: two\ntitle: Main\n---\n# Fallback\n',
+    'object-keys.md': '---\n? {a: 1}\n? {a: 1}\ntitle: Main\n---\n# Fallback\n',
+    'overflow.md': '---\ntitle: Main\nstatus: 1e999\n---\n# Fallback\n',
+    'timestamp.md': '---\ntitle: Main\nstatus: !!timestamp 2024-01-01\n---\n# Fallback\n',
+  });
+  compare(['sources', '--root', fixture.root]);
+});
+
+compatibility('Rust follows the YAML core scalar patterns for ambiguous metadata', () => {
+  using fixture = project({
+    'ambiguous-scalars.md':
+      '---\ntitle: 1_000\nstatus: tRuE\nbinary: 0b101\nhex: +0x10\nnan: +.nan\ninfinity: .iNF\nnullish: nUlL\n---\n# Fallback\n',
+    'invalid-core-tags.md': '---\ntitle: !!float 2\nstatus: !!bool tRuE\n---\n# Fallback\n',
   });
   compare(['sources', '--root', fixture.root]);
 });

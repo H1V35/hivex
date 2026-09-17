@@ -1,6 +1,12 @@
 use crate::error::{HivexError, Result};
 use std::collections::{HashMap, HashSet};
 
+pub fn trim_js_whitespace(value: &str) -> &str {
+    value.trim_matches(|character: char| {
+        character == '\u{feff}' || (character.is_whitespace() && character != '\u{85}')
+    })
+}
+
 #[derive(Default)]
 pub struct Parsed {
     pub positionals: Vec<String>,

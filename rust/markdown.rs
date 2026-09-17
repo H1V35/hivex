@@ -1,9 +1,12 @@
-use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
-use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+use granit_parser::{
+    Event as YamlEvent, Options as YamlOptions, Parser as YamlParser, ScalarStyle, Tag,
+};
+use pulldown_cmark::{Event, Options, Parser, Tag as MarkdownTag, TagEnd};
+use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::fmt;
 use std::path::Path;
+use std::sync::OnceLock;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MarkdownDescription {
@@ -109,495 +112,399 @@ fn frontmatter(text: &str) -> Option<Frontmatter<'_>> {
     None
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-enum YamlKey {
+#[derive(Clone, Debug, PartialEq)]
+enum ScalarValue {
     Boolean(bool),
     Null,
-    Number(u64),
-    Other,
+    Number(Option<u64>),
+    Object,
     String(String),
 }
 
-fn number_key(value: f64) -> u64 {
-    if value == 0.0 {
-        0.0f64.to_bits()
-    } else if value.is_nan() {
-        f64::NAN.to_bits()
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum KeyIdentity {
+    Boolean(bool),
+    Null,
+    Number(u64),
+    String(String),
+}
+
+fn number_key(value: f64) -> Option<u64> {
+    if value.is_nan() {
+        None
+    } else if value == 0.0 {
+        Some(0.0f64.to_bits())
     } else {
-        value.to_bits()
+        Some(value.to_bits())
     }
 }
 
-struct YamlKeyVisitor;
-
-impl<'de> Visitor<'de> for YamlKeyVisitor {
-    type Value = YamlKey;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a YAML mapping key")
+fn parse_yaml_number(value: &str) -> Option<f64> {
+    static INT: OnceLock<Regex> = OnceLock::new();
+    static HEX: OnceLock<Regex> = OnceLock::new();
+    static OCT: OnceLock<Regex> = OnceLock::new();
+    static NAN_OR_INF: OnceLock<Regex> = OnceLock::new();
+    static EXP: OnceLock<Regex> = OnceLock::new();
+    static FLOAT: OnceLock<Regex> = OnceLock::new();
+    let is_int = INT
+        .get_or_init(|| Regex::new(r"^[-+]?[0-9]+$").expect("valid YAML integer regex"))
+        .is_match(value);
+    let is_hex = HEX
+        .get_or_init(|| Regex::new(r"^0x[0-9a-fA-F]+$").expect("valid YAML hex regex"))
+        .is_match(value);
+    let is_oct = OCT
+        .get_or_init(|| Regex::new(r"^0o[0-7]+$").expect("valid YAML octal regex"))
+        .is_match(value);
+    let is_nan_or_inf = NAN_OR_INF
+        .get_or_init(|| {
+            Regex::new(r"^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$")
+                .expect("valid YAML non-finite regex")
+        })
+        .is_match(value);
+    let is_exp = EXP
+        .get_or_init(|| {
+            Regex::new(r"^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$")
+                .expect("valid YAML exponent regex")
+        })
+        .is_match(value);
+    let is_float = FLOAT
+        .get_or_init(|| {
+            Regex::new(r"^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$").expect("valid YAML float regex")
+        })
+        .is_match(value);
+    if is_nan_or_inf {
+        return match value {
+            ".nan" | ".NaN" | ".NAN" => Some(f64::NAN),
+            ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" => Some(f64::INFINITY),
+            "-.inf" | "-.Inf" | "-.INF" => Some(f64::NEG_INFINITY),
+            _ => None,
+        };
     }
-
-    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::Boolean(value))
+    if is_hex {
+        return Some(radix_number(&value[2..], 4));
     }
-
-    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::Number(number_key(value as f64)))
+    if is_oct {
+        return Some(radix_number(&value[2..], 3));
     }
-
-    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::Number(number_key(value as f64)))
+    if is_int || is_exp || is_float {
+        return value.parse::<f64>().ok();
     }
+    None
+}
 
-    fn visit_i128<E>(self, value: i128) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::Number(number_key(value as f64)))
-    }
-
-    fn visit_u128<E>(self, value: u128) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::Number(number_key(value as f64)))
-    }
-
-    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::Number(number_key(value)))
-    }
-
-    fn visit_unit<E>(self) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::Null)
-    }
-
-    fn visit_none<E>(self) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::Null)
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::String(value.to_owned()))
-    }
-
-    fn visit_borrowed_str<E>(self, value: &'de str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::String(value.to_owned()))
-    }
-
-    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(YamlKey::String(value))
-    }
-
-    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
-    where
-        A: SeqAccess<'de>,
-    {
-        while sequence.next_element::<SkipValue>()?.is_some() {}
-        Ok(YamlKey::Other)
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: MapAccess<'de>,
-    {
-        let mut seen = HashSet::new();
-        while let Some(key) = map.next_key::<YamlKey>()? {
-            if !matches!(key, YamlKey::Other) && !seen.insert(key) {
-                return Err(de::Error::custom("duplicate mapping key"));
+// YAML integers become JavaScript Numbers. Keep the leading significand and
+// guard/sticky bits so large radix literals round once, including ties to even.
+fn radix_number(digits: &str, digit_bits: u32) -> f64 {
+    let mut head = 0_u64;
+    let mut count = 0_i32;
+    let mut sticky = false;
+    for digit in digits.chars() {
+        let digit = digit
+            .to_digit(1 << digit_bits)
+            .expect("validated radix digit");
+        for position in (0..digit_bits).rev() {
+            let bit = u64::from((digit >> position) & 1);
+            if count == 0 && bit == 0 {
+                continue;
             }
-            map.next_value::<SkipValue>()?;
-        }
-        Ok(YamlKey::Other)
-    }
-}
-
-impl<'de> Deserialize<'de> for YamlKey {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_any(YamlKeyVisitor)
-    }
-}
-
-struct SkipValue;
-
-struct SkipValueVisitor;
-
-impl<'de> Visitor<'de> for SkipValueVisitor {
-    type Value = SkipValue;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("any YAML value")
-    }
-
-    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_i128<E>(self, _: i128) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_u128<E>(self, _: u128) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_f32<E>(self, _: f32) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_unit<E>(self) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_none<E>(self) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_str<E>(self, _: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_borrowed_str<E>(self, _: &'de str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_string<E>(self, _: String) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_bytes<E>(self, _: &[u8]) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_byte_buf<E>(self, _: Vec<u8>) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(SkipValue)
-    }
-
-    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
-    where
-        A: SeqAccess<'de>,
-    {
-        while sequence.next_element::<SkipValue>()?.is_some() {}
-        Ok(SkipValue)
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: MapAccess<'de>,
-    {
-        let mut seen = HashSet::new();
-        while let Some(key) = map.next_key::<YamlKey>()? {
-            if !matches!(key, YamlKey::Other) && !seen.insert(key) {
-                return Err(de::Error::custom("duplicate mapping key"));
+            count += 1;
+            if count <= 54 {
+                head = (head << 1) | bit;
+            } else {
+                sticky |= bit != 0;
             }
-            map.next_value::<SkipValue>()?;
         }
-        Ok(SkipValue)
     }
-
-    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        SkipValue::deserialize(deserializer)
+    if count <= 53 {
+        return head as f64;
     }
+    let mut significand = head >> 1;
+    if head & 1 != 0 && (sticky || significand & 1 != 0) {
+        significand += 1;
+    }
+    significand as f64 * 2.0_f64.powi(count - 53)
+}
 
-    fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        SkipValue::deserialize(deserializer)
+fn is_yaml_int(value: &str) -> bool {
+    static INT: OnceLock<Regex> = OnceLock::new();
+    static HEX: OnceLock<Regex> = OnceLock::new();
+    static OCT: OnceLock<Regex> = OnceLock::new();
+    INT.get_or_init(|| Regex::new(r"^[-+]?[0-9]+$").expect("valid YAML integer regex"))
+        .is_match(value)
+        || HEX
+            .get_or_init(|| Regex::new(r"^0x[0-9a-fA-F]+$").expect("valid YAML hex regex"))
+            .is_match(value)
+        || OCT
+            .get_or_init(|| Regex::new(r"^0o[0-7]+$").expect("valid YAML octal regex"))
+            .is_match(value)
+}
+
+fn is_yaml_float(value: &str) -> bool {
+    static NAN_OR_INF: OnceLock<Regex> = OnceLock::new();
+    static EXP: OnceLock<Regex> = OnceLock::new();
+    static FLOAT: OnceLock<Regex> = OnceLock::new();
+    NAN_OR_INF
+        .get_or_init(|| {
+            Regex::new(r"^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$")
+                .expect("valid YAML non-finite regex")
+        })
+        .is_match(value)
+        || EXP
+            .get_or_init(|| {
+                Regex::new(r"^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$")
+                    .expect("valid YAML exponent regex")
+            })
+            .is_match(value)
+        || FLOAT
+            .get_or_init(|| {
+                Regex::new(r"^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$").expect("valid YAML float regex")
+            })
+            .is_match(value)
+}
+
+fn explicit_tag_name(tag: Option<&Tag>) -> Option<String> {
+    let tag = tag?;
+    tag.core_suffix().map(str::to_owned).or_else(|| {
+        tag.suffix_in_namespace("tag:yaml.org,2002:")
+            .map(|suffix| suffix.into_owned())
+    })
+}
+
+fn scalar_value(value: &str, style: ScalarStyle, tag: Option<&Tag>) -> Option<ScalarValue> {
+    let tag_name = explicit_tag_name(tag);
+    if tag.is_some() && tag_name.is_none() {
+        return Some(ScalarValue::String(value.to_owned()));
+    }
+    match tag_name.as_deref() {
+        Some("binary") => Some(ScalarValue::Object),
+        Some("timestamp") => {
+            static TIMESTAMP: OnceLock<Regex> = OnceLock::new();
+            TIMESTAMP
+                .get_or_init(|| Regex::new(r"^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:(?:t|T|[ \t]+)[0-9]{1,2}:[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]+)?(?:[ \t]*(?:Z|[-+][012]?[0-9](?::[0-9]{2})?))?)?$").expect("valid YAML timestamp regex"))
+                .is_match(value)
+                .then_some(ScalarValue::Object)
+        }
+        Some("null") if matches!(value, "" | "~" | "null" | "Null" | "NULL") => {
+            Some(ScalarValue::Null)
+        }
+        Some("null") => Some(ScalarValue::String(value.to_owned())),
+        Some("bool") => match value {
+            "true" => Some(ScalarValue::Boolean(true)),
+            "True" | "TRUE" => Some(ScalarValue::Boolean(true)),
+            "false" => Some(ScalarValue::Boolean(false)),
+            "False" | "FALSE" => Some(ScalarValue::Boolean(false)),
+            _ => Some(ScalarValue::String(value.to_owned())),
+        },
+        Some("int") => is_yaml_int(value)
+            .then(|| parse_yaml_number(value).map(number_value))
+            .flatten()
+            .or_else(|| Some(ScalarValue::String(value.to_owned()))),
+        Some("float") => is_yaml_float(value)
+            .then(|| parse_yaml_number(value).map(number_value))
+            .flatten()
+            .or_else(|| Some(ScalarValue::String(value.to_owned()))),
+        Some("str") | Some(_) => Some(ScalarValue::String(value.to_owned())),
+        None if style != ScalarStyle::Plain => Some(ScalarValue::String(value.to_owned())),
+        None => {
+            if matches!(value, "" | "~" | "null" | "Null" | "NULL") {
+                Some(ScalarValue::Null)
+            } else if matches!(value, "true" | "True" | "TRUE") {
+                Some(ScalarValue::Boolean(true))
+            } else if matches!(value, "false" | "False" | "FALSE") {
+                Some(ScalarValue::Boolean(false))
+            } else if let Some(number) = parse_yaml_number(value) {
+                Some(number_value(number))
+            } else {
+                Some(ScalarValue::String(value.to_owned()))
+            }
+        }
     }
 }
 
-impl<'de> Deserialize<'de> for SkipValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_any(SkipValueVisitor)
+fn number_value(value: f64) -> ScalarValue {
+    ScalarValue::Number(number_key(value))
+}
+
+fn key_identity(value: &ScalarValue) -> Option<KeyIdentity> {
+    match value {
+        ScalarValue::Boolean(value) => Some(KeyIdentity::Boolean(*value)),
+        ScalarValue::Null => Some(KeyIdentity::Null),
+        ScalarValue::Number(Some(value)) => Some(KeyIdentity::Number(*value)),
+        ScalarValue::Number(None) | ScalarValue::Object => None,
+        ScalarValue::String(value) => Some(KeyIdentity::String(value.clone())),
     }
 }
 
-struct Metadata {
+enum NodeResult {
+    Object,
+    Scalar(ScalarValue),
+}
+
+#[derive(Default)]
+struct MappingFrame {
+    is_root: bool,
+    pending_field: Option<RootField>,
+    pending_key: bool,
+    seen: HashSet<KeyIdentity>,
+}
+
+enum Frame {
+    Mapping(MappingFrame),
+    Sequence,
+}
+
+#[derive(Default)]
+struct MetadataState {
+    frames: Vec<Frame>,
+    document_count: usize,
+    root_seen: bool,
     status: Option<String>,
     title: Option<String>,
 }
 
-struct MetadataVisitor;
+#[derive(Clone, Copy)]
+enum RootField {
+    Status,
+    Title,
+}
 
-struct OptionalString(Option<String>);
-
-struct OptionalStringVisitor;
-
-impl<'de> Visitor<'de> for OptionalStringVisitor {
-    type Value = OptionalString;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a YAML scalar")
+fn field_for_key(value: &NodeResult, is_root: bool) -> Option<RootField> {
+    if !is_root {
+        return None;
     }
-
-    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(Some(value.to_owned())))
-    }
-
-    fn visit_borrowed_str<E>(self, value: &'de str) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(Some(value.to_owned())))
-    }
-
-    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(Some(value)))
-    }
-
-    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(None))
-    }
-
-    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(None))
-    }
-
-    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(None))
-    }
-
-    fn visit_i128<E>(self, _: i128) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(None))
-    }
-
-    fn visit_u128<E>(self, _: u128) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(None))
-    }
-
-    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(None))
-    }
-
-    fn visit_unit<E>(self) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(None))
-    }
-
-    fn visit_none<E>(self) -> Result<Self::Value, E>
-    where
-        E: de::Error,
-    {
-        Ok(OptionalString(None))
-    }
-
-    fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
-    where
-        A: SeqAccess<'de>,
-    {
-        while sequence.next_element::<SkipValue>()?.is_some() {}
-        Ok(OptionalString(None))
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: MapAccess<'de>,
-    {
-        while map.next_key::<YamlKey>()?.is_some() {
-            map.next_value::<SkipValue>()?;
+    match value {
+        NodeResult::Scalar(ScalarValue::String(value)) if value == "status" => {
+            Some(RootField::Status)
         }
-        Ok(OptionalString(None))
+        NodeResult::Scalar(ScalarValue::String(value)) if value == "title" => {
+            Some(RootField::Title)
+        }
+        _ => None,
     }
 }
 
-impl<'de> Deserialize<'de> for OptionalString {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_any(OptionalStringVisitor)
-    }
-}
-
-impl<'de> Visitor<'de> for MetadataVisitor {
-    type Value = Metadata;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a YAML mapping")
-    }
-
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-    where
-        A: MapAccess<'de>,
-    {
-        let mut seen = HashSet::new();
-        let mut status = None;
-        let mut title = None;
-        while let Some(key) = map.next_key::<YamlKey>()? {
-            if !matches!(key, YamlKey::Other) && !seen.insert(key.clone()) {
-                return Err(de::Error::custom("duplicate mapping key"));
+fn record_value(state: &mut MetadataState, value: NodeResult) -> std::result::Result<(), ()> {
+    let Some(frame) = state.frames.last_mut() else {
+        if state.root_seen {
+            return Err(());
+        }
+        state.root_seen = true;
+        return Ok(());
+    };
+    match frame {
+        Frame::Sequence => Ok(()),
+        Frame::Mapping(mapping) if !mapping.pending_key => {
+            let identity = match &value {
+                NodeResult::Scalar(value) => key_identity(value),
+                NodeResult::Object => None,
+            };
+            if let Some(identity) = identity
+                && !mapping.seen.insert(identity)
+            {
+                return Err(());
             }
-            match key {
-                YamlKey::String(key) if key == "status" => {
-                    status = map.next_value::<OptionalString>()?.0;
-                }
-                YamlKey::String(key) if key == "title" => {
-                    title = map.next_value::<OptionalString>()?.0;
-                }
-                _ => {
-                    map.next_value::<SkipValue>()?;
+            mapping.pending_field = field_for_key(&value, mapping.is_root);
+            mapping.pending_key = true;
+            Ok(())
+        }
+        Frame::Mapping(mapping) => {
+            if let Some(field) = mapping.pending_field.take()
+                && let NodeResult::Scalar(ScalarValue::String(value)) = value
+            {
+                match field {
+                    RootField::Status => state.status = Some(value),
+                    RootField::Title => state.title = Some(value),
                 }
             }
+            mapping.pending_key = false;
+            Ok(())
         }
-        Ok(Metadata { status, title })
     }
 }
 
-impl<'de> Deserialize<'de> for Metadata {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_map(MetadataVisitor)
+fn parse_yaml_metadata(yaml: &str) -> Option<(Option<String>, Option<String>)> {
+    let limit = yaml.len().saturating_add(1).max(256);
+    let mut options = YamlOptions::default();
+    options.emit_comments = false;
+    options.flow_nesting_limit = limit;
+    options.block_nesting_limit = limit;
+    let mut parser = YamlParser::new_from_str_with_options(yaml, options);
+    let mut state = MetadataState::default();
+    for event in &mut parser {
+        let Ok((event, _span)) = event else {
+            return None;
+        };
+        let result = match event {
+            YamlEvent::StreamStart
+            | YamlEvent::StreamEnd
+            | YamlEvent::Comment(_, _)
+            | YamlEvent::DocumentEnd => {
+                if matches!(event, YamlEvent::DocumentEnd)
+                    && (!state.frames.is_empty()
+                        || state.frames.iter().any(|frame| {
+                            matches!(
+                                frame,
+                                Frame::Mapping(MappingFrame {
+                                    pending_key: true,
+                                    ..
+                                })
+                            )
+                        }))
+                {
+                    return None;
+                }
+                continue;
+            }
+            YamlEvent::DocumentStart(_, _) => {
+                state.document_count += 1;
+                if state.document_count > 1 {
+                    return None;
+                }
+                continue;
+            }
+            YamlEvent::Alias(_) => return None,
+            YamlEvent::Scalar(value, style, _, tag) => {
+                NodeResult::Scalar(scalar_value(&value, style, tag.as_deref())?)
+            }
+            YamlEvent::SequenceStart(_, _, _) => {
+                state.frames.push(Frame::Sequence);
+                continue;
+            }
+            YamlEvent::MappingStart(_, _, _) => {
+                state.frames.push(Frame::Mapping(MappingFrame {
+                    is_root: state.frames.is_empty(),
+                    ..MappingFrame::default()
+                }));
+                continue;
+            }
+            YamlEvent::SequenceEnd => {
+                if !matches!(state.frames.pop(), Some(Frame::Sequence)) {
+                    return None;
+                }
+                NodeResult::Object
+            }
+            YamlEvent::MappingEnd => {
+                let Some(Frame::Mapping(mapping)) = state.frames.pop() else {
+                    return None;
+                };
+                if mapping.pending_key {
+                    return None;
+                }
+                NodeResult::Object
+            }
+            _ => return None,
+        };
+        record_value(&mut state, result).ok()?;
     }
-}
-
-fn metadata(yaml: &str) -> (Option<String>, Option<String>) {
-    let max_depth = yaml.len().saturating_add(1).max(256);
-    let options = serde_saphyr::options! {
-        budget: serde_saphyr::budget! {
-            max_depth: max_depth,
-            flow_nesting_limit: max_depth,
-        },
-        // Typed visitors retain JavaScript's numeric key equality without
-        // conflating numbers and explicitly tagged strings.
-        duplicate_keys: serde_saphyr::DuplicateKeyPolicy::Error,
-        merge_keys: serde_saphyr::MergeKeyPolicy::AsOrdinary,
-        alias_limits: serde_saphyr::alias_limits! {
-            max_total_replayed_events: 0,
-        },
-        strict_booleans: true,
-    };
-    let value =
-        serde_saphyr::with_deserializer_from_str_with_options(yaml, options, |deserializer| {
-            let mut deserializer = serde_stacker::Deserializer::new(deserializer);
-            // YAML's debug deserializer frames exceed the adapter's 64 KiB default.
-            deserializer.red_zone = 1024 * 1024;
-            deserializer.stack_size = 8 * 1024 * 1024;
-            Metadata::deserialize(deserializer)
-        });
-    let Ok(value) = value else {
-        return (None, None);
-    };
-    (
-        value.status,
-        value.title.filter(|value| !value.trim().is_empty()),
-    )
+    if !state.frames.is_empty() || state.document_count > 1 {
+        return None;
+    }
+    Some((
+        state.status,
+        state
+            .title
+            .filter(|title| !crate::arguments::trim_js_whitespace(title).is_empty()),
+    ))
 }
 
 fn heading_text(events: impl IntoIterator<Item = Event<'static>>) -> Option<String> {
@@ -606,7 +513,7 @@ fn heading_text(events: impl IntoIterator<Item = Event<'static>>) -> Option<Stri
     let mut text = String::new();
     for event in events {
         match event {
-            Event::Start(Tag::Heading { .. }) => {
+            Event::Start(MarkdownTag::Heading { .. }) => {
                 if depth == 0 && !active {
                     active = true;
                 }
@@ -643,7 +550,7 @@ fn parse_body(body: &str) -> (Option<String>, Vec<String>) {
     let links = events
         .into_iter()
         .filter_map(|event| match event {
-            Event::Start(Tag::Link { dest_url, .. }) if !dest_url.is_empty() => {
+            Event::Start(MarkdownTag::Link { dest_url, .. }) if !dest_url.is_empty() => {
                 Some(dest_url.into_string())
             }
             _ => None,
@@ -655,7 +562,7 @@ fn parse_body(body: &str) -> (Option<String>, Vec<String>) {
 pub fn describe_markdown(path: &str, content: &str) -> MarkdownDescription {
     let (yaml, body) =
         frontmatter(content).map_or((None, content), |front| (Some(front.yaml), front.body));
-    let (status, front_title) = yaml.map_or((None, None), metadata);
+    let (status, front_title) = yaml.and_then(parse_yaml_metadata).unwrap_or((None, None));
     let (heading, links) = parse_body(body.strip_prefix('\u{feff}').unwrap_or(body));
     let title = front_title.or(heading).unwrap_or_else(|| {
         Path::new(path)

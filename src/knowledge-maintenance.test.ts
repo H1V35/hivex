@@ -595,3 +595,20 @@ test('prune rejects invalid extraction explanations before deleting any rows', (
     }
   });
 });
+
+test('prune preserves JavaScript whitespace coercion before deleting caches', () => {
+  temporaryProject((root) => {
+    {
+      using store = new KnowledgeStore(root);
+      store.cache('retained', { answer: 'Keep this result.' });
+    }
+    expect(
+      knowledgeMaintenance.bind(null, ['prune', '--root', root, '--keep-caches', '\u{85}'])
+    ).toThrow(/integer/u);
+    using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
+    expect(database.query('SELECT * FROM model_cache').all()).toHaveLength(1);
+    expect(
+      knowledgeMaintenance(['prune', '--root', root, '--keep-caches', '\u{FEFF}0'])
+    ).toMatchObject({ deletedCaches: 1 });
+  });
+});

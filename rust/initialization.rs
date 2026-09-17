@@ -1,4 +1,4 @@
-use crate::arguments::parse;
+use crate::arguments::{parse, trim_js_whitespace};
 use crate::error::{HivexError, Result};
 use serde_json::{Map, Value};
 use std::fs::{self, OpenOptions};
@@ -96,7 +96,7 @@ fn resolve_path(path: &Path) -> std::io::Result<PathBuf> {
 }
 
 fn project_root(requested: &str) -> Result<PathBuf> {
-    if requested.trim().is_empty() {
+    if trim_js_whitespace(requested).is_empty() {
         return Err(error(
             "INVALID_ROOT",
             "Project root must be a non-empty path",
@@ -202,7 +202,9 @@ fn validate_nested_ignore(root: &Path) -> Result<()> {
         )
     })?;
     let text = String::from_utf8_lossy(&bytes);
-    if split_crlf_lines(&text).any(|line| !line.trim().is_empty() && !line.starts_with('#')) {
+    if split_crlf_lines(&text)
+        .any(|line| !trim_js_whitespace(line).is_empty() && !line.starts_with('#'))
+    {
         return Err(error(
             "INIT_IGNORE_CONFLICT",
             ".hivex/.gitignore contains rules that can override snapshot visibility or local state privacy.",
