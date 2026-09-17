@@ -13,7 +13,6 @@ import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { expect, test } from 'bun:test';
 
-const cli = nodePath.join(import.meta.dirname, 'cli.ts');
 const git = Bun.which('git') ?? 'git';
 const requiredFiles = [
   'AGENTS.md',
@@ -36,10 +35,18 @@ const temporaryProject = function temporaryProject(run: (root: string) => void) 
   }
 };
 
+const rustBinary = function rustBinary() {
+  const configured = process.env.HIVEX_TEST_BINARY;
+  const built = nodePath.resolve(process.cwd(), 'target', 'debug', 'hivex');
+  const binary = configured ?? (existsSync(built) ? built : undefined);
+  if (binary === undefined) {
+    throw new Error('HIVEX_TEST_BINARY or target/debug/hivex is required');
+  }
+  return binary;
+};
+
 const invoke = function invoke(root: string, argumentsList: string[]) {
-  const executable = process.env.HIVEX_TEST_BINARY ?? process.execPath;
-  const prefix = process.env.HIVEX_TEST_BINARY === undefined ? [cli] : [];
-  return spawnSync(executable, [...prefix, ...argumentsList, '--root', root], {
+  return spawnSync(rustBinary(), [...argumentsList, '--root', root], {
     encoding: 'utf-8',
     timeout: 10_000,
   });
@@ -64,7 +71,11 @@ test('init creates the project foundation through the public CLI', () => {
     const result = invoke(root, ['init']);
     const response = value(result);
 
-    expect(response).toMatchObject({ command: 'init', modelCalls: 0, updated: [] });
+    expect(response).toMatchObject({
+      command: 'init',
+      modelCalls: 0,
+      updated: [],
+    });
     expect(response.created).toEqual(expect.arrayContaining([...requiredFiles, '.gitignore']));
     for (const file of requiredFiles) {
       expect(existsSync(nodePath.join(root, file))).toBe(true);
@@ -86,11 +97,19 @@ test('init is repeatable and preserves existing project files and graph bytes', 
     mkdirSync(nodePath.dirname(graphPath), { recursive: true });
     writeFileSync(graphPath, graph);
 
-    expect(value(invoke(root, ['init']))).toMatchObject({ command: 'init', modelCalls: 0 });
+    expect(value(invoke(root, ['init']))).toMatchObject({
+      command: 'init',
+      modelCalls: 0,
+    });
     const firstIgnore = readFileSync(nodePath.join(root, '.gitignore'));
     const repeated = value(invoke(root, ['init']));
 
-    expect(repeated).toMatchObject({ command: 'init', created: [], modelCalls: 0, updated: [] });
+    expect(repeated).toMatchObject({
+      command: 'init',
+      created: [],
+      modelCalls: 0,
+      updated: [],
+    });
     expect(repeated.preserved).toEqual(expect.arrayContaining([...requiredFiles, '.gitignore']));
     expect(readFileSync(configPath, 'utf-8')).toBe(config);
     expect(readFileSync(contextPath, 'utf-8')).toBe(context);
@@ -135,7 +154,11 @@ test('init makes graph.json visible while ignoring local SQLite state', () => {
     expect(spawnSync(git, ['init', '-q'], { cwd: root }).status).toBe(0);
 
     const result = value(invoke(root, ['init']));
-    expect(result).toMatchObject({ command: 'init', modelCalls: 0, updated: ['.gitignore'] });
+    expect(result).toMatchObject({
+      command: 'init',
+      modelCalls: 0,
+      updated: ['.gitignore'],
+    });
     const corrected = readFileSync(ignorePath);
     expect(corrected.subarray(0, original.length)).toEqual(original);
     expect(
@@ -148,7 +171,10 @@ test('init makes graph.json visible while ignoring local SQLite state', () => {
         cwd: root,
       }).status
     ).toBe(1);
-    expect(value(invoke(root, ['init']))).toMatchObject({ created: [], updated: [] });
+    expect(value(invoke(root, ['init']))).toMatchObject({
+      created: [],
+      updated: [],
+    });
     expect(readFileSync(ignorePath)).toEqual(corrected);
   });
 });
@@ -196,9 +222,15 @@ test.each(['', ' \t\r\n', '# Local state\r\n\r\n# No active rules\r\n'])(
       const nestedIgnore = nodePath.join(root, '.hivex/.gitignore');
       writeFileSync(nestedIgnore, text);
 
-      expect(value(invoke(root, ['init']))).toMatchObject({ command: 'init', modelCalls: 0 });
+      expect(value(invoke(root, ['init']))).toMatchObject({
+        command: 'init',
+        modelCalls: 0,
+      });
       expect(readFileSync(nestedIgnore)).toEqual(Buffer.from(text));
-      expect(value(invoke(root, ['init']))).toMatchObject({ created: [], updated: [] });
+      expect(value(invoke(root, ['init']))).toMatchObject({
+        created: [],
+        updated: [],
+      });
     });
   }
 );
@@ -210,7 +242,10 @@ test.each(['md', 'markdown', 'mdown'])(
       const sources = [
         { historical: false, path: `guide.${extension}` },
         { historical: true, path: `docs/archive/old.${extension}` },
-        { historical: true, path: `packages/core/docs/archive/old.${extension}` },
+        {
+          historical: true,
+          path: `packages/core/docs/archive/old.${extension}`,
+        },
       ];
       const text = '# Existing source\n\nKeep the original evidence.\n';
       for (const source of sources) {
@@ -229,12 +264,18 @@ test.each(['md', 'markdown', 'mdown'])(
         });
       }
 
-      expect(value(invoke(root, ['init']))).toMatchObject({ command: 'init', modelCalls: 0 });
+      expect(value(invoke(root, ['init']))).toMatchObject({
+        command: 'init',
+        modelCalls: 0,
+      });
 
       const after = value(invoke(root, ['sources', '--limit', '100']));
       for (const source of sources) {
         expect(after.documents).toContainEqual(expect.objectContaining(source));
-        expect(value(invoke(root, ['read', source.path]))).toMatchObject({ source, text });
+        expect(value(invoke(root, ['read', source.path]))).toMatchObject({
+          source,
+          text,
+        });
       }
     });
   }

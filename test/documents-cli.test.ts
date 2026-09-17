@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { expect, test } from 'bun:test';
@@ -59,19 +58,26 @@ const documentPaths = function documentPaths(value: unknown): string[] {
   return arrayField(value, 'documents').map((document) => stringField(document, 'path'));
 };
 
+const rustBinary = function rustBinary() {
+  const configured = process.env.HIVEX_TEST_BINARY;
+  const built = nodePath.resolve(process.cwd(), 'target', 'debug', 'hivex');
+  const binary = configured ?? (existsSync(built) ? built : undefined);
+  if (binary === undefined) {
+    throw new Error('HIVEX_TEST_BINARY or target/debug/hivex is required');
+  }
+  return binary;
+};
+
 const documentCommand = function documentCommand(cliArguments: string[]): unknown {
-  const result = spawnSync(
-    process.env.HIVEX_TEST_BINARY ?? process.execPath,
-    process.env.HIVEX_TEST_BINARY === undefined
-      ? [nodePath.join(import.meta.dirname, 'cli.ts'), ...cliArguments]
-      : cliArguments,
-    {
-      encoding: 'utf-8',
-      timeout: 10_000,
-    }
-  );
+  const result = spawnSync(rustBinary(), cliArguments, {
+    encoding: 'utf-8',
+    timeout: 10_000,
+  });
   if (result.status !== 0) {
-    throw new Error(result.stderr);
+    throw new Error(result.stderr || 'Rust CLI command failed');
+  }
+  if (result.stdout === '') {
+    throw new Error('Expected Rust CLI JSON output');
   }
   return parseJson(result.stdout);
 };
@@ -121,7 +127,7 @@ test('selects nested documents, preserves exact text, and resolves declared loca
   expect(stringField(listed, 'origin')).toBe('current-worktree');
   expect(documentPaths(listed)).toEqual(['packages/core/decision.md', 'packages/module.md']);
   expect(recordAt(arrayField(listed, 'documents'), 0)).toMatchObject({
-    hash: createHash('sha256').update(exactText).digest('hex'),
+    hash: 'c2e968f15088b7999576c97d666cd94d938b6160777a67a14036763aa03b9e30',
     links: ['packages/module.md'],
     status: 'draft',
     title: 'Package choice',

@@ -1,34 +1,41 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { expect, test } from 'bun:test';
-import { loadProject } from './documents.ts';
-import { ingestionUnits } from './ingestion-units.ts';
 import {
-  applyCheck,
-  applyExtraction,
-  checkSchema,
   emptyGraph,
-  extractionSchema,
-  graphSchema,
-  warningId,
-} from './knowledge-model.ts';
-import { readKnowledgeSnapshot, writeKnowledgeSnapshot } from './knowledge-snapshot.ts';
-import { knowledgeCommand as referenceKnowledgeCommand } from './knowledge.ts';
-import { KnowledgeStore } from './knowledge-store.ts';
-import { snapshotCommand as referenceSnapshotCommand } from './snapshot-command.ts';
-import { warningCommand as referenceWarningCommand } from './knowledge-warnings.ts';
-import type { Document } from './documents.ts';
-import type { Graph, WarningScope } from './knowledge-model.ts';
+  parseGraph,
+  readGraph,
+  readLatestWork,
+  seedWork,
+  updateWork,
+  writeGraph,
+} from './rust-fixtures.ts';
+import type { GraphRecord } from './rust-fixtures.ts';
+
+interface Document {
+  hash: string;
+  historical: boolean;
+  id: string;
+  path: string;
+  text: string;
+}
+type Graph = GraphRecord;
+interface WarningScope {
+  document: string;
+  lineEnd: number;
+  lineStart: number;
+  version: string;
+}
 
 const rustBinary = process.env.HIVEX_TEST_BINARY;
+if (rustBinary === undefined) {
+  throw new Error('HIVEX_TEST_BINARY is required');
+}
 const nodeWarningsKey = 'NODE_NO_WARNINGS';
 
 const invokeRust = function invokeRust(argumentsList: string[]): unknown {
-  if (rustBinary === undefined) {
-    throw new Error('HIVEX_TEST_BINARY is required');
-  }
   const result = spawnSync(rustBinary, argumentsList, {
     encoding: 'utf-8',
     env: { ...process.env, [nodeWarningsKey]: '1' },
@@ -42,21 +49,15 @@ const invokeRust = function invokeRust(argumentsList: string[]): unknown {
 };
 
 const runWarningCommand = function runWarningCommand(argumentsList: string[]): unknown {
-  return rustBinary === undefined
-    ? referenceWarningCommand(argumentsList)
-    : invokeRust(argumentsList);
+  return invokeRust(argumentsList);
 };
 
 const runSnapshotCommand = function runSnapshotCommand(argumentsList: string[]): unknown {
-  return rustBinary === undefined
-    ? referenceSnapshotCommand(argumentsList)
-    : invokeRust(argumentsList);
+  return invokeRust(argumentsList);
 };
 
 const runKnowledgeCommand = function runKnowledgeCommand(argumentsList: string[]): unknown {
-  return rustBinary === undefined
-    ? referenceKnowledgeCommand(argumentsList)
-    : invokeRust(argumentsList);
+  return invokeRust(argumentsList);
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -65,6 +66,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const arrayField = function arrayField(value: unknown, name: string): unknown[] {
   if (!isRecord(value) || !Array.isArray(value[name])) {
     throw new Error(`Expected array field ${name}`);
+  }
+  return value[name];
+};
+
+const stringField = function stringField(value: unknown, name: string): string {
+  if (!isRecord(value) || typeof value[name] !== 'string') {
+    throw new Error(`Expected string field ${name}`);
   }
   return value[name];
 };
@@ -82,20 +90,8 @@ interface Fixture {
   snapshot: string;
 }
 
-const workArguments = function workArguments(snapshot: string) {
-  return {
-    key: 'synthetic-work',
-    kind: 'update' as const,
-    maxCalls: 3,
-    maxInputBytes: 131_072,
-    remaining: [],
-    snapshot,
-  };
-};
-
-const workCounts = function workCounts(root: string, snapshot: string) {
-  using store = new KnowledgeStore(root, { update: true });
-  const work = store.begin(workArguments(snapshot));
+const workCounts = function workCounts(root: string, _snapshot: string) {
+  const work = readLatestWork(root);
   return {
     cacheHits: work.cacheHits,
     calls: work.calls,
@@ -113,79 +109,119 @@ const createFixture = function createFixture(root: string): Fixture {
     '# Notes\n\nThe first rule preserves evidence.\n\nThe second rule preserves evidence.\n',
     'utf-8'
   );
-  const project = loadProject(root);
-  const document = project.currentDocuments.at(0);
-  if (document === undefined) {
+  const source = arrayField(invokeRust(['sources', '--root', root]), 'documents').at(0);
+  if (!isRecord(source)) {
     throw new Error('Expected the synthetic source document');
   }
-  const extraction = extractionSchema.parse({
-    decisions: [
-      {
-        conditions: [],
-        document: document.id,
-        exceptions: [],
-        id: 'first-rule',
-        kind: 'decision',
-        lineEnd: 3,
-        lineStart: 3,
-        reason: 'The first rule is sourced.',
-        status: 'current',
-        text: 'The first rule preserves evidence.',
-      },
-      {
-        conditions: [],
-        document: document.id,
-        exceptions: [],
-        id: 'second-rule',
-        kind: 'decision',
-        lineEnd: 5,
-        lineStart: 5,
-        reason: 'The second rule is sourced.',
-        status: 'current',
-        text: 'The second rule preserves evidence.',
-      },
-    ],
-    relationships: [
-      {
-        evidence: [{ document: document.id, lineEnd: 3, lineStart: 3 }],
-        from: 'first-rule',
-        id: 'supports-second-rule',
-        reason: 'The first rule supports the second.',
-        to: 'second-rule',
-        type: 'supports',
-      },
-    ],
-    uncertainties: ['The first warning needs closure.', 'The second warning stays active.'],
+  const document: Document = {
+    hash: stringField(source, 'hash'),
+    historical: false,
+    id: stringField(source, 'id'),
+    path: stringField(source, 'path'),
+    text: readFileSync(nodePath.join(root, stringField(source, 'path')), 'utf-8'),
+  };
+  const graph = emptyGraph();
+  graph.documents[document.id] = document.hash;
+  graph.units[`${document.id}:1-5`] = {
+    document: document.id,
+    version: document.hash,
+  };
+  graph.decisions = [
+    {
+      batch: 'synthetic-batch',
+      conditions: [],
+      document: document.id,
+      exceptions: [],
+      id: 'first-rule',
+      kind: 'decision',
+      lineEnd: 3,
+      lineStart: 3,
+      localId: 'first-rule',
+      quality: 'checked',
+      reason: 'The first rule is sourced.',
+      status: 'current',
+      text: 'The first rule preserves evidence.',
+      version: document.hash,
+    },
+    {
+      batch: 'synthetic-batch',
+      conditions: [],
+      document: document.id,
+      exceptions: [],
+      id: 'second-rule',
+      kind: 'decision',
+      lineEnd: 5,
+      lineStart: 5,
+      localId: 'second-rule',
+      quality: 'checked',
+      reason: 'The second rule is sourced.',
+      status: 'current',
+      text: 'The second rule preserves evidence.',
+      version: document.hash,
+    },
+  ];
+  graph.relationships = [
+    {
+      batch: 'synthetic-batch',
+      evidence: [
+        {
+          document: document.id,
+          lineEnd: 3,
+          lineStart: 3,
+          version: document.hash,
+        },
+      ],
+      from: 'first-rule',
+      id: 'supports-second-rule',
+      localId: 'supports-second-rule',
+      quality: 'checked',
+      reason: 'The first rule supports the second.',
+      to: 'second-rule',
+      type: 'supports',
+    },
+  ];
+  graph.warnings = [
+    {
+      kind: 'limitation',
+      message: 'The first warning needs closure.',
+      scope: [
+        {
+          document: document.id,
+          lineEnd: 3,
+          lineStart: 3,
+          version: document.hash,
+        },
+      ],
+    },
+    {
+      kind: 'limitation',
+      message: 'The second warning stays active.',
+      scope: [
+        {
+          document: document.id,
+          lineEnd: 5,
+          lineStart: 5,
+          version: document.hash,
+        },
+      ],
+    },
+  ];
+  writeGraph(root, graph);
+  const snapshot = stringField(invokeRust(['sources', '--root', root]), 'snapshot');
+  const workId = seedWork(root, {
+    key: 'synthetic-work',
+    kind: 'update',
+    remaining: [],
+    snapshot,
   });
-  const extracted = applyExtraction({
-    batch: 'synthetic-batch',
-    documents: [document],
-    extraction,
-    graph: emptyGraph(),
-  });
-  const checked = applyCheck(extracted, checkSchema.parse({ findings: [] }), {
-    batch: 'synthetic-batch',
-  });
-  const plan = ingestionUnits(project.currentDocuments);
-  const graph = graphSchema.parse({
-    ...checked,
-    documents: Object.fromEntries(project.documents.map((entry) => [entry.id, entry.hash])),
-    units: Object.fromEntries(
-      plan.units.map((unit) => [unit.id, { document: unit.document, version: document.hash }])
-    ),
-  });
-  {
-    using store = new KnowledgeStore(root, { update: true });
-    store.saveGraph(graph);
-    const work = store.begin(workArguments(project.snapshot));
+  updateWork(root, workId, (work) => {
     work.cacheHits = 2;
     work.calls = 3;
     work.inputBytes = 1234;
     work.status = 'done';
     work.totalTokens = 17;
-    store.save(work);
-  }
-  return { document, graph, root, snapshot: project.snapshot };
+  });
+  return { document, graph, root, snapshot };
 };
 
 const temporaryProject = async function temporaryProject(
@@ -221,6 +257,17 @@ const warningFor = function warningFor(graph: Graph, message: string) {
   return warning;
 };
 
+const warningIdFor = function warningIdFor(root: string, message: string) {
+  const report = runWarningCommand(['warnings', '--all', '--root', root]);
+  const warning = arrayField(report, 'warnings').find(
+    (entry) => isRecord(entry) && entry.message === message
+  );
+  if (!isRecord(warning)) {
+    throw new Error(`Expected warning ${message}`);
+  }
+  return stringField(warning, 'id');
+};
+
 const citationFor = function citationFor(
   document: Document,
   lineStart = 3,
@@ -240,9 +287,9 @@ test('resolves current evidence while preserving knowledge and reactivating afte
     const firstMessage = 'The first warning needs closure.';
     const secondMessage = 'The second warning stays active.';
     const first = warningFor(graph, firstMessage);
-    const second = warningFor(graph, secondMessage);
-    const firstId = warningId(first);
-    const secondId = warningId(second);
+    warningFor(graph, secondMessage);
+    const firstId = warningIdFor(root, firstMessage);
+    const secondId = warningIdFor(root, secondMessage);
     const evidence = [citationFor(document)];
     const reason = 'Current source evidence closes the first warning.';
     const beforeWork = workCounts(root, snapshot);
@@ -279,22 +326,14 @@ test('resolves current evidence while preserving knowledge and reactivating afte
       state: 'resolved',
     });
 
-    using store = new KnowledgeStore(root, { readonly: true });
-    const after = store.graph();
+    const after = readGraph(root);
     expect(after.decisions).toEqual(graph.decisions);
     expect(after.relationships).toEqual(graph.relationships);
-    const reextracted = applyExtraction({
-      batch: 'later-batch',
-      documents: [document],
-      extraction: extractionSchema.parse({
-        decisions: [],
-        relationships: [],
-        uncertainties: [firstMessage, secondMessage],
-      }),
-      graph: after,
+    expect(after.warnings).toHaveLength(2);
+    expect(warningFor(after, firstMessage).resolution).toEqual({
+      evidence,
+      reason,
     });
-    expect(reextracted.warnings).toHaveLength(2);
-    expect(warningFor(reextracted, firstMessage).resolution).toEqual({ evidence, reason });
     expect(workCounts(root, snapshot)).toEqual(beforeWork);
 
     const status = await runKnowledgeCommand(['status', '--root', root]);
@@ -318,7 +357,9 @@ test('resolves current evidence while preserving knowledge and reactivating afte
 
     writeFileSync(nodePath.join(root, document.path), `${document.text}Changed source.\n`, 'utf-8');
     const reactivated = runWarningCommand(['warnings', '--all', '--root', root]);
-    expect(reactivated).toMatchObject({ warningSummary: { limitations: 2, resolved: 0 } });
+    expect(reactivated).toMatchObject({
+      warningSummary: { limitations: 2, resolved: 0 },
+    });
     expect(
       arrayField(reactivated, 'warnings').find(
         (warning) => isRecord(warning) && warning.id === firstId
@@ -333,22 +374,27 @@ test('resolves current evidence while preserving knowledge and reactivating afte
 
 test('rejects invalid IDs, citations, and versions without partially applying a manifest', async () => {
   await temporaryProject(({ document, graph, root, snapshot }) => {
-    const first = warningFor(graph, 'The first warning needs closure.');
-    const second = warningFor(graph, 'The second warning stays active.');
     const firstResolution = {
       evidence: [citationFor(document)],
-      id: warningId(first),
+      id: warningIdFor(root, 'The first warning needs closure.'),
       reason: 'This valid entry must not be committed alone.',
     };
     const validEvidence = [citationFor(document)];
     const invalidManifests: Resolution[][] = [
-      [firstResolution, { evidence: validEvidence, id: 'missing-warning', reason: 'Unknown ID.' }],
+      [
+        firstResolution,
+        {
+          evidence: validEvidence,
+          id: 'missing-warning',
+          reason: 'Unknown ID.',
+        },
+      ],
       [firstResolution, { ...firstResolution }],
       [
         firstResolution,
         {
           evidence: [citationFor(document, 99)],
-          id: warningId(second),
+          id: warningIdFor(root, 'The second warning stays active.'),
           reason: 'Out of range.',
         },
       ],
@@ -356,7 +402,7 @@ test('rejects invalid IDs, citations, and versions without partially applying a 
         firstResolution,
         {
           evidence: [{ ...citationFor(document), version: 'stale-version' }],
-          id: warningId(second),
+          id: warningIdFor(root, 'The second warning stays active.'),
           reason: 'Stale version.',
         },
       ],
@@ -368,8 +414,7 @@ test('rejects invalid IDs, citations, and versions without partially applying a 
       expect(() =>
         runWarningCommand(['warnings', '--resolve', manifest, '--root', root])
       ).toThrow();
-      using store = new KnowledgeStore(root, { readonly: true });
-      expect(store.graph()).toEqual(graph);
+      expect(readGraph(root)).toEqual(graph);
       expect(workCounts(root, snapshot)).toEqual(beforeWork);
     }
   });
@@ -378,18 +423,21 @@ test('rejects invalid IDs, citations, and versions without partially applying a 
 test('roundtrips resolutions through snapshots and accepts a legacy warning without resolution', async () => {
   await temporaryProject(({ document, graph, root }) => {
     const firstMessage = 'The first warning needs closure.';
-    const first = warningFor(graph, firstMessage);
+    warningFor(graph, firstMessage);
     const evidence = [citationFor(document)];
     const reason = 'Snapshot evidence closes the first warning.';
-    const manifest = writeManifest(root, [{ evidence, id: warningId(first), reason }]);
+    const manifest = writeManifest(root, [
+      { evidence, id: warningIdFor(root, firstMessage), reason },
+    ]);
     runWarningCommand(['warnings', '--resolve', manifest, '--root', root]);
 
     const exported = runSnapshotCommand(['snapshot', 'export', '--root', root]);
-    expect(exported).toMatchObject({ warningSummary: { limitations: 1, resolved: 1 } });
-    const snapshot = readKnowledgeSnapshot(root);
-    if (snapshot === null) {
-      throw new Error('Expected the exported snapshot');
-    }
+    expect(exported).toMatchObject({
+      warningSummary: { limitations: 1, resolved: 1 },
+    });
+    const snapshot = parseGraph(
+      JSON.parse(readFileSync(nodePath.join(root, '.hivex', 'graph.json'), 'utf-8'))
+    );
     expect(warningFor(snapshot, firstMessage)).toMatchObject({
       resolution: { evidence, reason },
     });
@@ -397,7 +445,12 @@ test('roundtrips resolutions through snapshots and accepts a legacy warning with
     const clone = mkdtempSync(nodePath.join(tmpdir(), 'hivex-warning-clone-'));
     try {
       writeFileSync(nodePath.join(clone, document.id), document.text);
-      writeKnowledgeSnapshot(clone, snapshot);
+      mkdirSync(nodePath.join(clone, '.hivex'), { recursive: true });
+      writeFileSync(
+        nodePath.join(clone, '.hivex', 'graph.json'),
+        `${JSON.stringify(snapshot)}\n`,
+        'utf-8'
+      );
       expect(runWarningCommand(['warnings', '--root', clone])).toMatchObject({
         warningSummary: { limitations: 1, resolved: 1 },
       });
@@ -420,8 +473,9 @@ test('roundtrips resolutions through snapshots and accepts a legacy warning with
       warningSummary: { limitations: 2, resolved: 0 },
     });
     expect(messagesOf(arrayField(imported, 'warnings'))).toContain(firstMessage);
-    expect(readKnowledgeSnapshot(root)).toEqual(legacy);
-    using store = new KnowledgeStore(root, { readonly: true });
-    expect(warningFor(store.graph(), firstMessage)).not.toHaveProperty('resolution');
+    expect(JSON.parse(readFileSync(nodePath.join(root, '.hivex', 'graph.json'), 'utf-8'))).toEqual(
+      legacy
+    );
+    expect(warningFor(readGraph(root), firstMessage)).not.toHaveProperty('resolution');
   });
 });

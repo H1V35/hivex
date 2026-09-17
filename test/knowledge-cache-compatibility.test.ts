@@ -4,15 +4,16 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
-import { stringifyKnowledge } from './knowledge-serialization.ts';
-import { knowledgeCommand as referenceKnowledgeCommand } from './knowledge.ts';
 
-const knowledgeCommand = async function knowledgeCommand(input: string[]) {
+const knowledgeCommand = function knowledgeCommand(input: string[]) {
   const binary = process.env.HIVEX_TEST_BINARY;
   if (binary === undefined) {
-    return await referenceKnowledgeCommand(input);
+    throw new Error('HIVEX_TEST_BINARY is required');
   }
-  const result = spawnSync(binary, input, { encoding: 'utf-8', timeout: 12_000 });
+  const result = spawnSync(binary, input, {
+    encoding: 'utf-8',
+    timeout: 12_000,
+  });
   if (!result.stdout) {
     throw new Error(result.stderr || 'Expected CLI JSON output');
   }
@@ -20,10 +21,7 @@ const knowledgeCommand = async function knowledgeCommand(input: string[]) {
   return value;
 };
 
-const fixture = readFileSync(
-  new URL('../test/fixtures/knowledge-cache-v1.sql', import.meta.url),
-  'utf-8'
-);
+const fixture = readFileSync(new URL('fixtures/knowledge-cache-v1.sql', import.meta.url), 'utf-8');
 
 test.each([
   { cacheHits: 0, state: 'completed' },
@@ -70,24 +68,6 @@ test.each([
   });
 });
 
-test('preserves the provenance order of records in a retained model packet', () => {
-  using database = new Database(':memory:');
-  database.run(fixture);
-  const row = database
-    .query<
-      { item: string },
-      []
-    >("SELECT json_remove(json_extract(data, '$.decisions[0]'), '$.batch') AS item FROM graph")
-    .get();
-  if (row === null) {
-    throw new Error('Expected the retained graph record');
-  }
-  const record: unknown = JSON.parse(row.item);
-  expect(stringifyKnowledge({ existing: [record], operation: 'check' })).toBe(
-    `{"operation":"check","existing":[${row.item}]}`
-  );
-});
-
 test('reuses v1 extraction and check caches with the original exhausted update budget', async () => {
   using cleanup = new DisposableStack();
   const root = mkdtempSync(path.join(tmpdir(), 'hivex-update-cache-compat-'));
@@ -98,10 +78,7 @@ test('reuses v1 extraction and check caches with the original exhausted update b
   mkdirSync(path.join(root, '.hivex'));
   using database = new Database(path.join(root, '.hivex/knowledge.sqlite'));
   database.run(
-    readFileSync(
-      new URL('../test/fixtures/knowledge-update-cache-v1.sql', import.meta.url),
-      'utf-8'
-    )
+    readFileSync(new URL('fixtures/knowledge-update-cache-v1.sql', import.meta.url), 'utf-8')
   );
   const result = await knowledgeCommand([
     'update',
@@ -145,10 +122,7 @@ test('keeps the work budget when scoped relationship context changes a legacy pa
   mkdirSync(path.join(root, '.hivex'));
   using database = new Database(path.join(root, '.hivex/knowledge.sqlite'));
   database.run(
-    readFileSync(
-      new URL('../test/fixtures/knowledge-multiround-cache-v1.sql', import.meta.url),
-      'utf-8'
-    )
+    readFileSync(new URL('fixtures/knowledge-multiround-cache-v1.sql', import.meta.url), 'utf-8')
   );
   const result = await knowledgeCommand([
     'update',

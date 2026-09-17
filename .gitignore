@@ -2,3 +2,5 @@
 /target
 /.hivex/*
 !/.hivex/graph.json
+
+/dist

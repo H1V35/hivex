@@ -39,11 +39,10 @@ jobs:
         run: bun run --bun lint
       - name: Format
         run: bun run --bun format:check
-      - name: Test
-        run: bun run test
       - name: Rust toolchain
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal --component clippy --component rustfmt
       - name: Rust format
         run: cargo fmt --check
@@ -51,7 +50,9 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Rust test
         run: cargo test --locked
-      - name: Rust CLI compatibility
-        run: |
-          cargo build --locked
-          HIVEX_TEST_BINARY="$PWD/target/debug/hivex-rust" bun test --timeout 15000 src/documents-cli.test.ts src/project-initialization.test.ts src/knowledge-maintenance.test.ts src/knowledge-cli.test.ts src/knowledge-cache-compatibility.test.ts src/knowledge-warning-resolution.test.ts src/rust-compatibility.test.ts
+      - name: Native package
+        run: bun run pack:native
+      - name: CLI contracts on the packaged executable
+        run: HIVEX_TEST_BINARY="$PWD/target/aarch64-apple-darwin/release/hivex" bun test --timeout 15000 ./test
+      - name: Installed native package
+        run: bun run verify:package

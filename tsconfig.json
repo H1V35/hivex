@@ -13,5 +13,5 @@
     "lib": ["ESNext"],
     "types": ["bun"]
   },
-  "include": ["src"]
+  "include": ["test"]
 }
