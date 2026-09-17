@@ -59,15 +59,17 @@ jobs:
           export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/hivex-package.npmrc"
           printf '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}\n' > "$NPM_CONFIG_USERCONFIG"
           expected="sha512-$(openssl dgst -sha512 -binary "h1v35-hivex-$package_version.tgz" | openssl base64 -A)"
-          if npm view "@h1v35/hivex@$package_version" dist.integrity --json --registry=https://npm.pkg.github.com > existing.json 2> existing-error.log; then
-            test "$(jq -r . existing.json)" = "$expected" || { echo 'Existing GitHub package has different integrity' >&2; exit 1; }
+          if npm view "@h1v35/hivex@$package_version" version --json --registry=https://npm.pkg.github.com > existing.json 2> existing-error.log; then
+            test "$(jq -r . existing.json)" = "$package_version"
           else
             jq -e '.error.code == "E404"' existing.json > /dev/null || { cat existing-error.log >&2; exit 1; }
             npm publish "h1v35-hivex-$package_version.tgz" --ignore-scripts --access public --registry=https://npm.pkg.github.com
           fi
+          mkdir -p verified
           for attempt in 1 2 3 4 5 6; do
-            if npm view "@h1v35/hivex@$package_version" dist.integrity --json --registry=https://npm.pkg.github.com > published.json 2> published-error.log; then
-              test "$(jq -r . published.json)" = "$expected"
+            if npm pack "@h1v35/hivex@$package_version" --ignore-scripts --json --pack-destination verified --registry=https://npm.pkg.github.com > published.json 2> published-error.log; then
+              actual="sha512-$(openssl dgst -sha512 -binary "verified/h1v35-hivex-$package_version.tgz" | openssl base64 -A)"
+              test "$actual" = "$expected" || { echo 'GitHub package has different integrity' >&2; exit 1; }
               exit 0
             fi
             jq -e '.error.code == "E404"' published.json > /dev/null || { cat published-error.log >&2; exit 1; }
