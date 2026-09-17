@@ -34,8 +34,7 @@ jobs:
       - name: Native development gate without Bun or Node
         run: |
           export PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-          ! command -v bun
-          ! command -v node
+          if command -v bun || command -v node; then exit 1; fi
           cargo fmt --check
           cargo check --locked --all-targets
           cargo clippy --locked --all-targets -- -D warnings

@@ -177,7 +177,7 @@ fn pack(root: &Path, manifest: &Value, archive: &Path) -> Result<()> {
     if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         return Err("The distribution is validated only on macOS ARM64".into());
     }
-    if archive.exists() {
+    if fs::symlink_metadata(archive).is_ok() {
         return Err(format!(
             "Refusing to replace an existing artifact: {}",
             archive.display()
@@ -476,5 +476,39 @@ fn main() -> Result<()> {
         Some("pack") => pack(&root, &manifest, &archive),
         Some("verify") => verify(&root, &manifest, &archive),
         _ => Err("Usage: cargo run --bin hivex-dev -- <pack|verify> [archive.tgz]".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn package_preparation_preserves_existing_artifacts_and_dangling_links() {
+        if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            return;
+        }
+        let temporary = Temporary::new().unwrap();
+        let archive = temporary.0.join("approved.tgz");
+        fs::write(&archive, b"approved artifact").unwrap();
+        assert!(
+            pack(&temporary.0, &Value::Null, &archive)
+                .unwrap_err()
+                .to_string()
+                .contains("Refusing to replace")
+        );
+        assert_eq!(fs::read(&archive).unwrap(), b"approved artifact");
+        let link = temporary.0.join("dangling.tgz");
+        let target = temporary.0.join("unintended.tgz");
+        symlink(&target, &link).unwrap();
+        assert!(
+            pack(&temporary.0, &Value::Null, &link)
+                .unwrap_err()
+                .to_string()
+                .contains("Refusing to replace")
+        );
+        assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
+        assert!(!target.exists());
     }
 }

@@ -80,7 +80,10 @@ fn readonly_maintenance_keeps_fixed_sql_rows_byte_identical() {
     ] {
         let p = Project::new();
         p.sql_fixture(fixture);
-        let before = p.graph();
+        let before: String = p
+            .db()
+            .query_row("SELECT data FROM graph WHERE id=1", [], |row| row.get(0))
+            .unwrap();
         let works: Vec<String> = p
             .db()
             .prepare("SELECT data FROM work ORDER BY id")
@@ -100,7 +103,11 @@ fn readonly_maintenance_keeps_fixed_sql_rows_byte_identical() {
         p.ok(&["status"]);
         p.ok(&["recover"]);
         p.ok(&["prune"]);
-        assert_eq!(p.graph(), before, "{fixture}");
+        let graph_after: String = p
+            .db()
+            .query_row("SELECT data FROM graph WHERE id=1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(graph_after, before, "{fixture}");
         let after: Vec<String> = p
             .db()
             .prepare("SELECT data FROM work ORDER BY id")
