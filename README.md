@@ -36,6 +36,10 @@ The native package currently supports **macOS ARM64**. Model-assisted commands r
 - [Development](docs/guide.md#development): build, tests and package verification with Rust.
 - [Project decisions](docs/README.md): architecture and engineering conventions.
 
+## Support
+
+If Hivex helps your work, you can [support its development on Ko-fi](https://ko-fi.com/jivssssss).
+
 ## License
 
 [MIT](LICENSE)
