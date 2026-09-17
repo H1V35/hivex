@@ -30,7 +30,7 @@ const APP_CLIENT_VERSION: &str = "0.1.0";
 const RPC_FRAME_LIMIT: usize = 4_194_304;
 const RPC_STREAM_LIMIT: usize = 33_554_432;
 const MAX_VERSION_BYTES: usize = 65_536;
-const MAX_CATALOG_PAGES: usize = 20;
+const MAX_CATALOG_CONTINUATIONS: usize = 20;
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(30);
 const THREAD_START_TIMEOUT: Duration = Duration::from_secs(90);
 const INTERRUPT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1553,7 +1553,7 @@ fn read_catalog(
     let mut catalog = Vec::new();
     let mut cursor = None;
     let mut seen = HashSet::new();
-    for page_index in 0..MAX_CATALOG_PAGES {
+    for page_index in 0..=MAX_CATALOG_CONTINUATIONS {
         let params = cursor.as_ref().map_or_else(
             || json!({"limit": 100}),
             |cursor| json!({"cursor": cursor, "limit": 100}),
@@ -1608,7 +1608,7 @@ fn read_catalog(
             return Ok(catalog);
         }
         let next = next.expect("checked above");
-        if page_index + 1 >= MAX_CATALOG_PAGES || !seen.insert(next.clone()) {
+        if page_index >= MAX_CATALOG_CONTINUATIONS || !seen.insert(next.clone()) {
             return Err(NativeError::Protocol(
                 "Model catalog is not bounded".to_owned(),
             ));
@@ -1643,7 +1643,7 @@ fn validate_requirements(value: &Value) -> std::result::Result<(), NativeError> 
         let endpoint = endpoint.as_str().ok_or_else(|| {
             NativeError::Protocol("managed ChatGPT endpoint is invalid".to_owned())
         })?;
-        if !is_chatgpt_endpoint(endpoint) {
+        if !endpoint.is_empty() && !is_chatgpt_endpoint(endpoint) {
             return Err(NativeError::Admission(
                 "Managed ChatGPT endpoint does not match the admitted provider".to_owned(),
             ));
@@ -1692,7 +1692,7 @@ fn active_servers(value: Option<&Value>) -> std::result::Result<Vec<String>, Nat
 }
 
 fn is_chatgpt_endpoint(value: &str) -> bool {
-    value == "https://chatgpt.com" || value == "https://chatgpt.com/"
+    url::Url::parse(value).is_ok_and(|url| url.as_str() == "https://chatgpt.com/")
 }
 
 fn requested_policy_hash(native_version: &str, disabled_servers: &[String]) -> String {

@@ -42,6 +42,8 @@ if (process.env.HIVEX_TEST_SCENARIO === 'descendant') {
   writeFileSync(process.env.HIVEX_TEST_PID_PATH, JSON.stringify(descendants));
 }
 
+const catalogContinuationLimit = 20;
+const nextCatalogPageOffset = 1;
 const endpointPrefixLength = 10;
 const firstIndex = 0;
 const firstResultLimit = 1;
@@ -232,13 +234,14 @@ const handlers = {
       ['generate_memories', false],
       ['use_memories', false],
     ]);
+    let configuredEndpoint = 'https://chatgpt.com';
+    if (process.env.HIVEX_TEST_SCENARIO === 'redirected-provider') {
+      configuredEndpoint = 'https://not-openai.invalid';
+    } else if (process.env.HIVEX_TEST_SCENARIO === 'normalized-endpoint') {
+      configuredEndpoint = 'HTTPS://CHATGPT.COM:443/./';
+    }
     const config = Object.fromEntries([
-      [
-        'chatgpt_base_url',
-        process.env.HIVEX_TEST_SCENARIO === 'redirected-provider'
-          ? 'https://not-openai.invalid'
-          : 'https://chatgpt.com',
-      ],
+      ['chatgpt_base_url', configuredEndpoint],
       ['features', features],
       ['mcp_servers', mcpServers],
       ['memories', memories],
@@ -259,10 +262,24 @@ const handlers = {
       ),
     };
   },
-  'configRequirements/read': () => ({ requirements: null }),
+  'configRequirements/read': function configRequirementsRead() {
+    const requirements =
+      process.env.HIVEX_TEST_SCENARIO === 'empty-managed-origin' ? { chatgptBaseUrl: '' } : null;
+    return { requirements };
+  },
   initialize: () => ({ userAgent: 'fixture' }),
   'mcpServerStatus/list': () => ({ data: [], nextCursor: null }),
-  'model/list': function modelList() {
+  'model/list': function modelList(parameters) {
+    let pages = firstIndex;
+    if (process.env.HIVEX_TEST_SCENARIO === 'catalog-21-pages') {
+      pages = catalogContinuationLimit;
+    } else if (process.env.HIVEX_TEST_SCENARIO === 'catalog-22-pages') {
+      pages = catalogContinuationLimit + nextCatalogPageOffset;
+    }
+    const page = Number(parameters.cursor ?? firstIndex);
+    if (page < pages) {
+      return { data: [], nextCursor: String(page + nextCatalogPageOffset) };
+    }
     return {
       data: [
         {

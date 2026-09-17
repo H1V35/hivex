@@ -4898,3 +4898,57 @@ test('retains a terminal delivered before the turn start acknowledgement', () =>
     expect(result.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
   });
 });
+
+test('resumes automatic maintenance for legacy consultations without a stored phase', () => {
+  project((root) => {
+    const binary = model(root);
+    const first = invoke(root, [
+      'ask',
+      'private cached data',
+      '--max-calls',
+      '0',
+      '--codex',
+      binary,
+    ]);
+    expect(first.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { calls: 0, phase: 'update' },
+    });
+    using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
+    database.run("UPDATE work SET data=json_remove(data, '$.phase', '$.cacheHits')");
+    const held = invoke(root, ['ask', 'private cached data', '--codex', binary]);
+    expect(held.value).toMatchObject({
+      status: 'budget-exhausted',
+      work: { cacheHits: 0, calls: 0, phase: 'update' },
+    });
+    const resumed = invoke(root, [
+      'ask',
+      'private cached data',
+      '--max-calls',
+      '3',
+      '--codex',
+      binary,
+    ]);
+    expect(resumed.value).toMatchObject({ status: 'ready', work: { calls: 3, phase: 'ask' } });
+    expect(invoke(root, ['status']).value.availableDecisions).toBe(2);
+  });
+});
+
+for (const scenario of ['catalog-21-pages', 'empty-managed-origin', 'normalized-endpoint']) {
+  test(`admits compatible profile evidence for ${scenario}`, () => {
+    project((root) => {
+      const result = invoke(root, ['update', '--codex', model(root, scenario)]);
+      expect(result.value).toMatchObject({ status: 'ready', work: { calls: 2 } });
+    });
+  });
+}
+
+test('rejects a catalog beyond the initial page and twenty continuations', () => {
+  project((root) => {
+    const result = invoke(root, ['update', '--codex', model(root, 'catalog-22-pages')]);
+    expect(result.value).toMatchObject({
+      status: 'failed',
+      work: { calls: 1, lastAttempt: { code: 'MODEL_ADMISSION_FAILED' } },
+    });
+  });
+});

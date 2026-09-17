@@ -1,6 +1,8 @@
 use crate::error::{HivexError, Result};
 use std::collections::{HashMap, HashSet};
 
+pub const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+
 pub fn trim_js_whitespace(value: &str) -> &str {
     value.trim_matches(|character: char| {
         character == '\u{feff}' || (character.is_whitespace() && character != '\u{85}')

@@ -747,4 +747,63 @@ mod tests {
         );
         assert!(validate_extraction(&extraction));
     }
+    #[test]
+    fn rejects_unsafe_ranges_and_matches_javascript_citation_whitespace() {
+        let maximum = crate::arguments::MAX_SAFE_INTEGER as usize;
+        let mut candidate = extraction();
+        candidate.decisions[0].line_start = maximum;
+        candidate.decisions[0].line_end = maximum;
+        assert!(validate_extraction(&candidate));
+        candidate.decisions[0].line_end = maximum + 1;
+        assert!(!validate_extraction(&candidate));
+        let unsafe_citation = Citation {
+            document: "notes.md".to_owned(),
+            line_start: maximum + 1,
+            line_end: maximum + 1,
+            version: None,
+        };
+        assert!(!crate::knowledge_model::validate_citation(&unsafe_citation));
+        let answer = serde_json::json!({"answer":"Bounded evidence", "evidence":[{"document":"notes.md","lineStart":maximum+1,"lineEnd":maximum+1}], "uncertainties":[]});
+        assert!(
+            crate::model_runtime::OutputSchema::Answer
+                .parse(&answer)
+                .is_none()
+        );
+        let resolution = serde_json::json!([{"id":"warning", "reason":"Bounded evidence", "evidence":[{"document":"notes.md","lineStart":maximum+1,"lineEnd":maximum+1}]}]);
+        assert!(parse_warning_resolutions(&resolution).is_none());
+
+        let reversed = Citation {
+            document: "notes.md".to_owned(),
+            line_start: 2,
+            line_end: 1,
+            version: None,
+        };
+        assert!(!supplied_citation(&reversed, &[]));
+        let citation = Citation {
+            document: "notes.md".to_owned(),
+            line_start: 1,
+            line_end: 1,
+            version: None,
+        };
+        assert!(crate::knowledge_model::valid_citation(
+            &citation,
+            &[document("notes.md", "\u{85}")]
+        ));
+        assert!(!crate::knowledge_model::valid_citation(
+            &citation,
+            &[document("notes.md", "\u{feff}")]
+        ));
+        let mut graph = apply_extraction(ExtractionOptions {
+            batch: "safe-integer",
+            context_documents: None,
+            context_ranges: None,
+            documents: &[source()],
+            existing_ids: None,
+            extraction: &extraction(),
+            graph: &empty_graph(),
+            target_ranges: None,
+        });
+        graph.decisions[0].line_end = maximum + 1;
+        assert!(!validate_graph(&graph));
+    }
 }

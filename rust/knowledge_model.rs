@@ -1,3 +1,4 @@
+use crate::arguments::{MAX_SAFE_INTEGER, trim_js_whitespace};
 use crate::documents::{Document, Project};
 use crate::markdown::{raw_markdown_lines, source_range};
 use serde::{Deserialize, Serialize};
@@ -299,8 +300,8 @@ fn valid_extraction_decision(entry: &ExtractionDecision) -> bool {
     !entry.document.is_empty()
         && !entry.id.is_empty()
         && valid_kind(&entry.kind)
-        && entry.line_start > 0
-        && entry.line_end > 0
+        && valid_line_number(entry.line_start)
+        && valid_line_number(entry.line_end)
         && valid_explanation(&entry.reason)
         && valid_status(&entry.status)
         && valid_explanation(&entry.text)
@@ -403,8 +404,8 @@ pub fn validate_graph(graph: &Graph) -> bool {
             !entry.document.is_empty()
                 && !entry.id.is_empty()
                 && valid_kind(&entry.kind)
-                && entry.line_start > 0
-                && entry.line_end > 0
+                && valid_line_number(entry.line_start)
+                && valid_line_number(entry.line_end)
                 && valid_explanation(&entry.reason)
                 && valid_status(&entry.status)
                 && valid_explanation(&entry.text)
@@ -920,8 +921,14 @@ pub fn empty_graph() -> Graph {
     }
 }
 
+fn valid_line_number(line: usize) -> bool {
+    line > 0 && line as u64 <= MAX_SAFE_INTEGER
+}
+
 pub fn validate_citation(citation: &Citation) -> bool {
-    !citation.document.is_empty() && citation.line_start > 0 && citation.line_end > 0
+    !citation.document.is_empty()
+        && valid_line_number(citation.line_start)
+        && valid_line_number(citation.line_end)
 }
 
 pub fn valid_citation(citation: &Citation, documents: &[Document]) -> bool {
@@ -933,13 +940,16 @@ pub fn valid_citation(citation: &Citation, documents: &[Document]) -> bool {
     };
     validate_citation(citation)
         && citation.line_end <= raw_markdown_lines(&document.text).len()
-        && !source_range(&document.text, citation.line_start, citation.line_end)
-            .trim()
-            .is_empty()
+        && !trim_js_whitespace(&source_range(
+            &document.text,
+            citation.line_start,
+            citation.line_end,
+        ))
+        .is_empty()
 }
 
 pub fn supplied_citation(citation: &Citation, documents: &[SuppliedDocument]) -> bool {
-    if !validate_citation(citation) {
+    if !validate_citation(citation) || citation.line_end < citation.line_start {
         return false;
     }
     let lines: HashSet<usize> = documents

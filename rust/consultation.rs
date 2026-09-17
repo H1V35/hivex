@@ -332,13 +332,13 @@ pub fn ask(project: &mut Project, runtime: &Options) -> Result<Value> {
     let mut store = Store::open(&project.root, StoreOptions::default())?;
     let mut work = begin_consultation(project, runtime, &mut store, &documents, &packet)?;
     update::resume_failed(&mut work, &mut store, runtime.retry_failed)?;
-    if work.status() != "done" && work.value()["phase"] == "update" {
+    if work.status() != "done" && work.phase() == "update" {
         work = update::update(project, runtime, Some(work))?.1;
     }
     context = knowledge::query_graph(project, runtime)?;
     documents = context_documents(&context);
     packet = answer_packet(project, runtime, context.clone(), &documents)?;
-    if work.status() == "failed" || work.value()["phase"] == "update" {
+    if work.status() == "failed" || work.phase() == "update" {
         context["answer"] = Value::Null;
         context["omittedUnits"] = packet["omittedUnits"].clone();
         context["status"] = json!(work.status());

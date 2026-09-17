@@ -76,6 +76,17 @@ impl Work {
             .unwrap_or_default()
     }
 
+    pub fn phase(&self) -> &str {
+        self.value
+            .get("phase")
+            .and_then(Value::as_str)
+            .unwrap_or("update")
+    }
+
+    pub fn cache_hits(&self) -> u64 {
+        nonnegative_integer(self.value.get("cacheHits")).unwrap_or_default()
+    }
+
     pub fn calls(&self) -> u64 {
         nonnegative_integer(self.value.get("calls")).unwrap_or_default()
     }

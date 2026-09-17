@@ -219,7 +219,7 @@ pub fn run_model(
         .cached(&input.fingerprint)?
         .and_then(|cached| request.schema.parse(&cached))
     {
-        work.value_mut()["cacheHits"] = json!(work.value()["cacheHits"].as_u64().unwrap_or(0) + 1);
+        work.value_mut()["cacheHits"] = json!(work.cache_hits() + 1);
         work.value_mut()["status"] = json!("pending");
         store.save(work)?;
         return Ok(Some(cached));
@@ -313,7 +313,7 @@ pub fn work_summary(work: &Work) -> Value {
             summary
         });
     json!({
-    "cacheHits":value["cacheHits"],
+    "cacheHits":work.cache_hits(),
     "calls":work.calls(),
     "contextLimit":value["contextLimit"],
     "id":work.id(),
@@ -321,7 +321,7 @@ pub fn work_summary(work: &Work) -> Value {
     "lastAttempt":last_attempt,
     "maxCalls":work.max_calls(),
     "maxInputBytes":work.max_input_bytes(),
-    "phase":value["phase"],
+    "phase":work.phase(),
     "recoveryAcknowledgement":last.map(|attempt| &attempt["recoveryAcknowledgement"]),
     "retainedCheckAssessment":value["retainedCheckAssessment"],
     "totalTokens":work.total_tokens(),
