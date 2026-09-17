@@ -153,6 +153,9 @@ impl<'ast> Visit<'ast> for Syntax<'_> {
   }
 
   fn visit_expr_closure(&mut self, closure: &'ast syn::ExprClosure) {
+    if closure.inputs.len() > 4 {
+      self.issue(closure.span(), "more than four parameters in a closure");
+    }
     if !self.in_function {
       self.measure(closure.span(), true);
     }
@@ -296,6 +299,19 @@ fn thresholds_and_flow_rules_reject_violations() {
       .any(|issue| issue.contains("four parameters"))
   );
   assert!(checked.issues.iter().any(|issue| issue.contains("else-if")));
+  let closure = analyze("fn closure_arity() { let closure = |a,b,c,d,e| {}; }").unwrap();
+  assert!(
+    closure
+      .issues
+      .iter()
+      .any(|issue| issue.contains("four parameters"))
+  );
+  assert!(
+    analyze("fn closure_arity() { let closure = |a,b,c,d| {}; }")
+      .unwrap()
+      .issues
+      .is_empty()
+  );
   for body in ["|| if true { { { {} } } }", "|| { if true { { { {} } } } }"] {
     let source = format!("fn closure_nesting() {{ let closure = {body}; }}");
     assert!(
