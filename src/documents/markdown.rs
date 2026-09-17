@@ -594,3 +594,95 @@ pub fn describe_markdown(path: &str, content: &str) -> MarkdownDescription {
         title,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, json};
+    #[test]
+    fn yaml_compatibility_and_depth_preserve_selected_metadata() {
+        let cases = [
+            (
+                "title: &title Wrong\nstatus: *title",
+                "Fallback",
+                Value::Null,
+            ),
+            (
+                "title: &title Anchored title\nstatus: accepted",
+                "Anchored title",
+                json!("accepted"),
+            ),
+            (
+                "title: |-\n  *Literal title\nstatus: accepted # *not-an-alias",
+                "*Literal title",
+                json!("accepted"),
+            ),
+            ("title: One\ntitle: Two", "Fallback", Value::Null),
+            ("1: a\n1.0: b\ntitle: Main", "Fallback", Value::Null),
+            ("1: a\n!!str 1: b\ntitle: Main", "Main", Value::Null),
+            (
+                "title: !!binary SGVsbG8=\nstatus: accepted",
+                "Fallback",
+                json!("accepted"),
+            ),
+            ("title: \"  \"\nstatus: \"\"", "Fallback", json!("")),
+            ("title: \"\u{feff}\"", "Fallback", Value::Null),
+            ("title: \"\"", "Fallback", Value::Null),
+            ("title: Main\nstatus: .inf", "Main", Value::Null),
+            (
+                "title: Main\nstatus: !!timestamp invalid",
+                "Fallback",
+                Value::Null,
+            ),
+            (
+                "title: 0x10000000000000000\nstatus: accepted",
+                "Fallback",
+                json!("accepted"),
+            ),
+            (
+                "0x2000000000000101: one\n2305843009213694464: two\ntitle: Main",
+                "Fallback",
+                Value::Null,
+            ),
+            ("? {a: 1}\n? {a: 1}\ntitle: Main", "Main", Value::Null),
+            ("title: Main\nstatus: 1e999", "Main", Value::Null),
+            (
+                "title: Main\nstatus: !!timestamp 2024-01-01",
+                "Main",
+                Value::Null,
+            ),
+            (
+                "title: 1_000\nstatus: tRuE\nbinary: 0b101\nhex: +0x10\nnan: +.nan\ninfinity: .iNF\nnullish: nUlL",
+                "1_000",
+                json!("tRuE"),
+            ),
+            ("title: !!float 2\nstatus: !!bool tRuE", "2", json!("tRuE")),
+            ("status: [reviewed, adopted]", "Fallback", Value::Null),
+        ];
+        for (metadata, title, status) in cases {
+            let parsed =
+                describe_markdown("fixture.md", &format!("---\n{metadata}\n---\n# Fallback\n"));
+            assert_eq!(parsed.title, title);
+            assert_eq!(json!(parsed.status), status);
+        }
+        for depth in [24, 100] {
+            let mut text = String::from("---\ntitle: Deep metadata\nstatus: accepted\nnested:\n");
+            for level in 1..=depth {
+                text.push_str(&format!("{}nested:\n", "  ".repeat(level)));
+            }
+            text.push_str(&format!(
+                "{}unknown: value\n---\n# Fallback\n",
+                "  ".repeat(depth + 1)
+            ));
+            let parsed = describe_markdown("deep.md", &text);
+            assert_eq!(parsed.title, "Deep metadata");
+            assert_eq!(parsed.status.as_deref(), Some("accepted"));
+        }
+        let flow = format!(
+            "---\ntitle: Flow metadata\nstatus: accepted\nnested: {}value{}\n---\n# Fallback\n",
+            "[".repeat(1000),
+            "]".repeat(1000)
+        );
+        assert_eq!(describe_markdown("flow.md", &flow).title, "Flow metadata");
+    }
+}

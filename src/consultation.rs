@@ -2,7 +2,6 @@ use crate::documents::markdown::hash;
 use crate::documents::{Project, compare_serialized_strings};
 use crate::error::{HivexError, Result};
 use crate::execution::runtime::{self as model_runtime, OutputSchema, Request};
-use crate::integrations::codex as native;
 use crate::knowledge;
 use crate::knowledge::ingestion::ingestion_units;
 use crate::knowledge::model::{self as model, Citation, SuppliedDocument};
@@ -206,28 +205,31 @@ fn begin_consultation(
         project,
         &runtime.sources.iter().cloned().collect()
     ));
-    identity["model"] = native::model_identity();
+    identity["model"] = runtime.execution.cache_identity();
     identity["automatic"] = json!(1);
-    store.begin(BeginWork {
-        key: hash(&identity.to_string()),
-        kind: if runtime.command == "review" {
-            "review"
-        } else {
-            "ask"
-        }
-        .to_owned(),
-        max_calls: runtime.max_calls,
-        max_input_bytes: runtime.max_input_bytes,
-        remaining,
-        result_key: Some(hash(&stringify_knowledge(packet))),
-        snapshot: packet["context"]["snapshot"]
-            .as_str()
-            .unwrap_or_default()
+    store.begin_with_profile(
+        BeginWork {
+            key: hash(&identity.to_string()),
+            kind: if runtime.command == "review" {
+                "review"
+            } else {
+                "ask"
+            }
             .to_owned(),
-        warning_baseline: Some(json!(crate::knowledge::warning_review::warning_baseline(
-            &graph
-        ))),
-    })
+            max_calls: runtime.max_calls,
+            max_input_bytes: runtime.max_input_bytes,
+            remaining,
+            result_key: Some(hash(&stringify_knowledge(packet))),
+            snapshot: packet["context"]["snapshot"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+            warning_baseline: Some(json!(crate::knowledge::warning_review::warning_baseline(
+                &graph
+            ))),
+        },
+        runtime.execution.binding(&identity),
+    )
 }
 pub fn supplied_documents(packet: &Value) -> Result<Vec<SuppliedDocument>> {
     let mut documents: Vec<SuppliedDocument> = serde_json::from_value(packet["documents"].clone())?;
@@ -261,10 +263,8 @@ fn finish_answer(
     let answer = OutputSchema::Answer
         .parse(value)
         .ok_or_else(|| HivexError::new("READ_FAILED", "Invalid answer"))?;
-    if work.status() != "done" {
-        work.value_mut()["result"] = answer.clone();
-        work.value_mut()["resultKey"] = json!(hash(&stringify_knowledge(packet)));
-        work.value_mut()["status"] = json!("done");
+    if work.status() != crate::work::State::Done {
+        work.complete(answer.clone(), hash(&stringify_knowledge(packet)))?;
         store.save(work)?;
     }
     let context = &packet["context"];
@@ -318,7 +318,7 @@ fn finish_answer(
 }
 
 pub fn ask(project: &mut Project, runtime: &Options) -> Result<Value> {
-    let mut context = knowledge::query_graph(project, runtime)?;
+    let mut context = knowledge::query_graph(project, &runtime.retrieval())?;
     let mut documents = context_documents(&context);
     if documents.is_empty() {
         context["answer"] = Value::Null;
@@ -332,14 +332,16 @@ pub fn ask(project: &mut Project, runtime: &Options) -> Result<Value> {
     let mut packet = answer_packet(project, runtime, context, &documents)?;
     let mut store = Store::open(&project.root, StoreOptions::default())?;
     let mut work = begin_consultation(project, runtime, &mut store, &documents, &packet)?;
-    update::resume_failed(&mut work, &mut store, runtime.retry_failed)?;
-    if work.status() != "done" && work.phase() == "update" {
+    if work.retry_failed(runtime.retry_failed)? {
+        store.save(&mut work)?;
+    }
+    if work.status() != crate::work::State::Done && work.phase() == crate::work::Phase::Update {
         work = update::update(project, runtime, Some(work))?.1;
     }
-    context = knowledge::query_graph(project, runtime)?;
+    context = knowledge::query_graph(project, &runtime.retrieval())?;
     documents = context_documents(&context);
     packet = answer_packet(project, runtime, context.clone(), &documents)?;
-    if work.status() == "failed" || work.phase() == "update" {
+    if work.status() == crate::work::State::Failed || work.phase() == crate::work::Phase::Update {
         context["answer"] = Value::Null;
         context["omittedUnits"] = packet["omittedUnits"].clone();
         context["status"] = json!(work.status());
@@ -374,10 +376,10 @@ pub fn ask(project: &mut Project, runtime: &Options) -> Result<Value> {
         request.schema = OutputSchema::Review;
         request.stage = "review".to_owned();
     }
-    let value = if work.status() == "done" {
+    let value = if work.status() == crate::work::State::Done {
         Some(work.value()["result"].clone())
     } else {
-        model_runtime::run_model(&mut work, &mut store, runtime, &request)?
+        model_runtime::run_model(&mut work, &mut store, &runtime.execution, &request)?
     };
     let Some(value) = value else {
         context["answer"] = Value::Null;
@@ -413,10 +415,8 @@ fn finish_review(
         &supplied_documents(packet)?,
         value,
     )?;
-    if work.status() != "done" {
-        work.value_mut()["result"] = value.clone();
-        work.value_mut()["resultKey"] = json!(hash(&stringify_knowledge(packet)));
-        work.value_mut()["status"] = json!("done");
+    if work.status() != crate::work::State::Done {
+        work.complete(value.clone(), hash(&stringify_knowledge(packet)))?;
         store.save(work)?;
     }
     let binding = crate::review::review_binding(project, implementation);

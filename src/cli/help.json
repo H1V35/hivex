@@ -56,11 +56,19 @@
       "name": "warnings",
       "usage": "warnings [--all] [--resolve <resolutions.json>] [--root <project>]"
     },
-    { "modelCalls": 0, "name": "status", "usage": "status [--root <project>]" },
-    { "modelCalls": 0, "name": "init", "usage": "init [--root <project>]" }
+    {
+      "modelCalls": 0,
+      "name": "status",
+      "usage": "status [--root <project>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "init",
+      "usage": "init [--root <project>]"
+    }
   ],
   "configuration": "Optional hivex.json with include/exclude/history relative Markdown globs; history sources are focused evidence.",
-  "modelOptions": "--codex <native-binary> --deadline-ms <100..1800000> --retry-failed",
+  "modelOptions": "--integration <codex> --model <catalog-model> --effort <catalog-effort> --model-provider <openai> --codex <native-binary> --deadline-ms <100..1800000> --retry-failed",
   "purpose": "Project decisions, dependencies and exceptions for the responsible agent.",
   "stage": "Incremental project knowledge and task/diff assistance for the principal agent."
 }

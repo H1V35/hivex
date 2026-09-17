@@ -226,11 +226,14 @@ impl Server {
                 if page < pages {
                     json!({"data":[],"nextCursor":(page+1).to_string()})
                 } else {
-                    json!({"data":[{"model":"gpt-5.6-luna","supportedReasoningEfforts":[{"reasoningEffort":"max"}]}],"nextCursor":null})
+                    json!({"data":[{"model":"gpt-5.6-luna","supportedReasoningEfforts":[{"reasoningEffort":"max"},{"reasoningEffort":"medium"}]},{"model":"fixture-model","supportedReasoningEfforts":[{"reasoningEffort":"high"}]}],"nextCursor":null})
                 }
             }
             "thread/start" => {
-                assert_eq!(params["model"], "gpt-5.6-luna");
+                assert_eq!(
+                    params["model"],
+                    serde_json::from_str::<Value>(&self.options["model"]).unwrap()
+                );
                 assert_eq!(params["allowProviderModelFallback"], false);
                 if scenario == "configured-mcp" {
                     assert_eq!(
@@ -240,7 +243,7 @@ impl Server {
                         Some("false")
                     );
                 }
-                json!({"cwd":std::env::current_dir().unwrap(),"instructionSources":if scenario=="instruction-source-metadata"{json!(["/example/.codex/AGENTS.md"])}else{json!([])},"model":params["model"],"modelProvider":"openai","reasoningEffort":if scenario=="changed-effort"{"high"}else{"max"},"sandbox":{"type":"readOnly"},"thread":{"ephemeral":true,"id":"thread1"}})
+                json!({"cwd":std::env::current_dir().unwrap(),"instructionSources":if scenario=="instruction-source-metadata"{json!(["/example/.codex/AGENTS.md"])}else{json!([])},"model":params["model"],"modelProvider":"openai","reasoningEffort":if scenario=="changed-effort"{json!("high")}else{serde_json::from_str::<Value>(&self.options["model_reasoning_effort"]).unwrap()},"sandbox":{"type":"readOnly"},"thread":{"ephemeral":true,"id":"thread1"}})
             }
             "turn/interrupt" => {
                 events.push(completed("interrupted"));
@@ -262,8 +265,14 @@ impl Server {
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 append(&environment("HIVEX_TEST_CALLS_FILE"), "called\n");
-                assert_eq!(params["model"], "gpt-5.6-luna");
-                assert_eq!(params["effort"], "max");
+                assert_eq!(
+                    params["model"],
+                    serde_json::from_str::<Value>(&self.options["model"]).unwrap()
+                );
+                assert_eq!(
+                    params["effort"],
+                    serde_json::from_str::<Value>(&self.options["model_reasoning_effort"]).unwrap()
+                );
                 assert_eq!(params["sandboxPolicy"]["networkAccess"], false);
                 let prompt = params["input"][0]["text"].as_str().unwrap();
                 assert!(!prompt.trim().is_empty());

@@ -47,6 +47,10 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
         &[
             "base",
             "codex",
+            "integration",
+            "model",
+            "effort",
+            "model-provider",
             "deadline-ms",
             "limit",
             "max-calls",
@@ -125,11 +129,20 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
             .unwrap_or(std::env::current_dir()?.to_string_lossy().into_owned()),
         sources: parsed.repeated.get("source").cloned().unwrap_or_default(),
         base: values.get("base").cloned(),
-        binary: values
-            .get("codex")
-            .cloned()
-            .unwrap_or_else(|| "codex".to_owned()),
-        deadline_ms: bounded(values.get("deadline-ms"), 100, 1_800_000)?.unwrap_or(1_800_000),
+        execution: crate::integrations::select(
+            values
+                .get("integration")
+                .map(String::as_str)
+                .unwrap_or("codex"),
+            values
+                .get("codex")
+                .cloned()
+                .unwrap_or_else(|| "codex".into()),
+            values.get("model"),
+            values.get("effort"),
+            values.get("model-provider"),
+            bounded(values.get("deadline-ms"), 100, 1_800_000)?.unwrap_or(1_800_000),
+        )?,
         limit: bounded(values.get("limit"), 1, 64)?.unwrap_or(24) as usize,
         max_calls: bounded(values.get("max-calls"), 0, 4096)?,
         max_input_bytes: bounded(values.get("max-input-bytes"), 1024, 1_073_741_824)?,
@@ -246,5 +259,5 @@ pub fn command(args: &[String]) -> Result<Value> {
         "warnings":warnings
         }));
     }
-    query_graph(&project, &options)
+    query_graph(&project, &options.retrieval())
 }

@@ -137,174 +137,6 @@ fn discovery_exact_hashes_links_and_custom_layout() {
 }
 
 #[test]
-fn markdown_metadata_matrix_preserves_yaml_compatibility() {
-    let p = Project::new();
-    let cases = [
-        (
-            "title: &title Wrong\nstatus: *title",
-            "Fallback",
-            Value::Null,
-        ),
-        (
-            "title: &title Anchored title\nstatus: accepted",
-            "Anchored title",
-            json!("accepted"),
-        ),
-        (
-            "title: |-\n  *Literal title\nstatus: accepted # *not-an-alias",
-            "*Literal title",
-            json!("accepted"),
-        ),
-        ("title: One\ntitle: Two", "Fallback", Value::Null),
-        ("1: a\n1.0: b\ntitle: Main", "Fallback", Value::Null),
-        ("1: a\n!!str 1: b\ntitle: Main", "Main", Value::Null),
-        (
-            "title: !!binary SGVsbG8=\nstatus: accepted",
-            "Fallback",
-            json!("accepted"),
-        ),
-        ("title: \"  \"\nstatus: \"\"", "Fallback", json!("")),
-        ("title: \"\u{feff}\"", "Fallback", Value::Null),
-        ("title: \"\"", "Fallback", Value::Null),
-        ("title: Main\nstatus: .inf", "Main", Value::Null),
-        (
-            "title: Main\nstatus: !!timestamp invalid",
-            "Fallback",
-            Value::Null,
-        ),
-        (
-            "title: 0x10000000000000000\nstatus: accepted",
-            "Fallback",
-            json!("accepted"),
-        ),
-        (
-            "0x2000000000000101: one\n2305843009213694464: two\ntitle: Main",
-            "Fallback",
-            Value::Null,
-        ),
-        ("? {a: 1}\n? {a: 1}\ntitle: Main", "Main", Value::Null),
-        ("title: Main\nstatus: 1e999", "Main", Value::Null),
-        (
-            "title: Main\nstatus: !!timestamp 2024-01-01",
-            "Main",
-            Value::Null,
-        ),
-        (
-            "title: 1_000\nstatus: tRuE\nbinary: 0b101\nhex: +0x10\nnan: +.nan\ninfinity: .iNF\nnullish: nUlL",
-            "1_000",
-            json!("tRuE"),
-        ),
-        ("title: !!float 2\nstatus: !!bool tRuE", "2", json!("tRuE")),
-        ("status: [reviewed, adopted]", "Fallback", Value::Null),
-    ];
-    for (index, (metadata, _, _)) in cases.iter().enumerate() {
-        p.write(
-            &format!("{index}.md"),
-            format!("---\n{metadata}\n---\n# Fallback\n"),
-        );
-    }
-    let result = p.ok(&["sources", "--limit", "100"]);
-    for (index, (_, title, status)) in cases.iter().enumerate() {
-        let doc = document(&result, &format!("{index}.md"));
-        assert_eq!(doc["title"], *title, "case {index}");
-        assert_eq!(doc["status"], *status, "case {index}");
-    }
-    for depth in [24, 100] {
-        let mut text = String::from("---\ntitle: Deep metadata\nstatus: accepted\nnested:\n");
-        for level in 1..=depth {
-            text.push_str(&format!("{}nested:\n", "  ".repeat(level)));
-        }
-        text.push_str(&format!(
-            "{}unknown: value\n---\n# Fallback\n",
-            "  ".repeat(depth + 1)
-        ));
-        p.write("deep.md", text);
-        subset(
-            document(&p.ok(&["sources", "--limit", "100"]), "deep.md"),
-            &json!({"title":"Deep metadata","status":"accepted"}),
-        );
-    }
-    p.write(
-        "flow.md",
-        format!(
-            "---\ntitle: Flow metadata\nstatus: accepted\nnested: {}value{}\n---\n# Fallback\n",
-            "[".repeat(1000),
-            "]".repeat(1000)
-        ),
-    );
-    assert_eq!(
-        document(&p.ok(&["sources", "--limit", "100"]), "flow.md")["title"],
-        "Flow metadata"
-    );
-}
-
-#[test]
-fn unicode_order_links_and_page_boundaries() {
-    let p = Project::new();
-    for (file, text) in [
-        ("b.md", "# Upper\n"),
-        ("c.md", "# A\n"),
-        ("é.md", "# Accent\n"),
-        ("𐀀.md", "# Supplementary\n"),
-        ("😀.md", "# Emoji\n"),
-        ("\u{e000}.md", "# Private Unicode\n"),
-        (
-            "docs/heading.md",
-            "# *Emphasis* and `code` ![alt](img.png) &amp; **strong**\n",
-        ),
-        ("docs/nested.md", "> # Quoted heading\n\n# Top heading\n"),
-        (
-            "docs/guide.md",
-            "---\r\ntitle: \"Guide: decisions\"\r\nstatus: accepted\r\n---\r\n# Heading\r\n[unicode](../%F0%9F%98%80.md#part) [ref][RULE] ![image](../c.md)\r\n[RULE]: ../b.md\r\n",
-        ),
-    ] {
-        p.write(file, text);
-    }
-    let result = p.ok(&["sources"]);
-    assert_eq!(
-        paths(&result),
-        [
-            "😀.md",
-            "b.md",
-            "c.md",
-            "docs/guide.md",
-            "docs/heading.md",
-            "docs/nested.md",
-            "é.md",
-            "𐀀.md",
-            "\u{e000}.md"
-        ]
-    );
-    subset(
-        document(&result, "\u{e000}.md"),
-        &json!({"hash":"f137c6a83e4fcb357a31725b9d6b6bc835551d1818856a419059f88f3f301396","title":"Private Unicode","historical":false}),
-    );
-    assert_eq!(
-        document(&result, "docs/heading.md")["title"],
-        "Emphasis and code alt & strong"
-    );
-    assert_eq!(document(&result, "docs/nested.md")["title"], "Top heading");
-    subset(
-        document(&result, "docs/guide.md"),
-        &json!({"title":"Guide: decisions","status":"accepted","links":["😀.md"]}),
-    );
-    assert_eq!(paths(&p.ok(&["sources", "--max-bytes", "500"])), ["😀.md"]);
-    let first = p.ok(&["sources", "--limit", "1"]);
-    let cursor = first["continuation"].as_str().unwrap();
-    assert_eq!(
-        paths(&p.ok(&["sources", "--limit", "1", "--cursor", cursor])),
-        ["b.md"]
-    );
-    p.write("c.md", "# Changed\n");
-    assert!(
-        p.error(&["sources", "--cursor", cursor])["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("snapshot")
-    );
-}
-
-#[test]
 fn source_range_boundaries_preserve_separators_and_unicode() {
     let p = Project::new();
     let text = "\u{feff}# Title\rLine 😀\r\nThird é\nLast\r\n";
@@ -643,6 +475,42 @@ fn legacy_source_byte_budgets_have_exact_page_boundaries() {
         p.write(file, text);
     }
     p.json("hivex.json", &json!({"history":["docs/archive/**"]}));
+    let result = p.ok(&["sources"]);
+    assert_eq!(
+        paths(&result),
+        [
+            "😀.md",
+            "b.md",
+            "c.md",
+            "docs/aliases.md",
+            "docs/anchor.md",
+            "docs/archive/old.md",
+            "docs/block.md",
+            "docs/duplicates.md",
+            "docs/guide.md",
+            "docs/heading.md",
+            "docs/nested-heading.md",
+            "é.md",
+            "𐀀.md",
+            "\u{e000}.md"
+        ]
+    );
+    subset(
+        document(&result, "\u{e000}.md"),
+        &json!({"hash":"f137c6a83e4fcb357a31725b9d6b6bc835551d1818856a419059f88f3f301396","title":"Private Unicode","historical":false}),
+    );
+    assert_eq!(
+        document(&result, "docs/heading.md")["title"],
+        "Emphasis and code alt & strong"
+    );
+    assert_eq!(
+        document(&result, "docs/nested-heading.md")["title"],
+        "Top heading"
+    );
+    subset(
+        document(&result, "docs/guide.md"),
+        &json!({"title":"Guide: decisions","status":"accepted","links":["😀.md"]}),
+    );
     for (bytes, expected) in [
         ("500", vec!["😀.md"]),
         ("1000", vec!["😀.md", "b.md", "c.md", "docs/aliases.md"]),
@@ -663,4 +531,17 @@ fn legacy_source_byte_budgets_have_exact_page_boundaries() {
     ] {
         assert_eq!(paths(&p.ok(&["sources", "--max-bytes", bytes])), expected);
     }
+    let first = p.ok(&["sources", "--limit", "1"]);
+    let cursor = first["continuation"].as_str().unwrap();
+    assert_eq!(
+        paths(&p.ok(&["sources", "--limit", "1", "--cursor", cursor])),
+        ["b.md"]
+    );
+    p.write("c.md", "# Changed\n");
+    assert!(
+        p.error(&["sources", "--cursor", cursor])["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("snapshot")
+    );
 }

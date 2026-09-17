@@ -526,7 +526,7 @@ fn record_recovery(
                     other => HivexError::from(other),
                 })?;
             let mut current = store::parse_work(work.row_id.clone(), &current_data)?;
-            if current.status() != work.status || current.calls() as i64 != work.calls {
+            if current.status().as_str() != work.status || current.calls() as i64 != work.calls {
                 return Err(recovery_unsafe(
                     "changed",
                     &format!(
@@ -536,7 +536,7 @@ fn record_recovery(
                     0,
                 ));
             }
-            apply_recovery(current.value_mut(), candidate.native_pid)?;
+            apply_recovery(current.recovery_record_mut(), candidate.native_pid)?;
             store::save_work(&transaction, &mut current)?;
         }
         Ok(())
@@ -657,7 +657,7 @@ fn read_works_for_recovery(store: &Store) -> Result<Vec<WorkSnapshot>> {
                     row_id: work.row_id().to_owned(),
                     value: work.value().clone(),
                     id: work.id().to_owned(),
-                    status: work.status().to_owned(),
+                    status: work.status().as_str().to_owned(),
                     calls: i64::try_from(work.calls()).expect("validated work calls fit i64"),
                     owner_pid: work.owner_pid().map(i64::from),
                     native_pid: work.native_process_id().map(i64::from),
@@ -679,7 +679,7 @@ fn prune(store: &mut Store, keep_completed: usize, keep_caches: usize) -> Result
     let works = store.works()?;
     let completed: Vec<String> = works
         .iter()
-        .filter(|work| work.status() == "done")
+        .filter(|work| work.status() == crate::work::State::Done)
         .map(|work| work.row_id().to_owned())
         .collect();
     let work_rows_to_delete = completed
@@ -723,6 +723,9 @@ fn prune(store: &mut Store, keep_completed: usize, keep_caches: usize) -> Result
         deleted_completed_works: work_rows_to_delete.len(),
         retained_caches: cache_rows.len() - cache_rows_to_delete.len(),
         retained_completed_works: completed.len() - work_rows_to_delete.len(),
-        unfinished_works: works.iter().filter(|work| work.status() != "done").count(),
+        unfinished_works: works
+            .iter()
+            .filter(|work| work.status() != crate::work::State::Done)
+            .count(),
     })
 }

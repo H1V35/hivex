@@ -765,3 +765,11 @@ fn load_project_inner(root: &str) -> Result<Project> {
 pub fn load_project(root: &str) -> Result<Project> {
     load_project_inner(root)
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairRange {
+    pub document: String,
+    pub line_end: usize,
+    pub line_start: usize,
+}

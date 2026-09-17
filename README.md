@@ -2,7 +2,7 @@
 
 A project foundation and reusable knowledge for autonomous agents. Hivex provides recommended Markdown, focused workflow skills and retrieval of decisions, dependencies and exceptions. Project Markdown remains authority and the responsible agent directs the work.
 
-Hivex is a native Rust CLI. The current knowledge profile is Luna/max through native Codex and the user's ChatGPT subscription, without silent fallback. The implementing agent may use another model. Model invocation is localized for future configuration; multiple providers are not yet validated.
+Hivex is a native Rust CLI organized by domain capability. The default knowledge profile is Luna/max through Codex and the user's ChatGPT subscription. Execution integration, model and options are separate choices; only the Codex integration is currently shipped. The implementing agent may use another model. There is no silent model or provider fallback.
 
 ## Project foundation
 
@@ -35,7 +35,7 @@ done
 
 Existing skill entries are preserved; inspect them before replacing a custom or older installation. An agent using another discovery location can install the same directories there. The bundled skills do not require the former external general-workflow skill set.
 
-The current knowledge profile needs an authenticated Codex CLI session with Luna/max available. Invocation validates that profile without silent fallback. Document discovery, source/version checks, snapshot operations and initialization do not require a model.
+The default knowledge profile needs an authenticated Codex CLI session with Luna/max available. The Codex integration also accepts an explicitly selected `--model` and `--effort` advertised by its runtime. Invocation validates the requested configuration and effective profile without silent fallback. Document discovery, source/version checks, snapshot operations and initialization do not require a model.
 
 Codex CLI compatibility is established through the app-server protocol and the effective account, model and isolation settings, rather than an exact CLI version. Compatible tool updates remain usable; the actual CLI version is recorded with each admitted invocation. An incompatible protocol or profile stops execution instead of silently changing the knowledge model or its permissions.
 
@@ -148,7 +148,18 @@ Resolved warnings remain in the graph with their original message, reason and ve
 
 `prune` releases space occupied by old completed work and cached results, retaining the graph and all unfinished work, attempts and budgets. It keeps the newest eight completed works and 64 cached results by default; `--keep-completed` and `--keep-caches` change those counts. Pruned answers can require a new model call when requested again. Export evidence before pruning if historical reports are needed; pruning is explicit, never an automatic budget reset.
 
-Native operations accept `--codex` and `--deadline-ms`; the default deadline is 30 minutes. Consultation context defaults to 65,536 bytes and can be bounded with `--max-context-bytes`. Limits are reported, not met by silently cutting a rule or pretending omitted evidence was reviewed. Input-byte and call budgets limit work; reported token usage is actual consumption, including known failed attempts.
+Native operations accept `--integration codex`, `--model`, `--effort`, `--model-provider openai`, `--codex` and `--deadline-ms`; the default deadline is 30 minutes. Consultation context defaults to 65,536 bytes and can be bounded with `--max-context-bytes`. Limits are reported, not met by silently cutting a rule or pretending omitted evidence was reviewed. Input-byte and call budgets limit work; reported token usage is actual consumption, including known failed attempts.
+
+### Execution profiles
+
+Integration and model selection are independent. `--integration` selects the connection; `--model` and `--effort` select a profile supported by that connection. Codex currently admits OpenAI through ChatGPT, so other `--model-provider` values and uninstalled integrations fail explicitly. Provider-specific options and authentication belong to their integration. A future integration can use different model options without requiring a reasoning level named `max`.
+
+```sh
+hivex ask "Which rules apply?" --model <model-listed-by-codex> --effort <supported-effort>
+```
+
+Cache identity includes the integration/profile. The existing default profile retains its v1 cache keys; selecting a different profile cannot reuse an incompatible result. Changing profile does not reingest existing graph knowledge. An unfinished work item stays bound to its profile: a conflicting request reports `EXECUTION_PROFILE_CHANGED` without making a model call or resetting consumption. Resume the original profile and complete or recover that work before changing it. Recovery preserves uncertainty and does not by itself turn an unfinished work item into a completed one. Each new work records its requested profile, and execution receipts record an observed effective profile when known.
+
 
 ## Share knowledge through Git
 
@@ -224,3 +235,9 @@ From the Git project root, supply the task and the base revision. Hivex captures
 ```
 
 Use the same task and base to resume or reuse retained work. Update, knowledge check and review share one budget, including expansion of a partial report. Context is bounded; large changes must be narrowed or split into coherent reviews. Larger existing text files contribute diff excerpts with original line numbers and explicit omissions; their full-file versions still detect later changes. The principal reviewer verifies conflicts and exceptions and resolves supported contradictions before closing the change. A `ready` result means assistance is available, never that the implementation is approved. A saved report can be checked without a model; changed code or documents make it stale. Keep reports outside the project or in an ignored path so they do not become part of the change.
+
+## Source organization
+
+The [domain decision](docs/adr/0013-domain-modules-and-execution-integrations.md) defines module ownership. `src/documents` handles sources and parsing; `src/knowledge` owns the graph and its derived state; `src/work` owns typed progress, budgets and persistence; consultation and review compose them. `src/execution` defines the integration-neutral contract, and `src/integrations/codex` contains its protocol, admission and process lifecycle. CLI parsing/output and development tools remain separate.
+
+CI runs unit tests in the development build and the complete CLI contracts once against the packaged release executable. `cargo test --locked` remains the convenient local check. The parser matrix belongs beside the parser; integration-specific protocol tests live in `tests/contracts/codex.rs`. Remove a test only when its meaningful guarantee is retained elsewhere or its behavior is retired.

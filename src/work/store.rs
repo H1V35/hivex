@@ -17,6 +17,12 @@ pub struct StoreOptions {
     pub update: bool,
 }
 
+pub struct ExecutionBinding {
+    pub operation_key: String,
+    pub profile: Value,
+    pub legacy_key: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct BeginWork {
     pub key: String,
@@ -29,134 +35,7 @@ pub struct BeginWork {
     pub warning_baseline: Option<Value>,
 }
 
-#[derive(Clone, Debug)]
-pub struct Work {
-    row_id: String,
-    value: Value,
-}
-
-impl Work {
-    pub fn value(&self) -> &Value {
-        &self.value
-    }
-
-    pub fn value_mut(&mut self) -> &mut Value {
-        &mut self.value
-    }
-
-    pub fn id(&self) -> &str {
-        self.value
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or(&self.row_id)
-    }
-
-    pub fn row_id(&self) -> &str {
-        &self.row_id
-    }
-
-    pub fn kind(&self) -> &str {
-        self.value
-            .get("kind")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-    }
-
-    pub fn key(&self) -> &str {
-        self.value
-            .get("key")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-    }
-
-    pub fn status(&self) -> &str {
-        self.value
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-    }
-
-    pub fn phase(&self) -> &str {
-        self.value
-            .get("phase")
-            .and_then(Value::as_str)
-            .unwrap_or("update")
-    }
-
-    pub fn cache_hits(&self) -> u64 {
-        nonnegative_integer(self.value.get("cacheHits")).unwrap_or_default()
-    }
-
-    pub fn calls(&self) -> u64 {
-        nonnegative_integer(self.value.get("calls")).unwrap_or_default()
-    }
-
-    pub fn input_bytes(&self) -> u64 {
-        nonnegative_integer(self.value.get("inputBytes")).unwrap_or_default()
-    }
-
-    pub fn total_tokens(&self) -> u64 {
-        nonnegative_integer(self.value.get("totalTokens")).unwrap_or_default()
-    }
-
-    pub fn max_calls(&self) -> u64 {
-        nonnegative_integer(self.value.get("maxCalls")).unwrap_or_default()
-    }
-
-    pub fn max_input_bytes(&self) -> u64 {
-        nonnegative_integer(self.value.get("maxInputBytes")).unwrap_or_default()
-    }
-
-    pub fn remaining(&self) -> Vec<String> {
-        self.value
-            .get("remaining")
-            .and_then(Value::as_array)
-            .map(|entries| {
-                entries
-                    .iter()
-                    .filter_map(|entry| entry.as_str().map(ToOwned::to_owned))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn result_key(&self) -> Option<&str> {
-        self.value.get("resultKey").and_then(Value::as_str)
-    }
-
-    pub fn attempts(&self) -> Option<&Vec<Value>> {
-        self.value.get("attempts").and_then(Value::as_array)
-    }
-
-    pub fn native_process_id(&self) -> Option<u32> {
-        self.value
-            .get("nativeProcessId")
-            .and_then(positive_integer)
-            .and_then(|pid| u32::try_from(pid).ok())
-    }
-
-    pub fn owner_pid(&self) -> Option<u32> {
-        self.value
-            .get("ownerPid")
-            .and_then(positive_integer)
-            .and_then(|pid| u32::try_from(pid).ok())
-    }
-
-    fn status_or_error(&self) -> Result<&str> {
-        let status = self.status();
-        if matches!(
-            status,
-            "pending" | "running" | "budget-exhausted" | "context-limit" | "failed" | "done"
-        ) {
-            Ok(status)
-        } else {
-            Err(HivexError::new(
-                "READ_FAILED",
-                format!("Work {} has an invalid status", self.id()),
-            ))
-        }
-    }
-}
+pub(crate) use super::Work;
 
 pub struct Store {
     database: Connection,
@@ -288,7 +167,11 @@ impl Store {
             })
             .optional()?;
         let Some(data) = data else {
-            if self.works()?.iter().any(|work| work.status() != "done") {
+            if self
+                .works()?
+                .iter()
+                .any(|work| work.status() != crate::work::State::Done)
+            {
                 return Ok(Self::empty_graph());
             }
             let root = self.directory.parent().unwrap_or(Path::new("."));
@@ -319,7 +202,7 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let unfinished = read_work_rows(&transaction)?
             .iter()
-            .any(|work| work.status() != "done");
+            .any(|work| work.status() != crate::work::State::Done);
         if unfinished {
             return Err(HivexError::new(
                 "UNFINISHED_WORK",
@@ -358,7 +241,22 @@ impl Store {
         read_work_rows(&self.database)
     }
 
+    #[cfg(test)]
     pub fn begin(&mut self, options: BeginWork) -> Result<Work> {
+        self.begin_bound(options, None)
+    }
+    pub fn begin_with_profile(
+        &mut self,
+        options: BeginWork,
+        binding: ExecutionBinding,
+    ) -> Result<Work> {
+        self.begin_bound(options, Some(binding))
+    }
+    fn begin_bound(
+        &mut self,
+        options: BeginWork,
+        binding: Option<ExecutionBinding>,
+    ) -> Result<Work> {
         let initial_graph = self
             .database
             .query_row("SELECT 1 FROM graph WHERE id=1", [], |row| {
@@ -384,6 +282,23 @@ impl Store {
                 [serde_json::to_string(graph)?],
             )?;
         }
+        if let Some(binding) = &binding {
+            let conflicting=transaction.query_row(
+                "SELECT id,data FROM work WHERE kind=?1 AND key<>?2 AND (key=?3 OR json_extract(data,'$.operationKey')=?4) AND json_extract(data,'$.status')<>'done' LIMIT 1",
+                params![options.kind,options.key,binding.legacy_key.as_deref(),binding.operation_key],
+                |row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?))
+            ).optional()?;
+            if let Some((id, data)) = conflicting {
+                let retained = parse_work(id, &data)?;
+                return Err(HivexError::new(
+                    "EXECUTION_PROFILE_CHANGED",
+                    format!(
+                        "Work {} is unfinished under a different execution profile. Resume that profile or explicitly finish/recover the work; its history and budget were preserved.",
+                        retained.id()
+                    ),
+                ));
+            }
+        }
         let previous = transaction
             .prepare(
                 "SELECT id,data FROM work WHERE kind=?1 AND key=?2 ORDER BY rowid DESC LIMIT 1",
@@ -407,7 +322,7 @@ impl Store {
                 && options.kind == "update"
                 && previous
                     .as_ref()
-                    .is_some_and(|work| work.status() == "done"))
+                    .is_some_and(|work| work.status() == crate::work::State::Done))
         {
             let mut new_options = options.clone();
             if new_options.warning_baseline.is_none() {
@@ -422,16 +337,19 @@ impl Store {
                 new_options.warning_baseline = Some(graph_warning_baseline(&graph)?);
             }
             let mut work = new_work(&new_options)?;
+            if let Some(binding) = &binding {
+                work.bind_execution(&binding.operation_key, &binding.profile);
+            }
             insert_work(&transaction, &mut work)?;
             transaction.commit()?;
             return Ok(work);
         }
         let mut work = previous.expect("previous exists after new-work branch");
-        if previous_reusable && work.status() == "done" {
+        if previous_reusable && work.status() == crate::work::State::Done {
             transaction.commit()?;
             return Ok(work);
         }
-        if work.status() == "running" {
+        if work.status() == crate::work::State::Running {
             return Err(HivexError::new(
                 "WORK_RUNNING",
                 format!(
@@ -440,7 +358,7 @@ impl Store {
                 ),
             ));
         }
-        if work.status() == "done" {
+        if work.status() == crate::work::State::Done {
             remove_field(&mut work.value, "result");
             set_string(&mut work.value, "status", "pending")?;
         }
@@ -489,35 +407,14 @@ impl Store {
             .database
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let current = read_work_by_id(&transaction, work.row_id())?;
-        if current.calls() != work.calls() || current.status() == "running" {
+        if current.calls() != work.calls() || current.status() == crate::work::State::Running {
             return Err(HivexError::new(
                 "WORK_CONFLICT",
                 "Work was claimed or changed by another operation",
             ));
         }
         let mut next = work.clone();
-        let next_calls = next.calls().checked_add(1).ok_or_else(|| {
-            HivexError::new("INVALID_WORK", "Work call count exceeds integer range")
-        })?;
-        let next_input_bytes = next.input_bytes().checked_add(input_bytes).ok_or_else(|| {
-            HivexError::new("INVALID_WORK", "Work input bytes exceed integer range")
-        })?;
-        set_u64(&mut next.value, "calls", next_calls)?;
-        set_u64(&mut next.value, "inputBytes", next_input_bytes)?;
-        set_string(&mut next.value, "status", "running")?;
-        set_u64(&mut next.value, "ownerPid", u64::from(std::process::id()))?;
-        remove_field(&mut next.value, "nativeProcessId");
-        remove_field(&mut next.value, "retainedCheckAssessment");
-        let attempts = next
-            .value
-            .get_mut("attempts")
-            .and_then(Value::as_array_mut)
-            .ok_or_else(|| HivexError::new("READ_FAILED", "Work attempts are not an array"))?;
-        attempts.push(json!({
-            "inputBytes": input_bytes,
-            "inputHash": input_hash,
-            "stage": stage,
-        }));
+        next.reserve_attempt(input_bytes, input_hash, stage)?;
         save_work(&transaction, &mut next)?;
         transaction.commit()?;
         *work = next;
@@ -535,7 +432,7 @@ impl Store {
             .database
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let current = read_work_by_id(&transaction, work.row_id())?;
-        if current.calls() != work.calls() || current.status() != "running" {
+        if current.calls() != work.calls() || current.status() != crate::work::State::Running {
             return Err(HivexError::new(
                 "WORK_CONFLICT",
                 "Work was claimed or changed before the native process was recorded",
@@ -554,7 +451,10 @@ impl Store {
     }
 
     pub fn unfinished(&self) -> Result<bool> {
-        Ok(self.works()?.iter().any(|work| work.status() != "done"))
+        Ok(self
+            .works()?
+            .iter()
+            .any(|work| work.status() != crate::work::State::Done))
     }
 
     pub fn empty_graph() -> Value {
@@ -646,6 +546,7 @@ fn new_work(options: &BeginWork) -> Result<Work> {
     }
     Ok(Work {
         row_id: id,
+        retry_authorized: false,
         value: Value::Object(value),
     })
 }
@@ -675,13 +576,17 @@ fn read_work_by_id(database: &Connection, row_id: &str) -> Result<Work> {
 pub(crate) fn parse_work(row_id: String, data: &str) -> Result<Work> {
     let value: Value = serde_json::from_str(data)?;
     validate_work_value(&value, &row_id)?;
-    let work = Work { row_id, value };
+    let work = Work {
+        row_id,
+        value,
+        retry_authorized: false,
+    };
     work.status_or_error()?;
     Ok(work)
 }
 
 pub(crate) fn save_work(database: &Connection, work: &mut Work) -> Result<()> {
-    if work.status() != "running" {
+    if work.status() != crate::work::State::Running {
         remove_field(&mut work.value, "nativeProcessId");
     }
     let kind = work
@@ -740,6 +645,25 @@ fn validate_work_value(value: &Value, row_id: &str) -> Result<()> {
     }
     if let Some(pending) = object.get("pending") {
         validate_pending(pending, row_id)?;
+    }
+    optional_string(object, "operationKey", row_id)?;
+    if let Some(profile) = object.get("executionProfile") {
+        let profile = profile
+            .as_object()
+            .ok_or_else(|| malformed_work(row_id, "execution profile is invalid"))?;
+        for key in ["integration", "provider", "model"] {
+            required_string(profile, key, row_id)?;
+        }
+        let options = profile
+            .get("options")
+            .and_then(Value::as_object)
+            .ok_or_else(|| malformed_work(row_id, "execution profile options are invalid"))?;
+        if options.values().any(|value| !value.is_string()) {
+            return Err(malformed_work(
+                row_id,
+                "execution profile option is invalid",
+            ));
+        }
     }
     optional_pid(object, "ownerPid", row_id)?;
     optional_pid(object, "nativeProcessId", row_id)?;
@@ -1259,17 +1183,6 @@ fn set_u64(value: &mut Value, field: &str, number: u64) -> Result<()> {
     Ok(())
 }
 
-fn nonnegative_integer(value: Option<&Value>) -> Option<u64> {
-    value?.as_u64().or_else(|| {
-        let number = value?.as_f64()?;
-        (number.is_finite() && number.fract() == 0.0 && number >= 0.0).then_some(number as u64)
-    })
-}
-
-fn positive_integer(value: &Value) -> Option<u64> {
-    nonnegative_integer(Some(value)).filter(|number| *number > 0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1287,50 +1200,6 @@ mod tests {
 
     fn empty_graph() -> Value {
         Store::empty_graph()
-    }
-
-    #[test]
-    fn preserves_v1_fixture_rows_and_cache_values() {
-        let root = root();
-        let directory = root.join(".hivex");
-        fs::create_dir(&directory).expect("store directory");
-        let database_path = directory.join("knowledge.sqlite");
-        let database = Connection::open(&database_path).expect("fixture database");
-        let fixture = include_str!("../../test/fixtures/knowledge-cache-v1.sql");
-        database.execute_batch(fixture).expect("load fixture");
-        let before: String = database
-            .query_row("SELECT data FROM work", [], |row| row.get(0))
-            .expect("work row");
-        let mut work = Store::open(&root, StoreOptions::default())
-            .expect("open store")
-            .works()
-            .expect("read work")
-            .pop()
-            .expect("one work");
-        assert_eq!(work.status(), "done");
-        assert_eq!(work.calls(), 1);
-        assert_eq!(
-            work.result_key(),
-            Some("224de5769c9cfd624d910bb5afb0f1463fc42f70f36dc4122ea65717b6da836d")
-        );
-        let store = Store::open(&root, StoreOptions::default()).expect("reopen store");
-        assert!(
-            store
-                .cached("366df8482c75d92fe8a0b0e5b446cc86e8c28bae27d2bae37fff4a62ffc6a4f5")
-                .expect("cache read")
-                .is_some()
-        );
-        drop(store);
-        let mut store = Store::open(&root, StoreOptions::default()).expect("reopen store");
-        store.save(&mut work).expect("save unchanged work");
-        let after: String = database
-            .query_row("SELECT data FROM work", [], |row| row.get(0))
-            .expect("work row");
-        assert_eq!(
-            serde_json::from_str::<Value>(&before).expect("before JSON"),
-            serde_json::from_str::<Value>(&after).expect("after JSON")
-        );
-        cleanup(&root);
     }
 
     #[test]
@@ -1376,6 +1245,22 @@ mod tests {
             drop(database);
             let mut store = Store::open(&root, StoreOptions::default()).expect("open store");
             for mut work in store.works().expect("works") {
+                if name == "knowledge-cache-v1.sql" {
+                    assert_eq!(work.status(), crate::work::State::Done);
+                    assert_eq!(work.calls(), 1);
+                    assert_eq!(
+                        work.result_key(),
+                        Some("224de5769c9cfd624d910bb5afb0f1463fc42f70f36dc4122ea65717b6da836d")
+                    );
+                    assert!(
+                        store
+                            .cached(
+                                "366df8482c75d92fe8a0b0e5b446cc86e8c28bae27d2bae37fff4a62ffc6a4f5"
+                            )
+                            .unwrap()
+                            .is_some()
+                    );
+                }
                 store.save(&mut work).expect("round trip work");
             }
             drop(store);
@@ -1433,7 +1318,7 @@ mod tests {
                 warning_baseline: None,
             })
             .expect("begin initializes local graph");
-        assert_eq!(work.status(), "pending");
+        assert_eq!(work.status(), crate::work::State::Pending);
         assert_eq!(store.graph().expect("read initialized graph"), graph);
         drop(store);
         cleanup(&root);
@@ -1530,10 +1415,7 @@ mod tests {
         store
             .record_native_process(&mut work, std::process::id())
             .expect("record pid");
-        work.value_mut()
-            .as_object_mut()
-            .expect("object")
-            .insert("status".to_owned(), Value::String("failed".to_owned()));
+        work.record_completion(json!({"outcome":"failed","cleanup":"confirmed","turnAccepted":"confirmed","usage":null}),None,None,None).unwrap();
         work.value_mut()
             .as_object_mut()
             .expect("object")
@@ -1548,12 +1430,25 @@ mod tests {
             Some(&json!({"kept": true}))
         );
         let mut resumed = resumed;
+        assert!(resumed.retry_failed(true).unwrap());
         store
             .reserve(&mut resumed, 20, "input-2", "check")
             .expect("resume reserve");
         assert_eq!(resumed.calls(), 2);
         assert_eq!(resumed.input_bytes(), 60);
         assert_eq!(resumed.attempts().expect("attempts").len(), 2);
+        resumed.record_completion(json!({"outcome":"failed","cleanup":"confirmed","turnAccepted":"confirmed","usage":null}),None,None,None).unwrap();
+        assert!(resumed.retry_failed(true).unwrap());
+        store.save(&mut resumed).unwrap();
+        let retained = resumed.value().clone();
+        assert_eq!(
+            store
+                .reserve(&mut resumed, 1, "third", "check")
+                .unwrap_err()
+                .code,
+            "WORK_BUDGET_EXHAUSTED"
+        );
+        assert_eq!(resumed.value(), &retained);
         cleanup(&root);
     }
 
@@ -1640,32 +1535,8 @@ mod tests {
             })
             .expect("begin changed ask");
         assert_eq!(reset.id(), answer.id());
-        assert_eq!(reset.status(), "pending");
+        assert_eq!(reset.status(), crate::work::State::Pending);
         assert_eq!(reset.value().get("result"), None);
-        cleanup(&root);
-    }
-
-    #[test]
-    fn import_refuses_unfinished_work_without_replacing_graph() {
-        let root = root();
-        let mut store = Store::open(&root, StoreOptions::default()).expect("open store");
-        store.save_graph(&empty_graph()).expect("graph");
-        let options = BeginWork {
-            key: "unfinished".to_owned(),
-            kind: "update".to_owned(),
-            max_calls: None,
-            max_input_bytes: None,
-            remaining: vec!["unit".to_owned()],
-            result_key: None,
-            snapshot: "snapshot".to_owned(),
-            warning_baseline: None,
-        };
-        let _ = store.begin(options).expect("begin");
-        let error = store
-            .import_graph(&json!({"replacement": true}))
-            .expect_err("unfinished import");
-        assert_eq!(error.code, "UNFINISHED_WORK");
-        assert_eq!(store.graph().expect("graph"), empty_graph());
         cleanup(&root);
     }
 

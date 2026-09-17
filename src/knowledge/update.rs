@@ -2,7 +2,6 @@ use crate::documents::markdown::{hash, line_content, raw_markdown_lines};
 use crate::documents::{Document, Project, compare_serialized_strings};
 use crate::error::{HivexError, Result};
 use crate::execution::runtime::{self as model_runtime, OutputSchema, Request};
-use crate::integrations::codex as native;
 use crate::knowledge::ingestion::{self as ingestion, IngestionResult, IngestionUnit, RepairRange};
 use crate::knowledge::model::{self as model, Citation, Graph, SuppliedDocument};
 use crate::knowledge::search::{Record, rank_lexically};
@@ -281,50 +280,6 @@ fn batch_context(
     })
 }
 
-pub fn resume_failed(work: &mut Work, store: &mut Store, requested: bool) -> Result<()> {
-    let last = work.attempts().and_then(|attempts| attempts.last());
-    if !requested
-        || work.status() != "failed"
-        || last.is_some_and(|attempt| attempt["error"] == "RELATIONSHIP_LOSS")
-    {
-        return Ok(());
-    }
-    let last = last.cloned().unwrap_or(Value::Null);
-    let report = &last["report"];
-    let confirmed = report["outcome"].is_string()
-        && report.get("usage").is_some()
-        && report["cleanup"] == "confirmed"
-        && report["turnAccepted"] != "unknown"
-        && report["interruption"] != "unconfirmed";
-    let legacy = report["cleanup"] == "not-observed"
-        && report["code"] == "MODEL_ADMISSION_FAILED"
-        && report["diagnostic"]["kind"] == "native-admission"
-        && report["diagnostic"]["message"]
-            .as_str()
-            .is_some_and(|message| {
-                regex::Regex::new(r"^Knowledge execution requires verified codex-cli \S+$")
-                    .unwrap()
-                    .is_match(message)
-            })
-        && ["interruption", "nativeProcessId", "turnAccepted"]
-            .iter()
-            .all(|field| report.get(*field).is_none())
-        && report["outcome"] == "failed"
-        && report.get("usage") == Some(&Value::Null);
-    let before = report["code"] == "MODEL_INTERRUPTED_BEFORE_TURN" || legacy;
-    if !confirmed && last["recoveryAcknowledgement"]["type"] != "uncertain-invocation" && !before {
-        return Err(HivexError::new(
-            "WORK_UNCERTAIN",
-            format!(
-                "Work {} has an unresolved invocation. Use recover to inspect it; keep its budget and unknown usage.",
-                work.id()
-            ),
-        ));
-    }
-    work.value_mut()["status"] = json!("pending");
-    store.save(work)
-}
-
 fn parse_range(id: &str) -> Option<RepairRange> {
     let (document, lines) = id.rsplit_once(':')?;
     let (start, end) = lines.split_once('-')?;
@@ -463,7 +418,7 @@ fn prepare_update(
             .collect(),
     );
     project.warnings.extend(plan.warnings.clone());
-    let mut identity = json!({"snapshot":snapshot,"model":native::model_identity(),"repair":runtime.repair,"reason":runtime.repair_reason,"format":3});
+    let mut identity = json!({"snapshot":snapshot,"model":runtime.execution.cache_identity(),"repair":runtime.repair,"reason":runtime.repair_reason,"format":3});
     if !runtime.repair_ranges.is_empty() {
         identity["repairRanges"] = json!(runtime.repair_ranges);
     }
@@ -519,20 +474,23 @@ fn prepare_update(
         .collect();
     let mut work = match shared {
         Some(work) => work,
-        None => store.begin(BeginWork {
-            key,
-            kind: "update".to_owned(),
-            max_calls: runtime.max_calls,
-            max_input_bytes: runtime.max_input_bytes,
-            remaining: remaining.clone(),
-            result_key: None,
-            snapshot,
-            warning_baseline: Some(json!(warnings::warning_baseline(graph))),
-        })?,
+        None => store.begin_with_profile(
+            BeginWork {
+                key,
+                kind: "update".to_owned(),
+                max_calls: runtime.max_calls,
+                max_input_bytes: runtime.max_input_bytes,
+                remaining: remaining.clone(),
+                result_key: None,
+                snapshot,
+                warning_baseline: Some(json!(warnings::warning_baseline(graph))),
+            },
+            runtime.execution.binding(&identity),
+        )?,
     };
-    if !range_sources.is_empty() && work.status() != "done" {
+    if !range_sources.is_empty() && work.status() != crate::work::State::Done {
         if work.calls() == 0 && work.value()["pending"].is_null() {
-            work.value_mut()["plannedUnits"] = json!(remaining);
+            work.set_plan(&remaining)?;
         } else {
             let retained = strings(&work.value()["plannedUnits"])
                 .iter()
@@ -572,7 +530,7 @@ fn prepare_update(
     };
     if remaining.iter().any(|id| !work.remaining().contains(id)) || changed {
         if runtime.retry_failed
-            && work.status() == "failed"
+            && work.status() == crate::work::State::Failed
             && work
                 .attempts()
                 .and_then(|attempts| attempts.last())
@@ -583,11 +541,13 @@ fn prepare_update(
                 "The graph changed after the retained check. No model call was made.",
             ));
         }
-        work.value_mut()["pending"] = Value::Null;
+        work.set_pending(Value::Null);
     }
-    work.value_mut()["remaining"] = json!(remaining);
+    work.set_remaining(remaining);
     store.save(&mut work)?;
-    resume_failed(&mut work, store, runtime.retry_failed)?;
+    if work.retry_failed(runtime.retry_failed)? {
+        store.save(&mut work)?;
+    }
     Ok((plan, work))
 }
 
@@ -791,11 +751,11 @@ fn finish_round(
     work: &mut Work,
     ids: &[String],
 ) {
-    work.value_mut()["remaining"] = json!(
+    work.set_remaining(
         work.remaining()
             .into_iter()
             .filter(|id| !ids.contains(id))
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>(),
     );
     for unit in plan.units.iter().filter(|unit| ids.contains(&unit.id)) {
         let Some(source) = project
@@ -844,17 +804,7 @@ fn finish_round(
                 .insert(source.id.clone(), json!(source.hash));
         }
     }
-    work.value_mut()["pending"] = Value::Null;
-    if work.remaining().is_empty() {
-        work.value_mut()["status"] = json!(if work.kind() == "update" {
-            "done"
-        } else {
-            "pending"
-        });
-        if work.kind() != "update" {
-            work.value_mut()["phase"] = json!(work.kind());
-        }
-    }
+    work.finish_round();
 }
 
 fn extract_batch(
@@ -902,19 +852,22 @@ fn extract_batch(
     });
     let required = stringify_knowledge(&packet).len();
     if !context.missing.is_empty() || required > runtime.max_context_bytes {
-        work.value_mut()["contextLimit"] = json!({
-        "documents":unique(context.missing.into_iter().chain(context.documents.iter().filter_map(|document|document["id"].as_str().map(str::to_owned)))),
-        "maxBytes":runtime.max_context_bytes,
-        "requiredBytes":required
-        });
-        work.value_mut()["status"] = json!("context-limit");
+        work.limit_context(
+            unique(
+                context.missing.into_iter().chain(
+                    context
+                        .documents
+                        .iter()
+                        .filter_map(|document| document["id"].as_str().map(str::to_owned)),
+                ),
+            ),
+            runtime.max_context_bytes,
+            required,
+        );
         store.save(work)?;
         return Ok(None);
     }
-    work.value_mut()
-        .as_object_mut()
-        .unwrap()
-        .shift_remove("contextLimit");
+    work.clear_context_limit();
     let mut instruction="For a repair, check repairReason against Markdown; it is not new authority. Extract meaningful decisions, constraints, definitions and lessons, not every sentence or incidental numeric value. Use c1,c2,... decision IDs and r1,r2,... relationship IDs. Discover supported semantic relationships even without authored links. Extract decisions only within the target unit line ranges. Other ranges are context; do not duplicate their decisions. Existing decision IDs may be relationship endpoints. Cite each decision in its own document and relationships in the documents supporting their scope.".to_owned();
     if work.value().get("warningBaseline").is_some() {
         instruction.push_str(" Report uncertainties only when an unanswered choice, contradiction or missing condition affects the interpretation or application of a decision, dependency or exception. Explain that consequence. Missing deployment proof, incidental detail or background alone is not a warning. Preserve genuine uncertainty and do not infer answers from absence. Keep descriptive facts descriptive; do not turn a current setup into a permanent obligation. For A requires B, A is the dependent and B the prerequisite. Each decision citation must support its conditions and exceptions too.");
@@ -925,7 +878,8 @@ fn extract_batch(
         schema: OutputSchema::Extraction,
         stage: "extract".to_owned(),
     };
-    let Some(mut extraction) = model_runtime::run_model(work, store, runtime, &request)? else {
+    let Some(mut extraction) = model_runtime::run_model(work, store, &runtime.execution, &request)?
+    else {
         return Ok(None);
     };
     if let Some(decisions) = extraction["decisions"].as_array_mut() {
@@ -998,7 +952,7 @@ fn extract_batch(
         ));
     }
     let staged = pending["staged"] == true;
-    work.value_mut()["pending"] = pending;
+    work.set_pending(pending);
     if staged {
         store.save(work)?;
         Ok(Some(graph.clone()))
@@ -1133,7 +1087,7 @@ fn check_batch(
     let request = check_request(graph, &candidate, &pending);
     let prior_calls = work.calls();
     let value = if retained_only {
-        match model_runtime::retained_check_result(work, &request) {
+        match model_runtime::retained_check_result(work, &request, &runtime.execution) {
             Ok(value) => Some(value),
             Err(error) if error.code == "STALE_RETAINED_CHECK" => {
                 let legacy = materialize(project, graph, plan, &pending, false)?;
@@ -1143,13 +1097,13 @@ fn check_batch(
                     schema: request.schema,
                     stage: request.stage.clone(),
                 };
-                model_runtime::retained_check_result(work, &legacy_request)?;
-                model_runtime::run_model(work, store, runtime, &request)?
+                model_runtime::retained_check_result(work, &legacy_request, &runtime.execution)?;
+                model_runtime::run_model(work, store, &runtime.execution, &request)?
             }
             Err(error) => return Err(error),
         }
     } else {
-        model_runtime::run_model(work, store, runtime, &request)?
+        model_runtime::run_model(work, store, &runtime.execution, &request)?
     };
     let Some(value) = value else {
         return Ok(None);
@@ -1172,28 +1126,14 @@ fn check_batch(
     let unresolved = unresolved_changes(project, &candidate, plan, &pending, &value)?;
     let local = retained_only && work.calls() == prior_calls;
     if local {
-        work.value_mut()["retainedCheckAssessment"] = json!(if unresolved.is_empty() {
-            "accepted"
-        } else {
-            "blocked"
-        });
+        work.assess_retained_check(unresolved.is_empty());
     }
     if !unresolved.is_empty() {
-        work.value_mut()["status"] = json!("failed");
-        if !local
-            && let Some(attempt) = work.value_mut()["attempts"]
-                .as_array_mut()
-                .and_then(|attempts| attempts.last_mut())
-        {
-            attempt["error"] = json!("RELATIONSHIP_LOSS");
-            attempt["diagnostic"] = json!(format!(
-                "Previous graph retained. Unresolved relationship changes: {}. Inspect this result before proposing a different repair; no automatic retry.",
-                unresolved.join(", ")
-            ));
-        }
+        work.reject_check(!local,format!("Previous graph retained. Unresolved relationship changes: {}. Inspect this result before proposing a different repair; no automatic retry.",unresolved.join(", ")));
         store.save(work)?;
         return Ok(Some(graph.clone()));
     }
+
     let documents = strings(&pending["documents"]);
     let validation = candidate.warnings.iter().any(|warning| match warning {
         model::Warning::Structured(warning) => {
@@ -1243,7 +1183,7 @@ fn check_batch(
             },
         );
     }
-    work.value_mut()["status"] = json!("pending");
+    work.accept_check();
     finish_round(project, &mut checked, plan, work, &ids);
     store.commit(work, &model::graph_value(&checked, false))?;
     Ok(Some(checked))
@@ -1253,16 +1193,17 @@ fn update_response(
     graph: &Graph,
     units: &[IngestionUnit],
     work: &Work,
+    runtime: &Options,
 ) -> Value {
     let summary = model::warning_summary(&graph.warnings, &project.documents);
-    let status = if work.status() == "done" {
+    let status = if work.status() == crate::work::State::Done {
         if summary.findings + summary.validation + summary.unknown + project.warnings.len() > 0 {
             "partial"
         } else {
             "ready"
         }
     } else {
-        work.status()
+        work.status().as_str()
     };
     let coverage = if !project.warnings.is_empty()
         || units.iter().any(|unit| {
@@ -1293,7 +1234,7 @@ fn update_response(
     "command":"update",
     "coverage":coverage,
     "decisions":graph.decisions.len(),
-    "model":native::knowledge_model(),
+    "model":runtime.execution.model_summary(),
     "pendingCheck":strings(&work.value()["pending"]["documents"]),
     "pendingDocuments":unique(units.iter().filter(|unit|work.remaining().contains(&unit.id)).map(|unit|unit.document.clone())),
     "pendingUnits":work.remaining(),
@@ -1339,7 +1280,7 @@ pub fn update_with_store(
     });
     let (plan, mut work) = prepare_update(project, runtime, store, &graph, shared)?;
     let reassess = runtime.retry_failed
-        && work.status() == "failed"
+        && work.status() == crate::work::State::Failed
         && work
             .attempts()
             .and_then(|attempts| attempts.last())
@@ -1353,10 +1294,16 @@ pub fn update_with_store(
         }
         graph =
             check_batch(project, &graph, &plan, runtime, store, &mut work, true)?.unwrap_or(graph);
-        return Ok((update_response(project, &graph, &plan.units, &work), work));
+        return Ok((
+            update_response(project, &graph, &plan.units, &work, runtime),
+            work,
+        ));
     }
-    if ["done", "failed"].contains(&work.status()) {
-        return Ok((update_response(project, &graph, &plan.units, &work), work));
+    if [crate::work::State::Done, crate::work::State::Failed].contains(&work.status()) {
+        return Ok((
+            update_response(project, &graph, &plan.units, &work, runtime),
+            work,
+        ));
     }
     while !work.remaining().is_empty() || !work.value()["pending"].is_null() {
         if !pending_current(project, &work.value()["pending"]) {
@@ -1371,7 +1318,7 @@ pub fn update_with_store(
             break;
         };
         graph = checked;
-        if work.status() == "failed" {
+        if work.status() == crate::work::State::Failed {
             break;
         }
     }
@@ -1379,7 +1326,10 @@ pub fn update_with_store(
         finish_round(project, &mut graph, &plan, &mut work, &[]);
         store.commit(&mut work, &model::graph_value(&graph, false))?;
     }
-    Ok((update_response(project, &graph, &plan.units, &work), work))
+    Ok((
+        update_response(project, &graph, &plan.units, &work, runtime),
+        work,
+    ))
 }
 
 pub fn update(

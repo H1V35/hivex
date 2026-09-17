@@ -1,4 +1,4 @@
-use crate::knowledge::ingestion::RepairRange;
+use crate::documents::RepairRange;
 use serde_json::Value;
 
 pub struct Operation {
@@ -7,8 +7,7 @@ pub struct Operation {
     pub root: String,
     pub sources: Vec<String>,
     pub base: Option<String>,
-    pub binary: String,
-    pub deadline_ms: u64,
+    pub execution: crate::execution::Execution,
     pub limit: usize,
     pub max_calls: Option<u64>,
     pub max_input_bytes: Option<u64>,
@@ -19,4 +18,15 @@ pub struct Operation {
     pub retry_failed: bool,
     pub implementation: Option<Value>,
     pub retrieval_query: Option<String>,
+}
+
+impl Operation {
+    pub fn retrieval(&self) -> crate::knowledge::Query<'_> {
+        crate::knowledge::Query {
+            command: &self.command,
+            query: self.retrieval_query.as_deref().unwrap_or(&self.query),
+            sources: &self.sources,
+            limit: self.limit,
+        }
+    }
 }

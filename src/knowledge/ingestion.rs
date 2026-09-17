@@ -24,13 +24,7 @@ pub struct IngestionResult {
     pub warnings: Vec<Warning>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepairRange {
-    pub document: String,
-    pub line_end: usize,
-    pub line_start: usize,
-}
+pub(crate) use crate::documents::RepairRange;
 
 #[derive(Clone, Debug)]
 struct Fence {

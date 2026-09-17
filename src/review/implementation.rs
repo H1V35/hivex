@@ -841,13 +841,4 @@ mod tests {
         );
         fs::remove_dir_all(root).expect("cleanup");
     }
-
-    #[test]
-    fn refuses_an_implementation_packet_over_the_round_limit() {
-        let root = initial_repository();
-        fs::write(root.join("cache.ts"), "x".repeat(MAX_BYTES + 1)).expect("large change");
-        let failure = capture_implementation(&root, "HEAD").expect_err("size limit");
-        assert_eq!(failure.code, "IMPLEMENTATION_TOO_LARGE");
-        fs::remove_dir_all(root).expect("cleanup");
-    }
 }

@@ -1,12 +1,11 @@
+use super::Execution;
 use crate::documents::markdown::hash;
 use crate::error::{HivexError, Result};
-use crate::integrations::codex::{self as native, InvocationOptions};
 use crate::knowledge::model::{
     Citation, normalize_integral_numbers, parse_check, parse_extraction, validate_citation,
 };
 use crate::knowledge::serialization::stringify_knowledge;
 use crate::knowledge::warning_review::parse_warning_resolutions;
-use crate::work::Operation as Options;
 use crate::work::store::{Store, Work};
 use serde_json::{Value, json};
 
@@ -149,7 +148,7 @@ pub struct ModelInput {
     pub schema: Value,
 }
 
-pub fn model_input(request: &Request) -> ModelInput {
+pub fn model_input(request: &Request, execution: &Execution) -> ModelInput {
     let prompt = format!(
         "{COMMON_INSTRUCTIONS}\n{}\n\n{}",
         request.instruction,
@@ -157,7 +156,7 @@ pub fn model_input(request: &Request) -> ModelInput {
     );
     let schema = request.schema.schema();
     let fingerprint = hash(
-        &json!({"prompt":prompt,"schema":schema,"model":native::model_identity()}).to_string(),
+        &json!({"prompt":prompt,"schema":schema,"model":execution.cache_identity()}).to_string(),
     );
     ModelInput {
         bytes: prompt.len(),
@@ -174,7 +173,11 @@ fn invalid_retained() -> HivexError {
     )
 }
 
-pub fn retained_check_result(work: &Work, request: &Request) -> Result<Value> {
+pub fn retained_check_result(
+    work: &Work,
+    request: &Request,
+    execution: &Execution,
+) -> Result<Value> {
     let attempt = work
         .attempts()
         .and_then(|attempts| attempts.last())
@@ -182,7 +185,7 @@ pub fn retained_check_result(work: &Work, request: &Request) -> Result<Value> {
     if attempt["report"]["outcome"] != "completed"
         || attempt["report"]["cleanup"] != "confirmed"
         || attempt["stage"] != "check"
-        || attempt["inputHash"] != model_input(request).fingerprint
+        || attempt["inputHash"] != model_input(request, execution).fingerprint
     {
         return Err(invalid_retained());
     }
@@ -195,10 +198,11 @@ pub fn retained_check_result(work: &Work, request: &Request) -> Result<Value> {
 pub fn run_model(
     work: &mut Work,
     store: &mut Store,
-    runtime: &Options,
+    execution: &Execution,
     request: &Request,
 ) -> Result<Option<Value>> {
-    let input = model_input(request);
+    work.ensure_execution_profile(&json!(execution.profile()))?;
+    let input = model_input(request, execution);
     if let Some(attempt) = work.attempts().and_then(|attempts| {
         attempts.iter().rev().find(|attempt| {
             attempt["inputHash"] == input.fingerprint && attempt.get("result").is_some()
@@ -219,37 +223,20 @@ pub fn run_model(
         .cached(&input.fingerprint)?
         .and_then(|cached| request.schema.parse(&cached))
     {
-        work.value_mut()["cacheHits"] = json!(work.cache_hits() + 1);
-        work.value_mut()["status"] = json!("pending");
+        work.cache_hit()?;
         store.save(work)?;
         return Ok(Some(cached));
     }
-    if work.calls() >= work.max_calls()
-        || work.input_bytes().saturating_add(input.bytes as u64) > work.max_input_bytes()
-    {
-        work.value_mut()["status"] = json!("budget-exhausted");
+    if !work.budget().admits(input.bytes as u64) {
+        work.budget_exhausted();
         store.save(work)?;
         return Ok(None);
     }
     store.reserve(work, input.bytes as u64, &input.fingerprint, &request.stage)?;
-    let invocation = native::invoke(
-        InvocationOptions {
-            binary: runtime.binary.clone(),
-            prompt: input.prompt,
-            schema: input.schema,
-            deadline_ms: runtime.deadline_ms,
-        },
-        |pid| store.record_native_process(work, pid),
-    )?;
-    work.value_mut()["totalTokens"] = json!(
-        work.total_tokens()
-            + invocation.report["usage"]["totalTokens"]
-                .as_u64()
-                .unwrap_or(0)
-    );
-    work.value_mut()["status"] = json!("pending");
-    let completed =
-        invocation.report["outcome"] == "completed" && invocation.report["cleanup"] == "confirmed";
+    let invocation = execution.invoke(input.prompt, input.schema, &mut |pid| {
+        store.record_native_process(work, pid)
+    })?;
+    let completed = invocation.completed();
     let raw = invocation.value.as_str().unwrap_or_default();
     let value = if completed {
         serde_json::from_str::<Value>(raw)
@@ -258,31 +245,28 @@ pub fn run_model(
     } else {
         None
     };
-    let attempt = work.value_mut()["attempts"]
-        .as_array_mut()
-        .and_then(|attempts| attempts.last_mut())
-        .expect("a model call has a reserved attempt");
-    attempt["report"] = invocation.report;
-    if completed {
-        attempt["outputHash"] = json!(hash(raw));
-        if let Some(value) = &value {
-            attempt["result"] = value.clone();
-            store.cache(&input.fingerprint, value)?;
-        } else {
-            attempt["error"] = json!("INVALID_KNOWLEDGE_OUTPUT");
-            let mut units = 0;
-            let diagnostic: String = raw
-                .chars()
+    let invalid_output = if completed && value.is_none() {
+        let mut units = 0;
+        Some(
+            raw.chars()
                 .take_while(|character| {
                     units += character.len_utf16();
-                    units <= 16_384
+                    units <= 16384
                 })
-                .collect();
-            attempt["diagnostic"] = json!(diagnostic);
-        }
-    }
-    if value.is_none() {
-        work.value_mut()["status"] = json!("failed");
+                .collect::<String>(),
+        )
+    } else {
+        None
+    };
+    let output_hash = completed.then(|| hash(raw));
+    work.record_completion(
+        invocation.report,
+        value.clone(),
+        output_hash,
+        invalid_output,
+    )?;
+    if let Some(value) = &value {
+        store.cache(&input.fingerprint, value)?;
     }
     store.save(work)?;
     Ok(value)
@@ -354,7 +338,10 @@ mod tests {
             schema: OutputSchema::Extraction,
             stage: "extract".to_owned(),
         };
-        let input = model_input(&request);
+        let execution =
+            crate::integrations::select("codex", "/no-model".into(), None, None, None, 100)
+                .unwrap();
+        let input = model_input(&request, &execution);
         assert_eq!(input.bytes, 1090);
         assert_eq!(
             input.fingerprint,
@@ -395,19 +382,19 @@ mod tests {
             "/nonexistent-do-not-spawn".to_owned(),
         ])
         .unwrap();
-        let key = model_input(&request).fingerprint;
+        let key = model_input(&request, &runtime.execution).fingerprint;
         store
             .cache(&key, &json!({"findings":[],"extra":"stripped"}))
             .unwrap();
         assert_eq!(
-            run_model(&mut work, &mut store, &runtime, &request).unwrap(),
+            run_model(&mut work, &mut store, &runtime.execution, &request).unwrap(),
             Some(json!({"findings":[]}))
         );
         assert_eq!(work.calls(), 0);
         assert_eq!(work.value()["cacheHits"], 1);
         work.value_mut()["attempts"] = json!([{"inputHash":key,"inputBytes":1,"stage":"check","result":{"findings":[{"reason":"retained finding","target":"batch"}]}}]);
         assert_eq!(
-            run_model(&mut work, &mut store, &runtime, &request).unwrap(),
+            run_model(&mut work, &mut store, &runtime.execution, &request).unwrap(),
             Some(json!({"findings":[{"reason":"retained finding","target":"batch"}]}))
         );
         assert_eq!(work.value()["cacheHits"], 1);
@@ -417,10 +404,10 @@ mod tests {
             ..request
         };
         assert_eq!(
-            run_model(&mut work, &mut store, &runtime, &uncached).unwrap(),
+            run_model(&mut work, &mut store, &runtime.execution, &uncached).unwrap(),
             None
         );
-        assert_eq!(work.status(), "budget-exhausted");
+        assert_eq!(work.status(), crate::work::State::BudgetExhausted);
         assert_eq!(work.calls(), 0);
         drop(store);
         std::fs::remove_dir_all(root).unwrap();

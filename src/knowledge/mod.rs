@@ -19,8 +19,6 @@ use crate::knowledge::search::{Record, rank_lexically};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
-use crate::work::Operation;
-
 pub fn is_current_source(project: &Project, document: &str, version: Option<&str>) -> bool {
     project
         .documents
@@ -168,7 +166,7 @@ fn neighborhood(graph: &Graph, seeds: &[String], limit: usize) -> (HashSet<Strin
     (ids, unique(pending))
 }
 
-pub fn query_graph(project: &Project, options: &Operation) -> Result<Value> {
+pub fn query_graph(project: &Project, options: &Query) -> Result<Value> {
     let AvailableGraph { graph, unavailable } = current_graph(project)?;
     let visible: Vec<&Document> = project
         .documents
@@ -196,7 +194,7 @@ pub fn query_graph(project: &Project, options: &Operation) -> Result<Value> {
                 .join(" "),
             })
             .collect::<Vec<_>>(),
-        options.retrieval_query.as_deref().unwrap_or(&options.query),
+        options.query,
         options.limit,
     )?;
     let document_hits = if options.command == "neighbors" {
@@ -211,7 +209,7 @@ pub fn query_graph(project: &Project, options: &Operation) -> Result<Value> {
                     content: document.text.clone(),
                 })
                 .collect::<Vec<_>>(),
-            options.retrieval_query.as_deref().unwrap_or(&options.query),
+            options.query,
             options.limit.min(6),
         )?
     };
@@ -221,7 +219,7 @@ pub fn query_graph(project: &Project, options: &Operation) -> Result<Value> {
         .chain(options.sources.iter().cloned())
         .collect();
     let seeds = if options.command == "neighbors" {
-        vec![options.query.clone()]
+        vec![options.query.to_owned()]
     } else {
         unique(
             hits.into_iter().chain(
@@ -239,8 +237,7 @@ pub fn query_graph(project: &Project, options: &Operation) -> Result<Value> {
         .take(options.limit)
         .collect()
     };
-    let (expanded, pending) = if ["neighbors", "ask", "review"].contains(&options.command.as_str())
-    {
+    let (expanded, pending) = if ["neighbors", "ask", "review"].contains(&options.command) {
         neighborhood(&graph, &seeds, options.limit)
     } else {
         (seeds.into_iter().collect(), Vec::new())
@@ -324,4 +321,12 @@ fn unique(values: impl IntoIterator<Item = String>) -> Vec<String> {
         .into_iter()
         .filter(|value| seen.insert(value.clone()))
         .collect()
+}
+
+/// Retrieval needs no execution profile, retry controls or repair mutation settings.
+pub struct Query<'a> {
+    pub command: &'a str,
+    pub query: &'a str,
+    pub sources: &'a [String],
+    pub limit: usize,
 }
