@@ -1,0 +1,74 @@
+{
+  "application": "hivex",
+  "commands": [
+    {
+      "modelCalls": 0,
+      "name": "sources",
+      "usage": "sources [--root <project>] [--limit <count>] [--cursor <continuation>] [--max-bytes <bytes>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "read",
+      "usage": "read <document> [--root <project>] [--from <line>] [--to <line>] [--max-bytes <bytes>]"
+    },
+    {
+      "modelCalls": "One extraction and one check per batch; retained work resumes within the same budget.",
+      "name": "update",
+      "usage": "update [--root <project>] [--max-calls <total>] [--max-input-bytes <total>] [--max-context-bytes <bytes>] [--repair <document> | --repair-range <document>:<start>-<end>] [--reason <correction>] [--source <context-document>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "search",
+      "usage": "search <query> [--root <project>] [--limit <count>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "neighbors",
+      "usage": "neighbors <decision-id> [--root <project>] [--limit <count>]"
+    },
+    {
+      "modelCalls": "One bounded automatic update/check batch and Luna/max assistance share a total budget; identical retained answers are reused.",
+      "name": "ask",
+      "usage": "ask <task> [--root <project>] [--source <document>] [--max-calls <total>] [--max-input-bytes <total>] [--max-context-bytes <bytes>]"
+    },
+    {
+      "modelCalls": "One automatic update/check batch and a review share one budget. Checking saved versions needs no model.",
+      "name": "review",
+      "usage": "review <task> --base <git-ref> [--root <project>] [--source <document>] [--max-calls <total>] [--max-context-bytes <bytes>] | review --check <saved-report.json> [--root <project>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "recover",
+      "usage": "recover [--root <project>] [--acknowledge-uncertain]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "prune",
+      "usage": "prune [--root <project>] [--keep-completed <count>] [--keep-caches <count>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "snapshot",
+      "usage": "snapshot export | import | relocate <from> <to> [--root <project>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "warnings",
+      "usage": "warnings [--all] [--resolve <resolutions.json>] [--root <project>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "status",
+      "usage": "status [--root <project>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "init",
+      "usage": "init [--root <project>]"
+    }
+  ],
+  "configuration": "Optional hivex.json with include/exclude/history relative Markdown globs; history sources are focused evidence.",
+  "modelOptions": "--integration <codex> --model <catalog-model> --effort <catalog-effort> --model-provider <openai> --codex <native-binary> --deadline-ms <100..1800000> --retry-failed",
+  "purpose": "Project decisions, dependencies and exceptions for the responsible agent.",
+  "stage": "Incremental project knowledge and task/diff assistance for the principal agent."
+}

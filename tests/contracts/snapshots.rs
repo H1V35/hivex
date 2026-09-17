@@ -55,6 +55,7 @@ fn snapshot_import_blocks_unfinished_work_then_preserves_its_completed_accountin
     let p = Project::policy();
     let pending = p.model_cli(&["update", "--max-calls", "1"]);
     let before = p.graph();
+    let before_work = p.work(pending["work"]["id"].as_str().unwrap());
     p.write(
         ".hivex/graph.json",
         fs::read(source.path(".hivex/graph.json")).unwrap(),
@@ -64,6 +65,7 @@ fn snapshot_import_blocks_unfinished_work_then_preserves_its_completed_accountin
         "UNFINISHED_WORK"
     );
     assert_eq!(p.graph(), before);
+    assert_eq!(p.work(pending["work"]["id"].as_str().unwrap()), before_work);
     let done = p.model_cli(&["update", "--max-calls", "2"]);
     assert_eq!(done["work"]["id"], pending["work"]["id"]);
     assert_eq!(p.ok(&["snapshot", "import"])["status"], "ready");

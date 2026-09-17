@@ -53,3 +53,10 @@ Hivex supplies project knowledge to the agents responsible for implementation an
 **Work budget**: The limits shared by every phase and attempt of one work item. Resuming does not reset its consumption, and unknown consumption remains visible.
 
 **Recovery**: Incorporating useful historical decisions, reasons and lessons into their appropriate Markdown authorities while identifying obsolete, duplicate or purely operational material.
+
+
+**Execution integration**: The connection through which Hivex asks an agent/runtime to perform a bounded model invocation and observes its result, usage, cancellation and cleanup. Codex is the currently supported integration, not a domain requirement.
+
+**Execution profile**: The requested integration, model provider, model identifier and result-affecting options. The selected profile must match the effective execution; similarly named effort levels across vendors are not presumed equivalent.
+
+**Attempt**: One accounted invocation within a work item, including failures and unknown usage. Retaining or resuming a work item preserves its attempts.

@@ -16,6 +16,7 @@
     "docs/adr/0010-practical-knowledge-assistance.md",
     "docs/adr/0011-shared-knowledge-and-selective-history.md",
     "docs/adr/0012-project-foundation-and-workflow.md",
+    "docs/adr/0013-domain-modules-and-execution-integrations.md",
     "docs/guidelines/triage-labels.md",
     "docs/procedures/issue-tracker.md",
     "docs/procedures/releasing.md",
