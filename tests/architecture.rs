@@ -157,6 +157,7 @@ impl Boundaries {
 
 impl<'ast> Visit<'ast> for Boundaries {
   fn visit_macro(&mut self, invocation: &'ast syn::Macro) {
+    self.visit_path(&invocation.path);
     self.macro_paths(invocation.tokens.clone());
   }
 
@@ -262,6 +263,21 @@ fn dependency_gate_covers_imports_qualified_paths_and_test_boundaries() {
   "#;
   boundary.visit_file(&syn::parse_file(source).unwrap());
   assert_eq!(boundary.issues.len(), 7);
+  for source in [
+    "fn violation() { crate::knowledge::algo!(); }",
+    "macro_rules! violation { () => { $crate::knowledge::algo!() }; }",
+  ] {
+    boundary.issues.clear();
+    boundary.visit_file(&syn::parse_file(source).unwrap());
+    assert!(
+      boundary
+        .issues
+        .iter()
+        .any(|issue| issue.contains("documents -> knowledge")),
+      "{source}: {:?}",
+      boundary.issues
+    );
+  }
   boundary.issues.clear();
   boundary.module = vec!["knowledge".into()];
   boundary.visit_file(
