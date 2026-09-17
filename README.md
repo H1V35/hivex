@@ -2,6 +2,8 @@
 
 Project knowledge for people and agents. Hivex turns your Markdown into searchable decisions, dependencies and exceptions, with citations back to the original source.
 
+[![Support Hivex on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jivssssss)
+
 - Recover project context without reading the whole repository every time.
 - Keep knowledge current as documents change, with resumable work and explicit budgets.
 - Give agents shared guidance for design, documentation, implementation, review and Git.
@@ -35,10 +37,6 @@ The native package currently supports **macOS ARM64**. Model-assisted commands r
 - [CLI guide](docs/guide.md): configuration, commands, budgets, recovery and snapshots.
 - [Development](docs/guide.md#development): build, tests and package verification with Rust.
 - [Project decisions](docs/README.md): architecture and engineering conventions.
-
-## Support
-
-If Hivex helps your work, you can [support its development on Ko-fi](https://ko-fi.com/jivssssss).
 
 ## License
 
