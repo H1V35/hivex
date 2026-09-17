@@ -1,6 +1,0 @@
-node_modules/
-bun.lock
-evidence/
-target/
-Cargo.lock
-dist/

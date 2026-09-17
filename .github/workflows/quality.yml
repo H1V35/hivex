@@ -15,9 +15,7 @@ concurrency:
 
 jobs:
   quality:
-    runs-on: [self-hosted, macOS, ARM64, hivex]
-    env:
-      DEVELOPER_DIR: /Library/Developer/CommandLineTools
+    runs-on: macos-15
     timeout-minutes: 15
     permissions:
       contents: read
@@ -27,6 +25,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify hosted macOS ARM64 runner
+        run: |
+          test "${{ runner.environment }}" = github-hosted
+          test "$RUNNER_OS" = macOS
+          test "$RUNNER_ARCH" = ARM64
+          xcode-select -p
       - name: Rust toolchain
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
