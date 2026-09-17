@@ -14,6 +14,7 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     );
     for file in [
         "AGENTS.md",
+        "CLAUDE.md",
         "hivex.json",
         ".gitignore",
         "docs/README.md",
@@ -26,6 +27,31 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     ] {
         assert!(list(&result, "created").contains(&json!(file)));
         assert!(!fs::read(p.path(file)).unwrap().is_empty());
+    }
+    assert_eq!(
+        fs::read_to_string(p.path("CLAUDE.md")).unwrap(),
+        "@AGENTS.md\n"
+    );
+    assert!(p.read_json("hivex.json").get("archive").is_some());
+    assert!(p.read_json("hivex.json").get("history").is_none());
+    for skill in [
+        "hivex",
+        "hivex-design",
+        "hivex-document",
+        "hivex-implement",
+        "hivex-review",
+        "hivex-git",
+    ] {
+        for family in [".agents", ".claude"] {
+            let relative = format!("{family}/skills/{skill}");
+            assert!(list(&result, "created").contains(&json!(relative)));
+            assert!(!fs::read_link(p.path(&relative)).unwrap().is_absolute());
+            assert!(p.path(&format!("{relative}/SKILL.md")).is_file());
+        }
+        assert_eq!(
+            fs::canonicalize(p.path(&format!(".agents/skills/{skill}"))).unwrap(),
+            fs::canonicalize(p.path(&format!(".claude/skills/{skill}"))).unwrap()
+        );
     }
     assert!(!p.path(".hivex/knowledge.sqlite").exists());
 }
@@ -134,6 +160,15 @@ fn discovery_exact_hashes_links_and_custom_layout() {
             .unwrap()
             .contains("legacy collections")
     );
+    for config in [
+        json!({"archive":[],"history":[]}),
+        json!({"archive":null}),
+        json!({"archive":"docs/**"}),
+        json!({"archive":["../outside.md"]}),
+    ] {
+        p.json("hivex.json", &config);
+        assert_eq!(p.error(&["sources"])["error"]["code"], "INVALID_CONFIG");
+    }
 }
 
 #[test]
@@ -232,7 +267,7 @@ fn glob_matrix_keeps_explicit_hidden_and_vendor_selection() {
             vec!["a.md", "docs/deep/d.md"],
         ),
         (
-            json!({"exclude":["docs/**"],"history":["docs/deep/**"]}),
+            json!({"exclude":["docs/**"],"archive":["docs/deep/**"]}),
             vec!["a.md"],
         ),
         (
@@ -289,7 +324,7 @@ fn excluded_subtrees_symlinks_invalid_utf8_and_history_are_bounded() {
         archive.write(&format!("archive/{index}.md"), "# Old\n");
     }
     archive.write("current.md", "# Current\n");
-    archive.json("hivex.json", &json!({"history":["archive/**/*.md"]}));
+    archive.json("hivex.json", &json!({"archive":["archive/**/*.md"]}));
     subset(
         &archive.ok(&["read", "current.md"]),
         &json!({"source":{"historical":false},"text":"# Current\n"}),
@@ -300,7 +335,7 @@ fn excluded_subtrees_symlinks_invalid_utf8_and_history_are_bounded() {
     );
     archive.json(
         "hivex.json",
-        &json!({"history":["archive/**"],"exclude":["archive/**"]}),
+        &json!({"archive":["archive/**"],"exclude":["archive/**"]}),
     );
     assert_eq!(
         archive.error(&["read", "archive/0.md"])["error"]["code"],
@@ -314,6 +349,10 @@ fn initialization_is_repeatable_preserves_owned_bytes_and_git_visibility() {
     let config = "{\"include\":[\"custom/**/*.md\"]}\r\n";
     p.write("hivex.json", config);
     p.write("docs/CONTEXT.md", "# Owner context\r\n");
+    p.write("CLAUDE.md", "# Owner instructions\r\n");
+    p.write(".agents/skills/hivex/SKILL.md", "# Owner skill\n");
+    fs::create_dir_all(p.path(".claude/skills")).unwrap();
+    symlink("missing-owner-skill", p.path(".claude/skills/hivex-review")).unwrap();
     p.write(".hivex/graph.json", "{\"graph\":\"owned\"}\n");
     p.write(
         ".gitignore",
@@ -331,6 +370,20 @@ fn initialization_is_repeatable_preserves_owned_bytes_and_git_visibility() {
     );
     assert_eq!(fs::read(p.path(".gitignore")).unwrap(), ignore);
     assert_eq!(fs::read_to_string(p.path("hivex.json")).unwrap(), config);
+    assert_eq!(
+        fs::read_to_string(p.path("CLAUDE.md")).unwrap(),
+        "# Owner instructions\r\n"
+    );
+    assert_eq!(
+        fs::read_to_string(p.path(".agents/skills/hivex/SKILL.md")).unwrap(),
+        "# Owner skill\n"
+    );
+    assert_eq!(
+        fs::read_link(p.path(".claude/skills/hivex-review"))
+            .unwrap()
+            .to_str(),
+        Some("missing-owner-skill")
+    );
     assert_eq!(
         fs::read_to_string(p.path("docs/CONTEXT.md")).unwrap(),
         "# Owner context\r\n"
@@ -365,7 +418,15 @@ fn initialization_is_repeatable_preserves_owned_bytes_and_git_visibility() {
 
 #[test]
 fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
-    for relative in ["docs", ".hivex", ".hivex/.gitignore"] {
+    for relative in [
+        "docs",
+        ".hivex",
+        ".hivex/.gitignore",
+        ".agents",
+        ".agents/skills",
+        ".claude",
+        ".claude/skills",
+    ] {
         let p = Project::new();
         let outside = Project::new();
         fs::create_dir_all(p.path(relative).parent().unwrap()).unwrap();
@@ -374,6 +435,27 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
         assert!(!p.path("AGENTS.md").exists());
         assert_eq!(fs::read_dir(&outside.root).unwrap().count(), 0);
     }
+    let p = Project::new();
+    p.write(".agents/skills/hivex", "occupied by an owner file");
+    assert_eq!(p.error(&["init"])["error"]["code"], "INVALID_DESTINATION");
+    assert!(!p.path("AGENTS.md").exists());
+    assert_eq!(
+        fs::read_to_string(p.path(".agents/skills/hivex")).unwrap(),
+        "occupied by an owner file"
+    );
+    let p = Project::new();
+    let standalone = p.path("hivex");
+    fs::copy(p.command(&[]).get_program(), &standalone).unwrap();
+    let output = Command::new(standalone)
+        .current_dir(&p.root)
+        .arg("init")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let result: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(result["error"]["code"], "INIT_SKILLS_UNAVAILABLE");
+    assert!(!p.path("AGENTS.md").exists());
     for rule in ["!knowledge.sqlite", "*"] {
         let p = Project::new();
         let files = [
@@ -474,7 +556,7 @@ fn legacy_source_byte_budgets_have_exact_page_boundaries() {
     ] {
         p.write(file, text);
     }
-    p.json("hivex.json", &json!({"history":["docs/archive/**"]}));
+    p.json("hivex.json", &json!({"archive":["docs/archive/**"]}));
     let result = p.ok(&["sources"]);
     assert_eq!(
         paths(&result),

@@ -90,7 +90,7 @@ fn review_keeps_historical_provenance_and_invalid_findings_local() {
     );
     p.json(
         "hivex.json",
-        &json!({"history":["archive/**/*.md"],"include":["*.md"]}),
+        &json!({"archive":["archive/**/*.md"],"include":["*.md"]}),
     );
     setup(&p);
     let mut r = p.read_json("responses.json");

@@ -5,11 +5,16 @@ use std::fs;
 #[test]
 fn native_update_and_answer_preserve_evidence_and_retained_work() {
     let p = Project::policy();
+    p.write("archive/old.md", "# Replaced policy\nOld retention.\n");
+    p.json("hivex.json", &json!({"history":["archive/**"]}));
+    let sources = p.ok(&["sources"]);
     let first = p.model_cli(&["update", "--max-calls", "1"]);
     subset(
         &first,
         &json!({"status":"budget-exhausted","work":{"calls":1}}),
     );
+    p.json("hivex.json", &json!({"archive":["archive/**"]}));
+    assert_eq!(p.ok(&["sources"]), sources);
     let second = p.model_cli(&["update", "--max-calls", "2"]);
     subset(
         &second,
@@ -23,6 +28,7 @@ fn native_update_and_answer_preserve_evidence_and_retained_work() {
         "Revoking access immediately removes cached private data."
     );
     let count = p.calls();
+    p.json("hivex.json", &json!({"history":["archive/**"]}));
     assert_eq!(p.model_cli(&["ask", "private cached data"]), answer);
     assert_eq!(p.calls(), count);
 }
@@ -31,7 +37,7 @@ fn native_update_and_answer_preserve_evidence_and_retained_work() {
 fn ordinary_planning_excludes_history_and_does_not_spend_zero_budget() {
     let p = Project::policy();
     p.write("archive/old.md", "# Historical\nOld retention.\n");
-    p.json("hivex.json", &json!({"history":["archive/**"]}));
+    p.json("hivex.json", &json!({"archive":["archive/**"]}));
     let result = p.model_cli(&["update", "--max-calls", "0"]);
     subset(
         &result,
@@ -131,7 +137,7 @@ fn historical_selection_is_explicit_and_preserves_provenance() {
     );
     p.json(
         "hivex.json",
-        &json!({"history":["archive/**/*.md"],"include":["*.md"]}),
+        &json!({"archive":["archive/**/*.md"],"include":["*.md"]}),
     );
     let mut r = p.read_json("responses.json");
     r["byDocument"] = json!({"archive/replaced.md":{"decisions":[decision("archive/replaced.md","history-rule",3,"The old cache rule allowed seven days.")],"relationships":[]}});

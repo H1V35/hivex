@@ -11,7 +11,7 @@ Markdown records project intent and decisions. Hivex retrieves derived knowledge
 
 Read the project's brief agent entrypoint and source configuration. Use `hivex --help` when the installed interface is unfamiliar; in a Bun project, `bun hivex` resolves the installed CLI. The package is `@h1v35/hivex`, not the unrelated unscoped package. Do not invent commands or silently change the knowledge model.
 
-Manual links below refer to the installed Hivex package's README. If copied skills cannot resolve those links, read the named section in that package's README instead (`node_modules/@h1v35/hivex/README.md` for a project-local installation). Do not substitute the adopting project's README; use the manual matching the CLI release.
+Manual links below refer to the installed Hivex package's guide. If copied skills cannot resolve those links, read the named section in that package's guide instead (`node_modules/@h1v35/hivex/docs/guide.md` for a project-local installation). Do not substitute the adopting project's README; use the manual matching the CLI release.
 
 For adoption, use `init` when the installed version provides it. It prepares missing documents and configuration without model calls. Use `hivex-document` to complete project meaning and migrate existing documentation to the standard when appropriate, and `hivex-git` for the tracker and labels. The five workflow skills are independent capabilities, not compulsory phases.
 
@@ -27,11 +27,11 @@ Use `ask` for model-assisted interpretation when it adds value; it can first mai
 
 The principal agent maintains the Markdown. Detect new, changed or removed sources before relying on related graph entries, and use incremental `update` when needed. Large documents are processed in bounded rounds; preserve partial progress and the same work's consumed budget. Do not resend the whole corpus when only a later round remains.
 
-When sources move, use `snapshot relocate <old> <new>` before updating; relocation does not certify changed content. Follow the [snapshot and relocation guide](../../README.md#share-knowledge-through-git) for coverage and evidence requirements. Do not relocate unrelated knowledge to hide a warning.
+When sources move, use `snapshot relocate <old> <new>` before updating; relocation does not certify changed content. Follow the [snapshot and relocation guide](../../docs/guide.md#share-knowledge-through-git) for coverage and evidence requirements. Do not relocate unrelated knowledge to hide a warning.
 
-Repair a demonstrated interpretation error with `update --repair-range <document>:<start>-<end> --reason <correction>`, or `--repair <document>` when the whole document needs revisiting. Check the source, dependencies and replacements first. Do not repair correct knowledge merely because a warning omits context, or change doctrine to satisfy the model. For range requirements, `RELATIONSHIP_LOSS`, interrupted or limited work, and before `recover` or `prune`, read the [maintenance and recovery guide](../../README.md#update-and-repair-knowledge); do not retry automatically.
+Repair a demonstrated interpretation error with `update --repair-range <document>:<start>-<end> --reason <correction>`, or `--repair <document>` when the whole document needs revisiting. Check the source, dependencies and replacements first. Do not repair correct knowledge merely because a warning omits context, or change doctrine to satisfy the model. For range requirements, `RELATIONSHIP_LOSS`, interrupted or limited work, and before `recover` or `prune`, read the [maintenance and recovery guide](../../docs/guide.md#update-and-repair-knowledge); do not retry automatically.
 
-After `update`, review `warningChanges.new` entries with `state: "active"` and `warningChanges.reopened` in that work. Repair demonstrated implementation or relationship findings, or record an evidenced closure with `warnings --resolve`; use `warnings --all` for history. See the [README warning guidance](../../README.md). Do not require closure of a real question or repeat the model for green output.
+After `update`, review `warningChanges.new` entries with `state: "active"` and `warningChanges.reopened` in that work. Repair demonstrated implementation or relationship findings, or record an evidenced closure with `warnings --resolve`; use `warnings --all` for history. See the [warning guidance](../../docs/guide.md#update-and-repair-knowledge). Do not require closure of a real question or repeat the model for green output.
 
 ## Support review
 

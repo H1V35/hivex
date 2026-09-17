@@ -347,7 +347,7 @@ fn unrelated_history_does_not_change_work_and_unconsulted_references_stay_partia
     );
     p.json(
         "hivex.json",
-        &json!({"history":["archive/**/*.md"],"include":["*.md"]}),
+        &json!({"archive":["archive/**/*.md"],"include":["*.md"]}),
     );
     let first = p.cli(&[
         "ask",
@@ -377,7 +377,7 @@ fn unrelated_history_does_not_change_work_and_unconsulted_references_stay_partia
         "# Exception\n\nThe old exemption.\n",
     );
     p.write("cache.md","# Cache\n\nCached data expires after seven days.\n\nSee the [exception](archive/exception.md).\n");
-    p.json("hivex.json", &json!({"history":["archive/**/*.md"]}));
+    p.json("hivex.json", &json!({"archive":["archive/**/*.md"]}));
     p.model_cli(&["update"]);
     let answer = p.model_cli(&["ask", "cache retention"]);
     assert_eq!(answer["status"], "partial");
@@ -398,7 +398,7 @@ fn consulted_historical_dependency_survives_snapshot_and_supplies_changed_eviden
     );
     p.json(
         "hivex.json",
-        &json!({"history":["archive/**/*.md"],"include":["*.md"]}),
+        &json!({"archive":["archive/**/*.md"],"include":["*.md"]}),
     );
     let mut r = p.read_json("responses.json");
     r["byDocument"] = json!({"cache.md":{"decisions":[r["extract"]["decisions"][0]],"relationships":[]},"privacy.md":{"decisions":[r["extract"]["decisions"][1]],"relationships":[]},"archive/replaced.md":{"decisions":[decision("archive/replaced.md","history-rule",3,"The old cache rule allowed seven days.")],"relationships":[{"id":"history-to-cache","from":"history-rule","to":"@existing:cache.md","type":"supersedes","reason":"Current rule replaced historical retention.","evidence":[{"document":"archive/replaced.md","lineStart":3,"lineEnd":3},{"document":"cache.md","lineStart":3,"lineEnd":3}]}]}});

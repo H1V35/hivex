@@ -9,6 +9,7 @@
   "files": [
     "bin/hivex",
     "docs/README.md",
+    "docs/guide.md",
     "docs/CONTEXT.md",
     "docs/guidelines/engineering.md",
     "docs/procedures/self-hosted-runner.md",
