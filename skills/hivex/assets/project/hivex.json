@@ -1,6 +1,6 @@
 {
   "include": ["**/*.md", "**/*.markdown", "**/*.mdown"],
-  "history": [
+  "archive": [
     "**/docs/archive/**/*.md",
     "**/docs/archive/**/*.markdown",
     "**/docs/archive/**/*.mdown"

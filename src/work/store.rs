@@ -1216,7 +1216,7 @@ mod tests {
             let database = Connection::open(&database_path).expect("fixture database");
             let fixture = fs::read_to_string(
                 Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("test/fixtures")
+                    .join("tests/fixtures")
                     .join(name),
             )
             .expect("fixture");

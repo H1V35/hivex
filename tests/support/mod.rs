@@ -158,7 +158,7 @@ impl Project {
             .execute_batch(
                 &fs::read_to_string(
                     Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("test/fixtures")
+                        .join("tests/fixtures")
                         .join(name),
                 )
                 .unwrap(),

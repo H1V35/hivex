@@ -2,7 +2,7 @@
 
 The npm package is `@h1v35/hivex`; its command is `hivex`. Prepare a release from the reviewed Git revision on the admitted macOS ARM64 runner. The native package declares `os: darwin` and `cpu: arm64`; do not add another target before its runtime behavior and package have been tested.
 
-Keep `Cargo.toml` and `package.json` versions aligned. Run the checks in [README](../../README.md#development), then prepare the native archive:
+Keep `Cargo.toml` and `package.json` versions aligned. Run the checks in [development guide](../guide.md#development), then prepare the native archive:
 
 ```sh
 cargo run --locked --bin hivex-dev -- pack

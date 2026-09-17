@@ -9,7 +9,7 @@
 - [Shared knowledge and selective history](adr/0011-shared-knowledge-and-selective-history.md): accepted extension for compact ADRs, bounded historical retrieval and a Git-versioned knowledge snapshot.
 - [Project foundation and workflow](adr/0012-project-foundation-and-workflow.md): initialization, the five shared capabilities, triage and efficient agent instructions.
 - [Recommended Markdown convention](../skills/hivex/references/markdown.md): the default adoption structure and writing practices, with preservation of existing project knowledge.
-- [CLI guide](../README.md) and [agent skill](../skills/hivex/SKILL.md): the interface actually available.
+- [CLI guide](guide.md) and [agent skill](../skills/hivex/SKILL.md): the interface actually available.
 
 Earlier decisions remain in `adr/` as history. ADRs 0004–0009 describe the replaced experimental cohort/admission workflow; ADR 0010 supersedes its mandatory ceremony. Historical evidence is scoped to its original revision and is not a current acceptance result. An adopting project retains its own Markdown at monorepo, package or module level; Hivex does not own that source tree.
 

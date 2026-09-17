@@ -370,6 +370,8 @@ fn verify(root: &Path, manifest: &Value, archive: &Path) -> Result<()> {
         "templates/README.md",
         "bin/hivex",
         "README.md",
+        "docs/guide.md",
+        "skills/hivex/assets/project/CLAUDE.md",
         "LICENSE",
     ] {
         if !files.contains(file) {
@@ -397,13 +399,47 @@ fn verify(root: &Path, manifest: &Value, archive: &Path) -> Result<()> {
     if cli(&binary, &temporary.0, &["--help"])?["application"] != "hivex" {
         return Err("Invalid help".into());
     }
+    let initialized = temporary.0.join("initialized");
+    fs::create_dir_all(initialized.join("node_modules/@h1v35"))?;
+    std::os::unix::fs::symlink(&package, initialized.join("node_modules/@h1v35/hivex"))?;
+    cli(&binary, &initialized, &["init"])?;
+    if fs::read_to_string(initialized.join("CLAUDE.md"))? != "@AGENTS.md\n" {
+        return Err("Missing shared agent instructions".into());
+    }
+    for skill in [
+        "hivex",
+        "hivex-design",
+        "hivex-document",
+        "hivex-implement",
+        "hivex-review",
+        "hivex-git",
+    ] {
+        for family in [".agents", ".claude"] {
+            let linked = initialized.join(family).join("skills").join(skill);
+            if family == ".agents"
+                && fs::read_link(&linked)?
+                    != Path::new(&format!("../../node_modules/@h1v35/hivex/skills/{skill}"))
+            {
+                return Err("Skill link bypasses the project dependency".into());
+            }
+            if fs::read_link(&linked)?.is_absolute()
+                || fs::canonicalize(linked)?
+                    != fs::canonicalize(package.join("skills").join(skill))?
+            {
+                return Err("Invalid installed skill link".into());
+            }
+        }
+    }
+    if cli(&binary, &initialized, &["init"])?["created"] != json!([]) {
+        return Err("Initialization is not repeatable".into());
+    }
     let project = temporary.0.join("project");
     fs::create_dir_all(project.join(".hivex"))?;
     let source = "# Policy\nUse bounded work.\nPreserve the budget.\n";
     fs::write(project.join("notes.md"), source)?;
     let database = Connection::open(project.join(".hivex/knowledge.sqlite"))?;
     database.execute_batch(&fs::read_to_string(
-        root.join("test/fixtures/knowledge-cache-v1.sql"),
+        root.join("tests/fixtures/knowledge-cache-v1.sql"),
     )?)?;
     let graph_before: String =
         database.query_row("SELECT data FROM graph", [], |row| row.get(0))?;
@@ -441,7 +477,7 @@ fn verify(root: &Path, manifest: &Value, archive: &Path) -> Result<()> {
     }
     cli(&binary, &project, &["snapshot", "export"])?;
     cli(&binary, &project, &["warnings"])?;
-    let verification = json!({"archive":archive,"sha256":report["sha256"],"nativeSha256":report["nativeSha256"],"target":TARGET,"checks":["public-allowlist-six-skills","extracted-native-executable","no-runtime-or-development-js-dependencies","no-bun-node-in-path","retained-v1-answer-budget","unchanged-graph-cache","source-read-snapshot"]});
+    let verification = json!({"archive":archive,"sha256":report["sha256"],"nativeSha256":report["nativeSha256"],"target":TARGET,"checks":["public-allowlist-six-skills","extracted-native-executable","no-runtime-or-development-js-dependencies","no-bun-node-in-path","installed-init-and-skills","retained-v1-answer-budget","unchanged-graph-cache","source-read-snapshot"]});
     write_json(
         &PathBuf::from(format!("{}.verification.json", archive.display())),
         &verification,

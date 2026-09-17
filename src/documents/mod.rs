@@ -54,7 +54,7 @@ pub struct Project {
 struct Config {
     include: Vec<String>,
     exclude: Vec<String>,
-    history: Vec<String>,
+    archive: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -339,7 +339,7 @@ fn config_from(root: &Path) -> Result<Config> {
         Err(read_error) if read_error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(Config {
                 exclude: Vec::new(),
-                history: Vec::new(),
+                archive: Vec::new(),
                 include: DEFAULT_INCLUDE
                     .iter()
                     .map(|value| (*value).to_owned())
@@ -387,16 +387,27 @@ fn config_from(root: &Path) -> Result<Config> {
     }
     if let Some(unknown) = object
         .keys()
-        .find(|key| !matches!(key.as_str(), "exclude" | "history" | "include"))
+        .find(|key| !matches!(key.as_str(), "exclude" | "archive" | "history" | "include"))
     {
         return Err(error(
             "INVALID_CONFIG",
             format!("hivex.json has unsupported field: {unknown}"),
         ));
     }
+    if object.contains_key("archive") && object.contains_key("history") {
+        return Err(error(
+            "INVALID_CONFIG",
+            "Use archive instead of history; do not specify both fields",
+        ));
+    }
+    let archive_field = if object.contains_key("archive") {
+        "archive"
+    } else {
+        "history"
+    };
     Ok(Config {
         exclude: parse_patterns(object.get("exclude"), "exclude", &[])?,
-        history: parse_patterns(object.get("history"), "history", &[])?,
+        archive: parse_patterns(object.get(archive_field), archive_field, &[])?,
         include: parse_patterns(object.get("include"), "include", &DEFAULT_INCLUDE)?,
     })
 }
@@ -422,7 +433,7 @@ fn is_excluded_name(name: &str, config: &Config) -> bool {
     config
         .include
         .iter()
-        .chain(config.history.iter())
+        .chain(config.archive.iter())
         .all(|pattern| !pattern.split('/').any(|segment| segment == name))
 }
 
@@ -523,13 +534,13 @@ fn selected(candidates: &[Candidate], config: &Config) -> (Vec<Candidate>, Vec<C
         .iter()
         .filter(|candidate| {
             pattern_matches(&candidate.path, &config.include)
-                && !pattern_matches(&candidate.path, &config.history)
+                && !pattern_matches(&candidate.path, &config.archive)
         })
         .cloned()
         .collect();
     let historical = available
         .iter()
-        .filter(|candidate| pattern_matches(&candidate.path, &config.history))
+        .filter(|candidate| pattern_matches(&candidate.path, &config.archive))
         .cloned()
         .collect();
     (current, historical)
@@ -676,7 +687,8 @@ fn snapshot_for(documents: &[Document], config: &Config) -> String {
     };
     selection.insert("include".to_owned(), sorted(&config.include));
     selection.insert("exclude".to_owned(), sorted(&config.exclude));
-    selection.insert("history".to_owned(), sorted(&config.history));
+    // Preserve v1 identities when a project renames its configuration field.
+    selection.insert("history".to_owned(), sorted(&config.archive));
     let mut ignored = PROTECTED_DIRECTORIES
         .iter()
         .chain(EXCLUDED_DIRECTORIES.iter())
