@@ -1,6 +1,6 @@
 {
   "name": "@h1v35/hivex",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Versioned project knowledge for people and agents.",
   "license": "MIT",
   "bin": {
@@ -40,5 +40,9 @@
   ],
   "cpu": [
     "arm64"
-  ]
+  ],
+  "homepage": "https://github.com/H1V35/hivex#readme",
+  "bugs": {
+    "url": "https://github.com/H1V35/hivex/issues"
+  }
 }

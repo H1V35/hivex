@@ -2,6 +2,8 @@
 
 Project knowledge for people and agents. Hivex turns your Markdown into searchable decisions, dependencies and exceptions, with citations back to the original source.
 
+[![npm version](https://img.shields.io/npm/v/%40h1v35%2Fhivex)](https://www.npmjs.com/package/@h1v35/hivex)
+
 [![Support Hivex on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jivssssss)
 
 - Recover project context without reading the whole repository every time.
