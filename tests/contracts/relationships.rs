@@ -19,11 +19,17 @@ fn independent_supporting_evidence_is_supplied_and_invalidated_on_change() {
     let mut r = p.read_json("responses.json");
     r["extract"]["relationships"][0]["evidence"] =
         json!([{"document":"scope.md","lineStart":3,"lineEnd":3}]);
+    r["ask"]["evidence"] = json!([{"document":"scope.md","lineStart":3,"lineEnd":3}]);
     p.json("responses.json", &r);
     assert_eq!(p.model_cli(&["update"])["relationships"], 1);
     let found = p.ok(&["search", "seven days"]);
     let id = found["decisions"][0]["id"].as_str().unwrap();
-    assert!(!p.model_cli(&["ask", "seven days"])["answer"].is_null());
+    let answer = p.model_cli(&["ask", "seven days"]);
+    assert!(!answer["answer"].is_null());
+    subset(
+        &answer["evidence"][0],
+        &json!({"document":"scope.md","lineStart":3,"lineEnd":3,"text":"Revocation overrides cache retention for private records."}),
+    );
     let captured = packets(&p);
     assert!(
         list(captured.last().unwrap(), "documents")

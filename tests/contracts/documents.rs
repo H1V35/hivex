@@ -71,6 +71,7 @@ fn help_errors_and_bounded_diagnostics() {
         (vec!["unknown", "--unknown"], "READ_FAILED"),
         (vec!["sources", "--unknown"], "INVALID_ARGUMENT"),
         (vec!["sources", "--root"], "INVALID_ARGUMENT"),
+        (vec!["sources", "--root", "--unknown"], "INVALID_ARGUMENT"),
         (vec!["sources", "extra"], "INVALID_ARGUMENT"),
         (vec!["read"], "INVALID_ARGUMENT"),
         (vec!["read", "missing.md"], "SOURCE_NOT_FOUND"),

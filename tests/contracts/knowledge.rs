@@ -132,7 +132,21 @@ fn compatible_versions_and_admission_boundaries() {
     let second = p.model_cli(&["update", "--max-calls", "2"]);
     assert_eq!(second["status"], "ready");
     assert_eq!(first["work"]["id"], second["work"]["id"]);
+    assert_eq!(first["pendingCheck"], json!(["cache.md", "privacy.md"]));
+    assert_eq!(second["pendingCheck"], json!([]));
     let work = p.work(second["work"]["id"].as_str().unwrap());
+    assert_eq!(
+        list(&work, "attempts")
+            .iter()
+            .map(|a| a["stage"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["extract", "check"]
+    );
+    assert!(
+        list(&p.graph(), "decisions")
+            .iter()
+            .all(|d| d["quality"] == "checked")
+    );
     assert_ne!(
         work["attempts"][0]["report"]["admission"],
         work["attempts"][1]["report"]["admission"]
@@ -318,52 +332,87 @@ fn search_uses_source_terms_and_evidence_has_only_coordinates_text_and_version()
 
 #[test]
 fn historical_selection_is_explicit_and_preserves_provenance() {
-    let p = Project::new();
+    let p = Project::policy();
     p.write(
-        "current.md",
-        "# Current\n\nUse bounded work. See [history](archive/old.md).\n",
+        "archive/replaced.md",
+        "# Replaced\n\nThe old cache rule allowed seven days.\n",
     );
-    p.write(
-        "archive/old.md",
-        "# Historical\n\nLegacy work may be unbounded.\n",
+    p.json(
+        "hivex.json",
+        &json!({"history":["archive/**/*.md"],"include":["*.md"]}),
     );
-    p.json("hivex.json", &json!({"history":["archive/**"]}));
-    p.model("");
     let mut r = p.read_json("responses.json");
-    r["byDocument"] = json!({"current.md":{"decisions":[decision("current.md","current",3,"Use bounded work.")],"relationships":[]},"archive/old.md":{"decisions":[decision("archive/old.md","old",3,"Legacy work may be unbounded.")],"relationships":[]}});
-    r["ask"] = json!({"answer":"Historical work could be unbounded.","evidence":[{"document":"archive/old.md","lineStart":3,"lineEnd":3}],"uncertainties":[]});
+    r["byDocument"] = json!({"archive/replaced.md":{"decisions":[decision("archive/replaced.md","history-rule",3,"The old cache rule allowed seven days.")],"relationships":[]}});
+    r["ask"] = json!({"answer":"The old cache rule allowed seven days.","evidence":[{"document":"archive/replaced.md","lineStart":3,"lineEnd":3}],"uncertainties":[]});
     p.json("responses.json", &r);
-    assert_eq!(p.model_cli(&["update"])["status"], "ready");
-    assert!(
-        !p.graph()["documents"]
-            .as_object()
-            .unwrap()
-            .contains_key("archive/old.md")
-    );
-    let current = p.ok(&["search", "bounded"]);
-    assert!(
-        current["warnings"]
-            .to_string()
-            .contains("not been consulted")
+    let first = p.model_cli(&[
+        "ask",
+        "old cache rule",
+        "--source",
+        "archive/replaced.md",
+        "--max-calls",
+        "2",
+    ]);
+    subset(
+        &first,
+        &json!({"status":"budget-exhausted","work":{"calls":2,"maxCalls":2}}),
     );
     let answer = p.model_cli(&[
         "ask",
-        "Legacy",
+        "old cache rule",
         "--source",
-        "archive/old.md",
+        "archive/replaced.md",
         "--max-calls",
         "3",
     ]);
-    assert_eq!(answer["evidence"][0]["historical"], true);
-    assert_eq!(
-        answer["evidence"][0]["text"],
-        "Legacy work may be unbounded."
+    assert_eq!(answer["answer"], "The old cache rule allowed seven days.");
+    assert_eq!(answer["work"]["id"], first["work"]["id"]);
+    assert_eq!(answer["work"]["calls"], 3);
+    subset(
+        &answer["evidence"][0],
+        &json!({"document":"archive/replaced.md","historical":true,"text":"The old cache rule allowed seven days."}),
     );
-    let old = p.ok(&["search", "Legacy", "--source", "archive/old.md"]);
+    let found = p.ok(&[
+        "search",
+        "old cache rule",
+        "--source",
+        "archive/replaced.md",
+    ]);
     assert!(
-        list(&old, "decisions")
+        list(&found, "decisions")
             .iter()
-            .any(|d| d["historical"] == true)
+            .any(|d| d["historical"] == true && d["status"] == "historical")
+    );
+    subset(
+        &p.model_cli(&[
+            "update",
+            "--repair",
+            "archive/replaced.md",
+            "--reason",
+            "Check the historical lifetime.",
+        ]),
+        &json!({"status":"ready","work":{"calls":2}}),
+    );
+    p.write(
+        "cache.md",
+        "# Cache\n\nCurrent cache expires after eight days.\n",
+    );
+    assert_eq!(p.model_cli(&["update"])["status"], "ready");
+    let text = fs::read_to_string(p.path("responses.json.packets")).unwrap();
+    let captured: Vec<Value> = text
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let ordinary = captured
+        .iter()
+        .rev()
+        .find(|v| v["operation"] == "extract")
+        .unwrap();
+    assert!(!list(ordinary, "targets").contains(&json!("archive/replaced.md")));
+    assert!(
+        !list(ordinary, "documents")
+            .iter()
+            .any(|d| d["id"] == "archive/replaced.md")
     );
 }
 
@@ -782,4 +831,17 @@ fn interaction_requests_are_declined_and_unrelated_rpc_responses_are_ignored() {
             }
         }
     }
+}
+
+#[test]
+fn omitted_consultation_call_limit_preserves_nonzero_exhausted_budget() {
+    let p = Project::policy();
+    let first = p.model_cli(&["ask", "cache", "--max-calls", "1"]);
+    subset(&first["work"], &json!({"calls":1,"maxCalls":1}));
+    let repeated = p.model_cli(&["ask", "cache"]);
+    subset(
+        &repeated,
+        &json!({"status":"budget-exhausted","work":{"calls":1,"maxCalls":1,"id":first["work"]["id"]}}),
+    );
+    assert_eq!(p.calls(), 1);
 }
