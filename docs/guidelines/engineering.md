@@ -5,7 +5,7 @@ status: accepted
 
 # Engineering workflow
 
-Hivex is a TypeScript/Bun product. Modules group behavior by domain responsibility and hide internal details behind small interfaces. Do not add a second development-session orchestrator or require an adopting project's layout, tracker or product packages. Codex, Git/GitHub and CI coordinate work.
+Hivex is migrating from TypeScript/Bun to Rust under [#80](https://github.com/H1V35/hivex/issues/80) and [ADR 0010](../adr/0010-practical-knowledge-assistance.md#rust-migration-80). The published TypeScript CLI remains the compatibility reference during the staged replacement. Modules group behavior by domain responsibility and hide internal details behind small interfaces. Do not add a second development-session orchestrator or require an adopting project's layout, tracker or product packages. Codex, Git/GitHub and CI coordinate work.
 
 Skills provide task knowledge and judgment. The host harness handles agent coordination, effective model/effort configuration, execution permissions and process/session lifecycle. Project Markdown owns workflow policy; Hivex's CLI owns its knowledge state and work accounting. Keep these responsibilities distinct rather than duplicating harness mechanics in each skill, as recorded in [ADR 0012](../adr/0012-project-foundation-and-workflow.md#amendment-skill-and-execution-responsibilities).
 
@@ -30,6 +30,8 @@ Lint uses the published Ultracite ESLint/Prettier core presets with the owner's 
 The dependency policy follows the current modules: document discovery and Markdown parsing do not import knowledge, review or model execution; knowledge storage and ingestion may use documents; review may use documents and knowledge. Model execution is self-contained, retrieval may use shared errors, and CLI commands compose these responsibilities. Tests may use production modules; production cannot import tests. New source files must be classified before they can participate in these dependencies.
 
 Runtime settings identify Bun globals and Bun executables while keeping the preset rules enabled. The browser compatibility target is the server-side JavaScript environment, not a browser application. Runtime APIs used by the code must also be verified on the supported Bun version.
+
+Rust uses the stable toolchain selected in `rust-toolchain.toml`, a committed Cargo lockfile, rustfmt, Clippy with warnings denied and relevant behavioral checks. Keep Rust modules cohesive and private by default. The TypeScript lint configuration applies only to the retained TypeScript implementation and tests; do not translate its stylistic thresholds into Rust rules.
 
 ## Tests protect behavior
 

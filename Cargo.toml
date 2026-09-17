@@ -1,0 +1,27 @@
+[package]
+name = "hivex"
+version = "0.3.11"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "hivex-rust"
+path = "rust/main.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+globset = "0.4"
+granit-parser = "1.3"
+libc = "0.2"
+pulldown-cmark = "0.13"
+rusqlite = { version = "0.37", features = ["bundled"] }
+regex = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+icu_collator = "2.3"
+icu_locale_core = "2.3"

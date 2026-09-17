@@ -61,8 +61,10 @@ const documentPaths = function documentPaths(value: unknown): string[] {
 
 const documentCommand = function documentCommand(cliArguments: string[]): unknown {
   const result = spawnSync(
-    process.execPath,
-    [nodePath.join(import.meta.dirname, 'cli.ts'), ...cliArguments],
+    process.env.HIVEX_TEST_BINARY ?? process.execPath,
+    process.env.HIVEX_TEST_BINARY === undefined
+      ? [nodePath.join(import.meta.dirname, 'cli.ts'), ...cliArguments]
+      : cliArguments,
     {
       encoding: 'utf-8',
       timeout: 10_000,

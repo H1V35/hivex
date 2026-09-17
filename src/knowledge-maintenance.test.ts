@@ -1,10 +1,10 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import nodePath from 'node:path';
 import { Database } from 'bun:sqlite';
 import { expect, test } from 'bun:test';
 import { emptyGraph } from './knowledge-model.ts';
-import { knowledgeMaintenance } from './knowledge-maintenance.ts';
 import { KnowledgeStore } from './knowledge-store.ts';
 
 type JsonRecord = Record<string, unknown>;
@@ -27,6 +27,24 @@ interface StoredWork {
 
 const isRecord = (value: unknown): value is JsonRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const knowledgeMaintenance = function knowledgeMaintenance(argumentsList: string[]): unknown {
+  const executable = process.env.HIVEX_TEST_BINARY ?? process.execPath;
+  const prefix =
+    process.env.HIVEX_TEST_BINARY === undefined
+      ? [nodePath.join(import.meta.dirname, 'cli.ts')]
+      : [];
+  const result = spawnSync(executable, [...prefix, ...argumentsList], {
+    encoding: 'utf-8',
+    timeout: 10_000,
+  });
+  if (!result.stdout) {
+    throw new Error(result.stderr || 'Expected maintenance CLI output');
+  }
+  const report: unknown = JSON.parse(result.stdout);
+  expect(result.status).toBe(isRecord(report) && report.status === 'blocked' ? 1 : 0);
+  return report;
+};
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string');
@@ -399,5 +417,198 @@ test('recover handles a dead owner before the native turn starts, without an ack
       inputBytes: 40,
       status: 'failed',
     });
+  });
+});
+
+test('recover keeps an uncertain failure without a native PID blocked and unchanged', () => {
+  temporaryProject((root) => {
+    let id: string;
+    {
+      using store = new KnowledgeStore(root);
+      const work = store.begin({
+        key: 'missing-native-pid',
+        kind: 'ask',
+        remaining: [],
+        snapshot: 'fixture',
+      });
+      store.reserve(work, { inputBytes: 25, inputHash: 'retained-input', stage: 'ask' });
+      work.ownerPid = deadPid();
+      work.status = 'failed';
+      const attempt = work.attempts.at(-1);
+      if (!attempt) {
+        throw new Error('Expected a reserved attempt');
+      }
+      attempt.report = { interruption: 'unconfirmed', turnAccepted: 'unknown', usage: null };
+      store.save(work);
+      ({ id } = work);
+    }
+    const before = storedWork(root, id);
+    expect(
+      knowledgeMaintenance(['recover', '--acknowledge-uncertain', '--root', root])
+    ).toMatchObject({
+      acknowledgedWorks: 0,
+      interruptedWorks: 0,
+      status: 'blocked',
+    });
+    expect(storedWork(root, id)).toEqual(before);
+  });
+});
+
+test('recover refuses an unreadable lock and preserves it', () => {
+  temporaryProject((root) => {
+    {
+      using store = new KnowledgeStore(root);
+      store.saveGraph(emptyGraph());
+    }
+    const lockPath = nodePath.join(root, '.hivex', 'knowledge.lock');
+    writeFileSync(lockPath, '{"id":"unknown-owner"}');
+    expect(knowledgeMaintenance(['recover', '--root', root])).toMatchObject({
+      acknowledgedWorks: 0,
+      interruptedWorks: 0,
+      lock: 'unreadable',
+      status: 'blocked',
+    });
+    expect(existsSync(lockPath)).toBe(true);
+  });
+});
+
+test('prune rejects a corrupt retained extraction before deleting any rows', () => {
+  temporaryProject((root) => {
+    let id: string;
+    {
+      using store = new KnowledgeStore(root);
+      const work = store.begin({
+        key: 'corrupt-extraction',
+        kind: 'update',
+        remaining: [],
+        snapshot: 'fixture',
+      });
+      work.status = 'done';
+      store.save(work);
+      store.cache('retained-cache', { useful: true });
+      ({ id } = work);
+    }
+    using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
+    database.run("UPDATE work SET data=json_set(data,'$.pending',json(?)) WHERE id=?", [
+      JSON.stringify({ batch: 'batch', documents: [], extraction: {} }),
+      id,
+    ]);
+    const before = database.query('SELECT * FROM work').all();
+    expect(() =>
+      knowledgeMaintenance(['prune', '--keep-completed', '0', '--keep-caches', '0', '--root', root])
+    ).toThrow();
+    expect(database.query('SELECT * FROM work').all()).toEqual(before);
+    expect(database.query('SELECT * FROM model_cache').all()).toHaveLength(1);
+    expect(existsSync(nodePath.join(root, '.hivex', 'knowledge.lock'))).toBe(false);
+  });
+});
+
+test('prune rejects invalid extraction explanations before deleting any rows', () => {
+  temporaryProject((root) => {
+    let id: string;
+    {
+      using store = new KnowledgeStore(root);
+      const work = store.begin({
+        key: 'invalid-explanation',
+        kind: 'update',
+        remaining: [],
+        snapshot: 'fixture',
+      });
+      work.status = 'done';
+      store.save(work);
+      ({ id } = work);
+      store.cache('retained-cache', { useful: true });
+    }
+
+    using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
+    const decision = {
+      conditions: [],
+      document: 'notes.md',
+      exceptions: [],
+      id: 'd1',
+      kind: 'decision',
+      lineEnd: 1,
+      lineStart: 1,
+      reason: 'A valid explanation.',
+      status: 'current',
+      text: 'A valid decision.',
+    };
+    const relationship = {
+      evidence: [{ document: 'notes.md', lineEnd: 1, lineStart: 1 }],
+      from: 'd1',
+      id: 'r1',
+      reason: 'A valid explanation.',
+      to: 'd1',
+      type: 'supports',
+    };
+    const extractions = [
+      {
+        decisions: [{ ...decision, reason: '' }],
+        relationships: [],
+        uncertainties: [],
+      },
+      {
+        decisions: [{ ...decision, text: '😀'.repeat(1025) }],
+        relationships: [],
+        uncertainties: [],
+      },
+      {
+        decisions: [{ ...decision, lineEnd: Number.MAX_SAFE_INTEGER + 1 }],
+        relationships: [],
+        uncertainties: [],
+      },
+      {
+        decisions: [{ ...decision, conditions: Array.from({ length: 17 }, () => 'condition') }],
+        relationships: [],
+        uncertainties: [],
+      },
+      {
+        decisions: [],
+        relationships: [{ ...relationship, reason: '' }],
+        uncertainties: [],
+      },
+      {
+        decisions: [],
+        relationships: [],
+        uncertainties: [''],
+      },
+    ];
+    for (const extraction of extractions) {
+      database.run("UPDATE work SET data=json_set(data,'$.pending',json(?)) WHERE id=?", [
+        JSON.stringify({ batch: 'batch', documents: [], extraction }),
+        id,
+      ]);
+      expect(
+        knowledgeMaintenance.bind(null, [
+          'prune',
+          '--keep-completed',
+          '0',
+          '--keep-caches',
+          '0',
+          '--root',
+          root,
+        ])
+      ).toThrow();
+      expect(database.query('SELECT * FROM work').all()).toHaveLength(1);
+      expect(database.query('SELECT * FROM model_cache').all()).toHaveLength(1);
+      expect(existsSync(nodePath.join(root, '.hivex', 'knowledge.lock'))).toBe(false);
+    }
+  });
+});
+
+test('prune preserves JavaScript whitespace coercion before deleting caches', () => {
+  temporaryProject((root) => {
+    {
+      using store = new KnowledgeStore(root);
+      store.cache('retained', { answer: 'Keep this result.' });
+    }
+    expect(
+      knowledgeMaintenance.bind(null, ['prune', '--root', root, '--keep-caches', '\u{85}'])
+    ).toThrow(/integer/u);
+    using database = new Database(nodePath.join(root, '.hivex', 'knowledge.sqlite'));
+    expect(database.query('SELECT * FROM model_cache').all()).toHaveLength(1);
+    expect(
+      knowledgeMaintenance(['prune', '--root', root, '--keep-caches', '\u{FEFF}0'])
+    ).toMatchObject({ deletedCaches: 1 });
   });
 });

@@ -32,6 +32,14 @@ Validate with bounded real cases covering a conflict, a valid exception, indirec
 
 Early use can precede complete legacy recovery. Complete closure additionally requires recovering useful historical knowledge and retiring old active machinery after replacement is verified. Keep Git history and necessary external evidence; a legacy evidence document can suffice. Do not rebuild another fleet inside that archive or treat a successful package build as proof that the workflow is fully validated.
 
+## Rust migration (#80)
+
+After validating adoption in Compi and Waynly, the owner approved replacing the TypeScript/Bun runtime with Rust. This supersedes the language choice above while retaining the product contract and cohesive domain modules. The migration introduces local document, initialization and recovery commands first, then knowledge storage and native execution, and finally npm distribution. The published CLI remains the reference until its replacement is verified; development slices do not claim the unfinished commands work.
+
+Preserve the observable CLI, source coordinates and hashes, snapshot v1 and existing SQLite data without reingestion. Retain identities, relationships, evidence, closures and their history, caches, unfinished or failed work, results and cumulative budgets, including unknown consumption. Compatibility checks use synthetic public fixtures and the simulated native transport. Consumer knowledge stays private and is never migrated in place to make a test pass. Native Codex compatibility remains capability-based, with localized Luna/max selection and no silent fallback.
+
+Use rustfmt and Clippy for Rust. TypeScript lint rules do not prescribe Rust architecture. Remove replaced code and dependencies after compatibility is demonstrated, and prepare and inspect the final npm artifact before requesting the publication approval applicable to that artifact.
+
 ## Incremental consultation delivery (#48)
 
 A consultation maintains at most one bounded pending batch before answering, prioritizing matching fragments and known affected neighbors. Update, check and answer share one work budget; context-limit increases do not reset an unfinished work item. Remaining corpus coverage is reported, and explicit updates can advance further rounds. Repeating a completed consultation reuses its result while its supplied context remains unchanged.
