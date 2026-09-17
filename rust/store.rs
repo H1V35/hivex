@@ -1285,11 +1285,8 @@ mod tests {
         fs::create_dir(&directory).expect("store directory");
         let database_path = directory.join("knowledge.sqlite");
         let database = Connection::open(&database_path).expect("fixture database");
-        let fixture = fs::read_to_string(
-            "/Users/hive/.codex/worktrees/87f4/hivex/test/fixtures/knowledge-cache-v1.sql",
-        )
-        .expect("fixture");
-        database.execute_batch(&fixture).expect("load fixture");
+        let fixture = include_str!("../test/fixtures/knowledge-cache-v1.sql");
+        database.execute_batch(fixture).expect("load fixture");
         let before: String = database
             .query_row("SELECT data FROM work", [], |row| row.get(0))
             .expect("work row");
@@ -1337,9 +1334,11 @@ mod tests {
             fs::create_dir(&directory).expect("store directory");
             let database_path = directory.join("knowledge.sqlite");
             let database = Connection::open(&database_path).expect("fixture database");
-            let fixture = fs::read_to_string(format!(
-                "/Users/hive/.codex/worktrees/87f4/hivex/test/fixtures/{name}"
-            ))
+            let fixture = fs::read_to_string(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("test/fixtures")
+                    .join(name),
+            )
             .expect("fixture");
             database.execute_batch(&fixture).expect("load fixture");
             let before = database
