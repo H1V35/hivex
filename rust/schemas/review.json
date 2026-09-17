@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "findings": {
+      "maxItems": 12,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "assessment": {
+            "type": "string",
+            "enum": ["conflict", "exception", "uncertain"]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "documents": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "document": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "lineStart": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "lineEnd": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["document", "lineStart", "lineEnd"],
+              "additionalProperties": false
+            }
+          },
+          "code": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "side": {
+                  "type": "string",
+                  "enum": ["before", "after"]
+                },
+                "lineStart": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "lineEnd": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["path", "side", "lineStart", "lineEnd"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["assessment", "explanation", "documents", "code"],
+        "additionalProperties": false
+      }
+    },
+    "uncertainties": {
+      "maxItems": 24,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048
+      }
+    }
+  },
+  "required": ["findings", "uncertainties"],
+  "additionalProperties": false
+}

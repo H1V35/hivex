@@ -1,11 +1,31 @@
 mod arguments;
+mod consultation;
 mod documents;
 mod error;
+mod ingestion;
 mod initialization;
+mod knowledge;
+mod knowledge_model;
+mod knowledge_serialization;
+mod knowledge_snapshot;
+mod knowledge_update;
+mod knowledge_warning_review;
+mod knowledge_warnings;
+mod lexical;
 mod maintenance;
 mod markdown;
+mod model_runtime;
+mod native;
+mod snapshot_command;
+mod source_relocation;
+mod store;
 
-use error::{HivexError, Result};
+mod implementation;
+#[cfg(test)]
+mod knowledge_tests;
+mod review;
+
+use error::Result;
 use serde_json::Value;
 use std::io::{self, Write};
 
@@ -17,35 +37,10 @@ fn run(args: &[String]) -> Result<Value> {
         "sources" | "read" => documents::command(args),
         "init" => initialization::command(args),
         "recover" | "prune" => maintenance::command(args),
-        "update" | "search" | "neighbors" | "ask" | "review" | "snapshot" | "warnings"
-        | "status" => Err(HivexError::new(
-            "MIGRATION_INCOMPLETE",
-            "This development binary currently implements sources, read, init, recover and prune. Use the published CLI for knowledge operations until the Rust migration is complete.",
-        )),
-        _ => {
-            arguments::parse(
-                args,
-                &[
-                    "base",
-                    "codex",
-                    "deadline-ms",
-                    "limit",
-                    "max-calls",
-                    "max-context-bytes",
-                    "max-input-bytes",
-                    "reason",
-                    "repair",
-                    "repair-range",
-                    "root",
-                    "source",
-                ],
-                &["retry-failed"],
-            )?;
-            Err(HivexError::new(
-                "INVALID_ARGUMENT",
-                "Use update, status, or search/ask/neighbors with one query or ID",
-            ))
-        }
+        "snapshot" => crate::snapshot_command::command(args),
+        "warnings" => crate::knowledge_warnings::command(args),
+        "review" if args.iter().any(|arg| arg == "--check") => crate::review::check_review(args),
+        _ => knowledge::command(args),
     }
 }
 
