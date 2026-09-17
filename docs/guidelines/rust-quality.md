@@ -70,4 +70,4 @@ cargo test --locked
 
 The Quality workflow runs these gates on the existing GitHub-hosted macOS ARM64 runner, then verifies the native package and CLI contracts. Neither gate makes model calls. The analyzer, syntax libraries, development utility and synthetic server are not distributed. Package notices follow only normal/build dependency edges, excluding development-only analyzers. `num-traits`, already present transitively, is an explicit runtime dependency for checked numeric conversions; the v1 numeric behavior remains protected by the existing contracts.
 
-Changes to rules, parser versions or the dependency matrix require updating this authority and representative positive/negative cases. A changed Markdown source does not authorize model calls to refresh derived knowledge; maintain it only within the owner's separately authorized model-work scope.
+Changes to rules, parser versions or the dependency matrix require updating this authority and representative positive/negative cases.
