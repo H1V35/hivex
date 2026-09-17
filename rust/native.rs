@@ -82,7 +82,6 @@ pub struct InvocationOptions {
 pub struct InvocationResult {
     pub value: Value,
     pub report: Value,
-    pub retry: bool,
 }
 
 #[derive(Debug)]
@@ -2160,7 +2159,6 @@ where
         diagnostic: None,
     });
     let mut value = Value::Null;
-    let mut retry = false;
     let mut admission = None;
     let mut native_pid = None;
     let mut server = None;
@@ -2187,7 +2185,7 @@ where
                 return Err(error);
             }
         };
-        let (turn_value, turn_report, should_retry) = run_turn(
+        let (turn_value, turn_report, _) = run_turn(
             &mut native,
             &mut transcript,
             &thread_id,
@@ -2196,7 +2194,6 @@ where
         );
         value = turn_value;
         report = turn_report;
-        retry = should_retry;
         server = Some(native);
         Ok(())
     })();
@@ -2249,7 +2246,6 @@ where
                     object.insert("diagnostic".to_owned(), error.diagnostic());
                     object.insert("cleanup".to_owned(), Value::String("failed".to_owned()));
                 }
-                retry = false;
             }
         }
     } else if let Some(object) = report.as_object_mut() {
@@ -2284,30 +2280,25 @@ where
             json!(began.elapsed().as_millis().min(u64::MAX as u128) as u64),
         );
     }
-    if remove_workspace && let Err(error) = fs::remove_dir_all(&workspace) {
-        if let Some(object) = report.as_object_mut() {
-            object.insert("outcome".to_owned(), Value::String("failed".to_owned()));
-            object.insert(
-                "code".to_owned(),
-                Value::String("MODEL_CLEANUP_FAILED".to_owned()),
-            );
-            object.insert("cleanup".to_owned(), Value::String("failed".to_owned()));
-            object.insert(
-                "diagnostic".to_owned(),
-                json!({"kind": "native-admission", "message": error.to_string()}),
-            );
-        }
-        retry = false;
+    if remove_workspace
+        && let Err(error) = fs::remove_dir_all(&workspace)
+        && let Some(object) = report.as_object_mut()
+    {
+        object.insert("outcome".to_owned(), Value::String("failed".to_owned()));
+        object.insert(
+            "code".to_owned(),
+            Value::String("MODEL_CLEANUP_FAILED".to_owned()),
+        );
+        object.insert("cleanup".to_owned(), Value::String("failed".to_owned()));
+        object.insert(
+            "diagnostic".to_owned(),
+            json!({"kind": "native-admission", "message": error.to_string()}),
+        );
     }
     if report["cleanup"] == "failed" {
         value = Value::Null;
-        retry = false;
     }
-    Ok(InvocationResult {
-        value,
-        report,
-        retry,
-    })
+    Ok(InvocationResult { value, report })
 }
 
 fn stop_after_error(server: NativeServer, error: NativeError) -> (NativeError, bool) {
@@ -2456,7 +2447,6 @@ mod tests {
         assert_eq!(result.value, Value::String("{broken".to_owned()));
         assert_eq!(result.report["outcome"], "completed");
         assert_eq!(result.report["cleanup"], "confirmed");
-        assert!(!result.retry);
     }
 
     #[test]

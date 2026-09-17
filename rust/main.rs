@@ -1,4 +1,29 @@
-use hivex::{documents, error, initialization, knowledge, maintenance};
+mod arguments;
+mod consultation;
+mod documents;
+mod error;
+mod ingestion;
+mod initialization;
+mod knowledge;
+mod knowledge_model;
+mod knowledge_serialization;
+mod knowledge_snapshot;
+mod knowledge_update;
+mod knowledge_warning_review;
+mod knowledge_warnings;
+mod lexical;
+mod maintenance;
+mod markdown;
+mod model_runtime;
+mod native;
+mod snapshot_command;
+mod source_relocation;
+mod store;
+
+mod implementation;
+#[cfg(test)]
+mod knowledge_tests;
+mod review;
 
 use error::Result;
 use serde_json::Value;
@@ -12,9 +37,9 @@ fn run(args: &[String]) -> Result<Value> {
         "sources" | "read" => documents::command(args),
         "init" => initialization::command(args),
         "recover" | "prune" => maintenance::command(args),
-        "snapshot" => hivex::snapshot_command::command(args),
-        "warnings" => hivex::knowledge_warnings::command(args),
-        "review" if args.iter().any(|arg| arg == "--check") => hivex::review::check_review(args),
+        "snapshot" => crate::snapshot_command::command(args),
+        "warnings" => crate::knowledge_warnings::command(args),
+        "review" if args.iter().any(|arg| arg == "--check") => crate::review::check_review(args),
         _ => knowledge::command(args),
     }
 }

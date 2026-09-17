@@ -1,5 +1,4 @@
 use serde_json::{Map, Value};
-use std::collections::HashSet;
 
 const CITATION: &[&str] = &[
     "document",
@@ -86,7 +85,6 @@ const QUERIED_DECISION: &[&str] = &[
 const RELATIONSHIP: &[&str] = &[
     "id", "from", "to", "type", "reason", "evidence", "batch", "localId", "quality",
 ];
-const REVIEW_FINDING: &[&str] = &["assessment", "explanation", "documents", "code"];
 const UNIT: &[&str] = &["id", "document", "hash", "lineStart", "lineEnd", "text"];
 const VERSION: &[&str] = &["version", "lines"];
 const WARNING: &[&str] = &["path", "message"];
@@ -212,106 +210,4 @@ pub fn normalize_knowledge(packet: &Value) -> Value {
 
 pub fn stringify_knowledge(packet: &Value) -> String {
     serde_json::to_string(&normalize_knowledge(packet)).expect("serde_json values are serializable")
-}
-
-pub fn with_live_provenance(value: &Value, kind: &str) -> Value {
-    let Value::Object(mut value) = value.clone() else {
-        return value.clone();
-    };
-    let fields: Vec<&str> = match kind {
-        "decision" => DECISION[..10]
-            .iter()
-            .copied()
-            .chain(["localId", "version", "batch", "quality"])
-            .collect(),
-        "relationship" => RELATIONSHIP[..6]
-            .iter()
-            .copied()
-            .chain(["localId", "batch", "quality"])
-            .collect(),
-        _ => return Value::Object(value),
-    };
-    for field in fields {
-        if let Some(node) = value.shift_remove(field) {
-            value.insert(field.to_owned(), node);
-        }
-    }
-    Value::Object(value)
-}
-
-fn schema_order(properties: &Map<String, Value>) -> Option<&'static [&'static str]> {
-    if has_fields(properties, &["kind", "id"]) {
-        Some(DECISION)
-    } else if has_fields(properties, &["from", "to", "type"]) {
-        Some(RELATIONSHIP)
-    } else if has_fields(properties, &["document", "lineStart", "lineEnd"]) {
-        Some(CITATION)
-    } else if has_fields(properties, &["path", "side"]) {
-        Some(CODE)
-    } else if has_fields(properties, &["assessment", "explanation"]) {
-        Some(REVIEW_FINDING)
-    } else if has_fields(properties, &["target", "reason"]) {
-        Some(FINDING)
-    } else {
-        None
-    }
-}
-
-fn normalize_schema_node(value: Value) -> Value {
-    match value {
-        Value::Array(values) => {
-            Value::Array(values.into_iter().map(normalize_schema_node).collect())
-        }
-        Value::Object(value) => {
-            // Rebuild in iteration order, as Object.assign/Object.fromEntries do in
-            // the TypeScript serializer. In particular, touching `properties` must
-            // not move that key to the end of its parent object.
-            let mut normalized = value
-                .into_iter()
-                .map(|(key, node)| (key, normalize_schema_node(node)))
-                .collect::<Map<_, _>>();
-            let property_order = normalized
-                .get("properties")
-                .and_then(Value::as_object)
-                .and_then(schema_order)
-                .map(|order| order.to_vec());
-            if let Some(order) = property_order {
-                if let Some(Value::Object(properties)) = normalized.get_mut("properties") {
-                    let properties = std::mem::take(properties);
-                    *normalized
-                        .get_mut("properties")
-                        .expect("properties remains present") =
-                        Value::Object(order_record(properties, &order));
-                }
-                if let Some(Value::Array(required)) = normalized.get_mut("required") {
-                    let original = required.clone();
-                    let mut names = HashSet::new();
-                    let mut reordered = Vec::new();
-                    for name in &order {
-                        if let Some(required_name) = original
-                            .iter()
-                            .find(|required_name| required_name.as_str() == Some(*name))
-                            && names.insert(required_name.clone())
-                        {
-                            reordered.push(required_name.clone());
-                        }
-                    }
-                    for required_name in original {
-                        if names.insert(required_name.clone()) {
-                            reordered.push(required_name);
-                        }
-                    }
-                    *required = reordered;
-                }
-            }
-            Value::Object(normalized)
-        }
-        value => value,
-    }
-}
-
-pub fn schema_for_knowledge(schema: &Value) -> Option<Value> {
-    schema
-        .is_object()
-        .then(|| normalize_schema_node(schema.clone()))
 }

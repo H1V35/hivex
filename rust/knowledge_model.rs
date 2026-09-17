@@ -177,15 +177,6 @@ impl Default for Warning {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Unit {
-    pub document: String,
-    pub version: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub work_key: Option<String>,
-}
-
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Graph {

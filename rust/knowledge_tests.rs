@@ -9,7 +9,7 @@ mod tests {
         supplied_citation, validate_check, validate_extraction, validate_graph, warning_id,
         warning_summary, with_warning_resolution,
     };
-    use crate::knowledge_serialization::{stringify_knowledge, with_live_provenance};
+    use crate::knowledge_serialization::stringify_knowledge;
     use crate::knowledge_warning_review::{
         ApplyWarningReviewOptions, ReviewContext, apply_warning_review, parse_warning_resolutions,
         warning_baseline, warning_changes, warning_review_candidates,
@@ -175,7 +175,7 @@ mod tests {
             "batch": "b1",
             "quality": "unchecked",
         });
-        let live = with_live_provenance(&value, "decision");
+        let live = value;
         assert_eq!(
             stringify_knowledge(&live),
             r#"{"id":"d1","document":"notes.md","text":"Keep evidence.","kind":"decision","status":"current","conditions":[],"exceptions":[],"reason":"Source reason.","lineStart":1,"lineEnd":1,"localId":"local","version":"v1","batch":"b1","quality":"unchecked"}"#
@@ -488,49 +488,6 @@ mod tests {
         assert_eq!(record.previous_resolutions.len(), 1);
         assert!(is_warning_resolved(&second, std::slice::from_ref(&source)));
         assert_eq!(warning_id(&warning), warning_id(&second));
-    }
-
-    #[test]
-    fn schema_normalization_keeps_parent_key_position_and_orders_known_properties() {
-        let schema = serde_json::json!({
-            "type": "object",
-            "properties": {
-                "reason": {"type": "string"},
-                "kind": {"type": "string"},
-                "id": {"type": "string"}
-            },
-            "required": ["reason", "id", "kind"],
-            "description": "decision"
-        });
-        let normalized =
-            crate::knowledge_serialization::schema_for_knowledge(&schema).expect("schema object");
-        let Value::Object(normalized) = normalized else {
-            panic!("expected object schema");
-        };
-        assert_eq!(
-            normalized.keys().cloned().collect::<Vec<_>>(),
-            vec!["type", "properties", "required", "description"]
-        );
-        assert_eq!(
-            normalized
-                .get("properties")
-                .and_then(Value::as_object)
-                .expect("properties")
-                .keys()
-                .cloned()
-                .collect::<Vec<_>>(),
-            vec!["id", "kind", "reason"]
-        );
-        assert_eq!(
-            normalized
-                .get("required")
-                .and_then(Value::as_array)
-                .expect("required")
-                .iter()
-                .map(Value::as_str)
-                .collect::<Option<Vec<_>>>(),
-            Some(vec!["id", "kind", "reason"])
-        );
     }
 
     #[test]
