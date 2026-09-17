@@ -5,14 +5,16 @@ The npm package is `@h1v35/hivex`; its command is `hivex`. Prepare a release fro
 Keep `Cargo.toml` and `package.json` versions aligned. Run the checks in [README](../../README.md#development), then prepare the native archive:
 
 ```sh
-bun run pack:native
+cargo run --locked --bin hivex-dev -- pack
 ```
 
-This builds the locked release target, stages only the declared public files and invokes npm's packer without installation hooks. `dist/` receives the `.tgz` and a JSON report with its file list, native binary hash and archive SHA-256. No publication occurs. npm uses a temporary private cache, so package preparation does not change a user's global npm cache.
+This builds only the locked `hivex` release target, stages the public allowlist with distribution metadata and invokes system `tar` from Rust. `dist/` receives the npm-compatible `.tgz` and a JSON report with its file list, native binary hash and archive SHA-256. No publication occurs and no JavaScript package manager runs. Existing archives are never overwritten; supply an explicit different archive path for a new verification build.
 
 Inspect the exact archive. It must contain the executable, package metadata, public documentation, six skills, language templates and license notices. Cargo dependency license texts are included in `THIRD-PARTY-NOTICES.txt`. Exclude project evidence, SQLite state, credentials, development sources, test fixtures and build caches. Inspect and scan the extracted content for secrets and unintended private material, and record what was checked together with the archive hash. A changed archive requires a fresh inspection.
 
-Install that tarball in a clean temporary project with scripts disabled. Run the installed `hivex` executable with a PATH that excludes Bun and Node.js, using synthetic Markdown and v1 SQLite/snapshot fixtures. Check executable mode, JSON/exit behavior and preservation of retained data. Run model scenarios only through the synthetic app-server. The quality workflow also verifies this installed artifact; a successful source build alone is insufficient.
+Run `cargo run --locked --bin hivex-dev -- verify [archive.tgz]` against that exact archive. It checks the hash and public allowlist, rejects unsafe paths and links, extracts to a clean temporary project and exercises the native executable with a PATH that excludes Bun and Node.js. Synthetic Markdown and v1 SQLite fixtures verify executable mode, JSON behavior and preservation of retained answers, graph, caches and budget. Run model scenarios only through the Rust synthetic app-server. CI also runs the CLI contract suite against the release executable. A successful source build alone is insufficient.
+
+Before registry publication, additionally install the exact archive with npm in a clean temporary prefix, with `--ignore-scripts --no-audit --no-fund`, and verify the installed command and metadata. This release-only compatibility check uses the registry client's Node.js installation; source development, tests and artifact preparation do not require it.
 
 Obtain the publication approval applicable to the concrete archive. Earlier version approval does not authorize another artifact. Confirm an npm account authorized for the scope, then publish the same checked tarball:
 

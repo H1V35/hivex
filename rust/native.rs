@@ -2430,11 +2430,21 @@ mod tests {
             std::env::temp_dir().join(format!("hivex-native-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&directory).unwrap();
         let binary = directory.join("codex-fixture");
-        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("test/codex-server.mjs");
+        let fixture = std::env::var_os("HIVEX_TEST_CODEX_BINARY")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                std::env::current_exe()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .join("hivex-test-codex")
+            });
         let quoted = fixture.to_string_lossy().replace('\'', "'\"'\"'");
         fs::write(
             &binary,
-            format!("#!/bin/sh\nHIVEX_TEST_SCENARIO=invalid-json exec bun '{quoted}' \"$@\"\n"),
+            format!("#!/bin/sh\nHIVEX_TEST_SCENARIO=invalid-json exec '{quoted}' \"$@\"\n"),
         )
         .unwrap();
         fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();

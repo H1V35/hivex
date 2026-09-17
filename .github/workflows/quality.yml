@@ -27,35 +27,22 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.2
-          no-cache: true
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 24.16.0
-          package-manager-cache: false
-      - name: Install dependencies
-        run: bun ci
-      - name: Typecheck
-        run: bun run --bun typecheck
-      - name: Lint
-        run: bun run --bun lint
-      - name: Format
-        run: bun run --bun format:check
       - name: Rust toolchain
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal --component clippy --component rustfmt
-      - name: Rust format
-        run: cargo fmt --check
-      - name: Rust lint
-        run: cargo clippy --locked --all-targets -- -D warnings
-      - name: Rust test
-        run: cargo test --locked
-      - name: Native package
-        run: bun run pack:native
-      - name: CLI contracts on the packaged executable
-        run: HIVEX_TEST_BINARY="$PWD/target/aarch64-apple-darwin/release/hivex" bun test --timeout 15000 ./test
-      - name: Installed native package
-        run: bun run verify:package
+      - name: Native development gate without Bun or Node
+        run: |
+          export PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+          ! command -v bun
+          ! command -v node
+          cargo fmt --check
+          cargo check --locked --all-targets
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+      - name: Native package and archive verification
+        run: |
+          export PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+          cargo run --locked --bin hivex-dev -- pack "$RUNNER_TEMP/hivex-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tgz"
+          HIVEX_TEST_BINARY="$PWD/target/aarch64-apple-darwin/release/hivex" cargo test --locked --test cli
+          cargo run --locked --bin hivex-dev -- verify "$RUNNER_TEMP/hivex-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tgz"

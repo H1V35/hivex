@@ -192,20 +192,21 @@ Prefer DDD and meaningful responsibilities, risk/value-based tests with TDD opti
 
 The Rust CLI reads the existing SQLite and shared snapshot v1 formats and retains work budgets, attempts and model caches. The TypeScript runtime was retired after compatibility validation under [#80](https://github.com/H1V35/hivex/issues/80). Its fixed SQL fixtures and synthetic protocol server remain as independent compatibility evidence.
 
-Use the stable Rust toolchain, Git 2.45 or newer and Bun 1.4.2 or newer for development. Bun runs the TypeScript CLI tests and JavaScript support scripts; it is not a runtime dependency of the installed CLI.
+Use the stable Rust toolchain and Git 2.45 or newer for development. Cargo runs all unit and CLI integration tests, including the synthetic Codex server. No TypeScript, JavaScript, Bun or Node.js tooling is required.
 
 ```sh
-bun ci
 cargo fmt --check
+cargo check --locked --all-targets
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
-bun run typecheck
-bun run lint
-bun run format:check
-bun run test
+cargo run --locked --bin hivex-dev -- pack
+cargo run --locked --bin hivex-dev -- verify
 ```
 
-The CLI suite requires the native binary and has no fallback to another implementation. Its SQLite fixtures include retained answers and extraction/check caches with exhausted budgets. Model execution tests use `test/codex-server.mjs` and consume no real model calls.
+The CLI suite requires the native binary and has no fallback to another implementation. Cargo builds the test executables automatically. Its SQLite fixtures include retained answers and extraction/check caches with exhausted budgets. Model tests use `tools/test_codex.rs` and consume no real model calls. `HIVEX_TEST_BINARY` selects an already built CLI when testing the packaged executable; `HIVEX_TEST_CODEX_BINARY` can select the synthetic server for isolated native unit tests.
+
+The development-only `hivex-dev` command builds and verifies the npm archive using Cargo and the system `tar`. It refuses to overwrite an existing artifact; provide a different output path for a new verification build. Only `bin/hivex` is distributed. `package.json` contains distribution metadata, not a second development toolchain. npm is needed only by the publisher or by users who choose registry installation.
+
 
 The native artifact is verified on macOS ARM64, using system ICU for source ordering. Package preparation, archive inspection and publication of the exact approved bytes follow the [release procedure](docs/procedures/releasing.md).
 
