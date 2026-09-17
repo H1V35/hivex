@@ -1,6 +1,6 @@
-use crate::arguments::{MAX_SAFE_INTEGER, trim_js_whitespace};
+use crate::compatibility::{MAX_SAFE_INTEGER, trim_js_whitespace};
+use crate::documents::markdown::{raw_markdown_lines, source_range};
 use crate::documents::{Document, Project};
-use crate::markdown::{raw_markdown_lines, source_range};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};

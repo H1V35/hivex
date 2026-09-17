@@ -1,6 +1,6 @@
 use crate::error::{HivexError, Result};
-use crate::knowledge_model::{self, graph_value, parse_graph};
-use crate::knowledge_warning_review::warning_baseline;
+use crate::knowledge::model::{self as knowledge_model, graph_value, parse_graph};
+use crate::knowledge::warning_review::warning_baseline;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
 use serde_json::{Map, Value, json};
 use std::fs::{self, File, OpenOptions};
@@ -292,7 +292,7 @@ impl Store {
                 return Ok(Self::empty_graph());
             }
             let root = self.directory.parent().unwrap_or(Path::new("."));
-            return crate::knowledge_snapshot::shared_knowledge(root);
+            return crate::knowledge::snapshot_file::shared_knowledge(root);
         };
         let value: Value = serde_json::from_str(&data)?;
         let graph = parse_graph(&value, false).ok_or_else(|| {
@@ -1296,7 +1296,7 @@ mod tests {
         fs::create_dir(&directory).expect("store directory");
         let database_path = directory.join("knowledge.sqlite");
         let database = Connection::open(&database_path).expect("fixture database");
-        let fixture = include_str!("../test/fixtures/knowledge-cache-v1.sql");
+        let fixture = include_str!("../../test/fixtures/knowledge-cache-v1.sql");
         database.execute_batch(fixture).expect("load fixture");
         let before: String = database
             .query_row("SELECT data FROM work", [], |row| row.get(0))
@@ -1412,7 +1412,7 @@ mod tests {
     fn validates_graphs_and_reads_shared_snapshot_when_local_graph_is_absent() {
         let root = root();
         let graph = empty_graph();
-        crate::knowledge_snapshot::write_knowledge_snapshot(&root, &graph)
+        crate::knowledge::snapshot::write_knowledge_snapshot(&root, &graph)
             .expect("write shared snapshot");
         let mut store = Store::open(&root, StoreOptions::default()).expect("open store");
         assert_eq!(store.graph().expect("read shared snapshot"), graph);

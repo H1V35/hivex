@@ -1,4 +1,5 @@
-use crate::arguments::{parse, trim_js_whitespace};
+use crate::cli::arguments::parse;
+use crate::compatibility::trim_js_whitespace;
 use crate::error::{HivexError, Result};
 use serde_json::{Map, Value};
 use std::fs::{self, OpenOptions};

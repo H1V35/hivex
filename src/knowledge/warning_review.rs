@@ -1,11 +1,11 @@
-use crate::arguments::trim_js_whitespace;
+use crate::compatibility::trim_js_whitespace;
 use crate::documents::Document;
-use crate::knowledge_model::{
+use crate::documents::markdown::raw_markdown_lines;
+use crate::knowledge::model::{
     Citation, Graph, SuppliedDocument, Warning, WarningChanges, WarningResolution, WarningScope,
     is_warning_resolved, normalize_integral_numbers, supplied_citation, valid_citation,
     validate_citation, warning_id, with_warning_resolution,
 };
-use crate::markdown::raw_markdown_lines;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -331,7 +331,7 @@ pub fn warning_changes(
             Warning::Legacy(message) => message.clone(),
             Warning::Structured(record) => record.message.clone(),
         };
-        let change = || crate::knowledge_model::WarningChange {
+        let change = || crate::knowledge::model::WarningChange {
             id: id.clone(),
             message: message.clone(),
             state: state.to_owned(),

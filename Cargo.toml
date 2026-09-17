@@ -9,7 +9,7 @@ default-run = "hivex"
 
 [[bin]]
 name = "hivex"
-path = "rust/main.rs"
+path = "src/main.rs"
 
 [[bin]]
 name = "hivex-dev"

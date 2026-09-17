@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::documents::{Document, Project};
-    use crate::knowledge_model::{
+    use crate::knowledge::model::{
         CheckFinding, Citation, Extraction, ExtractionDecision, ExtractionOptions,
         ExtractionRelationship, Graph, KnowledgeCheck, SuppliedDocument, Warning, WarningRecord,
         WarningScope, apply_check, apply_extraction, check_impact, empty_graph, graph_value,
@@ -9,8 +9,8 @@ mod tests {
         supplied_citation, validate_check, validate_extraction, validate_graph, warning_id,
         warning_summary, with_warning_resolution,
     };
-    use crate::knowledge_serialization::stringify_knowledge;
-    use crate::knowledge_warning_review::{
+    use crate::knowledge::serialization::stringify_knowledge;
+    use crate::knowledge::warning_review::{
         ApplyWarningReviewOptions, ReviewContext, apply_warning_review, parse_warning_resolutions,
         warning_baseline, warning_changes, warning_review_candidates,
     };
@@ -251,7 +251,7 @@ mod tests {
             &graph,
             &ReviewContext {
                 documents: std::slice::from_ref(&source),
-                supplied: &[crate::knowledge_model::SuppliedDocument {
+                supplied: &[crate::knowledge::model::SuppliedDocument {
                     id: source.id.clone(),
                     lines: vec![
                         vec![Value::from(1), Value::String("# Private cache".to_owned())],
@@ -274,7 +274,7 @@ mod tests {
             ApplyWarningReviewOptions {
                 candidates: &candidates,
                 documents: std::slice::from_ref(&source),
-                resolutions: &[crate::knowledge_warning_review::WarningResolutionInput {
+                resolutions: &[crate::knowledge::warning_review::WarningResolutionInput {
                     evidence: vec![Citation {
                         document: source.id.clone(),
                         line_end: 3,
@@ -284,7 +284,7 @@ mod tests {
                     id: candidates[0].id.clone(),
                     reason: "Current evidence is sufficient.".to_owned(),
                 }],
-                supplied: &[crate::knowledge_model::SuppliedDocument {
+                supplied: &[crate::knowledge::model::SuppliedDocument {
                     id: source.id.clone(),
                     lines: vec![
                         vec![Value::from(1), Value::String("# Private cache".to_owned())],
@@ -475,14 +475,14 @@ mod tests {
         );
         let first = with_warning_resolution(
             &warning,
-            crate::knowledge_model::WarningResolution {
+            crate::knowledge::model::WarningResolution {
                 evidence: vec![scope.clone()],
                 reason: "First review.".to_owned(),
             },
         );
         let second = with_warning_resolution(
             &first,
-            crate::knowledge_model::WarningResolution {
+            crate::knowledge::model::WarningResolution {
                 evidence: vec![scope],
                 reason: "Second review.".to_owned(),
             },
@@ -754,7 +754,7 @@ mod tests {
     }
     #[test]
     fn rejects_unsafe_ranges_and_matches_javascript_citation_whitespace() {
-        let maximum = crate::arguments::MAX_SAFE_INTEGER as usize;
+        let maximum = crate::compatibility::MAX_SAFE_INTEGER as usize;
         let mut candidate = extraction();
         candidate.decisions[0].line_start = maximum;
         candidate.decisions[0].line_end = maximum;
@@ -767,10 +767,12 @@ mod tests {
             line_end: maximum + 1,
             version: None,
         };
-        assert!(!crate::knowledge_model::validate_citation(&unsafe_citation));
+        assert!(!crate::knowledge::model::validate_citation(
+            &unsafe_citation
+        ));
         let answer = serde_json::json!({"answer":"Bounded evidence", "evidence":[{"document":"notes.md","lineStart":maximum+1,"lineEnd":maximum+1}], "uncertainties":[]});
         assert!(
-            crate::model_runtime::OutputSchema::Answer
+            crate::execution::runtime::OutputSchema::Answer
                 .parse(&answer)
                 .is_none()
         );
@@ -790,11 +792,11 @@ mod tests {
             line_end: 1,
             version: None,
         };
-        assert!(crate::knowledge_model::valid_citation(
+        assert!(crate::knowledge::model::valid_citation(
             &citation,
             &[document("notes.md", "\u{85}")]
         ));
-        assert!(!crate::knowledge_model::valid_citation(
+        assert!(!crate::knowledge::model::valid_citation(
             &citation,
             &[document("notes.md", "\u{feff}")]
         ));

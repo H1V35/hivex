@@ -1,12 +1,12 @@
-use crate::arguments;
+use crate::cli::arguments;
 use crate::documents::load_project;
 use crate::error::{HivexError, Result};
-use crate::knowledge_model::{empty_graph, graph_value};
-use crate::knowledge_snapshot::{
+use crate::knowledge::model::{empty_graph, graph_value};
+use crate::knowledge::relocation::relocate_source;
+use crate::knowledge::snapshot::{
     read_knowledge_snapshot, shared_knowledge, snapshot_report, write_knowledge_snapshot,
 };
-use crate::source_relocation::relocate_source;
-use crate::store::{Store, StoreOptions};
+use crate::work::store::{Store, StoreOptions};
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -30,7 +30,7 @@ fn store_graph(store: &Store, root: &Path) -> Result<Value> {
 
 fn relocation_report(
     project: &crate::documents::Project,
-    relocation: &crate::source_relocation::SourceRelocation,
+    relocation: &crate::knowledge::relocation::SourceRelocation,
 ) -> Result<Value> {
     let mut report = snapshot_report(project, &relocation.graph, "relocate")?;
     let object = report

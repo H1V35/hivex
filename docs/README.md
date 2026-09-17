@@ -12,3 +12,5 @@
 - [CLI guide](../README.md) and [agent skill](../skills/hivex/SKILL.md): the interface actually available.
 
 Earlier decisions remain in `adr/` as history. ADRs 0004–0009 describe the replaced experimental cohort/admission workflow; ADR 0010 supersedes its mandatory ceremony. Historical evidence is scoped to its original revision and is not a current acceptance result. An adopting project retains its own Markdown at monorepo, package or module level; Hivex does not own that source tree.
+
+The [domain-module and execution decision](adr/0013-domain-modules-and-execution-integrations.md) defines ownership, replaceable integrations and model/profile independence.

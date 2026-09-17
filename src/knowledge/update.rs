@@ -1,15 +1,18 @@
+use crate::documents::markdown::{hash, line_content, raw_markdown_lines};
 use crate::documents::{Document, Project, compare_serialized_strings};
 use crate::error::{HivexError, Result};
-use crate::ingestion::{self, IngestionResult, IngestionUnit, RepairRange};
-use crate::knowledge::{Options, historical_graph, is_current_source, knowledge_snapshot};
-use crate::knowledge_model::{self as model, Citation, Graph, SuppliedDocument};
-use crate::knowledge_serialization::stringify_knowledge;
-use crate::knowledge_warning_review::{self as warnings, ApplyWarningReviewOptions, ReviewContext};
-use crate::lexical::{Record, rank_lexically};
-use crate::markdown::{hash, line_content, raw_markdown_lines};
-use crate::model_runtime::{self, OutputSchema, Request};
-use crate::native;
-use crate::store::{BeginWork, Store, StoreOptions, Work};
+use crate::execution::runtime::{self as model_runtime, OutputSchema, Request};
+use crate::integrations::codex as native;
+use crate::knowledge::ingestion::{self as ingestion, IngestionResult, IngestionUnit, RepairRange};
+use crate::knowledge::model::{self as model, Citation, Graph, SuppliedDocument};
+use crate::knowledge::search::{Record, rank_lexically};
+use crate::knowledge::serialization::stringify_knowledge;
+use crate::knowledge::warning_review::{
+    self as warnings, ApplyWarningReviewOptions, ReviewContext,
+};
+use crate::knowledge::{historical_graph, is_current_source, knowledge_snapshot};
+use crate::work::Operation as Options;
+use crate::work::store::{BeginWork, Store, StoreOptions, Work};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 

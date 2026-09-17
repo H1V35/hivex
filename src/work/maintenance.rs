@@ -1,6 +1,6 @@
-use crate::arguments;
+use crate::cli::arguments;
 use crate::error::{HivexError, Result};
-use crate::store::{self, LOCK_FILENAME, Store, StoreOptions};
+use crate::work::store::{self as store, LOCK_FILENAME, Store, StoreOptions};
 use chrono::{SecondsFormat, Utc};
 use rusqlite::TransactionBehavior;
 use serde_json::{Map, Value, json};
@@ -42,7 +42,7 @@ fn retention(value: Option<&String>, name: &str, fallback: usize) -> Result<usiz
 }
 
 fn parse_number(value: &str) -> Option<f64> {
-    let value = arguments::trim_js_whitespace(value);
+    let value = crate::compatibility::trim_js_whitespace(value);
     if value.is_empty() {
         return Some(0.0);
     }

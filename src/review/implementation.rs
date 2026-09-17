@@ -1,7 +1,7 @@
 use crate::documents::compare_serialized_strings;
+use crate::documents::markdown::{line_content, raw_markdown_lines};
 use crate::error::{HivexError, Result};
-use crate::knowledge_model::digest;
-use crate::markdown::{line_content, raw_markdown_lines};
+use crate::knowledge::model::digest;
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::collections::HashSet;

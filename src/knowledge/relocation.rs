@@ -1,7 +1,7 @@
+use crate::documents::markdown;
 use crate::documents::{Project, compare_serialized_strings};
 use crate::error::{HivexError, Result};
-use crate::knowledge_model::{Citation, Graph, Warning, WarningScope, graph_value, parse_graph};
-use crate::markdown;
+use crate::knowledge::model::{Citation, Graph, Warning, WarningScope, graph_value, parse_graph};
 use serde_json::{Map, Value};
 
 const PROTECTED_PARTS: [&str; 5] = ["", ".", "..", ".git", ".hivex"];

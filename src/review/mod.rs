@@ -1,9 +1,10 @@
-use crate::arguments;
+pub(crate) mod implementation;
+use crate::cli::arguments;
 use crate::documents::{Project, load_project};
 use crate::error::{HivexError, Result};
-use crate::implementation::{Implementation, parse_implementation};
-use crate::knowledge_model::{Citation, SuppliedDocument, source_evidence, supplied_citation};
-use crate::model_runtime::OutputSchema;
+use crate::execution::runtime::OutputSchema;
+use crate::knowledge::model::{Citation, SuppliedDocument, source_evidence, supplied_citation};
+use crate::review::implementation::{Implementation, parse_implementation};
 use serde_json::{Map, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -220,7 +221,8 @@ pub fn review_freshness(root: &Path, binding: &Value) -> Result<Value> {
     let binding = parse_binding(binding)?;
     let root_string = root.to_string_lossy();
     let project = load_project(&root_string)?;
-    let implementation = crate::implementation::capture_implementation(root, &binding.base_commit)?;
+    let implementation =
+        crate::review::implementation::capture_implementation(root, &binding.base_commit)?;
     let documents_changed = project.snapshot != binding.documents;
     let implementation_changed = implementation.get("fingerprint").and_then(Value::as_str)
         != Some(binding.implementation.as_str());
@@ -292,7 +294,7 @@ mod tests {
             path: "privacy.md".to_owned(),
             title: "Privacy".to_owned(),
             text: text.to_owned(),
-            hash: crate::markdown::hash(text),
+            hash: crate::documents::markdown::hash(text),
             status: None,
             links: Vec::new(),
             historical: false,

@@ -1,15 +1,16 @@
+use crate::documents::markdown::hash;
 use crate::documents::{Project, compare_serialized_strings};
 use crate::error::{HivexError, Result};
-use crate::ingestion::ingestion_units;
-use crate::knowledge::{self, Options};
-use crate::knowledge_model::{self as model, Citation, SuppliedDocument};
-use crate::knowledge_serialization::stringify_knowledge;
-use crate::knowledge_update::{self as update, document_excerpt, document_packet};
-use crate::lexical::{Record, rank_lexically};
-use crate::markdown::hash;
-use crate::model_runtime::{self, OutputSchema, Request};
-use crate::native;
-use crate::store::{BeginWork, Store, StoreOptions, Work};
+use crate::execution::runtime::{self as model_runtime, OutputSchema, Request};
+use crate::integrations::codex as native;
+use crate::knowledge;
+use crate::knowledge::ingestion::ingestion_units;
+use crate::knowledge::model::{self as model, Citation, SuppliedDocument};
+use crate::knowledge::search::{Record, rank_lexically};
+use crate::knowledge::serialization::stringify_knowledge;
+use crate::knowledge::update::{self as update, document_excerpt, document_packet};
+use crate::work::Operation as Options;
+use crate::work::store::{BeginWork, Store, StoreOptions, Work};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
@@ -223,7 +224,7 @@ fn begin_consultation(
             .as_str()
             .unwrap_or_default()
             .to_owned(),
-        warning_baseline: Some(json!(crate::knowledge_warning_review::warning_baseline(
+        warning_baseline: Some(json!(crate::knowledge::warning_review::warning_baseline(
             &graph
         ))),
     })

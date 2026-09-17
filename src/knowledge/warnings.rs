@@ -1,13 +1,14 @@
-use crate::arguments::{self, trim_js_whitespace};
+use crate::cli::arguments;
+use crate::compatibility::trim_js_whitespace;
 use crate::documents::{Project, load_project};
 use crate::error::{HivexError, Result};
-use crate::knowledge_model::{
+use crate::knowledge::model::{
     Citation, Graph, Warning, WarningResolution, empty_graph, graph_value, is_warning_resolved,
     parse_graph, valid_citation, warning_id, warning_summary, warning_value,
     with_warning_resolution,
 };
-use crate::knowledge_snapshot::{shared_knowledge, stored_graph};
-use crate::store::{Store, StoreOptions};
+use crate::knowledge::snapshot::{shared_knowledge, stored_graph};
+use crate::work::store::{Store, StoreOptions};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::fs;
@@ -68,7 +69,7 @@ fn parse_resolution(value: &Value) -> Result<Resolution> {
     let evidence = evidence
         .iter()
         .map(|value| {
-            let value = crate::knowledge_model::normalize_integral_numbers(value.clone());
+            let value = crate::knowledge::model::normalize_integral_numbers(value.clone());
             let citation: Citation = serde_json::from_value(value)
                 .map_err(|_| invalid_resolution("Each resolution citation is invalid."))?;
             if citation.version.as_deref().is_none_or(str::is_empty) {
@@ -175,7 +176,7 @@ fn resolve_warnings(graph: &Graph, project: &Project, resolutions: &[Resolution]
                             evidence: resolution
                                 .evidence
                                 .iter()
-                                .map(|citation| crate::knowledge_model::WarningScope {
+                                .map(|citation| crate::knowledge::model::WarningScope {
                                     document: citation.document.clone(),
                                     line_end: citation.line_end,
                                     line_start: citation.line_start,
@@ -289,8 +290,8 @@ pub fn command(args: &[String]) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::knowledge_model::{WarningRecord, WarningScope, empty_graph, warning_id};
-    use crate::knowledge_snapshot::write_knowledge_snapshot;
+    use crate::knowledge::model::{WarningRecord, WarningScope, empty_graph, warning_id};
+    use crate::knowledge::snapshot::write_knowledge_snapshot;
     use serde_json::json;
     use std::path::PathBuf;
     use uuid::Uuid;
@@ -305,7 +306,7 @@ mod tests {
     #[test]
     fn lists_and_resolves_current_warning_evidence_without_models() {
         let root = root();
-        let hash = crate::markdown::hash("# Notes\n\nNeed context.\n");
+        let hash = crate::documents::markdown::hash("# Notes\n\nNeed context.\n");
         let warning = Warning::Structured(WarningRecord {
             kind: Some("limitation".to_owned()),
             message: "Need context.".to_owned(),

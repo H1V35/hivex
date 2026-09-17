@@ -1,7 +1,7 @@
+use crate::documents::markdown::{hash, line_content, raw_markdown_lines};
 use crate::documents::{Document, Warning};
 use crate::error::{HivexError, Result};
-use crate::knowledge_model::{Citation, Decision, valid_citation};
-use crate::markdown::{hash, line_content, raw_markdown_lines};
+use crate::knowledge::model::{Citation, Decision, valid_citation};
 use serde::{Deserialize, Serialize};
 
 const MAX_BYTES: usize = 8_192;
@@ -58,7 +58,7 @@ fn is_js_whitespace(character: char) -> bool {
 }
 
 fn js_trim(value: &str) -> &str {
-    crate::arguments::trim_js_whitespace(value)
+    crate::compatibility::trim_js_whitespace(value)
 }
 
 fn fence_of(content: &str) -> Option<Fence> {

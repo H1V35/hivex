@@ -520,7 +520,7 @@ fn parse_yaml_metadata(yaml: &str) -> Option<(Option<String>, Option<String>)> {
         state.status,
         state
             .title
-            .filter(|title| !crate::arguments::trim_js_whitespace(title).is_empty()),
+            .filter(|title| !crate::compatibility::trim_js_whitespace(title).is_empty()),
     ))
 }
 
