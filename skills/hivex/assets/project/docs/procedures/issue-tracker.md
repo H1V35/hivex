@@ -16,6 +16,8 @@ Start from the current integration branch and keep changes coherent. Use the pro
 
 Complete the relevant verification and independent review, then open a clear PR linked to its issue. Explain the resulting behavior, the validation actually completed and material limits. Follow CI to an actual result; a queued or skipped check is not a pass.
 
+Complete the [knowledge-before-merge requirements](../guidelines/engineering.md#knowledge-before-merge) before integration. Include the maintained Markdown and exported graph in the reviewed change; a code-review approval or green CI alone does not satisfy this requirement.
+
 Merge within the owner's existing authorization after required checks and review. Do not infer authority from readiness or supervision labels. Preserve shared history and clean up the local/remote branches and worktrees belonging to finished work. Implementation changes must be integrated; completed research, evidence or prototypes must have their useful results and required history retained before cleanup. Keep unfinished or uncertain work intact, regardless of branch age or whether it has a PR. Do not discard unmerged work without an established disposition and the applicable owner authorization.
 
 Record durable decisions in the appropriate Markdown authority and export changed Hivex knowledge with its sources. A tracker discussion is useful evidence but does not replace maintained project documentation.

@@ -9,6 +9,8 @@ Read the documentation map, relevant sources and current owner decisions. Update
 
 For adoption, use the installed `hivex init` when available and read its report. Complete missing meaning from evidence and the owner, keeping unresolved content provisional. Do not invent vision, requirements or vocabulary, or index empty scaffolding. The [foundation templates](../hivex/assets/project/docs/README.md) are starting material.
 
+When adopting or updating the foundation, establish its [knowledge-before-merge requirements](../hivex/assets/project/docs/guidelines/engineering.md#knowledge-before-merge) in the project's existing engineering or knowledge authority, linked from its Git procedure. `init` preserves existing files; package installation alone does not update their policy. Preserve explicit owner decisions and surface a genuine conflict instead of silently replacing them.
+
 Prefer migration to the standard when reasonably possible. Preserve useful content, links, history and monorepo/package/module authority. Reuse shared rules rather than duplicating them; keep product, stack and host details in the adopting project. Inspect source selection before moving documents and use `hivex snapshot relocate` before normal incremental maintenance.
 
 ## Keep documents useful
