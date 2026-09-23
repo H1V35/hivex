@@ -52,6 +52,13 @@ fn legacy_pending_work_upgrades_without_resetting_its_budget() {
     assert_eq!(after["profileReplacement"]["from"]["model"], "gpt-5.6-luna");
     assert_eq!(after["cacheHits"], 0);
     assert_eq!(
+      p.db()
+        .query_row("SELECT count(*) FROM model_cache", [], |row| row
+          .get::<_, i64>(0))
+        .unwrap(),
+      0
+    );
+    assert_eq!(
       p.cli(&["update", "--codex", "/model-must-not-start"])["work"]["id"],
       id
     );

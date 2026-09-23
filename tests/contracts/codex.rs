@@ -430,6 +430,16 @@ fn luna_upgrade_keeps_existing_knowledge_but_separates_cached_answers() {
     assert_eq!(new["work"]["calls"], if pending { 2 } else { 1 });
     assert_eq!(p.calls(), 1);
     assert_eq!(p.graph(), graph);
+    let caches: Vec<String> = p
+      .db()
+      .prepare("SELECT key FROM model_cache")
+      .unwrap()
+      .query_map([], |row| row.get(0))
+      .unwrap()
+      .collect::<Result<_, _>>()
+      .unwrap();
+    assert_eq!(caches.len(), 1);
+    assert!(caches[0].starts_with("v2:"));
     if pending {
       assert_eq!(p.work(old_id)["attempts"][0], old["attempts"][0]);
     } else {
@@ -437,5 +447,10 @@ fn luna_upgrade_keeps_existing_knowledge_but_separates_cached_answers() {
     }
     assert_eq!(p.model_cli(&args), new);
     assert_eq!(p.calls(), 1);
+    let cache_after: String = p
+      .db()
+      .query_row("SELECT key FROM model_cache", [], |row| row.get(0))
+      .unwrap();
+    assert_eq!(cache_after, caches[0]);
   }
 }

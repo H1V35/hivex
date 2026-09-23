@@ -223,9 +223,11 @@ impl Store {
   pub fn cached(&self, key: &str) -> Result<Option<Value>> {
     let data = self
       .database
-      .query_row("SELECT value FROM model_cache WHERE key=?1", [key], |row| {
-        row.get::<_, String>(0)
-      })
+      .query_row(
+        "SELECT value FROM model_cache WHERE key=?1",
+        [format!("v2:{key}")],
+        |row| row.get::<_, String>(0),
+      )
       .optional()?;
     data
       .map(|data| serde_json::from_str(&data).map_err(Into::into))
@@ -235,7 +237,7 @@ impl Store {
   pub fn cache(&self, key: &str, value: &Value) -> Result<()> {
     self.database.execute(
       "INSERT INTO model_cache VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-      params![key, serde_json::to_string(value)?],
+      params![format!("v2:{key}"), serde_json::to_string(value)?],
     )?;
     Ok(())
   }
@@ -286,6 +288,8 @@ impl Store {
       )?;
     }
     let replaced = validate_execution_binding(&transaction, options, binding)?;
+    // v1 cache keys have no profile metadata; retire the whole unversioned generation.
+    transaction.execute("DELETE FROM model_cache WHERE key NOT LIKE 'v2:%'", [])?;
     let previous = replaced.or(previous_work(&transaction, options)?);
     let previous_reusable = previous.as_ref().is_some_and(|previous| {
       if options.kind == "update" {
@@ -1342,7 +1346,7 @@ mod tests {
             store
               .cached("366df8482c75d92fe8a0b0e5b446cc86e8c28bae27d2bae37fff4a62ffc6a4f5")
               .unwrap()
-              .is_some()
+              .is_none()
           );
         }
         store.save(&mut work).expect("round trip work");
