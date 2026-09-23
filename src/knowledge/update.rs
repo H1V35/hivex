@@ -1412,7 +1412,8 @@ fn retained_check(
   let pending = work.value()["pending"].clone();
   Ok(
     match model_runtime::retained_check_result(work, request, &runtime.execution) {
-      Ok(value) => Some(value),
+      Ok(Some(value)) => Some(value),
+      Ok(None) => model_runtime::run_model(work, store, &runtime.execution, request)?,
       Err(error) if error.code == "STALE_RETAINED_CHECK" => {
         let legacy = materialize(evidence, graph, &pending, false)?;
         let legacy_request = Request {
