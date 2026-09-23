@@ -20,7 +20,7 @@ Refactor nonconforming code rather than adding `allow`/`expect` annotations, exc
 
 Set Clippy's `too-many-arguments-threshold = 4`. Clippy exempts trait implementations and non-Rust ABI functions; use a source syntax check to cover implementation signatures and closure inputs as well. `redundant_else` does not prohibit all `else if` chains, so check that preference separately, including written macro tokens while ignoring comments and literals.
 
-Use a source syntax check for the function-local nesting definition above. As a supplementary check, enable `excessive_nesting` with `excessive-nesting-threshold = 5`. Clippy also counts the function body and enclosing inline modules, traits and `impl` blocks; five Clippy levels are not equivalent to three function-local levels, and deeply nested containers can make it stricter. Do not reorganize responsibilities merely to evade counting.
+Use a source syntax check for the function-local nesting definition above. As a supplementary check, enable `excessive_nesting` with `excessive-nesting-threshold = 5`. Clippy also counts the function body and enclosing inline modules, traits and `impl` blocks; out-of-line modules reset its count. Five Clippy levels are not equivalent to three function-local levels, and deeply nested containers can make it stricter. Do not reorganize responsibilities merely to evade counting.
 
 ## Complexity and analyzer scope
 
@@ -42,7 +42,7 @@ Follow production module declarations and verify imports and qualified paths, in
 
 Record the concrete dependency policy, source coverage, analyzer versions and local/CI verification commands here when adopting the standard. Use rustfmt, compiler checks, Clippy, source-quality and architecture gates, and relevant behavior tests. Run Cargo checks with the committed lockfile. Cover representative passing and failing cases when implementing or changing a custom gate.
 
-Use this verification sequence once the project's source-quality and architecture gates are implemented. `quality` and `architecture` are the test target names used in Hivex; record the actual equivalent targets if the adopting project names them differently.
+Use this verification sequence once the project's source-quality and architecture gates are implemented. `quality` and `architecture` are example test target names; record the actual equivalent targets configured by the adopting project.
 
 ```sh
 cargo fmt --check
@@ -52,6 +52,6 @@ cargo test --locked --test quality --test architecture
 cargo test --locked
 ```
 
-The gates must be deterministic and make no model calls. Adapt CI to the project's admitted platforms and verify distributed executables when applicable; do not inherit Hivex's macOS-only packaging assumption. Changes to rules, parser versions or the dependency matrix require updating this guideline and representative positive/negative cases.
+The gates must be deterministic and make no model calls. Adapt CI and verification of distributed executables to the project's admitted platforms and runners, without assuming a particular operating system or package format. Changes to rules, parser versions or the dependency matrix require updating this guideline and representative positive/negative cases.
 
 Installing and configuring those tools and gates is separate implementation work: copying this guideline does not establish that they exist or pass. Respect an explicit owner decision to defer adoption; do not substitute different lint preferences or arbitrary limits. Link the adopted guideline from the project's documentation map and engineering guide, and keep the documented rules and their checks aligned.
