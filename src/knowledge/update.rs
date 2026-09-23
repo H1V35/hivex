@@ -660,6 +660,10 @@ fn checked_packet(
     packet["extraction"] = pending["extraction"].clone();
     return packet;
   }
+  let separate_context = packet
+    .as_object_mut()
+    .is_some_and(|record| record.shift_remove("replacingDecisions").is_some());
+  let candidate_ids: HashSet<_> = candidate.decisions.iter().map(|entry| &entry.id).collect();
   let protected = strings(&pending["protectedRelationships"]);
   let existing = strings(&pending["existing"]);
   let batch = pending["batch"].as_str().unwrap_or_default();
@@ -711,7 +715,13 @@ fn checked_packet(
       .decisions
       .iter()
       .filter(|entry| endpoints.contains(&entry.id))
-      .map(|entry| without_execution(json!(entry)))
+      .map(|entry| {
+        let mut value = without_execution(json!(entry));
+        if separate_context {
+          value["retainedInCandidate"] = json!(candidate_ids.contains(&entry.id));
+        }
+        value
+      })
       .collect::<Vec<_>>()
   );
   packet["removedRelationships"] = json!(
@@ -893,6 +903,9 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
   let mut instruction="Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.".to_owned();
   if pending["materializedCheck"] == true {
     instruction.push_str(" The extraction is the materialized candidate, after local validation. Check meaningful decisions, dependencies and exceptions; reading the cited Markdown supplies incidental details. Missing live deployment evidence or unexpanded background alone is not a defect. Use the supplied canonical IDs.");
+    if pending["packet"].get("replacingDecisions").is_some() {
+      instruction.push_str(" previousDecisions is comparison context: retainedInCandidate marks whether each old decision still exists in the candidate. Do not report a removed prior interpretation as if it were current. Evaluate the materialized extraction and its actually retained endpoints. If a prior decision has no adequate replacement, report the missing meaning against the affected document or relationship rather than assigning a current-state finding to a removed decision ID. Actual defects of retained endpoints remain reportable.");
+    }
   }
   if guarded {
     instruction.push_str(" For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.");

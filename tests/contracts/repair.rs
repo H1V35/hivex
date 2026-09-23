@@ -52,6 +52,18 @@ fn repair_corrects_interpretation_without_changing_sources_or_repeating_complete
   let replacing = list(extract, "replacingDecisions");
   assert_eq!(replacing.len(), 1);
   assert_eq!(replacing[0]["text"], "Cached data never expires.");
+  let check = captured.last().unwrap();
+  assert!(check.get("replacingDecisions").is_none());
+  let old = list(check, "previousDecisions")
+    .iter()
+    .find(|entry| entry["id"] == replacing[0]["id"])
+    .unwrap();
+  assert_eq!(old["retainedInCandidate"], false);
+  assert!(
+    list(&check["extraction"], "decisions")
+      .iter()
+      .all(|entry| entry["id"] != old["id"])
+  );
   assert!(
     extract["documents"]
       .to_string()
@@ -519,6 +531,36 @@ fn range_repair_keeps_untouched_units_and_rejects_changed_authority() {
 }
 
 #[test]
+fn a_finding_on_removed_context_cannot_bypass_the_relationship_guard() {
+  let p = Project::policy();
+  p.model_cli(&["update"]);
+  let before = p.graph();
+  let target = list(&before, "decisions")
+    .iter()
+    .find(|entry| entry["document"] == "cache.md")
+    .unwrap();
+  let mut r = preserving_repair(&p);
+  r["byDocument"]["cache.md"]["decisions"][0]["text"] =
+    json!("Ordinary cached data expires after seven days.");
+  r["check"]["findings"] = json!([{"target":target["id"],"reason":"A simulated checker incorrectly targets old context."}]);
+  p.json("responses.json", &r);
+  let result = p.model_cli(&REPAIR);
+  subset(
+    &result,
+    &json!({"status":"failed","work":{"calls":2,"lastAttempt":{"code":"RELATIONSHIP_LOSS"}}}),
+  );
+  assert_eq!(p.graph(), before);
+  let captured = packets(&p);
+  let check = captured.last().unwrap();
+  assert!(check.get("replacingDecisions").is_none());
+  assert!(
+    list(check, "previousDecisions")
+      .iter()
+      .any(|entry| { entry["id"] == target["id"] && entry["retainedInCandidate"] == false })
+  );
+}
+
+#[test]
 fn unchanged_current_endpoints_survive_identical_relationship_repair() {
   for connected in [false, true] {
     let p = Project::new();
@@ -569,11 +611,12 @@ fn unchanged_current_endpoints_survive_identical_relationship_repair() {
       assert!(replacing.contains(&definition));
     }
     let check = captured.last().unwrap();
+    assert!(check.get("replacingDecisions").is_none());
     for d in list(&graph, "decisions") {
       assert!(
         list(check, "previousDecisions")
           .iter()
-          .any(|entry| entry["id"] == d["id"])
+          .any(|entry| entry["id"] == d["id"] && entry["retainedInCandidate"] == true)
       );
     }
     assert!(list(check, "validationWarnings").is_empty());
