@@ -22,6 +22,7 @@ pub struct ExecutionBinding {
   pub operation_key: String,
   pub profile: Value,
   pub legacy_key: Option<String>,
+  pub replaced_profile: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -222,9 +223,11 @@ impl Store {
   pub fn cached(&self, key: &str) -> Result<Option<Value>> {
     let data = self
       .database
-      .query_row("SELECT value FROM model_cache WHERE key=?1", [key], |row| {
-        row.get::<_, String>(0)
-      })
+      .query_row(
+        "SELECT value FROM model_cache WHERE key=?1",
+        [format!("v2:{key}")],
+        |row| row.get::<_, String>(0),
+      )
       .optional()?;
     data
       .map(|data| serde_json::from_str(&data).map_err(Into::into))
@@ -234,7 +237,7 @@ impl Store {
   pub fn cache(&self, key: &str, value: &Value) -> Result<()> {
     self.database.execute(
       "INSERT INTO model_cache VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-      params![key, serde_json::to_string(value)?],
+      params![format!("v2:{key}"), serde_json::to_string(value)?],
     )?;
     Ok(())
   }
@@ -284,8 +287,10 @@ impl Store {
         [serde_json::to_string(graph)?],
       )?;
     }
-    validate_execution_binding(&transaction, options, binding)?;
-    let previous = previous_work(&transaction, options)?;
+    let replaced = validate_execution_binding(&transaction, options, binding)?;
+    // v1 cache keys have no profile metadata; retire the whole unversioned generation.
+    transaction.execute("DELETE FROM model_cache WHERE key NOT LIKE 'v2:%'", [])?;
+    let previous = replaced.or(previous_work(&transaction, options)?);
     let previous_reusable = previous.as_ref().is_some_and(|previous| {
       if options.kind == "update" {
         options.remaining.is_empty()
@@ -1105,25 +1110,49 @@ fn validate_execution_binding(
   transaction: &Connection,
   options: &BeginWork,
   binding: Option<&ExecutionBinding>,
-) -> Result<()> {
-  if let Some(binding) = binding {
-    let conflicting=transaction.query_row(
+) -> Result<Option<Work>> {
+  let Some(binding) = binding else {
+    return Ok(None);
+  };
+  let conflicting=transaction.query_row(
                 "SELECT id,data FROM work WHERE kind=?1 AND key<>?2 AND (key=?3 OR json_extract(data,'$.operationKey')=?4) AND json_extract(data,'$.status')<>'done' LIMIT 1",
                 params![options.kind,options.key,binding.legacy_key.as_deref(),binding.operation_key],
                 |row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?))
             ).optional()?;
-    if let Some((id, data)) = conflicting {
-      let retained = parse_work(id, &data)?;
+  let Some((id, data)) = conflicting else {
+    return Ok(None);
+  };
+  let mut retained = parse_work(id, &data)?;
+  if let Some(previous_profile) = &binding.replaced_profile
+    && binding.legacy_key.as_deref() == Some(retained.key())
+    && retained
+      .value
+      .get("executionProfile")
+      .is_none_or(|profile| profile == previous_profile)
+  {
+    if retained.status() == crate::work::State::Running {
       return Err(HivexError::new(
-        "EXECUTION_PROFILE_CHANGED",
-        format!(
-          "Work {} is unfinished under a different execution profile. Resume that profile or explicitly finish/recover the work; its history and budget were preserved.",
-          retained.id()
-        ),
+        "WORK_RUNNING",
+        "Inspect the unfinished invocation before replacing its execution profile",
       ));
     }
+    retained.value["profileReplacement"] =
+      json!({"from":previous_profile,"to":binding.profile,"previousKey":retained.key()});
+    retained.value["key"] = json!(options.key);
+    retained.bind_execution(&binding.operation_key, &binding.profile);
+    transaction.execute(
+      "UPDATE work SET key=?1 WHERE id=?2",
+      params![options.key, retained.row_id()],
+    )?;
+    return Ok(Some(retained));
   }
-  Ok(())
+  Err(HivexError::new(
+    "EXECUTION_PROFILE_CHANGED",
+    format!(
+      "Work {} is unfinished under a different execution profile. Resume that profile or explicitly finish/recover the work; its history and budget were preserved.",
+      retained.id()
+    ),
+  ))
 }
 
 fn create_bound_work(
@@ -1317,7 +1346,7 @@ mod tests {
             store
               .cached("366df8482c75d92fe8a0b0e5b446cc86e8c28bae27d2bae37fff4a62ffc6a4f5")
               .unwrap()
-              .is_some()
+              .is_none()
           );
         }
         store.save(&mut work).expect("round trip work");

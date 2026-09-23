@@ -48,6 +48,9 @@ pub trait Integration {
   fn legacy_cache_identity(&self) -> Option<Value> {
     None
   }
+  fn replaced_profile(&self) -> Option<Profile> {
+    None
+  }
   fn invoke(
     &self,
     request: Invocation,
@@ -102,6 +105,10 @@ impl Execution {
       operation_key: hash(&continuity.to_string()),
       profile: json!(self.profile()),
       legacy_key,
+      replaced_profile: self
+        .integration
+        .replaced_profile()
+        .map(|profile| json!(profile)),
     }
   }
   pub fn invoke(

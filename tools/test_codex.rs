@@ -157,7 +157,7 @@ impl Server {
     if page < pages {
       json!({"data":[],"nextCursor":(page+1).to_string()})
     } else {
-      json!({"data":[{"model":"gpt-5.6-luna","supportedReasoningEfforts":[{"reasoningEffort":"max"},{"reasoningEffort":"medium"}]},{"model":"fixture-model","supportedReasoningEfforts":[{"reasoningEffort":"high"}]}],"nextCursor":null})
+      json!({"data":[{"model":"gpt-6-luna","supportedReasoningEfforts":[{"reasoningEffort":"max"},{"reasoningEffort":"medium"}]},{"model":"fixture-model","supportedReasoningEfforts":[{"reasoningEffort":"high"}]}],"nextCursor":null})
     }
   }
 

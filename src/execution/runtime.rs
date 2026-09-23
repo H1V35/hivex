@@ -147,7 +147,7 @@ pub fn retained_check_result(
   work: &Work,
   request: &Request,
   execution: &Execution,
-) -> Result<Value> {
+) -> Result<Option<Value>> {
   let attempt = work
     .attempts()
     .and_then(|attempts| attempts.last())
@@ -155,14 +155,33 @@ pub fn retained_check_result(
   if attempt["report"]["outcome"] != "completed"
     || attempt["report"]["cleanup"] != "confirmed"
     || attempt["stage"] != "check"
-    || attempt["inputHash"] != model_input(request, execution).fingerprint
+    || !retained_input_matches(work, request, execution, &attempt["inputHash"])
   {
     return Err(invalid_retained());
   }
-  request
+  let value = request
     .schema
     .parse(&attempt["result"])
-    .ok_or_else(invalid_retained)
+    .ok_or_else(invalid_retained)?;
+  // A replaced profile validates historical provenance but requires a new check.
+  Ok((attempt["inputHash"] == model_input(request, execution).fingerprint).then_some(value))
+}
+
+fn retained_input_matches(
+  work: &Work,
+  request: &Request,
+  execution: &Execution,
+  saved: &Value,
+) -> bool {
+  let input = model_input(request, execution);
+  if saved == &input.fingerprint {
+    return true;
+  }
+  work.value()["profileReplacement"]["to"] == json!(execution.profile())
+    && execution.legacy_identity.as_ref().is_some_and(|model| {
+      saved
+        == &hash(&json!({"prompt":input.prompt,"schema":input.schema,"model":model}).to_string())
+    })
 }
 
 pub fn run_model(
@@ -365,7 +384,10 @@ mod tests {
     let execution = crate::integrations::select(
       "codex",
       "/no-model".into(),
-      crate::integrations::ProfileOverrides::default(),
+      crate::integrations::ProfileOverrides {
+        model: Some(&"gpt-5.6-luna".to_owned()),
+        ..crate::integrations::ProfileOverrides::default()
+      },
       100,
     )
     .unwrap();
@@ -375,6 +397,53 @@ mod tests {
       input.fingerprint,
       "6da00d7eaf57633635cd04dd62c372586560713d12ee9e4ccb16ea5dfa250239"
     );
+  }
+
+  #[test]
+  fn replaced_profile_validates_history_but_requires_a_new_check() {
+    let root = std::env::temp_dir().join(format!("hivex-replaced-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let mut store = Store::open(&root, StoreOptions::default()).unwrap();
+    let mut work = store
+      .begin(&BeginWork {
+        key: "fixture".into(),
+        kind: "update".into(),
+        max_calls: Some(1),
+        max_input_bytes: Some(131_072),
+        remaining: vec![],
+        result_key: None,
+        snapshot: "snapshot".into(),
+        warning_baseline: None,
+      })
+      .unwrap();
+    let current = crate::cli::operation_for(&["update".into()]).unwrap();
+    let previous =
+      crate::cli::operation_for(&["update".into(), "--model".into(), "gpt-5.6-luna".into()])
+        .unwrap();
+    let request = Request {
+      instruction: "Check fixture".into(),
+      packet: json!({}),
+      stage: "check".into(),
+      schema: OutputSchema::Check {
+        relationships: false,
+        warnings: false,
+      },
+    };
+    work.value_mut()["profileReplacement"] =
+      json!({"from":previous.execution.profile(),"to":current.execution.profile()});
+    work.value_mut()["attempts"] = json!([{"stage":"check","inputHash":model_input(&request,&previous.execution).fingerprint,"report":{"outcome":"completed","cleanup":"confirmed"},"result":{"findings":[]}}]);
+    assert_eq!(
+      retained_check_result(&work, &request, &current.execution).unwrap(),
+      None
+    );
+    work.value_mut()["attempts"][0]["inputHash"] =
+      json!(model_input(&request, &current.execution).fingerprint);
+    assert_eq!(
+      retained_check_result(&work, &request, &current.execution).unwrap(),
+      Some(json!({"findings":[]}))
+    );
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
   }
 
   #[test]

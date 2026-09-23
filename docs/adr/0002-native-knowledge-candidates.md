@@ -12,6 +12,8 @@ The owner required a Luna/max graph rebuild and implementation grounding before 
 
 ## Decision
 
+The model choice below records the original 2026-09-07 decision. The [GPT-6 Luna replacement](0013-domain-modules-and-execution-integrations.md) supersedes it as of 2026-09-23: all subsequent default knowledge invocations use `gpt-6-luna` with effort `max`, including resumed work.
+
 Knowledge-model operations use the native Codex harness and the existing ChatGPT subscription, with `gpt-5.6-luna` and effort `max`. Retrieval and deterministic validation remain model-free. Each extraction starts from an immutable declared source and produces an explicitly unaccepted candidate. Claims retain literal evidence at original source lines; conditions, exceptions and negation must remain visible. Authored Markdown and Git history retain authority.
 
 The host verifies the admitted CLI protocol, account type, configured first-party endpoint, effective model/effort and unavailable model tools before supplying source text. It does not use private agent memory, project instructions discovered in a working checkout, or a provider fallback. Process-local controls preserve the user's configuration for other work. Native Codex remains the execution harness; Hivex does not create a development-session fleet.

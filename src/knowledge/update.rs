@@ -371,6 +371,8 @@ fn plan_update(
   );
   let identity = update_identity(runtime, &snapshot, context_sources);
   let key = hash(&identity.to_string());
+  let binding = runtime.execution.binding(&identity);
+  let replaced_key = binding.replaced_profile.and(binding.legacy_key);
   let remaining: Vec<_> = plan
     .units
     .iter()
@@ -390,6 +392,9 @@ fn plan_update(
             .map(|source| source.hash.as_str())
       } else {
         pending_repair_unit(graph, runtime, unit, &key)
+          && replaced_key
+            .as_deref()
+            .is_none_or(|key| pending_repair_unit(graph, runtime, unit, key))
       }
     })
     .map(|unit| unit.id.clone())
@@ -1407,7 +1412,8 @@ fn retained_check(
   let pending = work.value()["pending"].clone();
   Ok(
     match model_runtime::retained_check_result(work, request, &runtime.execution) {
-      Ok(value) => Some(value),
+      Ok(Some(value)) => Some(value),
+      Ok(None) => model_runtime::run_model(work, store, &runtime.execution, request)?,
       Err(error) if error.code == "STALE_RETAINED_CHECK" => {
         let legacy = materialize(evidence, graph, &pending, false)?;
         let legacy_request = Request {

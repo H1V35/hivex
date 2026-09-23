@@ -271,7 +271,7 @@ fn verify(root: &Path, manifest: &Value, archive: &Path) -> Result<()> {
   }
   verify_initialization(&binary, &package, &temporary.0)?;
   verify_retained_contract(root, &binary, &temporary.0)?;
-  let verification = json!({"archive":archive,"sha256":report["sha256"],"nativeSha256":report["nativeSha256"],"target":TARGET,"checks":["public-allowlist-six-skills","extracted-native-executable","no-runtime-or-development-js-dependencies","no-bun-node-in-path","installed-init-and-skills","retained-v1-answer-budget","unchanged-graph-cache","source-read-snapshot"]});
+  let verification = json!({"archive":archive,"sha256":report["sha256"],"nativeSha256":report["nativeSha256"],"target":TARGET,"checks":["public-allowlist-six-skills","extracted-native-executable","no-runtime-or-development-js-dependencies","no-bun-node-in-path","installed-init-and-skills","retained-v1-history","unchanged-graph-cache","source-read-snapshot"]});
   write_json(
     &PathBuf::from(format!("{}.verification.json", archive.display())),
     &verification,
@@ -485,8 +485,7 @@ fn verify_retained_contract(root: &Path, binary: &Path, temporary: &Path) -> Res
   )?)?;
   let graph_before: String = database.query_row("SELECT data FROM graph", [], |row| row.get(0))?;
   let cache_before = cache_rows(&database)?;
-  let no_model = temporary.join("no-model");
-  verify_cached_answer(binary, &project, &no_model)?;
+  verify_historical_work(binary, &project, &database)?;
   let graph_after: String = database.query_row("SELECT data FROM graph", [], |row| row.get(0))?;
   if graph_after != graph_before || cache_rows(&database)? != cache_before {
     return Err("Retained graph/cache changed".into());
@@ -498,6 +497,18 @@ fn verify_retained_contract(root: &Path, binary: &Path, temporary: &Path) -> Res
   }
   cli(binary, &project, &["snapshot", "export"])?;
   cli(binary, &project, &["warnings"])?;
+  Ok(())
+}
+
+fn verify_historical_work(binary: &Path, project: &Path, database: &Connection) -> Result<()> {
+  let work_before: String = database.query_row("SELECT data FROM work", [], |row| row.get(0))?;
+  if cli(binary, project, &["status"])?["availableDecisions"] != 2 {
+    return Err("Retained v1 knowledge is unavailable".into());
+  }
+  let work_after: String = database.query_row("SELECT data FROM work", [], |row| row.get(0))?;
+  if work_after != work_before {
+    return Err("Historical work changed during read-only inspection".into());
+  }
   Ok(())
 }
 
@@ -573,31 +584,6 @@ fn verify_executable(
     return Err("Invalid executable".into());
   }
   Ok(binary)
-}
-
-fn verify_cached_answer(binary: &Path, project: &Path, no_model: &Path) -> Result<()> {
-  let answer = cli(
-    binary,
-    project,
-    &[
-      "ask",
-      "bounded",
-      "--source",
-      "notes.md",
-      "--max-calls",
-      "1",
-      "--codex",
-      no_model.to_str().ok_or("Invalid path")?,
-    ],
-  )?;
-  if answer["answer"] != "Use bounded work and preserve the budget."
-    || answer["status"] != "ready"
-    || answer["work"]["calls"] != 1
-    || answer["work"]["id"] != "84171802-e68b-43d8-b327-9ff47d302375"
-  {
-    return Err("Retained v1 answer/budget changed".into());
-  }
-  Ok(())
 }
 
 #[cfg(test)]
