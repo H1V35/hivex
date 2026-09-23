@@ -43,6 +43,20 @@ fn repair_corrects_interpretation_without_changing_sources_or_repeating_complete
   p.json("responses.json", &r);
   let repaired = p.model_cli(&REPAIR);
   subset(&repaired, &json!({"status":"ready","work":{"calls":2}}));
+  let captured = packets(&p);
+  let extract = captured
+    .iter()
+    .rev()
+    .find(|packet| packet["operation"] == "extract")
+    .unwrap();
+  let replacing = list(extract, "replacingDecisions");
+  assert_eq!(replacing.len(), 1);
+  assert_eq!(replacing[0]["text"], "Cached data never expires.");
+  assert!(
+    extract["documents"]
+      .to_string()
+      .contains("after seven days")
+  );
   assert_eq!(p.model_cli(&REPAIR)["work"]["id"], repaired["work"]["id"]);
   assert_eq!(p.calls(), 4);
   assert_eq!(fs::read(p.path("cache.md")).unwrap(), text);
@@ -506,42 +520,62 @@ fn range_repair_keeps_untouched_units_and_rejects_changed_authority() {
 
 #[test]
 fn unchanged_current_endpoints_survive_identical_relationship_repair() {
-  let p = Project::new();
-  p.write(
-    "scope.md",
-    "# Scope\n\nAlpha uses Beta.\nBeta provides shared policy.\n",
-  );
-  p.model("");
-  let mut r = p.read_json("responses.json");
-  let edge = json!({"id":"alpha-beta","from":"alpha","to":"beta","type":"requires","reason":"Alpha uses Beta through shared policy.","evidence":[{"document":"scope.md","lineStart":3,"lineEnd":3},{"document":"scope.md","lineStart":4,"lineEnd":4}]});
-  r["extract"] = json!({"decisions":[decision("scope.md","alpha",3,"Alpha uses Beta."),decision("scope.md","beta",4,"Beta provides shared policy.")],"relationships":[edge],"uncertainties":[]});
-  p.json("responses.json", &r);
-  p.model_cli(&["update"]);
-  let graph = p.graph();
-  let mut edge = edge;
-  edge["from"] = graph["decisions"][0]["id"].clone();
-  edge["to"] = graph["decisions"][1]["id"].clone();
-  r["extract"] = json!({"decisions":[],"relationships":[edge],"uncertainties":[]});
-  p.json("responses.json", &r);
-  let repaired = p.model_cli(&[
-    "update",
-    "--repair-range",
-    "scope.md:3-4",
-    "--reason",
-    "Retain dependency.",
-  ]);
-  subset(
-    &repaired,
-    &json!({"status":"ready","decisions":2,"relationships":1,"warningSummary":{"validation":0}}),
-  );
-  let captured = packets(&p);
-  let check = captured.last().unwrap();
-  for d in list(&graph, "decisions") {
-    assert!(
-      list(check, "previousDecisions")
-        .iter()
-        .any(|entry| entry["id"] == d["id"])
+  for connected in [false, true] {
+    let p = Project::new();
+    p.write(
+      "scope.md",
+      "# Scope\n\nAlpha uses Beta.\nBeta provides shared policy.\n",
     );
+    p.model("");
+    let mut r = p.read_json("responses.json");
+    let edge = json!({"id":"alpha-beta","from":"alpha","to":"beta","type":"requires","reason":"Alpha uses Beta through shared policy.","evidence":[{"document":"scope.md","lineStart":3,"lineEnd":3},{"document":"scope.md","lineStart":4,"lineEnd":4}]});
+    r["extract"] = json!({"decisions":[decision("scope.md","alpha",3,"Alpha uses Beta."),decision("scope.md","beta",4,"Beta provides shared policy.")],"relationships":[edge],"uncertainties":[]});
+    if !connected {
+      r["extract"]["relationships"] = json!([]);
+    }
+    p.json("responses.json", &r);
+    p.model_cli(&["update"]);
+    let graph = p.graph();
+    let mut edge = edge;
+    edge["from"] = graph["decisions"][0]["id"].clone();
+    edge["to"] = graph["decisions"][1]["id"].clone();
+    r["extract"] = json!({"decisions":[],"relationships":[edge],"uncertainties":[]});
+    p.json("responses.json", &r);
+    let repaired = p.model_cli(&[
+      "update",
+      "--repair-range",
+      "scope.md:3-4",
+      "--reason",
+      "Retain dependency.",
+    ]);
+    subset(
+      &repaired,
+      &json!({"status":"ready","decisions":2,"relationships":1,"warningSummary":{"validation":0}}),
+    );
+    let captured = packets(&p);
+    let extract = captured
+      .iter()
+      .rev()
+      .find(|packet| packet["operation"] == "extract")
+      .unwrap();
+    assert!(list(extract, "existing").is_empty());
+    let replacing = list(extract, "replacingDecisions");
+    assert_eq!(replacing.len(), 2);
+    for decision in list(&graph, "decisions") {
+      let mut definition = decision.clone();
+      for key in ["batch", "quality", "localId"] {
+        definition.as_object_mut().unwrap().shift_remove(key);
+      }
+      assert!(replacing.contains(&definition));
+    }
+    let check = captured.last().unwrap();
+    for d in list(&graph, "decisions") {
+      assert!(
+        list(check, "previousDecisions")
+          .iter()
+          .any(|entry| entry["id"] == d["id"])
+      );
+    }
+    assert!(list(check, "validationWarnings").is_empty());
   }
-  assert!(list(check, "validationWarnings").is_empty());
 }
