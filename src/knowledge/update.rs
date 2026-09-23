@@ -105,6 +105,7 @@ struct BatchExecution<'a> {
 struct BatchContext {
   documents: Vec<Value>,
   existing: Vec<Value>,
+  replacing: Vec<Value>,
   missing: Vec<String>,
   previous: Vec<model::Relationship>,
 }
@@ -116,16 +117,15 @@ fn batch_context(
 ) -> Result<BatchContext> {
   let SourceGraph { project, graph } = state;
   let mut ranges: Vec<_> = units.iter().map(unit_range).collect();
-  let candidates: Vec<_> = graph
+  let (replacing, candidates): (Vec<_>, Vec<_>) = graph
     .decisions
     .iter()
-    .filter(|entry| {
-      is_current_source(project, &entry.document, Some(&entry.version))
-        && ranges
-          .iter()
-          .all(|range| !overlaps(range, &decision_range(entry)))
-    })
-    .collect();
+    .filter(|entry| is_current_source(project, &entry.document, Some(&entry.version)))
+    .partition(|entry| {
+      ranges
+        .iter()
+        .any(|range| overlaps(range, &decision_range(entry)))
+    });
   let hits = ranked_candidates(&candidates, units)?;
   let targets: HashSet<_> = units.iter().map(|unit| unit.document.clone()).collect();
   let (historical, linked) = historical_and_linked_sources(project, &targets);
@@ -204,6 +204,10 @@ fn batch_context(
   Ok(BatchContext {
     documents,
     existing,
+    replacing: replacing
+      .into_iter()
+      .map(|entry| without_execution(json!(entry)))
+      .collect(),
     missing: unique(missing),
     previous,
   })
@@ -569,7 +573,16 @@ fn materialize(
     .map(|entry| entry.id.clone());
   let original = strings(&pending["existing"]);
   let existing = if retain_supplied {
-    unique(original.into_iter().chain(current))
+    unique(
+      original.into_iter().chain(current).chain(
+        pending["packet"]["replacingDecisions"]
+          .as_array()
+          .into_iter()
+          .flatten()
+          .filter_map(|entry| entry["id"].as_str())
+          .map(str::to_owned),
+      ),
+    )
   } else {
     original
       .into_iter()
@@ -1495,6 +1508,7 @@ fn extraction_request(
   let packet = json!({
   "documents":context.documents,
   "existing":context.existing,
+  "replacingDecisions":context.replacing,
   "operation":"extract",
   "previousRelationships":context.previous,
   "repairReason":runtime.repair_reason,
@@ -1503,6 +1517,9 @@ fn extraction_request(
   "units":units.iter().map(|unit|{let mut value=json!(unit);value.as_object_mut().unwrap().shift_remove("text");value}).collect::<Vec<_>>()
   });
   let mut instruction="For a repair, check repairReason against Markdown; it is not new authority. Extract meaningful decisions, constraints, definitions and lessons, not every sentence or incidental numeric value. Use c1,c2,... decision IDs and r1,r2,... relationship IDs. Discover supported semantic relationships even without authored links. Extract decisions only within the target unit line ranges. Other ranges are context; do not duplicate their decisions. Existing decision IDs may be relationship endpoints. Cite each decision in its own document and relationships in the documents supporting their scope.".to_owned();
+  if !runtime.repair.is_empty() || !runtime.repair_ranges.is_empty() {
+    instruction.push_str(" replacingDecisions contains prior interpretations of the target ranges, not additional authority. This output replaces those interpretations and their affected relationships: return their complete corrected knowledge, including correct decisions that still apply. Referencing an unchanged supplied decision ID keeps that decision; otherwise do not assume omitted target decisions survive. Preserve each supported previousRelationships dependency, rewiring changed endpoints to the corrected local IDs; only remove or change a relationship when the Markdown supports it. A correction of a model interpretation is not a source-authored policy supersession: use supersedes only for replacements recorded by the sources. Copy supplied IDs exactly. repairReason can cover later batches: apply only the current target units and do not report deferred repair instructions as missing product decisions.");
+  }
   if review_warnings {
     instruction.push_str(" Report uncertainties only when an unanswered choice, contradiction or missing condition affects the interpretation or application of a decision, dependency or exception. Explain that consequence. Missing deployment proof, incidental detail or background alone is not a warning. Preserve genuine uncertainty and do not infer answers from absence. Keep descriptive facts descriptive; do not turn a current setup into a permanent obligation. For A requires B, A is the dependent and B the prerequisite. Each decision citation must support its conditions and exceptions too.");
   }
