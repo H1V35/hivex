@@ -660,6 +660,10 @@ fn checked_packet(
     packet["extraction"] = pending["extraction"].clone();
     return packet;
   }
+  let separate_context = packet
+    .as_object_mut()
+    .is_some_and(|record| record.shift_remove("replacingDecisions").is_some());
+  let candidate_ids: HashSet<_> = candidate.decisions.iter().map(|entry| &entry.id).collect();
   let protected = strings(&pending["protectedRelationships"]);
   let existing = strings(&pending["existing"]);
   let batch = pending["batch"].as_str().unwrap_or_default();
@@ -711,7 +715,13 @@ fn checked_packet(
       .decisions
       .iter()
       .filter(|entry| endpoints.contains(&entry.id))
-      .map(|entry| without_execution(json!(entry)))
+      .map(|entry| {
+        let mut value = without_execution(json!(entry));
+        if separate_context {
+          value["retainedInCandidate"] = json!(candidate_ids.contains(&entry.id));
+        }
+        value
+      })
       .collect::<Vec<_>>()
   );
   packet["removedRelationships"] = json!(
@@ -893,6 +903,9 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
   let mut instruction="Check this batch once against the Markdown. Identify important omitted decisions, distorted scope, or invented relationships. Target a decision ID, relationship ID, document ID, or batch. Report concrete issues only; do not enumerate every node, re-extract the documents or invent certainty.".to_owned();
   if pending["materializedCheck"] == true {
     instruction.push_str(" The extraction is the materialized candidate, after local validation. Check meaningful decisions, dependencies and exceptions; reading the cited Markdown supplies incidental details. Missing live deployment evidence or unexpanded background alone is not a defect. Use the supplied canonical IDs.");
+    if pending["packet"].get("replacingDecisions").is_some() {
+      instruction.push_str(" previousDecisions is comparison context: retainedInCandidate marks whether each old decision still exists in the candidate. Do not report a removed prior interpretation as if it were current. Evaluate the materialized extraction and its actually retained endpoints. If a prior decision has no adequate replacement, report the missing meaning against the affected document or relationship rather than assigning a current-state finding to a removed decision ID. Actual defects of retained endpoints remain reportable.");
+    }
   }
   if guarded {
     instruction.push_str(" For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.");
@@ -1045,12 +1058,22 @@ fn check_batch(
     pending["batch"].as_str().unwrap_or_default(),
     &model::warning_scope(&project.documents, Some(&ranges)),
   );
-  let unresolved = unresolved_changes(evidence, &candidate, &pending, &value)?;
+  let reviewed = if let Some(path) = &runtime.resolve {
+    let (resolved, reviewed) = super::warnings::resolve_candidate(&checked, project, work, path)?;
+    checked = resolved;
+    reviewed
+  } else {
+    value.clone()
+  };
+  let unresolved = unresolved_changes(evidence, &candidate, &pending, &reviewed)?;
   let local = retained_only && work.calls() == prior_calls;
   if local {
     work.assess_retained_check(unresolved.is_empty());
   }
   if !unresolved.is_empty() {
+    let mut retained = pending.clone();
+    retained["warnings"] = json!(super::warnings::candidate_report(&checked, project, &check));
+    work.set_pending(retained);
     work.reject_check(!local,format!("Previous graph retained. Unresolved relationship changes: {}. Inspect this result before proposing a different repair; no automatic retry.",unresolved.join(", ")));
     store.save(work)?;
     return Ok(Some(graph.clone()));
@@ -1080,6 +1103,11 @@ fn check_batch(
       &pending,
       &value,
     )?;
+  }
+  if runtime.resolve.is_some() {
+    work.record_candidate_resolution(&json!(super::warnings::candidate_report(
+      &checked, project, &check
+    )));
   }
   work.accept_check();
   finish_round(evidence, &mut checked, work, &ids);
@@ -1135,6 +1163,8 @@ fn update_response(
   "decisions":graph.decisions.len(),
   "model":runtime.execution.model_summary(),
   "pendingCheck":strings(&work.value()["pending"]["documents"]),
+  "pendingCandidateWarnings":work.value()["pending"]["warnings"].as_array().cloned().unwrap_or_default(),
+  "candidateResolutionContext":work.attempts().and_then(|attempts| attempts.last()).map(|attempt| json!({"workId":work.id(),"checkInputHash":attempt["inputHash"]})),
   "pendingDocuments":unique(units.iter().filter(|unit|work.remaining().contains(&unit.id)).map(|unit|unit.document.clone())),
   "pendingUnits":work.remaining(),
   "relationshipCoverage":"Bounded authored, lexical and recent neighbors; not an exhaustive comparison of all decisions.",
@@ -1153,6 +1183,22 @@ fn update_response(
     ));
   }
   response
+}
+
+fn retained_reassessment(runtime: &Options, work: &Work) -> Result<bool> {
+  let reassess = runtime.retry_failed
+    && work.status() == crate::work::State::Failed
+    && work
+      .attempts()
+      .and_then(|attempts| attempts.last())
+      .is_some_and(|attempt| attempt["error"] == "RELATIONSHIP_LOSS");
+  if runtime.resolve.is_some() && !reassess {
+    return Err(HivexError::new(
+      "INVALID_RESOLUTION",
+      "Candidate resolutions require a retained failed relationship check. No model call was made.",
+    ));
+  }
+  Ok(reassess)
 }
 
 pub fn update_with_store(
@@ -1191,12 +1237,7 @@ pub fn update_with_store(
     project,
     plan: &plan,
   };
-  let reassess = runtime.retry_failed
-    && work.status() == crate::work::State::Failed
-    && work
-      .attempts()
-      .and_then(|attempts| attempts.last())
-      .is_some_and(|attempt| attempt["error"] == "RELATIONSHIP_LOSS");
+  let reassess = retained_reassessment(runtime, &work)?;
   if reassess {
     if !pending_current(project, &work.value()["pending"]) {
       return Err(HivexError::new(
@@ -1423,6 +1464,16 @@ fn retained_check(
     work,
   } = execution;
   let pending = work.value()["pending"].clone();
+  if runtime.resolve.is_some() {
+    return model_runtime::retained_check_result(work, request, &runtime.execution)?
+      .map(Some)
+      .ok_or_else(|| {
+        HivexError::new(
+          "STALE_RETAINED_CHECK",
+          "Candidate resolutions require the exact retained check. No model call was made.",
+        )
+      });
+  }
   Ok(
     match model_runtime::retained_check_result(work, request, &runtime.execution) {
       Ok(Some(value)) => Some(value),

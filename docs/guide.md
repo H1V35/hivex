@@ -117,6 +117,8 @@ Repair replaces the affected unit's interpretations and revisits its relationshi
 
 Repair packets include the current interpretations of the target passages, not just their identifiers in previous relationships. These interpretations are context, not authority. The replacement must retain correct knowledge and supported dependencies, rewiring changed endpoints; correcting a model interpretation is not a source-authored policy supersession. A repair reason may cover several batches, but each round applies only its own target ranges. Unchanged supplied decisions can be referenced by their exact IDs; invalid references remain rejected. This context counts toward the existing limit rather than being silently omitted.
 
+New materialized checks separate the proposed knowledge from the extraction-only list of interpretations being replaced. Prior decisions remain comparison evidence and explicitly indicate whether they still exist in the candidate. Removed interpretations must not be mistaken for current defects; actual missing replacements or faulty retained endpoints still require findings. The relationship-loss and invalid-target guards remain unchanged, and a changed check request cannot reuse an old check receipt.
+
 New work checks the materialized decisions and relationships, including local validation discards. If it would lose relationships whose endpoints and evidence are still current, the previous graph remains available while the same check justifies their removal or identifies supported replacements. An unjustified loss returns `failed` with `RELATIONSHIP_LOSS`, preserving the previous graph and the attempted result. Current findings that affect a replacement or its endpoints still block it; inherited uncertainty remains visible but does not by itself veto an explicitly justified replacement. Inspect the evidence before a different repair; there is no automatic semantic retry. After correcting a local admission defect, `update` with the same arguments plus `--retry-failed --max-calls 0` can reassess that retained check without model calls. It requires the exact candidate/request and current evidence; graph divergence or a changed request rejects reuse. `work.retainedCheckAssessment` reports the local outcome while the original attempt and consumption remain intact. This does not rerun an adverse model check. Older unfinished work retains its original model request and budgets. When a repair explicitly references a supplied, current decision, Hivex retains that decision and shows its definition to the check. If an older release discarded that endpoint, a resumed repair can reuse the extraction and check the corrected candidate once within the same total allowance. Hivex first verifies the retained request against the older candidate; it does not repeat a check of an unchanged candidate. With `--max-calls 0`, a changed candidate remains pending without a model call.
 
 Warning prevention uses that same normal check to review new uncertainties and expired closures. It may dismiss descriptive observations or revalidate expired closures that are untargeted and non-validation only when complete in-scope documents and the prior closure's complete evidence are in context. Missing evidence leaves the warning pending; the update may still finish with limitations. Findings or local validation failures prevent warning closures. Matching text alone is insufficient. No extra call, retry or automatic repair is added.
@@ -130,6 +132,26 @@ For new update work, the response includes `warningChanges` with `new`, `reopene
 The default explicit-update work budget is two invocation attempts and 131,072 input bytes. `--max-calls` and `--max-input-bytes` set totals for the complete work, including extraction, check and resumption. A zero-call update reports pending documents without invoking the model. An exhausted work item retains its progress; repeating the command does not reset its counter. An authorized larger total can complete the remaining stage without repeating completed extraction.
 
 A failed or unfinished invocation is not retried automatically by increasing the budget. Inspect its reported outcome and usage first. `--retry-failed` can explicitly resume a safely ended failure within the same work budget; uncertain invocations remain blocked. A completed adverse check is not an invocation failure; this flag does not repeat it for an unchanged candidate. Uncertain or pending knowledge does not become a blanket pass. The project-local `.hivex/knowledge.sqlite` stores working knowledge and execution accounting; no source Markdown is rewritten. Preserve it when work evidence is needed. Storage is bounded at 64 MiB; do not delete an active store to hide unfinished calls or reset a work budget.
+
+For a false semantic finding that blocks a retained repair candidate, inspect `pendingCandidateWarnings` separately from the accepted graph's warnings. Reuse the same update arguments with `--retry-failed --max-calls 0 --resolve candidate-resolution.json`. The file binds the review to the work and exact check using `candidateResolutionContext`:
+
+```json
+{
+  "workId": "<work-id>",
+  "checkInputHash": "<retained-check-input-hash>",
+  "resolutions": [
+    {
+      "id": "<pending-candidate-warning-id>",
+      "reason": "<source-backed review disposition>",
+      "evidence": [
+        { "document": "docs/example.md", "lineStart": 10, "lineEnd": 14, "version": "<current-source-hash>" }
+      ]
+    }
+  ]
+}
+```
+
+This local operation accepts only findings from that check on current canonical candidate decisions. It requires the exact completed check and unchanged candidate, graph and sources; it never starts a model call. Unknown, batch and structural findings cannot be resolved through it. Every protected relationship still requires its original supported replacement or removal. The original findings, native uncertainty, failed attempt and consumption remain intact; the work records the explicit disposition and the admitted graph retains its evidence. A closure is the reviewer's source-backed judgement, not a correctness proof. Do not use it for a real contradiction or missing dependency.
 
 Use `npx hivex warnings` to inspect active warnings and their IDs. After checking the current sources, `npx hivex warnings --resolve resolutions.json` records an explicit resolution without a model call. The file is an array of `{ "id": "<warning-id>", "reason": "<why the warning is resolved>", "evidence": [{ "document": "docs/example.md", "lineStart": 10, "lineEnd": 14, "version": "<current-source-hash>" }] }`. Unknown or repeated IDs and stale or invalid citations reject the whole operation. A resolution requires a reason and current evidence; it is a reviewed explanation, not automatic proof that the knowledge is correct. Findings about implementation or relationships require an explicit repair or correction, and a knowledge check does not turn a failure into a resolution. Keep real contradictions and missing dependencies open for repair.
 

@@ -60,6 +60,7 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
       "reason",
       "repair",
       "repair-range",
+      "resolve",
       "root",
       "source",
     ],
@@ -129,6 +130,7 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
     repair_reason: trim_js_whitespace(values.get("reason").map(String::as_str).unwrap_or_default())
       .to_owned(),
     retry_failed: parsed.flags.contains("retry-failed"),
+    resolve: values.get("resolve").cloned(),
     implementation: None,
     retrieval_query: None,
   };
@@ -253,6 +255,13 @@ fn repair_ranges(parsed: &arguments::Parsed) -> Result<Vec<RepairRange>> {
 }
 
 fn validate_operation(options: &Operation) -> Result<()> {
+  if options.resolve.is_some()
+    && (options.command != "update" || !options.retry_failed || options.max_calls != Some(0))
+  {
+    return Err(argument(
+      "Candidate resolutions require update --retry-failed --max-calls 0 --resolve <file>.",
+    ));
+  }
   if (options.command == "review") != options.base.as_ref().is_some_and(|base| !base.is_empty()) {
     return Err(argument(
       "Use review <task> --base <git-ref>; --base is only for review.",
