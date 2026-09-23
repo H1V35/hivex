@@ -281,6 +281,12 @@ impl Work {
       .expect("validated work")
       .shift_remove("contextLimit");
   }
+  pub fn record_candidate_resolution(&mut self, warnings: &Value) {
+    self.value["candidateResolution"] = json!({
+      "checkInputHash":self.attempts().and_then(|attempts| attempts.last()).map(|attempt| &attempt["inputHash"]),
+      "warnings":warnings
+    });
+  }
   pub fn assess_retained_check(&mut self, accepted: bool) {
     self.value["retainedCheckAssessment"] = json!(if accepted { "accepted" } else { "blocked" });
   }

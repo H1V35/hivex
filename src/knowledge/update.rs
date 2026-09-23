@@ -1058,12 +1058,22 @@ fn check_batch(
     pending["batch"].as_str().unwrap_or_default(),
     &model::warning_scope(&project.documents, Some(&ranges)),
   );
-  let unresolved = unresolved_changes(evidence, &candidate, &pending, &value)?;
+  let reviewed = if let Some(path) = &runtime.resolve {
+    let (resolved, reviewed) = super::warnings::resolve_candidate(&checked, project, work, path)?;
+    checked = resolved;
+    reviewed
+  } else {
+    value.clone()
+  };
+  let unresolved = unresolved_changes(evidence, &candidate, &pending, &reviewed)?;
   let local = retained_only && work.calls() == prior_calls;
   if local {
     work.assess_retained_check(unresolved.is_empty());
   }
   if !unresolved.is_empty() {
+    let mut retained = pending.clone();
+    retained["warnings"] = json!(super::warnings::candidate_report(&checked, project, &check));
+    work.set_pending(retained);
     work.reject_check(!local,format!("Previous graph retained. Unresolved relationship changes: {}. Inspect this result before proposing a different repair; no automatic retry.",unresolved.join(", ")));
     store.save(work)?;
     return Ok(Some(graph.clone()));
@@ -1093,6 +1103,11 @@ fn check_batch(
       &pending,
       &value,
     )?;
+  }
+  if runtime.resolve.is_some() {
+    work.record_candidate_resolution(&json!(super::warnings::candidate_report(
+      &checked, project, &check
+    )));
   }
   work.accept_check();
   finish_round(evidence, &mut checked, work, &ids);
@@ -1148,6 +1163,8 @@ fn update_response(
   "decisions":graph.decisions.len(),
   "model":runtime.execution.model_summary(),
   "pendingCheck":strings(&work.value()["pending"]["documents"]),
+  "pendingCandidateWarnings":work.value()["pending"]["warnings"].as_array().cloned().unwrap_or_default(),
+  "candidateResolutionContext":work.attempts().and_then(|attempts| attempts.last()).map(|attempt| json!({"workId":work.id(),"checkInputHash":attempt["inputHash"]})),
   "pendingDocuments":unique(units.iter().filter(|unit|work.remaining().contains(&unit.id)).map(|unit|unit.document.clone())),
   "pendingUnits":work.remaining(),
   "relationshipCoverage":"Bounded authored, lexical and recent neighbors; not an exhaustive comparison of all decisions.",
@@ -1166,6 +1183,22 @@ fn update_response(
     ));
   }
   response
+}
+
+fn retained_reassessment(runtime: &Options, work: &Work) -> Result<bool> {
+  let reassess = runtime.retry_failed
+    && work.status() == crate::work::State::Failed
+    && work
+      .attempts()
+      .and_then(|attempts| attempts.last())
+      .is_some_and(|attempt| attempt["error"] == "RELATIONSHIP_LOSS");
+  if runtime.resolve.is_some() && !reassess {
+    return Err(HivexError::new(
+      "INVALID_RESOLUTION",
+      "Candidate resolutions require a retained failed relationship check. No model call was made.",
+    ));
+  }
+  Ok(reassess)
 }
 
 pub fn update_with_store(
@@ -1204,12 +1237,7 @@ pub fn update_with_store(
     project,
     plan: &plan,
   };
-  let reassess = runtime.retry_failed
-    && work.status() == crate::work::State::Failed
-    && work
-      .attempts()
-      .and_then(|attempts| attempts.last())
-      .is_some_and(|attempt| attempt["error"] == "RELATIONSHIP_LOSS");
+  let reassess = retained_reassessment(runtime, &work)?;
   if reassess {
     if !pending_current(project, &work.value()["pending"]) {
       return Err(HivexError::new(
@@ -1436,6 +1464,16 @@ fn retained_check(
     work,
   } = execution;
   let pending = work.value()["pending"].clone();
+  if runtime.resolve.is_some() {
+    return model_runtime::retained_check_result(work, request, &runtime.execution)?
+      .map(Some)
+      .ok_or_else(|| {
+        HivexError::new(
+          "STALE_RETAINED_CHECK",
+          "Candidate resolutions require the exact retained check. No model call was made.",
+        )
+      });
+  }
   Ok(
     match model_runtime::retained_check_result(work, request, &runtime.execution) {
       Ok(Some(value)) => Some(value),

@@ -1447,6 +1447,27 @@ pub fn check_impact(
   }
 }
 
+pub(super) fn check_warnings(
+  graph: &Graph,
+  check: &KnowledgeCheck,
+  batch: &str,
+  scope: &[WarningScope],
+) -> Vec<Warning> {
+  check
+    .findings
+    .iter()
+    .map(|finding| {
+      Warning::Structured(WarningRecord {
+        kind: Some("finding".to_owned()),
+        message: finding.reason.clone(),
+        scope: finding_scope(graph, &finding.target, batch, scope),
+        target: Some(finding.target.clone()),
+        ..WarningRecord::default()
+      })
+    })
+    .collect()
+}
+
 pub fn apply_check(
   graph: &Graph,
   check: &KnowledgeCheck,
@@ -1493,19 +1514,7 @@ pub fn apply_check(
       }
     })
     .collect();
-  let warnings = check
-    .findings
-    .iter()
-    .map(|finding| {
-      Warning::Structured(WarningRecord {
-        kind: Some("finding".to_owned()),
-        message: finding.reason.clone(),
-        scope: finding_scope(graph, &finding.target, batch, scope),
-        target: Some(finding.target.clone()),
-        ..WarningRecord::default()
-      })
-    })
-    .collect();
+  let warnings = check_warnings(graph, check, batch, scope);
   Graph {
     decisions,
     relationships,

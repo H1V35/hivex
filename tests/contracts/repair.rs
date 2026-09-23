@@ -622,3 +622,155 @@ fn unchanged_current_endpoints_survive_identical_relationship_repair() {
     assert!(list(check, "validationWarnings").is_empty());
   }
 }
+
+fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
+  let p = Project::policy();
+  p.model_cli(&["update"]);
+  let graph = p.graph();
+  let node = list(&graph, "decisions")
+    .iter()
+    .find(|node| node["document"] == "privacy.md")
+    .unwrap();
+  let target = match case {
+    "batch" => json!("batch"),
+    "unknown" => json!("missing-decision"),
+    _ => node["id"].clone(),
+  };
+  let mut r = preserving_repair(&p);
+  r["byDocument"]["cache.md"]["decisions"][0]["text"] =
+    json!("Expire ordinary cached data after seven days.");
+  r["check"]["findings"] = json!([{"target":target,"reason":"The reviewer verifies this precise interpretation against its source."}]);
+  if case == "other-finding" {
+    r["check"]["findings"]
+      .as_array_mut()
+      .unwrap()
+      .push(json!({"target":"batch","reason":"A separate unresolved batch defect."}));
+  }
+  if case == "missing-edge" {
+    r["check"]["relationshipChanges"] = json!([]);
+  }
+  p.json("responses.json", &r);
+  let rejected = p.model_cli(&REPAIR);
+  assert_eq!(rejected["status"], "failed");
+  let mut resolution = rejected["candidateResolutionContext"].clone();
+  resolution["resolutions"] = json!([{
+    "id":rejected["pendingCandidateWarnings"][0]["id"],
+    "reason":"Independent review confirms immediate revocation in privacy.md:3.",
+    "evidence":[{"document":"privacy.md","lineStart":3,"lineEnd":3,"version":node["version"]}]
+  }]);
+  p.json("resolution.json", &resolution);
+  (p, rejected)
+}
+
+#[test]
+fn candidate_resolution_reuses_the_exact_check_and_preserves_native_quality_and_receipts() {
+  let (p, rejected) = rejected_candidate_resolution("valid");
+  let id = rejected["work"]["id"].as_str().unwrap();
+  let before = p.work(id);
+  let path = p.path("resolution.json");
+  let mut args = REPAIR.to_vec();
+  args.extend([
+    "--retry-failed",
+    "--max-calls",
+    "0",
+    "--resolve",
+    path.to_str().unwrap(),
+    "--codex",
+    "/must-not-start",
+  ]);
+  let result = p.cli(&args);
+  subset(
+    &result,
+    &json!({"status":"ready","warningSummary":{"findings":0,"resolved":1},"work":{"calls":2,"retainedCheckAssessment":"accepted"}}),
+  );
+  let after = p.work(id);
+  for field in ["attempts", "calls", "inputBytes", "totalTokens"] {
+    assert_eq!(before[field], after[field]);
+  }
+  assert_eq!(
+    after["candidateResolution"]["checkInputHash"],
+    before["attempts"][1]["inputHash"]
+  );
+  assert_eq!(
+    after["candidateResolution"]["warnings"][0]["state"],
+    "resolved"
+  );
+  let graph = p.graph();
+  assert_eq!(graph["relationships"][0]["quality"], "uncertain");
+  let privacy = list(&graph, "decisions")
+    .iter()
+    .find(|node| node["document"] == "privacy.md")
+    .unwrap();
+  assert_eq!(privacy["quality"], "uncertain");
+  assert_eq!(p.calls(), 4);
+  assert_eq!(p.error(&args)["error"]["code"], "INVALID_RESOLUTION");
+}
+
+#[test]
+fn candidate_resolution_cannot_bypass_identity_evidence_or_relationship_protections() {
+  for case in [
+    "batch",
+    "unknown",
+    "missing-edge",
+    "stale-evidence",
+    "wrong-work",
+    "wrong-check",
+    "changed-candidate",
+    "unfinished-check",
+    "other-finding",
+    "mixed-ids",
+  ] {
+    let (p, rejected) = rejected_candidate_resolution(case);
+    let graph = p.graph();
+    let id = rejected["work"]["id"].as_str().unwrap();
+    let mut work = p.work(id);
+    let mut resolution = p.read_json("resolution.json");
+    match case {
+      "stale-evidence" => resolution["resolutions"][0]["evidence"][0]["version"] = json!("stale"),
+      "wrong-work" => resolution["workId"] = json!("another-work"),
+      "wrong-check" => resolution["checkInputHash"] = json!("another-check"),
+      "mixed-ids" => {
+        let mut unrelated = resolution["resolutions"][0].clone();
+        unrelated["id"] = json!("unrelated-warning");
+        resolution["resolutions"]
+          .as_array_mut()
+          .unwrap()
+          .push(unrelated);
+      }
+      "changed-candidate" => {
+        work["pending"]["extraction"]["decisions"][0]["text"] = json!("Changed candidate.");
+      }
+      "unfinished-check" => work["attempts"][1]["report"]["outcome"] = json!("failed"),
+      _ => (),
+    }
+    p.set_work(&work);
+    p.json("resolution.json", &resolution);
+    let path = p.path("resolution.json");
+    let mut args = REPAIR.to_vec();
+    args.extend([
+      "--retry-failed",
+      "--max-calls",
+      "0",
+      "--resolve",
+      path.to_str().unwrap(),
+      "--codex",
+      "/must-not-start",
+    ]);
+    if ["missing-edge", "other-finding"].contains(&case) {
+      subset(
+        &p.cli(&args),
+        &json!({"status":"failed","work":{"calls":2,"retainedCheckAssessment":"blocked"}}),
+      );
+    } else {
+      let expected = if ["changed-candidate", "unfinished-check"].contains(&case) {
+        "STALE_RETAINED_CHECK"
+      } else {
+        "INVALID_RESOLUTION"
+      };
+      assert_eq!(p.error(&args)["error"]["code"], expected, "{case}");
+    }
+    assert_eq!(p.graph(), graph, "{case}");
+    assert_eq!(p.work(id)["attempts"], work["attempts"], "{case}");
+    assert_eq!(p.calls(), 4, "{case}");
+  }
+}
