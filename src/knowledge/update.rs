@@ -371,6 +371,8 @@ fn plan_update(
   );
   let identity = update_identity(runtime, &snapshot, context_sources);
   let key = hash(&identity.to_string());
+  let binding = runtime.execution.binding(&identity);
+  let replaced_key = binding.replaced_profile.and(binding.legacy_key);
   let remaining: Vec<_> = plan
     .units
     .iter()
@@ -390,6 +392,9 @@ fn plan_update(
             .map(|source| source.hash.as_str())
       } else {
         pending_repair_unit(graph, runtime, unit, &key)
+          && replaced_key
+            .as_deref()
+            .is_none_or(|key| pending_repair_unit(graph, runtime, unit, key))
       }
     })
     .map(|unit| unit.id.clone())

@@ -155,7 +155,7 @@ pub fn retained_check_result(
   if attempt["report"]["outcome"] != "completed"
     || attempt["report"]["cleanup"] != "confirmed"
     || attempt["stage"] != "check"
-    || attempt["inputHash"] != model_input(request, execution).fingerprint
+    || !retained_input_matches(work, request, execution, &attempt["inputHash"])
   {
     return Err(invalid_retained());
   }
@@ -163,6 +163,23 @@ pub fn retained_check_result(
     .schema
     .parse(&attempt["result"])
     .ok_or_else(invalid_retained)
+}
+
+fn retained_input_matches(
+  work: &Work,
+  request: &Request,
+  execution: &Execution,
+  saved: &Value,
+) -> bool {
+  let input = model_input(request, execution);
+  if saved == &input.fingerprint {
+    return true;
+  }
+  work.value()["profileReplacement"]["to"] == json!(execution.profile())
+    && execution.legacy_identity.as_ref().is_some_and(|model| {
+      saved
+        == &hash(&json!({"prompt":input.prompt,"schema":input.schema,"model":model}).to_string())
+    })
 }
 
 pub fn run_model(
@@ -365,7 +382,10 @@ mod tests {
     let execution = crate::integrations::select(
       "codex",
       "/no-model".into(),
-      crate::integrations::ProfileOverrides::default(),
+      crate::integrations::ProfileOverrides {
+        model: Some(&"gpt-5.6-luna".to_owned()),
+        ..crate::integrations::ProfileOverrides::default()
+      },
       100,
     )
     .unwrap();

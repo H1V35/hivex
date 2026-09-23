@@ -3,76 +3,59 @@ use serde_json::json;
 use std::fs;
 
 #[test]
-fn retained_v1_answers_and_model_caches_need_no_model_or_new_budget() {
-  for cache in [false, true] {
+fn legacy_pending_work_upgrades_without_resetting_its_budget() {
+  for multiround in [false, true] {
     let p = Project::new();
-    p.write(
-      "notes.md",
-      "# Policy\nUse bounded work.\nPreserve the budget.\n",
-    );
-    p.sql_fixture("knowledge-cache-v1.sql");
-    if cache {
-      p.db()
-        .execute_batch(
-          "UPDATE work SET data=json_remove(json_set(data,'$.status','pending'),'$.result')",
-        )
-        .unwrap();
+    let text = if multiround {
+      (1..=3)
+        .map(|n| {
+          format!(
+            "# Section {n}\n\nRule {n} requires bounded work. {}\n",
+            "Detail ".repeat(800).trim_end()
+          )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+    } else {
+      "# Policy\nUse bounded work.\nPreserve the budget.\n".to_owned()
+    };
+    p.write("notes.md", text);
+    p.sql_fixture(if multiround {
+      "knowledge-multiround-cache-v1.sql"
+    } else {
+      "knowledge-update-cache-v1.sql"
+    });
+    let id: String = p
+      .db()
+      .query_row("SELECT id FROM work", [], |row| row.get(0))
+      .unwrap();
+    let mut before = p.work(&id);
+    if multiround {
+      before["executionProfile"] = json!({"integration":"codex","provider":"openai","model":"gpt-5.6-luna","options":{"effort":"max"}});
+      p.set_work(&before);
     }
-    let result = p.ok(&[
-      "ask",
-      "bounded",
-      "--source",
-      "notes.md",
-      "--max-calls",
-      "1",
-      "--codex",
-      "/model-must-not-start",
-    ]);
-    subset(
-      &result,
-      &json!({"status":"ready","answer":"Use bounded work and preserve the budget.","work":{"cacheHits":u64::from(cache),"calls":1,"id":"84171802-e68b-43d8-b327-9ff47d302375","inputBytes":100,"maxCalls":1,"maxInputBytes":131_072,"totalTokens":10}}),
+    let result = p.cli(&["update", "--codex", "/model-must-not-start"]);
+    assert_eq!(result["status"], "budget-exhausted");
+    assert_eq!(result["work"]["id"], id);
+    let after = p.work(&id);
+    for field in [
+      "calls",
+      "inputBytes",
+      "totalTokens",
+      "maxCalls",
+      "maxInputBytes",
+      "attempts",
+    ] {
+      assert_eq!(after[field], before[field], "{field}");
+    }
+    assert_eq!(after["executionProfile"]["model"], "gpt-6-luna");
+    assert_eq!(after["profileReplacement"]["from"]["model"], "gpt-5.6-luna");
+    assert_eq!(after["cacheHits"], 0);
+    assert_eq!(
+      p.cli(&["update", "--codex", "/model-must-not-start"])["work"]["id"],
+      id
     );
   }
-  let p = Project::new();
-  p.write(
-    "notes.md",
-    "# Policy\nUse bounded work.\nPreserve the budget.\n",
-  );
-  p.sql_fixture("knowledge-update-cache-v1.sql");
-  subset(
-    &p.ok(&[
-      "update",
-      "--max-calls",
-      "2",
-      "--codex",
-      "/model-must-not-start",
-    ]),
-    &json!({"status":"ready","decisions":2,"relationships":1,"pendingUnits":[],"work":{"cacheHits":2,"calls":2,"id":"df3ff9f3-1c23-4103-a08b-e7c3d65683e8","inputBytes":4282,"totalTokens":10}}),
-  );
-  let p = Project::new();
-  p.write(
-    "notes.md",
-    (1..=3)
-      .map(|n| {
-        format!(
-          "# Section {n}\n\nRule {n} requires bounded work. {}\n",
-          "Detail ".repeat(800).trim_end()
-        )
-      })
-      .collect::<Vec<_>>()
-      .join("\n"),
-  );
-  p.sql_fixture("knowledge-multiround-cache-v1.sql");
-  subset(
-    &p.cli(&[
-      "update",
-      "--max-calls",
-      "4",
-      "--codex",
-      "/model-must-not-start",
-    ]),
-    &json!({"status":"budget-exhausted","decisions":2,"relationships":1,"pendingUnits":["notes.md:11-11"],"work":{"cacheHits":2,"calls":4,"id":"cc4bb47f-3512-40b0-8c6c-9ef5a326e2db","inputBytes":55743,"totalTokens":20}}),
-  );
 }
 
 #[test]

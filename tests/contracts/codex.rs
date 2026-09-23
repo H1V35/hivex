@@ -291,6 +291,17 @@ fn codex_model_profiles_are_selectable_and_do_not_reuse_incompatible_work() {
   let p = Project::policy();
   let updated = p.model_cli(&["update"]);
   assert_eq!(updated["status"], "ready");
+  assert_eq!(updated["model"]["name"], "gpt-6-luna");
+  assert_eq!(updated["model"]["effort"], "max");
+  let stored = p.work(updated["work"]["id"].as_str().unwrap());
+  assert_eq!(
+    stored["attempts"][0]["report"]["admission"]["model"],
+    "gpt-6-luna"
+  );
+  assert_eq!(
+    stored["attempts"][0]["report"]["admission"]["effort"],
+    "max"
+  );
   let graph = p.graph();
   let calls = p.calls();
   let profile_update = p.model_cli(&[
@@ -368,7 +379,7 @@ fn codex_model_profiles_are_selectable_and_do_not_reuse_incompatible_work() {
 }
 
 #[test]
-fn pending_native_and_legacy_work_reject_profile_changes() {
+fn pending_native_work_rejects_unrelated_profile_changes() {
   let p = Project::policy();
   let pending = p.model_cli(&["update", "--max-calls", "1"]);
   let id = pending["work"]["id"].as_str().unwrap();
@@ -389,16 +400,42 @@ fn pending_native_and_legacy_work_reject_profile_changes() {
     p.model_cli(&["update", "--max-calls", "2"])["status"],
     "ready"
   );
-  let legacy = Project::new();
-  legacy.write(
-    "notes.md",
-    "# Policy\nUse bounded work.\nPreserve the budget.\n",
-  );
-  legacy.sql_fixture("knowledge-update-cache-v1.sql");
-  let before = legacy.graph();
-  assert_eq!(
-    legacy.error(&["update", "--model", "fixture-model", "--effort", "high"])["error"]["code"],
-    "EXECUTION_PROFILE_CHANGED"
-  );
-  assert_eq!(legacy.graph(), before);
+}
+
+#[test]
+fn luna_upgrade_keeps_existing_knowledge_but_separates_cached_answers() {
+  for pending in [false, true] {
+    let p = Project::new();
+    p.write(
+      "notes.md",
+      "# Policy\nUse bounded work.\nPreserve the budget.\n",
+    );
+    p.sql_fixture("knowledge-cache-v1.sql");
+    let old_id = "84171802-e68b-43d8-b327-9ff47d302375";
+    let mut old = p.work(old_id);
+    if pending {
+      old["status"] = json!("pending");
+      old.as_object_mut().unwrap().remove("result");
+      p.set_work(&old);
+    }
+    let graph = p.graph();
+    p.model("");
+    let mut responses = p.read_json("responses.json");
+    responses["ask"] = json!({"answer":"Use bounded work.","evidence":[{"document":"notes.md","lineStart":2,"lineEnd":2}],"uncertainties":[]});
+    p.json("responses.json", &responses);
+    let args = ["ask", "bounded", "--source", "notes.md", "--max-calls", "2"];
+    let new = p.model_cli(&args);
+    assert_eq!(new["status"], "ready");
+    assert_eq!(new["work"]["id"] == old_id, pending);
+    assert_eq!(new["work"]["calls"], if pending { 2 } else { 1 });
+    assert_eq!(p.calls(), 1);
+    assert_eq!(p.graph(), graph);
+    if pending {
+      assert_eq!(p.work(old_id)["attempts"][0], old["attempts"][0]);
+    } else {
+      assert_eq!(p.work(old_id), old);
+    }
+    assert_eq!(p.model_cli(&args), new);
+    assert_eq!(p.calls(), 1);
+  }
 }

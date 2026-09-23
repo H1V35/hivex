@@ -28,7 +28,7 @@ pub fn default_profile() -> ExecutionProfile {
   ExecutionProfile {
     integration: "codex".into(),
     provider: "openai".into(),
-    model: "gpt-5.6-luna".into(),
+    model: "gpt-6-luna".into(),
     options: std::collections::BTreeMap::from([("effort".into(), "max".into())]),
   }
 }
@@ -44,7 +44,7 @@ impl Integration for Codex {
     &self.profile
   }
   fn cache_identity(&self) -> Value {
-    if self.profile == default_profile() {
+    if self.model_summary() == legacy_identity() {
       legacy_identity()
     } else {
       json!(self.profile)
@@ -52,6 +52,12 @@ impl Integration for Codex {
   }
   fn legacy_cache_identity(&self) -> Option<Value> {
     Some(legacy_identity())
+  }
+  fn replaced_profile(&self) -> Option<ExecutionProfile> {
+    (self.profile == default_profile()).then(|| ExecutionProfile {
+      model: "gpt-5.6-luna".into(),
+      ..default_profile()
+    })
   }
   fn invoke(
     &self,

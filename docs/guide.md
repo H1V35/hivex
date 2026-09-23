@@ -2,7 +2,7 @@
 
 A project foundation and reusable knowledge for autonomous agents. Hivex provides recommended Markdown, focused workflow skills and retrieval of decisions, dependencies and exceptions. Project Markdown remains authority and the responsible agent directs the work.
 
-Hivex is a native Rust CLI organized by domain capability. The default knowledge profile is Luna/max through Codex and the user's ChatGPT subscription. Execution integration, model and options are separate choices; only the Codex integration is currently shipped. The implementing agent may use another model. There is no silent model or provider fallback.
+Hivex is a native Rust CLI organized by domain capability. The default knowledge profile is `gpt-6-luna` with effort `max` through Codex and the user's ChatGPT subscription. Execution integration, model and options are separate choices; only the Codex integration is currently shipped. The implementing agent may use another model. There is no silent model or provider fallback.
 
 ## Project foundation
 
@@ -147,7 +147,7 @@ Integration and model selection are independent. `--integration` selects the con
 npx hivex ask "Which rules apply?" --model <model-listed-by-codex> --effort <supported-effort>
 ```
 
-Cache identity includes the integration/profile. The existing default profile retains its v1 cache keys; selecting a different profile cannot reuse an incompatible result. Changing profile does not reingest existing graph knowledge. An unfinished work item stays bound to its profile: a conflicting request reports `EXECUTION_PROFILE_CHANGED` without making a model call or resetting consumption. Resume the original profile and complete or recover that work before changing it. Recovery preserves uncertainty and does not by itself turn an unfinished work item into a completed one. Each new work records its requested profile, and execution receipts record an observed effective profile when known.
+Cache identity includes the integration/profile. The default is now `gpt-6-luna` with effort `max`; new invocations never need the former `gpt-5.6-luna`/max default. Unfinished work under that former default moves to GPT-6 Luna when resumed, keeping its ID, progress, attempts and consumed budget. The recorded profile replacement distinguishes historical results from new invocations. Running or uncertain invocations still require the normal inspection/recovery process, and failed work still requires explicit retry. Old model caches and completed answers are retained as history, not reused as GPT-6 Luna results. Existing graph knowledge is not reingested merely because the default changes. Other profile changes continue to report `EXECUTION_PROFILE_CHANGED` for unfinished work without making a model call or resetting consumption. Each new work records its requested profile, and execution receipts record an observed effective profile when known.
 
 
 ## Share knowledge through Git
