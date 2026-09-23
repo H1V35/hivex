@@ -15,6 +15,8 @@ Manual links below refer to the installed Hivex package's guide. If copied skill
 
 For adoption, use `init` when the installed version provides it. It prepares missing documents and configuration without model calls. Use `hivex-document` to complete project meaning and migrate existing documentation to the standard when appropriate, and `hivex-git` for the tracker and labels. The five workflow skills are independent capabilities, not compulsory phases.
 
+During adoption, relevant guidance updates or language changes, follow the installed [language-template catalogue](../../templates/README.md) with `hivex-document` and maintain the project's language-to-guideline mapping. If the link does not resolve from copied skills, read `templates/README.md` in the installed `@h1v35/hivex` package.
+
 ## Retrieve before deciding
 
 Start with focused `search`, `neighbors` and `read`. Read the evidence and follow relevant dependencies, exceptions and replacements, including indirect ones. Reuse current context instead of repeating a query for every file.
