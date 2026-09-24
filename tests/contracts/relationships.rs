@@ -10,6 +10,195 @@ fn packets(p: &Project) -> Vec<Value> {
     .collect()
 }
 
+fn replacement_check(document: &str, count: usize) -> Value {
+  json!({"findings":[],"relationshipChanges":(0..count).map(|index| json!({
+    "previousId":format!("@removed:{index}"),"replacements":[format!("@candidate:{index}")],
+    "reason":"The current source preserves this dependency with its updated endpoint.",
+    "evidence":[{"document":document,"lineStart":3,"lineEnd":3}]
+  })).collect::<Vec<_>>()})
+}
+
+#[test]
+fn changed_source_cannot_silently_discard_an_existing_relationship() {
+  for source in ["cache.md", "privacy.md", "scope.md"] {
+    let p = Project::policy();
+    p.write("scope.md", "# Scope\n\nRevocation overrides retention.\n");
+    let mut response = p.read_json("responses.json");
+    response["extract"]["relationships"][0]["evidence"] = json!([
+      {"document":"scope.md","lineStart":3,"lineEnd":3}
+    ]);
+    p.json("responses.json", &response);
+    assert_eq!(p.model_cli(&["update"])["status"], "ready");
+    let graph = p.graph();
+    let mut changed = fs::read_to_string(p.path(source)).unwrap();
+    changed.push_str("\nAdditional context does not remove the exception.\n");
+    p.write(source, changed);
+    response["byDocument"] = json!({
+      "cache.md":{"decisions":[response["extract"]["decisions"][0]],"relationships":[]},
+      "privacy.md":{"decisions":[response["extract"]["decisions"][1]],"relationships":[]},
+      "scope.md":{"decisions":[],"relationships":[]}
+    });
+    response["check"]["relationshipChanges"] = json!([]);
+    p.json("responses.json", &response);
+    let result = p.model_cli(&["update"]);
+    assert_eq!(result["status"], "failed", "{source}");
+    assert_eq!(result["work"]["lastAttempt"]["code"], "RELATIONSHIP_LOSS");
+    assert_eq!(p.graph(), graph, "{source}");
+  }
+}
+
+fn changed_bridged_source() -> (Project, Value, Value) {
+  let p = Project::new();
+  let original = (0..6)
+    .map(|n| {
+      format!(
+        "## Section {n}\n\nRule {n} requires bounded work. {}\n",
+        "Detail ".repeat(850)
+      )
+    })
+    .collect::<Vec<_>>()
+    .join("\n");
+  p.write("rules.md", &original);
+  p.model("");
+  let mut response = p.read_json("responses.json");
+  response["fromVisibleRules"] = json!(true);
+  p.json("responses.json", &response);
+  assert_eq!(
+    p.model_cli(&["update", "--max-calls", "6", "--max-input-bytes", "1048576"])["status"],
+    "ready"
+  );
+  let mut graph = p.graph();
+  let first = graph["decisions"][0].clone();
+  let last = graph["decisions"][5].clone();
+  graph["relationships"] = json!([{"id":"old-bridge","localId":"bridge","batch":"seed",
+    "from":first["id"],"to":last["id"],"type":"requires","reason":"First rule requires the final rule.",
+    "quality":"checked","evidence":[{"document":"rules.md","lineStart":3,"lineEnd":3,"version":first["version"]},
+    {"document":"rules.md","lineStart":23,"lineEnd":23,"version":last["version"]}]}]);
+  p.set_graph(&graph);
+  p.write("rules.md", format!("# Revision\n\n{original}"));
+  (p, graph, response)
+}
+
+#[test]
+fn changed_large_source_retains_cross_round_edges_until_verified_replacement() {
+  let (p, graph, mut response) = changed_bridged_source();
+  let first = graph["decisions"][0].clone();
+  let last = graph["decisions"][5].clone();
+  let first_round = p.model_cli(&["update", "--max-calls", "2", "--max-input-bytes", "1048576"]);
+  assert_eq!(first_round["status"], "budget-exhausted");
+  assert_eq!(p.graph()["relationships"], graph["relationships"]);
+  assert!(list(&p.graph(), "decisions").contains(&last));
+  let second = p.model_cli(&["update", "--max-calls", "4", "--max-input-bytes", "1048576"]);
+  assert_eq!(second["status"], "budget-exhausted");
+  assert_eq!(second["work"]["id"], first_round["work"]["id"]);
+  assert_eq!(p.graph()["relationships"], graph["relationships"]);
+  let updated = p.graph();
+  let current_first = list(&updated, "decisions")
+    .iter()
+    .find(|node| node["lineStart"] == 5 && node["version"] != first["version"])
+    .unwrap();
+  response["fromVisibleRules"] = json!(false);
+  response["extract"]["decisions"] = json!([
+    decision("rules.md", "four", 21, "Rule 4 requires bounded work."),
+    decision("rules.md", "five", 25, "Rule 5 requires bounded work.")
+  ]);
+  response["extract"]["relationships"] = json!([{"id":"bridge","from":current_first["id"],"to":"five",
+    "type":"requires","reason":"First rule still requires the final rule.",
+    "evidence":[{"document":"rules.md","lineStart":5,"lineEnd":5},{"document":"rules.md","lineStart":25,"lineEnd":25}]}]);
+  response["check"] = json!({"findings":[],"relationshipChanges":[{
+    "previousId":"@removed:0","replacements":["@candidate:0"],"reason":"The revision preserves the dependency with current endpoints.",
+    "evidence":[{"document":"rules.md","lineStart":5,"lineEnd":5},{"document":"rules.md","lineStart":25,"lineEnd":25}]}]});
+  p.json("responses.json", &response);
+  let final_round = p.model_cli(&["update", "--max-calls", "6", "--max-input-bytes", "1048576"]);
+  subset(
+    &final_round,
+    &json!({"status":"ready","decisions":6,"relationships":1,"pendingUnits":[],"work":{"calls":6}}),
+  );
+  assert_eq!(final_round["work"]["id"], first_round["work"]["id"]);
+  let final_graph = p.graph();
+  assert!(
+    list(&final_graph, "decisions")
+      .iter()
+      .all(|node| node["version"] != first["version"])
+  );
+  assert_eq!(final_graph["relationships"][0]["quality"], "checked");
+  assert_eq!(
+    p.model_cli(&["update", "--max-calls", "6", "--max-input-bytes", "1048576"])["work"]["calls"],
+    6
+  );
+}
+
+#[test]
+fn bounded_consultation_keeps_dependencies_on_units_outside_its_work_plan() {
+  let (p, graph, _) = changed_bridged_source();
+  let result = p.model_cli(&[
+    "ask",
+    "Rule 0",
+    "--source",
+    "rules.md",
+    "--max-calls",
+    "2",
+    "--max-input-bytes",
+    "1048576",
+    "--max-context-bytes",
+    "262144",
+  ]);
+  assert_eq!(result["work"]["calls"], 2);
+  assert_eq!(result["status"], "budget-exhausted");
+  assert_eq!(p.graph()["relationships"], graph["relationships"]);
+  assert!(list(&p.graph(), "decisions").contains(&graph["decisions"][5]));
+  assert!(list(&p.ok(&["status"]), "pendingDocuments").contains(&json!("rules.md")));
+}
+
+#[test]
+fn completed_source_keeps_its_old_endpoint_while_the_other_source_is_pending() {
+  let p = Project::new();
+  p.model("");
+  let mut response = p.read_json("responses.json");
+  for name in ["a.md", "b.md", "c.md", "d.md", "e.md"] {
+    p.write(
+      name,
+      "# Rule\n\nThis rule participates in the dependency.\n",
+    );
+    response["byDocument"][name] = json!({"decisions":[decision(name,name,3,
+      "This rule participates in the dependency.")],"relationships":[]});
+  }
+  response["byDocument"]["e.md"]["relationships"] = json!([{
+    "id":"bridge","from":"@existing:a.md","to":"e.md","type":"requires",
+    "reason":"The first source requires the final source.",
+    "evidence":[{"document":"a.md","lineStart":3,"lineEnd":3},{"document":"e.md","lineStart":3,"lineEnd":3}]
+  }]);
+  p.json("responses.json", &response);
+  let args = ["update", "--max-calls", "4", "--source", "a.md"];
+  assert_eq!(p.model_cli(&args)["status"], "ready");
+  let before = p.graph();
+  let old_first = list(&before, "decisions")
+    .iter()
+    .find(|node| node["document"] == "a.md")
+    .unwrap();
+  for name in ["a.md", "b.md", "c.md", "d.md", "e.md"] {
+    p.write(
+      name,
+      "# Rule\n\nThis rule participates in the dependency.\n\nRevised background.\n",
+    );
+  }
+  let first = p.model_cli(&["update", "--max-calls", "2", "--source", "a.md"]);
+  assert_eq!(first["status"], "budget-exhausted");
+  assert_eq!(p.graph()["relationships"], before["relationships"]);
+  assert!(list(&p.graph(), "decisions").contains(old_first));
+  assert!(list(&p.ok(&["status"]), "pendingDocuments").contains(&json!("a.md")));
+  response["check"] = replacement_check("e.md", 1);
+  p.json("responses.json", &response);
+  let completed = p.model_cli(&args);
+  subset(
+    &completed,
+    &json!({"status":"ready","decisions":5,"relationships":1,"work":{"calls":4}}),
+  );
+  assert_eq!(completed["work"]["id"], first["work"]["id"]);
+  assert!(!list(&p.graph(), "decisions").contains(old_first));
+  assert_ne!(p.graph()["relationships"][0]["from"], old_first["id"]);
+}
+
 #[test]
 fn independent_supporting_evidence_is_supplied_and_invalidated_on_change() {
   let p = Project::policy();
@@ -67,6 +256,7 @@ fn endpoint_maintenance_pauses_before_spending_when_required_context_cannot_fit(
   edge["from"] = json!("@existing:privacy.md");
   edge["requiresEvidenceDocument"] = json!("scope.md");
   r["byDocument"] = json!({"cache.md":{"decisions":[decision("cache.md","c1",3,"Cached data expires after two days.")],"relationships":[edge]}});
+  r["check"] = replacement_check("cache.md", 1);
   p.json("responses.json", &r);
   let before = p.calls();
   let limited = p.model_cli(&[
@@ -103,7 +293,11 @@ fn endpoint_maintenance_pauses_before_spending_when_required_context_cannot_fit(
     "--max-context-bytes",
     "2048",
   ]);
-  assert_eq!(first["work"]["calls"], 2);
+  // The extraction fits, but the larger materialized check must wait for context.
+  subset(
+    &first,
+    &json!({"status":"context-limit","work":{"calls":1}}),
+  );
   let second = p.model_cli(&[
     "ask",
     "cache",
@@ -137,6 +331,7 @@ fn changed_supporting_source_precedes_unrelated_pending_sources() {
     "# Scope\n\nThe blue pulse no longer activates this exception.\n",
   );
   r["byDocument"] = json!({"z-scope.md":{"decisions":[],"relationships":[]}});
+  r["check"] = json!({"findings":[],"relationshipChanges":[{"previousId":"@removed:0","replacements":[],"reason":"The revised source explicitly withdraws the exception.","evidence":[{"document":"z-scope.md","lineStart":3,"lineEnd":3}]}]});
   p.json("responses.json", &r);
   let result = p.model_cli(&["ask", "cache"]);
   assert_eq!(result["work"]["calls"], 3);
@@ -239,6 +434,7 @@ fn full_required_authority_exceeds_optional_cap_but_respects_hard_bound() {
   assert_eq!(p.model_cli(&["update"])["status"], "ready");
   p.write("target.md", "# Target\n\nTarget after revision.\n");
   edge["to"] = json!("@existing:authority.md");
+  r["check"] = replacement_check("target.md", 1);
   r["byDocument"]["target.md"] = json!({"decisions":[decision("target.md","target",3,"Target after revision.")],"relationships":[edge]});
   p.json("responses.json", &r);
   assert_eq!(
@@ -331,7 +527,8 @@ fn earlier_rounds_restore_after_an_intervening_document_version() {
     if budget < 16 {
       assert_eq!(resumed["work"]["id"], first["work"]["id"]);
     } else {
-      assert_eq!(resumed["work"]["calls"], 0);
+      // Preserved old interpretations change context when a source version returns.
+      assert!(resumed["work"]["calls"].as_u64().unwrap() <= 6);
     }
     subset(
       &p.ok(&["status"]),
@@ -525,9 +722,20 @@ fn all_affected_endpoints_survive_the_optional_context_cap() {
   let mut edge = edges[0].clone();
   edge["to"] = endpoint.clone();
   edge["id"] = json!("restored-edge");
-  r["byDocument"]["target.md"]["relationships"] = json!([edge]);
+  let mut replacements = edges.clone();
+  replacements[0] = edge;
+  for edge in replacements.iter_mut().skip(1) {
+    edge["to"] = list(&graph, "decisions")
+      .iter()
+      .find(|node| node["localId"] == edge["to"])
+      .unwrap()["id"]
+      .clone();
+  }
+  r["byDocument"]["target.md"]["relationships"] = json!(replacements);
+  r["check"] = replacement_check("target.md", 19);
   p.json("responses.json", &r);
-  assert_eq!(p.model_cli(&["update"])["status"], "ready");
+  let updated = p.model_cli(&["update"]);
+  assert_eq!(updated["status"], "ready", "{updated}");
   let captured = packets(&p);
   let packet = captured
     .iter()
@@ -539,7 +747,7 @@ fn all_affected_endpoints_survive_the_optional_context_cap() {
   let snapshot = p.ok(&["snapshot", "export"]);
   subset(
     &snapshot,
-    &json!({"decisions":21,"relationships":1,"status":"ready"}),
+    &json!({"decisions":21,"relationships":19,"status":"ready"}),
   );
   let graph = p.graph();
   let target = list(&graph, "decisions")
@@ -647,6 +855,7 @@ fn changed_decision_refreshes_incoming_dependency_beyond_lexical_and_recent_matc
   edge["from"] = json!("@existing:02-privacy.md");
   r["byDocument"]["01-cache.md"]["relationships"] = json!([edge]);
   r["ask"]["answer"] = json!("Freshness renews every second sunrise; revocation takes priority.");
+  r["check"] = replacement_check("01-cache.md", 1);
   p.json("responses.json", &r);
   subset(
     &p.model_cli(&["ask", "Freshness"]),

@@ -403,6 +403,80 @@ fn explicit_update_context_is_complete_without_reingesting_it() {
 }
 
 #[test]
+fn explicit_repair_ranges_share_one_byte_bounded_round_and_resume_accounting() {
+  let p = Project::new();
+  p.model("");
+  let mut responses = p.read_json("responses.json");
+  let mut text = String::from("# Rules\n\n");
+  let mut decisions = Vec::new();
+  let mut ranges = Vec::new();
+  for index in 0..6 {
+    let line = 3 + index * 2;
+    let rule = format!("Rule {index} applies independently.");
+    text.push_str(&rule);
+    text.push_str("\n\n");
+    decisions.push(decision("rules.md", &format!("rule-{index}"), line, &rule));
+    ranges.push(format!("rules.md:{line}-{line}"));
+  }
+  p.write("rules.md", text);
+  responses["byDocument"] = json!({"rules.md":{"decisions":decisions,"relationships":[]}});
+  p.json("responses.json", &responses);
+  assert_eq!(p.model_cli(&["update"])["status"], "ready");
+  let mut args = vec!["update", "--reason", "Review the six independent rules."];
+  for range in &ranges {
+    args.extend(["--repair-range", range.as_str()]);
+  }
+  args.extend(["--max-calls", "1"]);
+  let extracted = p.model_cli(&args);
+  assert_eq!(extracted["status"], "budget-exhausted");
+  assert_eq!(extracted["work"]["calls"], 1);
+  let last = args.last_mut().unwrap();
+  *last = "2";
+  let checked = p.model_cli(&args);
+  assert_eq!(checked["status"], "ready");
+  assert_eq!(checked["work"]["id"], extracted["work"]["id"]);
+  assert_eq!(checked["work"]["calls"], 2);
+  assert_eq!(checked["decisions"], 6);
+  assert!(list(&checked, "pendingUnits").is_empty());
+  let captured = packets(&p);
+  assert_eq!(list(&captured[captured.len() - 2], "units").len(), 6);
+}
+
+#[test]
+fn explicit_repair_ranges_still_respect_the_target_byte_limit() {
+  let p = Project::new();
+  p.model("");
+  let mut responses = p.read_json("responses.json");
+  responses["byDocument"] = json!({});
+  let mut ranges = Vec::new();
+  for index in 0..6 {
+    let file = format!("rule-{index}.md");
+    let text = format!("Rule {index}. {}", "Detail ".repeat(430));
+    p.write(&file, format!("# Rule\n\n{text}\n"));
+    responses["byDocument"][&file] = json!({
+      "decisions":[decision(&file,&format!("r{index}"),3,&format!("Rule {index}."))],
+      "relationships":[]
+    });
+    ranges.push(format!("{file}:3-3"));
+  }
+  p.json("responses.json", &responses);
+  assert_eq!(
+    p.model_cli(&["update", "--max-calls", "4"])["status"],
+    "ready"
+  );
+  let mut args = vec!["update", "--reason", "Review the six long rules."];
+  for range in &ranges {
+    args.extend(["--repair-range", range.as_str()]);
+  }
+  args.extend(["--max-calls", "2"]);
+  let result = p.model_cli(&args);
+  assert_eq!(result["status"], "budget-exhausted");
+  assert_eq!(list(&result, "pendingUnits").len(), 1);
+  let captured = packets(&p);
+  assert_eq!(list(&captured[captured.len() - 2], "units").len(), 5);
+}
+
+#[test]
 fn portable_failed_relationship_fixture_resumes_check_without_reextracting() {
   let p = Project::new();
   p.write(
@@ -649,6 +723,20 @@ fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
   if case == "missing-edge" {
     r["check"]["relationshipChanges"] = json!([]);
   }
+  if case == "duplicates" {
+    let mut edge = r["byDocument"]["cache.md"]["relationships"][0].clone();
+    edge["id"] = json!("duplicate-edge");
+    r["byDocument"]["cache.md"]["relationships"]
+      .as_array_mut()
+      .unwrap()
+      .push(edge);
+    let mut node = r["byDocument"]["cache.md"]["decisions"][0].clone();
+    node["id"] = json!("duplicate-node");
+    r["byDocument"]["cache.md"]["decisions"]
+      .as_array_mut()
+      .unwrap()
+      .push(node);
+  }
   p.json("responses.json", &r);
   let rejected = p.model_cli(&REPAIR);
   assert_eq!(rejected["status"], "failed");
@@ -660,6 +748,211 @@ fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
   }]);
   p.json("resolution.json", &resolution);
   (p, rejected)
+}
+
+fn correction_file(p: &Project, rejected: &Value) -> Value {
+  let work = p.work(rejected["work"]["id"].as_str().unwrap());
+  let mut corrected = work["pending"]["extraction"]["decisions"][0].clone();
+  corrected["text"] = json!("Ordinary cached data expires after seven days.");
+  let mut correction = rejected["candidateResolutionContext"].clone();
+  correction["reason"] = json!("Restore the complete source-backed cache lifetime.");
+  correction["evidence"] = p.read_json("resolution.json")["resolutions"][0]["evidence"].clone();
+  correction["decisions"] = json!([corrected]);
+  p.json("correction.json", &correction);
+  correction
+}
+
+#[test]
+fn candidate_correction_requires_a_fresh_check_and_preserves_history_and_budget() {
+  let (p, rejected) = rejected_candidate_resolution("valid");
+  correction_file(&p, &rejected);
+  let id = rejected["work"]["id"].as_str().unwrap();
+  let before = p.work(id);
+  let graph = p.graph();
+  let path = p.path("correction.json");
+  let mut args = REPAIR.to_vec();
+  args.extend([
+    "--retry-failed",
+    "--correct",
+    path.to_str().unwrap(),
+    "--max-calls",
+    "2",
+  ]);
+  assert_eq!(p.model_cli(&args)["status"], "budget-exhausted");
+  assert_eq!(p.model_cli(&args)["status"], "budget-exhausted");
+  let staged = p.work(id);
+  assert_eq!(list(&staged, "corrections").len(), 1);
+  assert_eq!(
+    staged["corrections"][0]["previousPending"],
+    before["pending"]
+  );
+  for field in ["attempts", "calls", "inputBytes", "totalTokens"] {
+    assert_eq!(before[field], staged[field]);
+  }
+  assert_eq!(p.graph(), graph);
+  let mut responses = p.read_json("responses.json");
+  responses["check"]["findings"] = json!([]);
+  p.json("responses.json", &responses);
+  args.pop();
+  args.push("3");
+  let result = p.model_cli(&args);
+  subset(&result, &json!({"status":"ready","work":{"calls":3}}));
+  assert_eq!(result["work"]["id"], rejected["work"]["id"]);
+  assert_eq!(p.calls(), 5);
+  let after = p.work(id);
+  assert_eq!(&list(&after, "attempts")[..2], list(&before, "attempts"));
+  assert_eq!(after["attempts"][2]["stage"], "check");
+  assert_ne!(
+    after["attempts"][2]["inputHash"],
+    after["attempts"][1]["inputHash"]
+  );
+  assert_eq!(p.model_cli(&args)["work"]["calls"], 3);
+  assert_eq!(p.calls(), 5);
+}
+
+#[test]
+fn candidate_correction_rejects_stale_or_out_of_scope_input_without_calls() {
+  for case in [
+    "wrong-work",
+    "wrong-check",
+    "unknown-id",
+    "outside-range",
+    "stale-evidence",
+    "unknown-field",
+    "changed-candidate",
+    "changed-graph",
+  ] {
+    let (p, rejected) = rejected_candidate_resolution("valid");
+    let mut correction = correction_file(&p, &rejected);
+    let id = rejected["work"]["id"].as_str().unwrap();
+    let mut work = p.work(id);
+    let mut graph = p.graph();
+    match case {
+      "wrong-work" => correction["workId"] = json!("other"),
+      "wrong-check" => correction["checkInputHash"] = json!("other"),
+      "unknown-id" => correction["decisions"][0]["id"] = json!("other"),
+      "outside-range" => correction["decisions"][0]["lineStart"] = json!(1),
+      "stale-evidence" => correction["evidence"][0]["version"] = json!("stale"),
+      "unknown-field" => correction["decisions"][0]["extra"] = json!(true),
+      "changed-candidate" => {
+        work["pending"]["extraction"]["decisions"][0]["text"] = json!("Changed.");
+      }
+      "changed-graph" => graph["lastExtraction"] = json!("changed"),
+      _ => unreachable!(),
+    }
+    p.set_work(&work);
+    p.set_graph(&graph);
+    p.json("correction.json", &correction);
+    let path = p.path("correction.json");
+    let mut args = REPAIR.to_vec();
+    args.extend([
+      "--retry-failed",
+      "--correct",
+      path.to_str().unwrap(),
+      "--max-calls",
+      "0",
+    ]);
+    let error = p.error(&args);
+    assert!(
+      ["INVALID_CORRECTION", "STALE_RETAINED_CHECK"]
+        .contains(&error["error"]["code"].as_str().unwrap()),
+      "{case}: {error}"
+    );
+    assert_eq!(p.graph(), graph);
+    assert_eq!(p.work(id)["attempts"], work["attempts"]);
+    assert_eq!(p.calls(), 4);
+  }
+}
+
+#[test]
+fn candidate_removals_need_a_fresh_check_and_cannot_remove_protected_meaning() {
+  for case in ["duplicates", "required-edge"] {
+    let (p, rejected) = rejected_candidate_resolution(case);
+    let mut correction = correction_file(&p, &rejected);
+    if case == "duplicates" {
+      correction["removeDecisions"] = json!(["duplicate-node"]);
+      correction["removeRelationships"] = json!(["duplicate-edge"]);
+    } else {
+      correction["removeRelationships"] = json!(["r1"]);
+    }
+    p.json("correction.json", &correction);
+    let graph = p.graph();
+    let mut responses = p.read_json("responses.json");
+    responses["check"]["findings"] = json!([]);
+    if case == "required-edge" {
+      responses["check"]["relationshipChanges"] = json!([]);
+    }
+    p.json("responses.json", &responses);
+    let path = p.path("correction.json");
+    let mut args = REPAIR.to_vec();
+    args.extend([
+      "--retry-failed",
+      "--correct",
+      path.to_str().unwrap(),
+      "--max-calls",
+      "3",
+    ]);
+    let checked = p.model_cli(&args);
+    assert_eq!(checked["work"]["calls"], 3);
+    assert_eq!(p.calls(), 5);
+    if case == "duplicates" {
+      assert_eq!(checked["status"], "ready");
+      assert_eq!(list(&p.graph(), "decisions").len(), 2);
+      assert_eq!(list(&p.graph(), "relationships").len(), 1);
+    } else {
+      assert_eq!(checked["status"], "failed");
+      assert_eq!(p.graph(), graph);
+    }
+  }
+}
+
+#[test]
+fn checks_include_earlier_round_relationships_between_supplied_endpoints() {
+  let p = Project::policy();
+  let mut r = p.read_json("responses.json");
+  for name in ["z1.md", "z2.md", "z3.md"] {
+    p.write(name, "# Rule\n\nAn independent rule.\n");
+    r["extract"]["decisions"]
+      .as_array_mut()
+      .unwrap()
+      .push(decision(name, name, 3, "An independent rule."));
+  }
+  for node in list(&r["extract"], "decisions").clone() {
+    let document = node["document"].as_str().unwrap().to_owned();
+    r["byDocument"][&document] = json!({"decisions":[node],"relationships":[]});
+  }
+  r["byDocument"]["privacy.md"]["relationships"] = r["extract"]["relationships"].clone();
+  p.json("responses.json", &r);
+  let first = p.model_cli(&[
+    "update",
+    "--source",
+    "cache.md",
+    "--source",
+    "privacy.md",
+    "--max-calls",
+    "2",
+  ]);
+  assert_eq!(first["status"], "budget-exhausted");
+  let second = p.model_cli(&[
+    "update",
+    "--source",
+    "cache.md",
+    "--source",
+    "privacy.md",
+    "--max-calls",
+    "4",
+  ]);
+  assert_eq!(second["status"], "ready");
+  assert_eq!(second["work"]["id"], first["work"]["id"]);
+  let captured = packets(&p);
+  let packet = captured.last().unwrap();
+  let retained = list(packet, "retainedRelationships");
+  assert_eq!(retained.len(), 1);
+  assert!(
+    list(&p.graph(), "relationships")
+      .iter()
+      .any(|edge| edge["id"] == retained[0]["id"])
+  );
 }
 
 #[test]

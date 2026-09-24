@@ -530,12 +530,20 @@ fn resolve_check_references(packet: &Value, result: &mut Value) {
     return;
   };
   for change in changes {
-    if change["previousId"] == "@removed:0" {
-      change["previousId"] = packet["removedRelationships"][0]["id"].clone();
+    if let Some(index) = change["previousId"]
+      .as_str()
+      .and_then(|id| id.strip_prefix("@removed:"))
+      .and_then(|index| index.parse::<usize>().ok())
+    {
+      change["previousId"] = packet["removedRelationships"][index]["id"].clone();
     }
     for replacement in change["replacements"].as_array_mut().unwrap() {
-      if *replacement == "@candidate:0" {
-        *replacement = packet["extraction"]["relationships"][0]["id"].clone();
+      if let Some(index) = replacement
+        .as_str()
+        .and_then(|id| id.strip_prefix("@candidate:"))
+        .and_then(|index| index.parse::<usize>().ok())
+      {
+        *replacement = packet["extraction"]["relationships"][index]["id"].clone();
       }
     }
   }

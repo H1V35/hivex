@@ -15,6 +15,68 @@ use crate::work::{BeginWork, Store, StoreOptions, Work};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+mod correction;
+mod transition;
+
+#[cfg(test)]
+mod context_tests {
+  use super::*;
+
+  #[test]
+  fn retained_context_requires_current_supplied_edges_and_endpoints() {
+    let node = model::Decision {
+      id: "node".into(),
+      document: "rule.md".into(),
+      line_start: 1,
+      line_end: 1,
+      version: "current".into(),
+      ..Default::default()
+    };
+    let edge = model::Relationship {
+      id: "edge".into(),
+      from: "node".into(),
+      to: "node".into(),
+      batch: "work:first".into(),
+      evidence: vec![decision_range(&node)],
+      ..Default::default()
+    };
+    let pending = json!({"retainedRelationshipContext":2,"batch":"work:second","existing":["node"],
+      "packet":{"documents":[{"id":"rule.md","version":"current","lines":[[1,"Rule."]]}]}});
+    let graph = Graph {
+      decisions: vec![node],
+      relationships: vec![edge],
+      ..Default::default()
+    };
+    for case in [
+      "valid",
+      "stale-edge",
+      "missing-version",
+      "stale-endpoint",
+      "missing-lines",
+    ] {
+      let mut candidate = graph.clone();
+      let mut context = pending.clone();
+      match case {
+        "stale-edge" => candidate.relationships[0].evidence[0].version = Some("old".into()),
+        "missing-version" => candidate.relationships[0].evidence[0].version = None,
+        "stale-endpoint" => candidate.decisions[0].version = "old".into(),
+        "missing-lines" => context["packet"]["documents"][0]["lines"] = json!([]),
+        _ => (),
+      }
+      let mut packet = json!({});
+      add_retained_relationships(&mut packet, &candidate, &context, &HashSet::new());
+      assert_eq!(
+        packet["retainedRelationships"].as_array().unwrap().len(),
+        usize::from(case == "valid")
+      );
+      // Existing receipts retain their original packet shape and fingerprint.
+      context["retainedRelationshipContext"] = json!(true);
+      add_retained_relationships(&mut packet, &candidate, &context, &HashSet::new());
+      assert_eq!(packet["retainedRelationships"].as_array().unwrap().len(), 1);
+    }
+  }
+}
+
 fn unique(values: impl IntoIterator<Item = String>) -> Vec<String> {
   let mut seen = HashSet::new();
   values
@@ -152,7 +214,7 @@ fn batch_context(
         version: None,
       }),
   );
-  let required = required_context_ids(&previous, &candidates, context_sources);
+  let required = required_context_ids(&previous, &candidates, context_sources, graph);
   let allowed: HashSet<_> = candidates
     .iter()
     .filter(|entry| !historical.contains(&entry.document) || targets.contains(&entry.document))
@@ -630,7 +692,7 @@ fn materialize(
     .collect();
   let extraction = model::parse_extraction(&pending["extraction"])
     .ok_or_else(|| HivexError::new("READ_FAILED", "Invalid pending extraction"))?;
-  Ok(model::apply_extraction(model::ExtractionOptions {
+  let mut candidate = model::apply_extraction(model::ExtractionOptions {
     batch: pending["batch"].as_str().unwrap_or_default(),
     context_documents: Some(&context),
     context_ranges: Some(&context_ranges),
@@ -639,7 +701,9 @@ fn materialize(
     extraction: &extraction,
     graph,
     target_ranges: Some(&targets),
-  }))
+  });
+  transition::preserve(project, graph, &mut candidate, pending);
+  Ok(candidate)
 }
 fn without_execution(mut value: Value) -> Value {
   if let Some(record) = value.as_object_mut() {
@@ -731,7 +795,78 @@ fn checked_packet(
       .collect::<Vec<_>>()
   );
   packet["validationWarnings"] = json!(validation);
+  add_retained_relationships(&mut packet, candidate, pending, &endpoints);
   packet
+}
+fn retained_context(pending: &Value) -> bool {
+  pending["retainedRelationshipContext"] == true || pending["retainedRelationshipContext"] == 2
+}
+
+fn current_retained_citation(citation: &Citation, pending: &Value) -> bool {
+  let Ok(supplied) = supplied_documents(pending) else {
+    return false;
+  };
+  citation.version.as_ref().is_some_and(|version| {
+    pending["packet"]["documents"]
+      .as_array()
+      .is_some_and(|sources| {
+        sources
+          .iter()
+          .any(|source| source["id"] == citation.document && source["version"] == *version)
+      })
+  }) && model::supplied_citation(citation, &supplied)
+}
+
+fn current_retained_edge(edge: &model::Relationship, graph: &Graph, pending: &Value) -> bool {
+  !edge.evidence.is_empty()
+    && edge
+      .evidence
+      .iter()
+      .all(|citation| current_retained_citation(citation, pending))
+    && [&edge.from, &edge.to].iter().all(|id| {
+      graph
+        .decisions
+        .iter()
+        .any(|node| node.id == **id && current_retained_citation(&decision_range(node), pending))
+    })
+}
+
+fn add_retained_relationships(
+  packet: &mut Value,
+  candidate: &Graph,
+  pending: &Value,
+  endpoints: &HashSet<String>,
+) {
+  if retained_context(pending) {
+    let batch = pending["batch"].as_str().unwrap_or_default();
+    let work = batch.split_once(':').map(|(work, _)| work);
+    let existing = strings(&pending["existing"]);
+    let visible: HashSet<_> = existing
+      .iter()
+      .chain(endpoints.iter())
+      .map(String::as_str)
+      .chain(
+        candidate
+          .decisions
+          .iter()
+          .filter(|entry| entry.batch == pending["batch"].as_str().unwrap_or_default())
+          .map(|entry| entry.id.as_str()),
+      )
+      .collect();
+    packet["retainedRelationships"] = json!(
+      candidate
+        .relationships
+        .iter()
+        .filter(|edge| edge.batch != batch
+          && edge.batch.split_once(':').map(|(work, _)| work) == work
+          && visible.contains(edge.from.as_str())
+          && visible.contains(edge.to.as_str()))
+        .filter(|edge| pending["retainedRelationshipContext"] != 2
+          || current_retained_edge(edge, candidate, pending))
+        .map(|edge| without_execution(json!(edge)))
+        .collect::<Vec<_>>()
+    );
+  }
 }
 fn finish_round(evidence: BatchEvidence<'_>, graph: &mut Graph, work: &mut Work, ids: &[String]) {
   let BatchEvidence { project, plan } = evidence;
@@ -773,6 +908,7 @@ fn finish_round(evidence: BatchEvidence<'_>, graph: &mut Graph, work: &mut Work,
       .filter(|unit| unit.document == source.id)
       .collect();
     if !units.is_empty()
+      && transition::source_ready(graph, source)
       && units.iter().all(|unit| {
         graph
           .units
@@ -792,6 +928,23 @@ fn finish_round(evidence: BatchEvidence<'_>, graph: &mut Graph, work: &mut Work,
   work.finish_round();
 }
 
+fn batch_units(plan: &IngestionResult, work: &Work, runtime: &Options) -> Vec<IngestionUnit> {
+  let mut units = Vec::new();
+  let mut bytes = 0;
+  for unit in plan
+    .units
+    .iter()
+    .filter(|unit| work.remaining().contains(&unit.id))
+  {
+    if (runtime.repair_ranges.is_empty() && units.len() == 4) || bytes + unit.text.len() > 16_384 {
+      break;
+    }
+    bytes += unit.text.len();
+    units.push(unit.clone());
+  }
+  units
+}
+
 fn extract_batch(
   evidence: BatchEvidence<'_>,
   graph: &Graph,
@@ -803,19 +956,7 @@ fn extract_batch(
     store,
     work,
   } = execution;
-  let mut units = Vec::new();
-  let mut bytes = 0;
-  for unit in plan
-    .units
-    .iter()
-    .filter(|unit| work.remaining().contains(&unit.id))
-  {
-    if units.len() == 4 || bytes + unit.text.len() > 16_384 {
-      break;
-    }
-    bytes += unit.text.len();
-    units.push(unit.clone());
-  }
+  let units = batch_units(plan, work, runtime);
   let documents = unique(units.iter().map(|unit| unit.document.clone()));
   let context = batch_context(
     SourceGraph { project, graph },
@@ -827,12 +968,17 @@ fn extract_batch(
       &[]
     },
   )?;
-  let request = extraction_request(
+  let mut request = extraction_request(
     &context,
     &units,
     runtime,
     work.value().get("warningBaseline").is_some(),
   );
+  if runtime.repair.is_empty() {
+    request.packet["sourceTransition"] =
+      transition::scope(SourceGraph { project, graph }, plan, &units);
+    request.instruction.push_str(" Previous relationships may reference older source versions. Use current supplied endpoints and Markdown for replacements. sourceTransition.remainingDocuments lists sources with unprocessed units: old relationships depending on them are retained for later rounds, not silently removed. Extract only this round's units; do not invent current endpoints for deferred passages.");
+  }
   let packet = &request.packet;
   let required = stringify_knowledge(packet).len();
   if !context.missing.is_empty() || required > runtime.max_context_bytes {
@@ -867,15 +1013,13 @@ fn extract_batch(
   "existing":context.existing.iter().map(|entry|entry["id"].clone()).collect::<Vec<_>>(),
   "extraction":extraction,
   "materializedCheck":work.value()["materializedChecks"]==true,
+  "retainedRelationshipContext":2,
+  "sourceTransition":packet["sourceTransition"],
   "packet":check_packet,
   "units":units.iter().map(|unit|&unit.id).collect::<Vec<_>>()
   });
   let candidate = materialize(evidence, graph, &pending, true)?;
-  let protected = protected_relationships(
-    SourceGraph { project, graph },
-    &candidate,
-    work.value()["materializedChecks"] == true,
-  );
+  let protected = protected_relationships(SourceGraph { project, graph }, &candidate, &pending);
   pending["staged"] = json!(!protected.is_empty());
   pending["protectedRelationships"] = json!(protected);
   if work.value().get("warningBaseline").is_some() {
@@ -909,6 +1053,12 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
   }
   if guarded {
     instruction.push_str(" For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.");
+  }
+  if pending["sourceTransition"].is_object() {
+    instruction.push_str(" Source hashes may have changed. Previous decisions and removed relationships retain their original citations for comparison, not current authority. Justify replacements or removals with the supplied current Markdown. Old records whose source units are still pending are deferred, not missing; never relabel their old citations as current.");
+  }
+  if retained_context(pending) {
+    instruction.push_str(" extraction contains only the current batch. retainedRelationships are actual candidate edges from earlier accepted rounds of this work between supplied endpoints. Evaluate their citations and meaning normally; their absence from extraction is not a loss. repairReason may span several rounds: check omissions within the current units and replacement impact, not unrelated completed or future units.");
   }
   if warning_review {
     instruction.push_str(warnings::WARNING_REVIEW_INSTRUCTION);
@@ -1006,6 +1156,44 @@ fn unresolved_changes(
       .collect(),
   )
 }
+fn admit_check_context(
+  request: &Request,
+  pending: &Value,
+  execution: BatchExecution<'_>,
+) -> Result<bool> {
+  let BatchExecution {
+    runtime,
+    store,
+    work,
+  } = execution;
+  let required = stringify_knowledge(&request.packet).len();
+  if retained_context(pending) && required > runtime.max_context_bytes {
+    work.limit_context(
+      &strings(&pending["documents"]),
+      runtime.max_context_bytes,
+      required,
+    );
+    store.save(work)?;
+    return Ok(false);
+  }
+  work.clear_context_limit();
+  Ok(true)
+}
+fn can_review_warnings(candidate: &Graph, pending: &Value, check: &model::KnowledgeCheck) -> bool {
+  let documents = strings(&pending["documents"]);
+  let invalid = candidate.warnings.iter().any(|warning| match warning {
+    model::Warning::Structured(warning) => {
+      warning.kind.as_deref() == Some("validation")
+        && warning
+          .scope
+          .iter()
+          .any(|scope| documents.contains(&scope.document))
+    }
+    model::Warning::Legacy(_) => false,
+  });
+  !invalid && pending["packet"].get("warningCandidates").is_some() && check.findings.is_empty()
+}
+
 fn check_batch(
   evidence: BatchEvidence<'_>,
   graph: &Graph,
@@ -1025,6 +1213,17 @@ fn check_batch(
     graph.clone()
   };
   let request = check_request(graph, &candidate, &pending);
+  if !admit_check_context(
+    &request,
+    &pending,
+    BatchExecution {
+      runtime,
+      store,
+      work,
+    },
+  )? {
+    return Ok(None);
+  }
   let prior_calls = work.calls();
   let value = if retained_only {
     retained_check(
@@ -1079,21 +1278,7 @@ fn check_batch(
     return Ok(Some(graph.clone()));
   }
 
-  let documents = strings(&pending["documents"]);
-  let validation = candidate.warnings.iter().any(|warning| match warning {
-    model::Warning::Structured(warning) => {
-      warning.kind.as_deref() == Some("validation")
-        && warning
-          .scope
-          .iter()
-          .any(|scope| documents.contains(&scope.document))
-    }
-    model::Warning::Legacy(_) => false,
-  });
-  if !validation
-    && pending["packet"].get("warningCandidates").is_some()
-    && check.findings.is_empty()
-  {
+  if can_review_warnings(&candidate, &pending, &check) {
     checked = complete_warning_review(
       SourceGraph {
         project,
@@ -1201,12 +1386,7 @@ fn retained_reassessment(runtime: &Options, work: &Work) -> Result<bool> {
   Ok(reassess)
 }
 
-pub fn update_with_store(
-  project: &mut Project,
-  runtime: &Options,
-  store: &mut Store,
-  shared: Option<Work>,
-) -> Result<(Value, Work)> {
+fn update_graph(project: &Project, store: &Store) -> Result<Graph> {
   let parsed = model::parse_graph(&store.graph()?, false)
     .ok_or_else(|| HivexError::new("READ_FAILED", "Invalid stored graph"))?;
   let mut graph = historical_graph(project, parsed);
@@ -1223,6 +1403,16 @@ pub fn update_with_store(
       .as_str()
       .is_some_and(|id| current.contains(id))
   });
+  Ok(graph)
+}
+
+pub fn update_with_store(
+  project: &mut Project,
+  runtime: &Options,
+  store: &mut Store,
+  shared: Option<Work>,
+) -> Result<(Value, Work)> {
+  let mut graph = update_graph(project, store)?;
   let (plan, mut work) = prepare_update(
     SourceGraph {
       project,
@@ -1237,6 +1427,15 @@ pub fn update_with_store(
     project,
     plan: &plan,
   };
+  correction::apply(
+    evidence,
+    &graph,
+    BatchExecution {
+      runtime,
+      store,
+      work: &mut work,
+    },
+  )?;
   let reassess = retained_reassessment(runtime, &work)?;
   if reassess {
     if !pending_current(project, &work.value()["pending"]) {
@@ -1400,10 +1599,10 @@ fn context_references(
 fn protected_relationships(
   state: SourceGraph<'_>,
   candidate: &Graph,
-  materialized: bool,
+  pending: &Value,
 ) -> Vec<String> {
   let SourceGraph { project, graph } = state;
-  if materialized {
+  if pending["materializedCheck"] == true {
     graph
       .relationships
       .iter()
@@ -1414,12 +1613,14 @@ fn protected_relationships(
           .any(|candidate| candidate.id == edge.id)
           && [&edge.from, &edge.to].iter().all(|id| {
             graph.decisions.iter().any(|node| {
-              node.id == **id && is_current_source(project, &node.document, Some(&node.version))
+              node.id == **id
+                && transition::protects_source(project, &decision_range(node), pending)
             })
           })
-          && edge.evidence.iter().all(|citation| {
-            is_current_source(project, &citation.document, citation.version.as_deref())
-          })
+          && edge
+            .evidence
+            .iter()
+            .all(|citation| transition::protects_source(project, citation, pending))
       })
       .map(|edge| edge.id.clone())
       .collect()
@@ -1627,7 +1828,20 @@ fn required_context_ids(
   previous: &[model::Relationship],
   candidates: &[&model::Decision],
   context_sources: &[String],
+  graph: &Graph,
 ) -> Vec<String> {
+  let previous_ids: HashSet<_> = previous
+    .iter()
+    .flat_map(|edge| [&edge.from, &edge.to])
+    .collect();
+  let replacing_sources: HashSet<_> = graph
+    .decisions
+    .iter()
+    .filter(|node| {
+      previous_ids.contains(&node.id) && !candidates.iter().any(|current| current.id == node.id)
+    })
+    .map(|node| &node.document)
+    .collect();
   unique(
     previous
       .iter()
@@ -1636,7 +1850,9 @@ fn required_context_ids(
       .chain(
         candidates
           .iter()
-          .filter(|entry| context_sources.contains(&entry.document))
+          .filter(|entry| {
+            context_sources.contains(&entry.document) || replacing_sources.contains(&entry.document)
+          })
           .map(|entry| entry.id.clone()),
       ),
   )

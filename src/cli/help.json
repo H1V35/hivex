@@ -14,7 +14,7 @@
     {
       "modelCalls": "One extraction and one check per batch; retained work resumes within the same budget.",
       "name": "update",
-      "usage": "update [--resolve <candidate-resolution.json>] [--root <project>] [--max-calls <total>] [--max-input-bytes <total>] [--max-context-bytes <bytes>] [--repair <document> | --repair-range <document>:<start>-<end>] [--reason <correction>] [--source <context-document>]"
+      "usage": "update [--resolve <candidate-resolution.json> | --correct <candidate-correction.json>] [--root <project>] [--max-calls <total>] [--max-input-bytes <total>] [--max-context-bytes <bytes>] [--repair <document> | --repair-range <document>:<start>-<end>] [--reason <correction>] [--source <context-document>]"
     },
     {
       "modelCalls": 0,
