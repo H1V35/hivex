@@ -14,6 +14,10 @@ struct Correction {
   reason: String,
   evidence: Vec<Citation>,
   decisions: Vec<model::ExtractionDecision>,
+  #[serde(default)]
+  remove_decisions: Vec<String>,
+  #[serde(default)]
+  remove_relationships: Vec<String>,
 }
 
 fn invalid() -> HivexError {
@@ -54,8 +58,12 @@ fn replacement(
   if correction.reason.trim().is_empty()
     || correction.reason.encode_utf16().count() > 2048
     || !(1..=32).contains(&correction.evidence.len())
-    || correction.decisions.is_empty()
+    || (correction.decisions.is_empty()
+      && correction.remove_decisions.is_empty()
+      && correction.remove_relationships.is_empty())
     || correction.decisions.len() > 64
+    || correction.remove_decisions.len() > 64
+    || correction.remove_relationships.len() > 128
   {
     return Err(invalid());
   }
@@ -88,10 +96,45 @@ fn replacement(
     }
     *original = decision.clone();
   }
+  remove_duplicates(&mut extraction, correction)?;
   if !model::validate_extraction(&extraction) {
     return Err(invalid());
   }
   Ok(json!(extraction))
+}
+
+fn remove_duplicates(extraction: &mut model::Extraction, correction: &Correction) -> Result<()> {
+  let decisions: HashSet<_> = correction.remove_decisions.iter().collect();
+  let relationships: HashSet<_> = correction.remove_relationships.iter().collect();
+  if decisions.len() != correction.remove_decisions.len()
+    || relationships.len() != correction.remove_relationships.len()
+    || decisions
+      .iter()
+      .any(|id| !extraction.decisions.iter().any(|node| &node.id == *id))
+    || relationships
+      .iter()
+      .any(|id| !extraction.relationships.iter().any(|edge| &edge.id == *id))
+    || correction
+      .decisions
+      .iter()
+      .any(|node| decisions.contains(&node.id))
+  {
+    return Err(invalid());
+  }
+  extraction
+    .relationships
+    .retain(|edge| !relationships.contains(&edge.id));
+  if extraction
+    .relationships
+    .iter()
+    .any(|edge| decisions.contains(&edge.from) || decisions.contains(&edge.to))
+  {
+    return Err(invalid());
+  }
+  extraction
+    .decisions
+    .retain(|node| !decisions.contains(&node.id));
+  Ok(())
 }
 
 pub(super) fn apply(

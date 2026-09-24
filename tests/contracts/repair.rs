@@ -723,6 +723,20 @@ fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
   if case == "missing-edge" {
     r["check"]["relationshipChanges"] = json!([]);
   }
+  if case == "duplicates" {
+    let mut edge = r["byDocument"]["cache.md"]["relationships"][0].clone();
+    edge["id"] = json!("duplicate-edge");
+    r["byDocument"]["cache.md"]["relationships"]
+      .as_array_mut()
+      .unwrap()
+      .push(edge);
+    let mut node = r["byDocument"]["cache.md"]["decisions"][0].clone();
+    node["id"] = json!("duplicate-node");
+    r["byDocument"]["cache.md"]["decisions"]
+      .as_array_mut()
+      .unwrap()
+      .push(node);
+  }
   p.json("responses.json", &r);
   let rejected = p.model_cli(&REPAIR);
   assert_eq!(rejected["status"], "failed");
@@ -847,6 +861,48 @@ fn candidate_correction_rejects_stale_or_out_of_scope_input_without_calls() {
     assert_eq!(p.graph(), graph);
     assert_eq!(p.work(id)["attempts"], work["attempts"]);
     assert_eq!(p.calls(), 4);
+  }
+}
+
+#[test]
+fn candidate_removals_need_a_fresh_check_and_cannot_remove_protected_meaning() {
+  for case in ["duplicates", "required-edge"] {
+    let (p, rejected) = rejected_candidate_resolution(case);
+    let mut correction = correction_file(&p, &rejected);
+    if case == "duplicates" {
+      correction["removeDecisions"] = json!(["duplicate-node"]);
+      correction["removeRelationships"] = json!(["duplicate-edge"]);
+    } else {
+      correction["removeRelationships"] = json!(["r1"]);
+    }
+    p.json("correction.json", &correction);
+    let graph = p.graph();
+    let mut responses = p.read_json("responses.json");
+    responses["check"]["findings"] = json!([]);
+    if case == "required-edge" {
+      responses["check"]["relationshipChanges"] = json!([]);
+    }
+    p.json("responses.json", &responses);
+    let path = p.path("correction.json");
+    let mut args = REPAIR.to_vec();
+    args.extend([
+      "--retry-failed",
+      "--correct",
+      path.to_str().unwrap(),
+      "--max-calls",
+      "3",
+    ]);
+    let checked = p.model_cli(&args);
+    assert_eq!(checked["work"]["calls"], 3);
+    assert_eq!(p.calls(), 5);
+    if case == "duplicates" {
+      assert_eq!(checked["status"], "ready");
+      assert_eq!(list(&p.graph(), "decisions").len(), 2);
+      assert_eq!(list(&p.graph(), "relationships").len(), 1);
+    } else {
+      assert_eq!(checked["status"], "failed");
+      assert_eq!(p.graph(), graph);
+    }
   }
 }
 
