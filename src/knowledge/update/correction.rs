@@ -49,12 +49,7 @@ fn validate_evidence(
   Ok(())
 }
 
-fn replacement(
-  evidence: BatchEvidence<'_>,
-  pending: &Value,
-  correction: &Correction,
-) -> Result<Value> {
-  let supplied = supplied_documents(pending)?;
+fn validate_request(correction: &Correction) -> Result<()> {
   if correction.reason.trim().is_empty()
     || correction.reason.encode_utf16().count() > 2048
     || !(1..=32).contains(&correction.evidence.len())
@@ -67,6 +62,16 @@ fn replacement(
   {
     return Err(invalid());
   }
+  Ok(())
+}
+
+fn replacement(
+  evidence: BatchEvidence<'_>,
+  pending: &Value,
+  correction: &Correction,
+) -> Result<Value> {
+  let supplied = supplied_documents(pending)?;
+  validate_request(correction)?;
   validate_evidence(evidence, pending, &correction.evidence)?;
   let mut extraction = model::parse_extraction(&pending["extraction"]).ok_or_else(invalid)?;
   let ranges: Vec<Citation> = serde_json::from_value(pending["packet"]["units"].clone())?;
