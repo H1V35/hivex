@@ -152,7 +152,7 @@ pub(super) fn apply(
   let extraction = replacement(evidence, &pending, &correction)?;
   let record = json!({"hash":fingerprint,"correction":value,"previousPending":pending});
   pending["extraction"] = extraction;
-  pending["retainedRelationshipContext"] = json!(true);
+  pending["retainedRelationshipContext"] = json!(2);
   pending["warnings"] = json!([]);
   // A new input identity also prevents reuse of any older native check.
   pending["packet"]["candidateCorrection"] = json!(fingerprint);

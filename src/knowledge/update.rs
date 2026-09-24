@@ -17,6 +17,65 @@ use std::collections::HashSet;
 
 mod correction;
 
+#[cfg(test)]
+mod context_tests {
+  use super::*;
+
+  #[test]
+  fn retained_context_requires_current_supplied_edges_and_endpoints() {
+    let node = model::Decision {
+      id: "node".into(),
+      document: "rule.md".into(),
+      line_start: 1,
+      line_end: 1,
+      version: "current".into(),
+      ..Default::default()
+    };
+    let edge = model::Relationship {
+      id: "edge".into(),
+      from: "node".into(),
+      to: "node".into(),
+      batch: "work:first".into(),
+      evidence: vec![decision_range(&node)],
+      ..Default::default()
+    };
+    let pending = json!({"retainedRelationshipContext":2,"batch":"work:second","existing":["node"],
+      "packet":{"documents":[{"id":"rule.md","version":"current","lines":[[1,"Rule."]]}]}});
+    let graph = Graph {
+      decisions: vec![node],
+      relationships: vec![edge],
+      ..Default::default()
+    };
+    for case in [
+      "valid",
+      "stale-edge",
+      "missing-version",
+      "stale-endpoint",
+      "missing-lines",
+    ] {
+      let mut candidate = graph.clone();
+      let mut context = pending.clone();
+      match case {
+        "stale-edge" => candidate.relationships[0].evidence[0].version = Some("old".into()),
+        "missing-version" => candidate.relationships[0].evidence[0].version = None,
+        "stale-endpoint" => candidate.decisions[0].version = "old".into(),
+        "missing-lines" => context["packet"]["documents"][0]["lines"] = json!([]),
+        _ => (),
+      }
+      let mut packet = json!({});
+      add_retained_relationships(&mut packet, &candidate, &context, &HashSet::new());
+      assert_eq!(
+        packet["retainedRelationships"].as_array().unwrap().len(),
+        usize::from(case == "valid")
+      );
+      // Existing receipts retain their original packet shape and fingerprint.
+      context["retainedRelationshipContext"] = json!(true);
+      add_retained_relationships(&mut packet, &candidate, &context, &HashSet::new());
+      assert_eq!(packet["retainedRelationships"].as_array().unwrap().len(), 1);
+    }
+  }
+}
+
 fn unique(values: impl IntoIterator<Item = String>) -> Vec<String> {
   let mut seen = HashSet::new();
   values
@@ -736,13 +795,46 @@ fn checked_packet(
   add_retained_relationships(&mut packet, candidate, pending, &endpoints);
   packet
 }
+fn retained_context(pending: &Value) -> bool {
+  pending["retainedRelationshipContext"] == true || pending["retainedRelationshipContext"] == 2
+}
+
+fn current_retained_citation(citation: &Citation, pending: &Value) -> bool {
+  let Ok(supplied) = supplied_documents(pending) else {
+    return false;
+  };
+  citation.version.as_ref().is_some_and(|version| {
+    pending["packet"]["documents"]
+      .as_array()
+      .is_some_and(|sources| {
+        sources
+          .iter()
+          .any(|source| source["id"] == citation.document && source["version"] == *version)
+      })
+  }) && model::supplied_citation(citation, &supplied)
+}
+
+fn current_retained_edge(edge: &model::Relationship, graph: &Graph, pending: &Value) -> bool {
+  !edge.evidence.is_empty()
+    && edge
+      .evidence
+      .iter()
+      .all(|citation| current_retained_citation(citation, pending))
+    && [&edge.from, &edge.to].iter().all(|id| {
+      graph
+        .decisions
+        .iter()
+        .any(|node| node.id == **id && current_retained_citation(&decision_range(node), pending))
+    })
+}
+
 fn add_retained_relationships(
   packet: &mut Value,
   candidate: &Graph,
   pending: &Value,
   endpoints: &HashSet<String>,
 ) {
-  if pending["retainedRelationshipContext"] == true {
+  if retained_context(pending) {
     let batch = pending["batch"].as_str().unwrap_or_default();
     let work = batch.split_once(':').map(|(work, _)| work);
     let existing = strings(&pending["existing"]);
@@ -766,6 +858,8 @@ fn add_retained_relationships(
           && edge.batch.split_once(':').map(|(work, _)| work) == work
           && visible.contains(edge.from.as_str())
           && visible.contains(edge.to.as_str()))
+        .filter(|edge| pending["retainedRelationshipContext"] != 2
+          || current_retained_edge(edge, candidate, pending))
         .map(|edge| without_execution(json!(edge)))
         .collect::<Vec<_>>()
     );
@@ -905,7 +999,7 @@ fn extract_batch(
   "existing":context.existing.iter().map(|entry|entry["id"].clone()).collect::<Vec<_>>(),
   "extraction":extraction,
   "materializedCheck":work.value()["materializedChecks"]==true,
-  "retainedRelationshipContext":true,
+  "retainedRelationshipContext":2,
   "packet":check_packet,
   "units":units.iter().map(|unit|&unit.id).collect::<Vec<_>>()
   });
@@ -949,7 +1043,7 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
   if guarded {
     instruction.push_str(" For each removedRelationships entry, justify its replacement or removal in relationshipChanges using current Markdown evidence. List canonical replacement relationship IDs, or an empty list only for a supported removal. If the loss is unjustified, report a finding and omit its resolution. Do not approve missing dependencies merely because the candidate omitted them.");
   }
-  if pending["retainedRelationshipContext"] == true {
+  if retained_context(pending) {
     instruction.push_str(" extraction contains only the current batch. retainedRelationships are actual candidate edges from earlier accepted rounds of this work between supplied endpoints. Evaluate their citations and meaning normally; their absence from extraction is not a loss. repairReason may span several rounds: check omissions within the current units and replacement impact, not unrelated completed or future units.");
   }
   if warning_review {
@@ -1059,7 +1153,7 @@ fn admit_check_context(
     work,
   } = execution;
   let required = stringify_knowledge(&request.packet).len();
-  if pending["retainedRelationshipContext"] == true && required > runtime.max_context_bytes {
+  if retained_context(pending) && required > runtime.max_context_bytes {
     work.limit_context(
       &strings(&pending["documents"]),
       runtime.max_context_bytes,
