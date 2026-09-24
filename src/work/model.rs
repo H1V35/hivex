@@ -258,6 +258,17 @@ impl Work {
   pub fn set_pending(&mut self, pending: Value) {
     self.value["pending"] = pending;
   }
+  pub fn correct_pending(&mut self, pending: Value, record: Value) {
+    if !self.value["corrections"].is_array() {
+      self.value["corrections"] = json!([]);
+    }
+    self.value["corrections"]
+      .as_array_mut()
+      .unwrap()
+      .push(record);
+    self.set_pending(pending);
+    self.resume();
+  }
   pub fn finish_round(&mut self) {
     self.set_pending(Value::Null);
     if self.remaining().is_empty() {

@@ -61,6 +61,7 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
       "repair",
       "repair-range",
       "resolve",
+      "correct",
       "root",
       "source",
     ],
@@ -131,6 +132,7 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
       .to_owned(),
     retry_failed: parsed.flags.contains("retry-failed"),
     resolve: values.get("resolve").cloned(),
+    correct: values.get("correct").cloned(),
     implementation: None,
     retrieval_query: None,
   };
@@ -255,6 +257,13 @@ fn repair_ranges(parsed: &arguments::Parsed) -> Result<Vec<RepairRange>> {
 }
 
 fn validate_operation(options: &Operation) -> Result<()> {
+  if options.correct.is_some()
+    && (options.command != "update" || !options.retry_failed || options.resolve.is_some())
+  {
+    return Err(argument(
+      "Candidate corrections require update --retry-failed --correct <file>, without --resolve.",
+    ));
+  }
   if options.resolve.is_some()
     && (options.command != "update" || !options.retry_failed || options.max_calls != Some(0))
   {

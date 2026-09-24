@@ -17,6 +17,7 @@ pub struct Operation {
   pub repair_reason: String,
   pub retry_failed: bool,
   pub resolve: Option<String>,
+  pub correct: Option<String>,
   pub implementation: Option<Value>,
   pub retrieval_query: Option<String>,
 }

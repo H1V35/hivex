@@ -103,7 +103,11 @@ fn endpoint_maintenance_pauses_before_spending_when_required_context_cannot_fit(
     "--max-context-bytes",
     "2048",
   ]);
-  assert_eq!(first["work"]["calls"], 2);
+  // The extraction fits, but the larger materialized check must wait for context.
+  subset(
+    &first,
+    &json!({"status":"context-limit","work":{"calls":1}}),
+  );
   let second = p.model_cli(&[
     "ask",
     "cache",
