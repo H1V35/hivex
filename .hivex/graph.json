@@ -1,0 +1,1947 @@
+{
+  "decisions": [
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "060dd927ef8cc50d70a48b9b8a03cdb023283c5e6f0414f831a6691146861327",
+      "kind": "constraint",
+      "lineEnd": 30,
+      "lineStart": 30,
+      "localId": "c6",
+      "quality": "uncertain",
+      "reason": "Makes compatibility profile-based while recording the version used.",
+      "status": "current",
+      "text": "Codex CLI compatibility is determined by the app-server protocol and effective account, model, and isolation settings, not an exact CLI version. Compatible tool updates remain usable and the actual CLI version is recorded per admitted invocation; an incompatible protocol or profile stops execution rather than silently changing the knowledge model or permissions.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "0909c4167dfb5a69e9363e37b8035c6322fdd27f37c80e11accf89c38559d174",
+      "kind": "constraint",
+      "lineEnd": 276,
+      "lineStart": 276,
+      "localId": "c13",
+      "quality": "uncertain",
+      "reason": "Separates simulated test accounting from real model-evaluation consumption.",
+      "status": "current",
+      "text": "Real Luna evaluations are bounded and reported separately; simulated token usage is not a measure of actual consumption.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "An explicit supporting source is supplied as context only and is not added to ingestion targets.",
+        "Each repair batch applies only to its own target ranges."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Unchanged supplied decisions may be referenced by their exact IDs."
+      ],
+      "id": "14e164ae116dd6598f46bba74399e8656e392140163085fe8766a7c0d23376c1",
+      "kind": "constraint",
+      "lineEnd": 118,
+      "lineStart": 116,
+      "localId": "c29",
+      "quality": "uncertain",
+      "reason": "Separates repair comparison context from Markdown authority and preserves supported dependencies.",
+      "status": "current",
+      "text": "Repair replaces affected interpretations and revisits relationships without editing Markdown; its reason guides comparison but creates no authority. An explicit `--source` supplies complete Markdown and current decisions as context, not ingestion targets. Repair context includes prior interpretations only as comparison evidence: retain correct knowledge and supported dependencies, rewire changed endpoints, and do not treat model-interpretation correction as source-authored supersession. Each batch applies only to its target ranges; unchanged supplied decisions may be referenced by exact IDs, invalid references are rejected, and context counts toward the limit. A genuine unresolved documentary conflict needs the responsible person's decision.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "1853bfeea1f06e5f2a54bdff5b9955e1029e17a6bba25846b86e466ba4fd09dd",
+      "kind": "definition",
+      "lineEnd": 136,
+      "lineStart": 136,
+      "localId": "c8",
+      "quality": "checked",
+      "reason": "Distinguishes warning types and ingestion coverage from semantic correctness.",
+      "status": "current",
+      "text": "`warningSummary` separates extraction limitations, check findings, local validation errors, unclassified legacy warnings, and source discovery or ingestion limits; original messages and scopes remain available. A limitation alone does not make a completed update partial. Coverage reports pending ingestion separately, and current coverage does not prove every interpretation correct. The graph captures meaningful decisions, dependencies, and exceptions while source reading supplies further detail.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "Retained relationships in checks must have supplied endpoints and current, fully supplied citations."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Unrelated graph edges are not copied into every check."
+      ],
+      "id": "18d0a7ad96e5b563520d7aeb40e6c1a664a4ceba1e2ef533e64e63cdc05a5684",
+      "kind": "constraint",
+      "lineEnd": 120,
+      "lineStart": 120,
+      "localId": "c30",
+      "quality": "uncertain",
+      "reason": "Defines repair-check evidence and avoids treating removed interpretations as current defects.",
+      "status": "current",
+      "text": "Materialized checks separate proposed knowledge from extraction-only interpretations being replaced. They retain prior decisions as comparison evidence and indicate whether each still exists in the candidate. Checks include retained relationships between supplied endpoints with current, fully supplied citations; unrelated graph edges are not copied into every check. Removed interpretations are not current defects, but missing replacements or faulty retained endpoints require findings. Relationship-loss and invalid-target guards remain, and a changed check request cannot reuse an old receipt.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "1fffa84b906bfc3af91b5ce591e38d34b2fc4dd064457d224f6ac9c8b1b8cb92",
+      "kind": "definition",
+      "lineEnd": 222,
+      "lineStart": 222,
+      "localId": "c2",
+      "quality": "uncertain",
+      "reason": "Defines what a shared snapshot preserves and excludes.",
+      "status": "current",
+      "text": "Snapshot export atomically writes stable, readable JSON to .hivex/graph.json, containing graph knowledge, source versions, evidence, available provenance, and coverage. It does not export work records, process identities, budgets, or cached answers, and snapshot operations make no model calls.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "The uncertain-delivery acknowledgement applies when local processes ended but remote delivery remains uncertain."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "204cbdfa08aeec4c6f23634cd3339c083b54d2798a4c998d0258930ee3a790b7",
+      "kind": "constraint",
+      "lineEnd": 166,
+      "lineStart": 166,
+      "localId": "c14",
+      "quality": "checked",
+      "reason": "Separates inspection and acknowledgement from proof of completion or retry.",
+      "status": "current",
+      "text": "`recover` inspects abandoned work without invoking the model or killing processes; live owners and native processes remain protected. If local processes ended but remote delivery is uncertain, `recover --acknowledge-uncertain` records an acknowledgement while retaining original reports and unknown usage. Recovery itself never retries; a later `--retry-failed` uses the retained budget. Acknowledgement does not prove the earlier remote turn completed.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "212947b55464d843ab2f9d23419eb53366f6455682e0b86cd10d71c864cad3af",
+      "kind": "constraint",
+      "lineEnd": 276,
+      "lineStart": 276,
+      "localId": "c14",
+      "quality": "uncertain",
+      "reason": "Describes the guide's development and final-commit validation workflow.",
+      "status": "current",
+      "text": "Development is issue-first, with coherent pull requests, an independent review covering scope, correctness, and standards, and CI on the final commit.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "af5baf00-ff4b-468e-a79e-da42de9c0048:539009812395cca0a2416877f3fbff2aabc6da82494e494155871f7d2b1eb320",
+      "conditions": [
+        "TDD is optional and applies only to sufficiently defined critical flows.",
+        "The default independent review uses the implementation agent's model and effort."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "21c741d56b258b7430f4c9e50d21a25581607fe1727bf3a54b5fdac69cb6dc7b",
+      "kind": "lesson",
+      "lineEnd": 251,
+      "lineStart": 251,
+      "localId": "c1",
+      "quality": "checked",
+      "reason": "Captures the guide's engineering practices and the default review arrangement.",
+      "status": "current",
+      "text": "Prefer domain-driven design and meaningful responsibilities, with tests chosen by risk and value. TDD is optional and appropriate only for sufficiently defined critical flows. Use local knowledge before model-assisted interpretation, and explain technical details when they matter to the owner's understanding or decisions. By default, conduct one independent review; the reviewer uses the implementation agent's model and effort.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "The stated default applies to explicit update work."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "An authorized larger total may be used to resume exhausted work."
+      ],
+      "id": "23e082c9d291eae959f4cb4242c91adec08b57cc25903159c606338e8d6b3834",
+      "kind": "constraint",
+      "lineEnd": 138,
+      "lineStart": 138,
+      "localId": "c9",
+      "quality": "checked",
+      "reason": "Makes update budgets cumulative across the work rather than per command invocation.",
+      "status": "current",
+      "text": "An explicit update defaults to two invocation attempts and 131,072 input bytes. `--max-calls` and `--max-input-bytes` set totals for the complete work, including extraction, checking, and resumption. A zero-call update reports pending documents without invoking the model. Exhausted work retains progress and repeating the command does not reset its counter; an authorized larger total can finish remaining stages without repeating completed extraction.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "2ab867e3f12b660ed48e35f3317204dffb6c493e327619213441730ec2147eee",
+      "kind": "constraint",
+      "lineEnd": 11,
+      "lineStart": 11,
+      "localId": "c2",
+      "quality": "uncertain",
+      "reason": "Keeps implementation approval with the reviewer rather than a command.",
+      "status": "current",
+      "text": "No installed command approves an implementation; the principal reviewer checks findings, relevant tests, and source evidence.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "The higher total must be authorized if the default budget is exhausted before an answer."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "An unchanged task reuses its answer."
+      ],
+      "id": "2d829c8c23547e03ec1604dd560c920fb5f3a8950a5b020d000221ccd67f6f61",
+      "kind": "constraint",
+      "lineEnd": 90,
+      "lineStart": 90,
+      "localId": "c21",
+      "quality": "uncertain",
+      "reason": "Defines consultation progress, resumption, and budget behavior.",
+      "status": "current",
+      "text": "`ask` detects added, changed, and removed Markdown, updates at most one bounded batch prioritizing matching fragments, relevant documents, and known dependencies, then asks Luna/max over available decisions and original Markdown. The default budget is three calls for the complete update/check/answer operation. If exhausted before an answer, repeat the same task with an authorized higher total; work, progress, and consumption are retained. An unchanged task reuses its answer; explicit `update` advances remaining batches and pending coverage stays visible.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "Indirect neighbor traversal is bounded by `--limit`."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "30b7de635303876aee97de8bcafc23ce88219dedf1a9bf68a8389f3b3319cd6c",
+      "kind": "definition",
+      "lineEnd": 88,
+      "lineStart": 88,
+      "localId": "c20",
+      "quality": "uncertain",
+      "reason": "Defines deterministic retrieval and stale-knowledge handling.",
+      "status": "current",
+      "text": "Search and neighbor traversal are deterministic and make no model calls. Neighbor traversal includes indirect connections within its limit and lists decisions it could not expand. Stale knowledge is not presented as current evidence; `status` reports available knowledge and documents needing attention.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "The authentication and Luna/max availability requirement applies when using the default knowledge profile.",
+        "Explicit model and effort choices must be advertised by the Codex runtime."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Discovery, source/version checks, snapshot operations, and initialization are model-free."
+      ],
+      "id": "33c55430a8102cdd646b300c722af553c7ac38ff0a058e4fff4e9e7b32be33c6",
+      "kind": "constraint",
+      "lineEnd": 28,
+      "lineStart": 28,
+      "localId": "c5",
+      "quality": "uncertain",
+      "reason": "Defines when model availability is required and prevents silent configuration changes.",
+      "status": "current",
+      "text": "The default knowledge profile requires an authenticated Codex CLI session with Luna/max available. Codex accepts an explicit model and effort advertised by its runtime, and validates the requested configuration and effective profile. Document discovery, source/version checks, snapshot operations, and initialization do not require a model.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [
+        "Running or uncertain invocations require normal inspection or recovery; failed work requires explicit retry."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Only the first subsequent update, ask, or review removes the old unversioned cache generation; read-only commands do not. Versioned cache entries survive, completed work and historical answers remain intact but are not reused as gpt-6-luna results, and changing the default alone does not reingest graph knowledge."
+      ],
+      "id": "3d8d71cdc9a20e923e47a002c2378db0688873f96e055234cbb151f70992d8fd",
+      "kind": "constraint",
+      "lineEnd": 212,
+      "lineStart": 212,
+      "localId": "c1",
+      "quality": "uncertain",
+      "reason": "Preserves work state and distinguishes profile-specific cache results during the default-profile transition.",
+      "status": "current",
+      "text": "Cache identity includes integration and profile. When unfinished work using the former gpt-5.6-luna/max default resumes, it moves to gpt-6-luna while retaining its ID, progress, attempts, and consumed budget; the profile change distinguishes historical results from new invocations. New work records its requested profile and receipts record the effective profile when known. Other profile changes report EXECUTION_PROFILE_CHANGED for unfinished work without a model call or budget reset.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "Applies when an existing `.hivex/.gitignore` has active patterns."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "4716abc53f85a89dfa5dbb279b72a66f2753f9a873fc974af51119be357b1852",
+      "kind": "constraint",
+      "lineEnd": 42,
+      "lineStart": 42,
+      "localId": "c12",
+      "quality": "uncertain",
+      "reason": "Prevents nested ignore rules from undermining the intended local-state and snapshot handling.",
+      "status": "current",
+      "text": "An existing `.hivex/.gitignore` with active patterns can override root ignore rules and expose local state or hide the snapshot. Initialization reports this conflict before writing files; reconcile the nested patterns with the root policy before continuing.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "5083c2184b52204568681fdb81bce278b5af64d54b71210280d7b37e2e17ae98",
+      "kind": "constraint",
+      "lineEnd": 269,
+      "lineStart": 269,
+      "localId": "c11",
+      "quality": "uncertain",
+      "reason": "Keeps CLI and model tests grounded in the native implementation and simulated transport.",
+      "status": "current",
+      "text": "The CLI test suite requires the native binary and has no fallback implementation. Cargo builds test executables automatically; fixtures include retained answers and extraction/check caches with exhausted budgets. Model tests use a synthetic server and make no real model calls.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [
+        "Applies when adopting the recommended Markdown foundation."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Knowledge operations accept other Markdown layouts."
+      ],
+      "id": "52eaff58b3b6a8b9fb919241da979fc04a0d4e870d6e4e4327dc3ee7e571a90e",
+      "kind": "lesson",
+      "lineEnd": 249,
+      "lineStart": 249,
+      "localId": "c7",
+      "quality": "uncertain",
+      "reason": "Keeps a recommended documentation structure from erasing useful existing project knowledge.",
+      "status": "current",
+      "text": "The Markdown foundation is a recommended adoption layout, not a required layout for knowledge operations. Preserve useful project rules and exceptions when adopting it.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "58096738e51ce3f4029c56ca8c7639b10f51730149a2e26b33896f053b12af8e",
+      "kind": "definition",
+      "lineEnd": 5,
+      "lineStart": 5,
+      "localId": "c4",
+      "quality": "uncertain",
+      "reason": "Describes the shipped integration and default profile without making another model choice mandatory.",
+      "status": "current",
+      "text": "Hivex is a native Rust CLI organized by domain capability. Its default knowledge profile is gpt-6-luna at max effort through Codex and the user's ChatGPT subscription; integration, model, and options are separate choices, only Codex is currently shipped, and the implementing agent may use another model. There is no silent model or provider fallback.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "This retention applies during a normal source-version transition until the related units are processed."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "580a9e33851674746077e1fca68ead820b7174239940ad8023cee0c3d3fe7c40",
+      "kind": "constraint",
+      "lineEnd": 126,
+      "lineStart": 126,
+      "localId": "c4",
+      "quality": "checked",
+      "reason": "Preserves dependency knowledge during staggered ingestion without presenting stale citations as current.",
+      "status": "current",
+      "text": "When normal ingestion changes a source version, new rounds retain old decisions and relationships needed by unprocessed units, including cross-document relationships even if the other document finishes first. Old citations keep their original versions and are not current evidence. A source remains pending while this stale knowledge is retained; completing the remaining dependency can make it current without re-extracting already completed units. Bounded consultations use the full source plan for this protection, including units beyond their call allowance.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "64f707e624f787dc1dd76f67d5e94ae5e1d35bdb1fdde916d673a8743e7824ca",
+      "kind": "definition",
+      "lineEnd": 255,
+      "lineStart": 255,
+      "localId": "c9",
+      "quality": "uncertain",
+      "reason": "Describes the current native runtime and the continuing role of compatibility evidence.",
+      "status": "current",
+      "text": "The Rust CLI reads existing SQLite and shared snapshot v1 formats and retains work budgets and attempts. The TypeScript runtime was retired after compatibility validation under issue 80; fixed SQL fixtures and a synthetic protocol server remain as independent compatibility evidence.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "6596cc453ba45f2a2f3ee3ca4be021c9ace85fa760034c6a4320dd22adcbda1f",
+      "kind": "constraint",
+      "lineEnd": 94,
+      "lineStart": 94,
+      "localId": "c24",
+      "quality": "uncertain",
+      "reason": "Preserves source material and makes historical context inspectable.",
+      "status": "current",
+      "text": "Hivex does not compact, move, or rewrite Markdown. Authors preserve original historical text, dates, links, and anchors; Hivex exposes the selected source version and line ranges while keeping historical applicability and conditions visible.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "69247ad30b430807a079e3344f7a23d9f046dec23da51483947a4720f4571b72",
+      "kind": "constraint",
+      "lineEnd": 44,
+      "lineStart": 44,
+      "localId": "c13",
+      "quality": "uncertain",
+      "reason": "Separates scaffold content from project-specific decisions.",
+      "status": "current",
+      "text": "The foundation includes language-neutral project documents; language-specific standards are separate templates for the adopting agent to apply. The principal agent completes the project's purpose, vision, and language based on evidence and owner decisions; draft headings are not substitutes for those decisions.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "69a34ea1d8081ee0fc5b33d2d106eb7997fffdead91ad14d3dee3a59238ff2c4",
+      "kind": "constraint",
+      "lineEnd": 22,
+      "lineStart": 22,
+      "localId": "c8",
+      "quality": "uncertain",
+      "reason": "Keeps the bundled skills mutually consistent with the CLI.",
+      "status": "current",
+      "text": "The package includes six skills: hivex, hivex-design, hivex-document, hivex-implement, hivex-review, and hivex-git. Install them together in the discovered skill location at the CLI's release, keeping their relative references intact.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "`--retry-failed` applies to safely ended failures and the same retained work budget."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Recovery may record an explicit acknowledgement of uncertain remote delivery, but that acknowledgement is not proof of completion or a retry."
+      ],
+      "id": "6a8d5608491a10cad334b0d7618819d53d3b81fce53b33bd64b3bd0819e4d887",
+      "kind": "constraint",
+      "lineEnd": 140,
+      "lineStart": 140,
+      "localId": "c10",
+      "quality": "checked",
+      "reason": "Prevents automatic retries, false passes, and work-budget resets through store deletion.",
+      "status": "current",
+      "text": "Increasing a budget does not automatically retry a failed or unfinished invocation. Inspect its outcome and usage first. `--retry-failed` resumes safely ended failures within the same work budget; uncertain invocations remain blocked. A completed adverse check is not an invocation failure, and this flag does not repeat it for an unchanged candidate. Uncertain knowledge is not a blanket pass. The local knowledge store contains work evidence and accounting; preserve it when that evidence is needed, and do not delete an active store to hide unfinished calls or reset a budget.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "af5baf00-ff4b-468e-a79e-da42de9c0048:539009812395cca0a2416877f3fbff2aabc6da82494e494155871f7d2b1eb320",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "6ea1026139aec18055d9d74375284fc8d4747dbd713ac44ed5de4184c9647686",
+      "kind": "constraint",
+      "lineEnd": 293,
+      "lineStart": 293,
+      "localId": "c2",
+      "quality": "checked",
+      "reason": "Preserves the guide's module ownership and separation of responsibilities.",
+      "status": "current",
+      "text": "Responsibilities are divided by domain: documents handle sources and parsing; knowledge owns the graph and derived state; work owns typed progress, budgets, and persistence; consultation and review compose those capabilities. Execution defines the integration-neutral contract, while the Codex integration contains its protocol, admission, and process lifecycle. CLI parsing/output and development tools remain separate.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "ddd11338-0958-4bff-a146-a390ac81c122:ea7bb6d299180d81ee620090861588140cfb759f7ac83f135692a8f9b989ae27",
+      "conditions": [
+        "A focused source or known dependency is required to consult a historical source in an ordinary consultation.",
+        "When necessary historical evidence is excluded or unavailable, the result identifies the missing evidence.",
+        "An unconsulted historical or unavailable local Markdown link is reported for responsible-agent assessment."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "78202eee955c79563e84074c723158c17075bb0abc91cda30b9bde1ee3f2e781",
+      "kind": "constraint",
+      "lineEnd": 86,
+      "lineStart": 86,
+      "localId": "c2",
+      "quality": "checked",
+      "reason": "Preserves the conditions for consulting historical sources and makes missing or unconsulted evidence visible without treating a link as ingestion.",
+      "status": "current",
+      "text": "Historical sources do not enter an ordinary consultation merely because they are available; a focused source or known dependency is required. If necessary historical evidence is excluded or unavailable, the result identifies the missing evidence. An unconsulted historical or unavailable local Markdown link is reported for the responsible agent to assess with `read` or `--source`; linking to an archive alone does not ingest it automatically.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "The source must be fully ingested at its current version."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Whole-document repair remains available.",
+        "Explicit range repairs do not use the ordinary four-unit cap."
+      ],
+      "id": "795b01b65bcabca93f9cab87a7dcda2e1e466a403f2e97f09d0e7ee2fa697953",
+      "kind": "constraint",
+      "lineEnd": 114,
+      "lineStart": 114,
+      "localId": "c28",
+      "quality": "uncertain",
+      "reason": "Defines repair scope, completeness, and resumability.",
+      "status": "current",
+      "text": "`--repair-range` revisits decisions overlapping the specified one-based lines and their affected relationships, expanding to complete overlapping source passages while leaving unrelated knowledge in the same ingestion block intact. It packs complete ranges within the 16 KiB target-text budget without the ordinary four-unit cap; oversized ranges fail before a model call. The source must already be fully ingested at its current version; update first if it changed. Whole-document repair remains available. Retained work keeps planned ranges and budget, and repeating a completed range request reuses it even if an earlier CLI processed a broader block.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "The native compatibility validation condition applies to distribution for targets other than macOS ARM64."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "8081dbe53f0cf55967e9eca2d9c0de6fb8dafd372085366b8f183960a63bd2f5",
+      "kind": "constraint",
+      "lineEnd": 15,
+      "lineStart": 15,
+      "localId": "c7",
+      "quality": "uncertain",
+      "reason": "Distinguishes package installation tools from executable runtime requirements.",
+      "status": "current",
+      "text": "The native package targets macOS ARM64. The installed executable does not require Bun, Node.js, or Rust; npm or Bun is used to install it. Other targets need native compatibility validation before distribution.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "The resolution must apply to a false semantic finding from the exact completed check and cite current evidence."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Unknown, batch, and structural findings are not eligible for this local resolution."
+      ],
+      "id": "83c88968aa2496c557e9d72df7871d2fd38974aa4e58ce32d53a3e3fad84ee9d",
+      "kind": "constraint",
+      "lineEnd": 160,
+      "lineStart": 142,
+      "localId": "c11",
+      "quality": "checked",
+      "reason": "Allows a narrowly scoped review of false candidate findings without bypassing source or relationship checks.",
+      "status": "current",
+      "text": "A false semantic finding blocking a retained repair candidate can be resolved locally using a file bound to the work and exact check, with a source-backed reason and current versioned evidence. Resolution is limited to findings from that completed check on current canonical candidate decisions, with unchanged candidate, graph, and sources; it makes no model call. Unknown, batch, and structural findings cannot be resolved this way. Protected relationships still require supported replacements or removals. The original findings, uncertainty, failed attempt, and usage remain; the recorded disposition is not proof of correctness and must not close a real contradiction or missing dependency.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "85e262c2c0caaa5b81751dd365f5cd93ec0a343b61150f6cfdc53db88410645f",
+      "kind": "constraint",
+      "lineEnd": 170,
+      "lineStart": 170,
+      "localId": "c16",
+      "quality": "checked",
+      "reason": "Makes execution limits explicit and protects against silent evidence truncation.",
+      "status": "current",
+      "text": "Native operations accept the documented integration, model, effort, provider, Codex, and deadline options; the default deadline is 30 minutes. Consultation context defaults to 65,536 bytes and can be bounded. Limits are reported rather than satisfied by silently cutting rules or implying omitted evidence was reviewed. Input-byte and call budgets limit work, and reported token usage is actual consumption including known failed attempts.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "Cache reuse requires an identical request, schema, and model profile with unchanged context."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "8a6c0928fb3ac52599f54c151c7f1fd52676c4e6209c3a3e83ee3bda21343bb8",
+      "kind": "constraint",
+      "lineEnd": 106,
+      "lineStart": 106,
+      "localId": "c27",
+      "quality": "uncertain",
+      "reason": "Defines resumable work and the limits of cache and relationship discovery.",
+      "status": "current",
+      "text": "Each extraction and check is checkpointed; resumption continues the same work without repeating completed rounds. Successful structured results are cached by complete request, schema, and model profile; identical requests can be reused, while changed context invalidates the cache. Context discovery uses authored links, lexical matches, and recent decisions, and `relationshipCoverage` states that discovery is bounded, not exhaustive. Cache hits are separate from calls and tokens; caching is an optimization, not documentary authority.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "Migration is expected where reasonably possible.",
+        "Git/tracker alignment is limited by the owner's authorization."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "8c09e17c89c22018fb07e82f5a5e8155ccd158601c37c4c27a1e40722cd1124b",
+      "kind": "constraint",
+      "lineEnd": 46,
+      "lineStart": 46,
+      "localId": "c14",
+      "quality": "uncertain",
+      "reason": "Preserves source meaning and owner control during adoption.",
+      "status": "current",
+      "text": "Migrate existing material while preserving useful content, links, history, and monorepo/package/module scope where reasonably possible. The CLI does not infer semantic migrations or overwrite existing sources. The Git skill aligns labels and tracker conventions within owner authorization; project-specific areas remain local.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "`never` suppresses progress but preserves error diagnostics."
+      ],
+      "id": "91b384ee966ab631327e604ec73c5d3e0d83ec1cff86891e3e8cee63787a7a34",
+      "kind": "constraint",
+      "lineEnd": 202,
+      "lineStart": 174,
+      "localId": "c17",
+      "quality": "checked",
+      "reason": "Keeps progress separate from machine-readable output while allowing redirected or non-TTY use.",
+      "status": "current",
+      "text": "`update` (including repairs), `ask`, and `review` accept `--progress auto|always|never`. `auto` writes newline-delimited human-readable checkpoints to stderr only for a terminal; `always` enables them for non-TTY callers, and `never` suppresses progress but not error diagnostics. Stdout remains the final JSON result, and progress is not a stable event protocol. Keep stderr separate from stdout when a caller expects parseable JSON; stderr can be duplicated to a log while saving the JSON.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "98625a8d759d3f36931951e2f47eb2e5600bf507c1a82cef9972628656be8408",
+      "kind": "constraint",
+      "lineEnd": 70,
+      "lineStart": 70,
+      "localId": "c17",
+      "quality": "uncertain",
+      "reason": "Defines scope safety and configuration compatibility behavior.",
+      "status": "current",
+      "text": "An `exclude` glob wins over `archive`; symlinks are not followed, and protected directories and scope escapes are rejected. The former experimental `collections` configuration is rejected with a migration message. Existing `history` is still read, new configuration uses `archive`, specifying both is an error, and renaming preserves snapshots, retained work, and caches.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "An abruptly killed process cannot emit a final checkpoint; inspect it with `recover`."
+      ],
+      "id": "9e56b88d49b25ceee01d2ffa2f74f67a6b3e58338b4a6d301ebc760b203ccde3",
+      "kind": "constraint",
+      "lineEnd": 192,
+      "lineStart": 180,
+      "localId": "c18",
+      "quality": "uncertain",
+      "reason": "Defines what visible progress conveys and excludes claims or content it cannot safely provide.",
+      "status": "current",
+      "text": "Progress checkpoints cover existing work transitions. Unit counts follow the retained plan; extracted units remain pending until checking and admission complete, and admission does not certify every interpretation. Cache hits and retained results are distinguished from reserved model calls, and resumption preserves existing attempts and total budget. During model execution, wait lines report elapsed time and duration without claiming internal progress, percentages, ETA, or unknown usage. Limits, failures, and handled interruptions retain their actual state; an abruptly killed process may emit no final checkpoint. Progress excludes source text, prompts, model responses, and internal reasoning.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "9e5b4d28397e0676e2fc5c21020184b80e24efe916e555bdcd67d1992b75475d",
+      "kind": "constraint",
+      "lineEnd": 40,
+      "lineStart": 40,
+      "localId": "c11",
+      "quality": "uncertain",
+      "reason": "Defines initialization as local, non-destructive project setup.",
+      "status": "current",
+      "text": "Initialization creates missing foundation documents, skill links, source configuration, and Git ignore rules; it reports created, preserved, and updated paths. It makes no model calls, installs no dependencies, configures no global tools, and writes nothing to GitHub. Repeating it preserves existing Markdown, configuration, graph, and history.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [
+        "Use a different output path to create a new verification build when an artifact already exists."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "a0120dd8901b3b9748ee6d0e3a4f729eb5ea44e7269d741659e6e0900b4642f5",
+      "kind": "constraint",
+      "lineEnd": 274,
+      "lineStart": 271,
+      "localId": "c12",
+      "quality": "uncertain",
+      "reason": "Defines package scope, release handling, and the platform on which the native artifact is verified.",
+      "status": "current",
+      "text": "The development-only hivex-dev command builds and verifies the npm archive using Cargo and system tar, refuses to overwrite an existing artifact, and distributes only bin/hivex. Package preparation, archive inspection, and publication of the exact approved bytes follow the release procedure. The native artifact is verified on macOS ARM64 using system ICU; npm is needed only by a publisher or users choosing registry installation.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "a482d1861992164dd51cd63ed86dc3a1be7f7b4b44dce680a15c898d1ca5ccbe",
+      "kind": "constraint",
+      "lineEnd": 24,
+      "lineStart": 24,
+      "localId": "c9",
+      "quality": "uncertain",
+      "reason": "Describes safe skill initialization and preservation behavior.",
+      "status": "current",
+      "text": "`hivex init` links the bundled skills into `.agents/skills` and exposes them through `.claude/skills`; it preserves existing skill directories or links and rejects parent-directory symlinks before writing files. Other agents can use the packaged skill directories.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "Relationship-loss protection applies when the source authorities remain available, including authorities whose hashes changed."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Inherited uncertainty alone does not block an explicitly justified replacement."
+      ],
+      "id": "a8db23087aef9db0260cf866a8ad158cf914a0ede67497a2947cab60be2174f7",
+      "kind": "constraint",
+      "lineEnd": 124,
+      "lineStart": 124,
+      "localId": "c2",
+      "quality": "checked",
+      "reason": "Prevents unjustified relationship loss while allowing justified repairs despite inherited uncertainty.",
+      "status": "current",
+      "text": "New work checks materialized decisions and relationships, including local validation discards. If a candidate would lose relationships whose authorities remain available, the prior graph stays available until the check justifies removal or supported replacements; unjustified loss fails with `RELATIONSHIP_LOSS` and preserves the prior graph and attempted result. Current findings affecting a replacement or its endpoints block it. Inherited uncertainty remains visible but does not by itself veto an explicitly justified replacement.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "Removal or replacement is considered after the relationship’s dependent units have been processed."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "A relationship already lost by an older run requires repair rather than relying on the new transition safeguard."
+      ],
+      "id": "ab3e1b191e4f3b5fa7cabf4ed8bf485cdbb13cfc3a48d7146c0d82e419de5492",
+      "kind": "constraint",
+      "lineEnd": 128,
+      "lineStart": 128,
+      "localId": "c5",
+      "quality": "checked",
+      "reason": "Requires current source support for relationship changes and protects the transition when checks cannot complete.",
+      "status": "current",
+      "text": "After a relationship’s dependent units are processed, its removal or replacement must pass the check with current supplied Markdown and current replacement endpoints. Earlier current replacements remain required context even if lexical discovery would omit them. An unjustified loss keeps the prior graph and fails explicitly; budget or context limits preserve the transition for resumption. A relationship already lost by an older run requires source-based repair.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "af308147dee73d1314bb643152b8bef8e6805ed5dd0a0532f05e98f748774966",
+      "kind": "constraint",
+      "lineEnd": 3,
+      "lineStart": 3,
+      "localId": "c1",
+      "quality": "uncertain",
+      "reason": "Sets the authority and work-direction boundary.",
+      "status": "current",
+      "text": "Project Markdown remains the authority, and the responsible agent directs the work.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "afb25e0a7fd0e484feae5cfc211bb3337698988dbe692d1c2c6f80e084497013",
+      "kind": "constraint",
+      "lineEnd": 92,
+      "lineStart": 92,
+      "localId": "c22",
+      "quality": "uncertain",
+      "reason": "Limits change findings to relevant source scope while identifying unverifiable dependencies.",
+      "status": "current",
+      "text": "Changed sources bring known incoming and outgoing neighbors into comparison, including relationships supported by a third document. Deleted sources are removed from pending ingestion, and `unavailableDocuments` identifies dependencies that can no longer be verified. Source-local check findings stay scoped so unrelated consultations can use valid knowledge.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [
+        "The source must no longer be selected and the destination must be selected current Markdown."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Coverage can be reused for an identical move to a destination without prior knowledge only when all retained source evidence has matching, known versions. Changed content, mixed or missing versions, or prior destination knowledge makes coverage pending for the usual update/check; mismatched evidence remains stale until then."
+      ],
+      "id": "b01848eaf5da945ab89d9b5c7f856d7cf156f1c951b3f43105f70800940404e3",
+      "kind": "constraint",
+      "lineEnd": 232,
+      "lineStart": 226,
+      "localId": "c4",
+      "quality": "uncertain",
+      "reason": "Defines safe relocation preconditions and how source-version mismatches affect subsequent validation.",
+      "status": "current",
+      "text": "Relocation requires the old source to be no longer selected and the destination to be selected current Markdown. It preserves IDs, relationships, source versions, uncertainty, existing work, cached answers, and budgets, and makes no model calls; it refuses unfinished local work. Keep the relocation report and export the final graph; do not use relocation to conceal unrelated missing evidence.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "The cited evidence must be current and valid."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Findings about implementation or relationships require repair or correction rather than warning resolution."
+      ],
+      "id": "b9196b47723075f1bb283b6f606ee5bb22b2596336c2897e5d041d4e43951ae3",
+      "kind": "constraint",
+      "lineEnd": 162,
+      "lineStart": 162,
+      "localId": "c12",
+      "quality": "checked",
+      "reason": "Defines the limits and evidence requirements of local warning resolution.",
+      "status": "current",
+      "text": "`warnings --resolve` records an explicit resolution without a model call. Each resolution needs an ID, reason, and current evidence; unknown or repeated IDs and stale or invalid citations reject the whole operation. A resolution is a reviewer’s explanation, not automatic proof that the knowledge is correct. Implementation or relationship findings need repair or correction, and real contradictions or missing dependencies must remain open.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "The provider and profile must be supported by the selected integration."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Future integrations need not use the same model options or provide an effort named `max`."
+      ],
+      "id": "bdaad9cfd0d3b838c03f9e5a507bff19726c34fb9dc91745a10dfa7ffde92138",
+      "kind": "constraint",
+      "lineEnd": 206,
+      "lineStart": 206,
+      "localId": "c19",
+      "quality": "checked",
+      "reason": "Separates connection choice from supported model profile and limits the Codex restriction to its current integration.",
+      "status": "current",
+      "text": "Integration selects the connection, while model and effort select a profile supported by that connection. The currently documented Codex integration admits OpenAI through ChatGPT; other provider values and uninstalled integrations fail explicitly. Provider-specific options and authentication belong to the integration. A future integration may offer different model options without requiring an effort named `max`.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "bf522d5ef072a508117aa38178d3f1fc8de7e0b59a600386dddc5bc4b8120431",
+      "kind": "lesson",
+      "lineEnd": 278,
+      "lineStart": 278,
+      "localId": "c15",
+      "quality": "uncertain",
+      "reason": "Limits current development expectations while preserving the status of earlier evidence.",
+      "status": "current",
+      "text": "Earlier candidate, fidelity, comparison, and admission protocols and their tests are retired from the active CLI. Their code remains in Git history and historical evidence retains its original results; reproducing an Opus graph or exhaustively replaying the old gold suite is not required.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "Archive sources may be used by focused consultation or a known dependency."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Explicitly named documentation directories may be selected."
+      ],
+      "id": "c1c28ce615ff5dedbcd612452431eeb1e493e36794773e06ff0704277a400ee3",
+      "kind": "constraint",
+      "lineEnd": 70,
+      "lineStart": 70,
+      "localId": "c16",
+      "quality": "uncertain",
+      "reason": "Distinguishes ordinary ingestion from historical evidence access and preserves historical status.",
+      "status": "current",
+      "text": "Without configuration, Hivex selects project Markdown and skips dependencies, its cache, Git metadata, and private dot directories; explicitly named documentation directories may be selected. `archive` identifies readable evidence excluded from ordinary update and consultation ingestion. Use `--source` for a focused consultation or let a known relationship bring in bounded required ranges. Historical metadata and evidence remain historical, including extracted decisions, regardless of transport status.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "c8ea723bd3379342ae73917bd7406ca50153f6db5819897918557cdae43ee803",
+      "kind": "constraint",
+      "lineEnd": 257,
+      "lineStart": 257,
+      "localId": "c10",
+      "quality": "uncertain",
+      "reason": "Sets the documented development toolchain and test runner.",
+      "status": "current",
+      "text": "Development uses the stable Rust toolchain and Git 2.45 or newer. Cargo runs unit and CLI integration tests, including the synthetic Codex server; no TypeScript, JavaScript, Bun, or Node.js tooling is required.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "cd10ce1da6c727f48750704ce1b227d6e1d323a40c2b6d7584e2ead5fd87af4a",
+      "kind": "constraint",
+      "lineEnd": 243,
+      "lineStart": 236,
+      "localId": "c6",
+      "quality": "uncertain",
+      "reason": "Describes safe and selective sharing of graph knowledge through Git.",
+      "status": "current",
+      "text": "For version control, keep the shared graph rather than the rest of .hivex, export deliberately when reusable knowledge changes rather than on every consultation, and do not expect read-only queries to rewrite the snapshot. Invalid snapshots or symbolic-link paths fail without replacing local knowledge; local stores can continue without a shared file.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [
+        "Complete or recover unfinished local work through its normal lifecycle before importing."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "d3eea75af4dcf7b861743a5f4e335b55381049a1f64957a5452bca7c12b4ebec",
+      "kind": "constraint",
+      "lineEnd": 224,
+      "lineStart": 224,
+      "localId": "c3",
+      "quality": "uncertain",
+      "reason": "Protects local work state while allowing snapshot-based use and adoption.",
+      "status": "current",
+      "text": "A fresh clone can query a shared snapshot without a local database, and its first update reuses matching ingestion units while starting local work accounting. Where a local graph already exists, it takes precedence; importing a shared version refuses unfinished local work and does not reset attempts or budgets.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "d4e05ab6554301b93a2486d2e5b1ec5137b7d5ff0cab7f95068e9971d5e30985",
+      "kind": "constraint",
+      "lineEnd": 26,
+      "lineStart": 26,
+      "localId": "c10",
+      "quality": "uncertain",
+      "reason": "Prevents package-name confusion and documents root and automation invocation scope.",
+      "status": "current",
+      "text": "Use the scoped `@h1v35/hivex` package and `hivex` command; do not fetch the unrelated unscoped `hivex` package. Examples assume the project root; use `bun hivex` in a Bun project or append `--root` for another directory. Automation can use `npx --no-install` to forbid downloads.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "Use it with the same update arguments to correct a real decision error in a retained candidate.",
+        "Replacement decisions must use existing local IDs and remain in their original document and pending target ranges."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Optional local removals may omit decisions or relationships from the pending extraction, but cannot remove accepted graph entries.",
+        "`--correct` cannot be combined with `--resolve`."
+      ],
+      "id": "d607454f785fe3ce66c8a388e0fd2099cab7a0da9f76750bb0c3dbe4effb0467",
+      "kind": "constraint",
+      "lineEnd": 122,
+      "lineStart": 122,
+      "localId": "c1",
+      "quality": "uncertain",
+      "reason": "Keeps candidate corrections bounded, reviewable, and subject to a fresh check.",
+      "status": "current",
+      "text": "`--correct` supplies reviewed input for a retained candidate, not Markdown authority. It replaces only existing local decisions in the pending target ranges; additions and relationship rewrites are unsupported. A correction needs a fresh check before admission and remains bound to its work, check, evidence, and graph state. It uses the work’s original total budget; if calls are exhausted it stays pending, and a larger total resumes only the check. Replaying the same correction is idempotent.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "ddaba0e0c585fa7b00bb50af364697015d37a48aa1964f316fc8de4156cd59f0",
+      "kind": "definition",
+      "lineEnd": 234,
+      "lineStart": 234,
+      "localId": "c5",
+      "quality": "uncertain",
+      "reason": "Separates source freshness from interpretation correctness.",
+      "status": "current",
+      "text": "Snapshot responses identify current, stale, and unavailable source versions, pending units, and warnings. Changed or absent sources are not silently current, while matching sources remain reusable; partial and uncertain knowledge can be shared with those states retained. Freshness does not establish that an interpretation is correct; cited Markdown remains authoritative.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "`--keep-completed` and `--keep-caches` change the retained counts."
+      ],
+      "id": "e0b2ec9325ca24a5b7c0cc49c500084edc635923374f1a4d2f9233c474628e5a",
+      "kind": "constraint",
+      "lineEnd": 168,
+      "lineStart": 168,
+      "localId": "c15",
+      "quality": "checked",
+      "reason": "Bounds retained completed work and cache without deleting unfinished work or resetting budgets.",
+      "status": "current",
+      "text": "`prune` explicitly releases space used by old completed work and cached results while retaining the graph and all unfinished work, attempts, and budgets. It keeps the newest eight completed works and 64 cached results by default; the keep options change those counts. Pruned answers may need a new model call if requested again. Export evidence first if historical reports are needed; pruning is not an automatic budget reset.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "conditions": [
+        "Use the same task and base revision to resume or reuse retained work."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Keep reports outside the project or in an ignored path so they do not become part of the change."
+      ],
+      "id": "e244a865c514d3146139bf1f42420e33229b140cc4121cd2ad56db34e5d12baf",
+      "kind": "constraint",
+      "lineEnd": 289,
+      "lineStart": 282,
+      "localId": "c16",
+      "quality": "uncertain",
+      "reason": "Defines review capture, resumption, budget, context, and report-status behavior.",
+      "status": "current",
+      "text": "A review captures the working change, including untracked files, and ties findings to code and Markdown versions. The same task and base are used to resume or reuse retained work; update, knowledge check, and review share one budget, including expansion of a partial report. Context is bounded, so large changes must be narrowed or split. The principal reviewer checks conflicts and exceptions and resolves supported contradictions before closing the change. A ready result is assistance, not approval; saved reports can be checked without a model but become stale when code or documents change.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "Revalidation requires complete current in-scope documents and the prior closure’s complete evidence in context."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Only untargeted, non-validation expired closures and descriptive observations may be handled this way."
+      ],
+      "id": "e292c4eea94ab68cfb7d41bdc22f1d571bfa9ed477ff51c5277459f4a36d63ab",
+      "kind": "constraint",
+      "lineEnd": 132,
+      "lineStart": 130,
+      "localId": "c6",
+      "quality": "checked",
+      "reason": "Ensures warning closures are based on complete evidence rather than matching text.",
+      "status": "current",
+      "text": "The normal check may review new uncertainties and expired closures. It may dismiss descriptive observations or revalidate expired closures only when they are untargeted and non-validation, and complete current in-scope documents plus the prior closure’s complete evidence are supplied. Missing evidence leaves the warning pending; findings or local validation failures prevent closure. Matching text alone is insufficient, though an update may still finish with limitations.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "af5baf00-ff4b-468e-a79e-da42de9c0048:539009812395cca0a2416877f3fbff2aabc6da82494e494155871f7d2b1eb320",
+      "conditions": [
+        "A test may be removed only if its meaningful guarantee remains covered elsewhere or its behavior is retired."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "e2de5f02024ad4de075a982d03f86c4ed139629fe89f472211619c81800f0d08",
+      "kind": "constraint",
+      "lineEnd": 295,
+      "lineStart": 295,
+      "localId": "c3",
+      "quality": "checked",
+      "reason": "Records the CI and local test practices, test placement, and limits on removing tests.",
+      "status": "current",
+      "text": "CI runs unit tests in the development build and runs the complete CLI contracts once against the packaged release executable; `cargo test --locked` remains a convenient local check. Keep the parser matrix beside the parser and integration-specific protocol tests in `tests/contracts/codex.rs`. Remove a test only if its meaningful guarantee remains covered elsewhere or its behavior is retired.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "Narrow selected paths if the loaded-corpus limit is reached.",
+        "A line too large to fit is explicitly reported as unread."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Required current relationship endpoints and evidence are not removed by optional neighbor-discovery limits."
+      ],
+      "id": "e4f5a9aa9d728850fe57017bdaf5933cc6c8ec81ebc892d2e3f23e24a5b56053",
+      "kind": "constraint",
+      "lineEnd": 102,
+      "lineStart": 102,
+      "localId": "c25",
+      "quality": "uncertain",
+      "reason": "Defines bounded, resumable update coverage and protects citation integrity.",
+      "status": "current",
+      "text": "Updates split large Markdown into line-preserving units of at most 8 KiB, preferring Markdown boundaries. Each round selects at most four units and 16 KiB of target text, then performs one additional check. Optional neighbor discovery is limited to 18 decisions and 8 KiB of evidence, but current endpoints of affected relationships and their evidence are required context. If a packet exceeds `--max-context-bytes`, extraction does not start. IDs and line numbers survive splitting; earlier rounds remain queryable while pending coverage is visible. Sources up to 32 MiB can be split within a 64 MiB loaded-corpus limit; oversized lines are reported unread rather than cut.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "The baseline is retained across resumptions of the same work."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "e74ea39995b84086b61a2aded49e461b731961639a67d01af2348c064d282953",
+      "kind": "definition",
+      "lineEnd": 134,
+      "lineStart": 134,
+      "localId": "c7",
+      "quality": "checked",
+      "reason": "Defines the scope and interpretation of per-work warning changes.",
+      "status": "current",
+      "text": "New update work reports `warningChanges` as changes from its start baseline, with `new`, `reopened`, and `resolved` lists whose entries include ID, message, and active/resolved state. The baseline records closure disposition independently of source-coverage freshness and persists on resumption. `new` IDs were absent at the start; `resolved` entries lacked a closure at start and have one at the end; `reopened` includes earlier closures whose evidence is now stale. This reports the work’s changes, not the full warning backlog.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "Focused sources outside coverage may require narrowing the configured scope."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "A focused ask or review, or a known dependency, can add bounded archived-source units."
+      ],
+      "id": "f06af1ca957c53f16de575f220060f69b16f72edf3bf29da9b1a3ec77a410229",
+      "kind": "constraint",
+      "lineEnd": 104,
+      "lineStart": 104,
+      "localId": "c26",
+      "quality": "uncertain",
+      "reason": "Preserves archive exclusion while allowing bounded, resumable focused access.",
+      "status": "current",
+      "text": "Archived sources are excluded from ordinary updates. A focused `ask` or `review` adds only selected bounded units to the same resumable work; known dependencies can add required ranges. Work budget, graph knowledge, and cache survive resumption. Changing an unrelated historical document does not start a fresh consultation budget. Current documents take priority at the loaded-corpus limit; narrow scope to access sources outside reported coverage.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "ddd11338-0958-4bff-a146-a390ac81c122:ea7bb6d299180d81ee620090861588140cfb759f7ac83f135692a8f9b989ae27",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "f5e97c9e96b39e69d42643797703211bce8db1ef3739e0791121061222d18b49",
+      "kind": "definition",
+      "lineEnd": 86,
+      "lineStart": 86,
+      "localId": "c1",
+      "quality": "checked",
+      "reason": "Preserves both discovery of source terminology and source-first consultation before reopening settled questions, as stated at line 86.",
+      "status": "current",
+      "text": "Search covers extracted decisions and original Markdown, keeping terminology discoverable even when it is omitted from decision summaries. When needed, select a known document with --source in a consultation rather than reopening a settled question with the owner.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "f68c560f36e88ad4261320332ea67b2b3eca368d617825c42007b0bff8610712",
+      "kind": "definition",
+      "lineEnd": 68,
+      "lineStart": 60,
+      "localId": "c15",
+      "quality": "uncertain",
+      "reason": "Defines supported document placement and optional scope configuration.",
+      "status": "current",
+      "text": "Documents need no Git repository or commit and may live at monorepo, package, or module level in their project's Markdown format. An optional `hivex.json` selects relative include, exclude, and archive globs.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "f84c4eca70074d39111bfc414c5abcbdc0fa58f552dbd65815db3acec0ebb4b7",
+      "kind": "definition",
+      "lineEnd": 84,
+      "lineStart": 84,
+      "localId": "c18",
+      "quality": "uncertain",
+      "reason": "Makes retrieved evidence bounded and its coverage visible.",
+      "status": "current",
+      "text": "`sources` returns metadata and snapshot-bound continuation; `read` returns original text, version, and line ranges, with bounded passage options. Continuation and omitted content remain explicit. A working version is not evidence of approval.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [
+        "A partial result is useful only within its declared limits."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "f8a598007f5c2982790d164de2ca74cecdc8ba6c355a8abe4140e34eab403b4a",
+      "kind": "constraint",
+      "lineEnd": 92,
+      "lineStart": 92,
+      "localId": "c23",
+      "quality": "uncertain",
+      "reason": "Makes evidence provenance and incomplete coverage explicit.",
+      "status": "current",
+      "text": "Results explain applicability and uncertainty. Evidence text is read from cited source ranges, not copied from model-generated quotations. Large sources are provided as relevant units within the context limit, and `omittedUnits` identifies unread portions; identical retained consultations are reused, and partial results remain useful within their stated limits.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "conditions": [],
+      "document": "docs/guide.md",
+      "exceptions": [],
+      "id": "f8d0ceffd1162bf855a1efa36cde33b95b52357e55c553905fa72b62cc4b9e29",
+      "kind": "lesson",
+      "lineEnd": 9,
+      "lineStart": 9,
+      "localId": "c3",
+      "quality": "uncertain",
+      "reason": "The workflow is adaptable to the task.",
+      "status": "current",
+      "text": "Use the capabilities a task needs; there is no compulsory sequence of skills.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "A closure remains valid only while its cited source is not changed or unavailable."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Warnings without complete context remain pending."
+      ],
+      "id": "fa19d33be808f4562dd3d08d25bbb7b0abfb4818f90b384327a4a07b9f5579ab",
+      "kind": "constraint",
+      "lineEnd": 164,
+      "lineStart": 164,
+      "localId": "c13",
+      "quality": "checked",
+      "reason": "Preserves resolution history and prevents stale evidence from silently closing warnings.",
+      "status": "current",
+      "text": "Resolved warnings remain in the graph with their original message, reason, and versioned evidence; repeated closures retain prior resolutions. Changed or unavailable resolution sources reactivate warnings, and matching text alone does not preserve a closure. Address new or reactivated warnings in incremental work when complete context is available; otherwise leave them pending. Do not scan the whole corpus merely to reach zero warnings. Resolution does not improve decision or relationship quality, rewrite sources, or change work history or budgets.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "conditions": [
+        "Zero-call reassessment requires the exact retained candidate/request and current evidence."
+      ],
+      "document": "docs/guide.md",
+      "exceptions": [
+        "Older unfinished work retains its original model request and budgets; an older discarded endpoint can be checked once after correction within that allowance."
+      ],
+      "id": "fd8d29465ff3d0a197329ec67632df353960cb31dd6535532bca756ab2cdae9a",
+      "kind": "constraint",
+      "lineEnd": 124,
+      "lineStart": 124,
+      "localId": "c3",
+      "quality": "checked",
+      "reason": "Distinguishes local admission reassessment from repeating a model check and preserves older work state.",
+      "status": "current",
+      "text": "After a local admission defect, `update` with the same arguments plus `--retry-failed --max-calls 0` can reassess the retained check without a model call, but requires the exact candidate, request, and current evidence; changed requests or graph divergence reject reuse. This local assessment does not rerun an adverse model check or alter the original attempt and usage. Older unfinished work retains its original request and budgets. Explicitly referenced current decisions are retained and shown to the check; if an older release discarded such an endpoint, a resumed repair may reuse extraction and check the corrected candidate once within the original total allowance. An unchanged candidate is not checked again, and a changed candidate remains pending with zero calls.",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    }
+  ],
+  "documents": {
+    "docs/guide.md": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+  },
+  "lastExtraction": "af5baf00-ff4b-468e-a79e-da42de9c0048:539009812395cca0a2416877f3fbff2aabc6da82494e494155871f7d2b1eb320",
+  "relationships": [
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 118,
+          "lineStart": 114,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "14e164ae116dd6598f46bba74399e8656e392140163085fe8766a7c0d23376c1",
+      "id": "0e6e100018f2a4696a0ef079110c2a695fb4e534a7e54e91d468c5a9cf28ddf1",
+      "localId": "r13",
+      "quality": "uncertain",
+      "reason": "Repair replacement and relationship handling apply to the complete affected ranges selected by the repair scope.",
+      "to": "795b01b65bcabca93f9cab87a7dcda2e1e466a403f2e97f09d0e7ee2fa697953",
+      "type": "requires"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 70,
+          "lineStart": 70,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 104,
+          "lineStart": 104,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "f06af1ca957c53f16de575f220060f69b16f72edf3bf29da9b1a3ec77a410229",
+      "id": "2e0605f47b2ccedf3d7563733334cc619f4c744ba247e4be63f5117860d56653",
+      "localId": "r10",
+      "quality": "uncertain",
+      "reason": "Focused ask/review and known dependencies provide bounded access to sources excluded from ordinary updates.",
+      "to": "c1c28ce615ff5dedbcd612452431eeb1e493e36794773e06ff0704277a400ee3",
+      "type": "exception-to"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 92,
+          "lineStart": 90,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "afb25e0a7fd0e484feae5cfc211bb3337698988dbe692d1c2c6f80e084497013",
+      "id": "2fd646282520351a6602d035734556c23c9ebd47ac671ec61e78ebe942f89f53",
+      "localId": "r8",
+      "quality": "uncertain",
+      "reason": "Change comparison includes known dependency neighbors while keeping findings scoped to the affected source.",
+      "to": "2d829c8c23547e03ec1604dd560c920fb5f3a8950a5b020d000221ccd67f6f61",
+      "type": "supports"
+    },
+    {
+      "batch": "ddd11338-0958-4bff-a146-a390ac81c122:ea7bb6d299180d81ee620090861588140cfb759f7ac83f135692a8f9b989ae27",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 70,
+          "lineStart": 70,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 86,
+          "lineStart": 86,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "78202eee955c79563e84074c723158c17075bb0abc91cda30b9bde1ee3f2e781",
+      "id": "3b4a353e7e9bf633152b35c6b238a8e96c16c4994461083a9655cc9bc806f8e1",
+      "localId": "r1",
+      "quality": "uncertain",
+      "reason": "Focused source selection or a known dependency permits bounded historical consultation without making archived sources ordinary consultation inputs.",
+      "to": "c1c28ce615ff5dedbcd612452431eeb1e493e36794773e06ff0704277a400ee3",
+      "type": "exception-to"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 164,
+          "lineStart": 162,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "fa19d33be808f4562dd3d08d25bbb7b0abfb4818f90b384327a4a07b9f5579ab",
+      "id": "4f49689003dcf9b07be82339d31b845f125b505e8bf798f149a73555fb65bb86",
+      "localId": "r4",
+      "quality": "checked",
+      "reason": "The warning lifecycle rules preserve and invalidate the closures recorded by the resolution operation.",
+      "to": "b9196b47723075f1bb283b6f606ee5bb22b2596336c2897e5d041d4e43951ae3",
+      "type": "supports"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 42,
+          "lineStart": 40,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "4716abc53f85a89dfa5dbb279b72a66f2753f9a873fc974af51119be357b1852",
+      "id": "60513ad611ecc6940aad2e2061fe93568da69ddade84219df4bfc99f7b096dff",
+      "localId": "r4",
+      "quality": "uncertain",
+      "reason": "A conflicting nested ignore file is reported before initialization writes files.",
+      "to": "9e5b4d28397e0676e2fc5c21020184b80e24efe916e555bdcd67d1992b75475d",
+      "type": "exception-to"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 44,
+          "lineStart": 40,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "69247ad30b430807a079e3344f7a23d9f046dec23da51483947a4720f4571b72",
+      "id": "60a1ef7ac5459ecc226320f5f9922964d9f1e18e814ee9e66e9f2e67a6f04d39",
+      "localId": "r5",
+      "quality": "uncertain",
+      "reason": "The foundation-content and project-specific completion rules detail what initialization scaffolds versus what the principal agent decides.",
+      "to": "9e5b4d28397e0676e2fc5c21020184b80e24efe916e555bdcd67d1992b75475d",
+      "type": "supports"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 70,
+          "lineStart": 70,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "98625a8d759d3f36931951e2f47eb2e5600bf507c1a82cef9972628656be8408",
+      "id": "6361bc01140c81fc41ce1f0530b52baf5611127b514713fc0fdcb9d9e46f2a48",
+      "localId": "r6",
+      "quality": "uncertain",
+      "reason": "The exclusion-over-archive rule limits the archive behavior described in c16.",
+      "to": "c1c28ce615ff5dedbcd612452431eeb1e493e36794773e06ff0704277a400ee3",
+      "type": "exception-to"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 5,
+          "lineStart": 5,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 212,
+          "lineStart": 212,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "3d8d71cdc9a20e923e47a002c2378db0688873f96e055234cbb151f70992d8fd",
+      "id": "6faa52052c415f3068cd03ca03a55d8c45a25d31274a5230b7a4212eee304c96",
+      "localId": "r1",
+      "quality": "uncertain",
+      "reason": "The cache transition's target profile is the current default profile established by the existing decision.",
+      "to": "58096738e51ce3f4029c56ca8c7639b10f51730149a2e26b33896f053b12af8e",
+      "type": "requires"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 90,
+          "lineStart": 90,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 106,
+          "lineStart": 106,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "8a6c0928fb3ac52599f54c151c7f1fd52676c4e6209c3a3e83ee3bda21343bb8",
+      "id": "715184349aa59892b78d737588d5b9469501dd37a1dbfc760dc0db17cfd2960a",
+      "localId": "r11",
+      "quality": "uncertain",
+      "reason": "Checkpointing and retained work make the bounded consultation progress resumable.",
+      "to": "2d829c8c23547e03ec1604dd560c920fb5f3a8950a5b020d000221ccd67f6f61",
+      "type": "supports"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 24,
+          "lineStart": 22,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "a482d1861992164dd51cd63ed86dc3a1be7f7b4b44dce680a15c898d1ca5ccbe",
+      "id": "773cb0533d3a9ec10b23b944d9387a2481c81dae60ad3f4369f09f3a8329c33f",
+      "localId": "r3",
+      "quality": "uncertain",
+      "reason": "Initialization links the skill bundle whose contents and release consistency are specified in c8.",
+      "to": "69a34ea1d8081ee0fc5b33d2d106eb7997fffdead91ad14d3dee3a59238ff2c4",
+      "type": "requires"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 102,
+          "lineStart": 102,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 114,
+          "lineStart": 114,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "795b01b65bcabca93f9cab87a7dcda2e1e466a403f2e97f09d0e7ee2fa697953",
+      "id": "8122104514d7ef664ab09ffc04c52f1d1c5d42bc7e1f94b82b5d31bfc57c4011",
+      "localId": "r12",
+      "quality": "uncertain",
+      "reason": "Range repair uses the shared target-text and context budgets, with its stated exception to the ordinary unit cap.",
+      "to": "e4f5a9aa9d728850fe57017bdaf5933cc6c8ec81ebc892d2e3f23e24a5b56053",
+      "type": "requires"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 128,
+          "lineStart": 126,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "ab3e1b191e4f3b5fa7cabf4ed8bf485cdbb13cfc3a48d7146c0d82e419de5492",
+      "id": "83c4da2c8a429e1a10de8b62e8365b8bc7ba7fcb912b123c701e18faaa550156",
+      "localId": "r2",
+      "quality": "checked",
+      "reason": "The relationship transition safeguard relies on retaining dependencies until their units are processed.",
+      "to": "580a9e33851674746077e1fca68ead820b7174239940ad8023cee0c3d3fe7c40",
+      "type": "requires"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 120,
+          "lineStart": 118,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "18d0a7ad96e5b563520d7aeb40e6c1a664a4ceba1e2ef533e64e63cdc05a5684",
+      "id": "8bd184097edbd803ebbf71d711ab19dbdae6594ed05eec3d3a04ad28aa73e295",
+      "localId": "r14",
+      "quality": "uncertain",
+      "reason": "The materialized-check rules operationalize the repair replacement and dependency-preservation contract.",
+      "to": "14e164ae116dd6598f46bba74399e8656e392140163085fe8766a7c0d23376c1",
+      "type": "supports"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 102,
+          "lineStart": 90,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "2d829c8c23547e03ec1604dd560c920fb5f3a8950a5b020d000221ccd67f6f61",
+      "id": "9376cbdb4891d658d312c57fff5dc7355975de12877038ede0f4f2f124015d0c",
+      "localId": "r9",
+      "quality": "uncertain",
+      "reason": "The bounded-batch update contract in ask relies on the update-round limits and progress behavior.",
+      "to": "e4f5a9aa9d728850fe57017bdaf5933cc6c8ec81ebc892d2e3f23e24a5b56053",
+      "type": "requires"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 30,
+          "lineStart": 28,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "060dd927ef8cc50d70a48b9b8a03cdb023283c5e6f0414f831a6691146861327",
+      "id": "a1b820b70a2753c007a5dddf050a6f68959cef2e5aebda17e6d6e8e962d4ca1e",
+      "localId": "r2",
+      "quality": "uncertain",
+      "reason": "The compatibility rule specifies when the validated profile and protocol are allowed to proceed.",
+      "to": "33c55430a8102cdd646b300c722af553c7ac38ff0a058e4fff4e9e7b32be33c6",
+      "type": "supports"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 234,
+          "lineStart": 232,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "ddaba0e0c585fa7b00bb50af364697015d37a48aa1964f316fc8de4156cd59f0",
+      "id": "cd8ad74f17b3199eabd1ac7953d48030d356f218331f37140e39f05dad827433",
+      "localId": "r3",
+      "quality": "uncertain",
+      "reason": "Snapshot freshness reporting makes the relocation rule for stale and reusable source evidence interpretable.",
+      "to": "b01848eaf5da945ab89d9b5c7f856d7cf156f1c951b3f43105f70800940404e3",
+      "type": "supports"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 124,
+          "lineStart": 124,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 160,
+          "lineStart": 160,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "83c88968aa2496c557e9d72df7871d2fd38974aa4e58ce32d53a3e3fad84ee9d",
+      "id": "d7bbe663e46c334f36798e3185b8b6020d9045b92c56e95255fbbc0222975df2",
+      "localId": "r3",
+      "quality": "checked",
+      "reason": "Resolving a false candidate finding does not bypass the materialized relationship-loss safeguards.",
+      "to": "a8db23087aef9db0260cf866a8ad158cf914a0ede67497a2947cab60be2174f7",
+      "type": "requires"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:9fe19a72085e009d7274149870d620c8dae51a5eeb2646d16398a901b552a3f6",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 124,
+          "lineStart": 122,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "d607454f785fe3ce66c8a388e0fd2099cab7a0da9f76750bb0c3dbe4effb0467",
+      "id": "def4809a88318e090c3da3787266b7ed9b14203089a9bafb1b89196f6f2e0d64",
+      "localId": "r1",
+      "quality": "uncertain",
+      "reason": "A candidate correction must pass a fresh materialized check before admission.",
+      "to": "a8db23087aef9db0260cf866a8ad158cf914a0ede67497a2947cab60be2174f7",
+      "type": "requires"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:245ba985fc95bce3e3f278021a3f7904854c05d2cee29eea6788cc3fe9028edf",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 222,
+          "lineStart": 222,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 243,
+          "lineStart": 236,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "cd10ce1da6c727f48750704ce1b227d6e1d323a40c2b6d7584e2ead5fd87af4a",
+      "id": "df2a35eea28fdc6b06e23a52836d693c2cffbdc12c663d39ff9b87f8ace20464",
+      "localId": "r2",
+      "quality": "uncertain",
+      "reason": "The Git guidance describes how to share and maintain the snapshot produced by export.",
+      "to": "1fffa84b906bfc3af91b5ce591e38d34b2fc4dd064457d224f6ac9c8b1b8cb92",
+      "type": "supports"
+    },
+    {
+      "batch": "7d01449a-39ac-4d71-a783-f09920be8976:24f8cdd2986049114fb06747633aec7e42e89c3968d09822f03ea6da117eeca8",
+      "evidence": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 5,
+          "lineStart": 5,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 28,
+          "lineStart": 28,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "from": "33c55430a8102cdd646b300c722af553c7ac38ff0a058e4fff4e9e7b32be33c6",
+      "id": "f1cc677a6d1cac68b3c59da50685806c7128a29718af00e62838e57d7b04f531",
+      "localId": "r1",
+      "quality": "uncertain",
+      "reason": "The authentication and profile-availability conditions apply to the defined default knowledge profile.",
+      "to": "58096738e51ce3f4029c56ca8c7639b10f51730149a2e26b33896f053b12af8e",
+      "type": "requires"
+    }
+  ],
+  "units": {
+    "docs/guide.md:1-85": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4",
+      "workKey": "1c5fddd6843dc5ba130a226bc061af3b4dfe7e0ae08394e266966901b5ff157b"
+    },
+    "docs/guide.md:122-141": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4",
+      "workKey": "1c5fddd6843dc5ba130a226bc061af3b4dfe7e0ae08394e266966901b5ff157b"
+    },
+    "docs/guide.md:142-211": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4",
+      "workKey": "1c5fddd6843dc5ba130a226bc061af3b4dfe7e0ae08394e266966901b5ff157b"
+    },
+    "docs/guide.md:212-283": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    "docs/guide.md:251-251": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4",
+      "workKey": "ca9f51004fb4dc35dafc60d14e7810ec41433a384655170aa287da8d942b707a"
+    },
+    "docs/guide.md:284-295": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    "docs/guide.md:293-295": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4",
+      "workKey": "ca9f51004fb4dc35dafc60d14e7810ec41433a384655170aa287da8d942b707a"
+    },
+    "docs/guide.md:86-121": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+    },
+    "docs/guide.md:86-86": {
+      "document": "docs/guide.md",
+      "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4",
+      "workKey": "6e28b05e53e1bdd16c4c6bf66f60739ba2d1a7247d8f6b63614cbc23c9c28aa1"
+    }
+  },
+  "version": 1,
+  "warnings": [
+    {
+      "kind": "finding",
+      "message": "The summary omits the 15-second wait-line cadence and that elapsed time starts with the CLI invocation while each model wait reports its own duration; generic elapsed-time wording loses this progress contract.",
+      "resolution": {
+        "evidence": [
+          {
+            "document": "docs/guide.md",
+            "lineEnd": 192,
+            "lineStart": 180,
+            "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+          },
+          {
+            "document": "docs/adr/0010-practical-knowledge-assistance.md",
+            "lineEnd": 51,
+            "lineStart": 51,
+            "version": "f6e5cc1babe764da2e25dbfbdc046bc082703a80d0811e51fd491e8f8863fa0e"
+          }
+        ],
+        "reason": "Independent GPT-6 Astra/high review verified that this summary preserves model waits, elapsed reporting, unknown internal progress, no invented ETA or usage, and retained work accounting. It states no incorrect cadence or clock origin. The exact 15-second cadence and both time origins remain in the cited complete source range. ADR 0010 explicitly says the graph retrieves meaningful decisions and exceptions rather than reproducing every Markdown detail; this omission of operational detail does not distort the decision."
+      },
+      "scope": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 192,
+          "lineStart": 180,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "target": "9e56b88d49b25ceee01d2ffa2f74f67a6b3e58338b4a6d301ebc760b203ccde3"
+    },
+    {
+      "kind": "finding",
+      "message": "The correction summary omits material admission guards: duplicate or unknown IDs, simultaneous replacement/removal, dangling references, and stale checks, evidence, or graph state are rejected. Merely saying the correction is bound to that state does not preserve these rejection rules.",
+      "resolution": {
+        "evidence": [
+          {
+            "document": "docs/guide.md",
+            "lineEnd": 122,
+            "lineStart": 122,
+            "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+          },
+          {
+            "document": "docs/adr/0010-practical-knowledge-assistance.md",
+            "lineEnd": 51,
+            "lineStart": 51,
+            "version": "f6e5cc1babe764da2e25dbfbdc046bc082703a80d0811e51fd491e8f8863fa0e"
+          }
+        ],
+        "reason": "Independent GPT-6 Astra/high review verified that the node requires existing local IDs, pending target scope, no additions or relationship rewrites, binding to the exact work/check/evidence/graph, and a fresh check; it also preserves removal restrictions. The source enumerates malformed inputs that concretize those constraints. The node neither permits those inputs nor claims an exhaustive validation list. Under ADR 0010, faithful retrieval of these constraints with the complete source citation does not require repeating every validation example."
+      },
+      "scope": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 122,
+          "lineStart": 122,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "target": "d607454f785fe3ce66c8a388e0fd2099cab7a0da9f76750bb0c3dbe4effb0467"
+    },
+    {
+      "kind": "finding",
+      "message": "The source assigns typed-progress ownership to src/work; the retained summary reduces this to generic progress and loses the contract relevant to issue 135 (docs/guide.md:293).",
+      "resolution": {
+        "evidence": [
+          {
+            "document": "docs/guide.md",
+            "lineEnd": 293,
+            "lineStart": 293,
+            "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+          },
+          {
+            "document": "docs/adr/0010-practical-knowledge-assistance.md",
+            "lineEnd": 51,
+            "lineStart": 51,
+            "version": "f6e5cc1babe764da2e25dbfbdc046bc082703a80d0811e51fd491e8f8863fa0e"
+          }
+        ],
+        "reason": "Independent GPT-6 Astra/high review verified that the node preserves Work ownership of progress, budgets and persistence. Omitting the adjective typed does not reassign responsibilities or permit invalid transitions. The exact source still specifies typed progress; ADR 0010 permits a faithful retrieval summary without every implementation adjective. This closure does not introduce a separate typed presentation protocol."
+      },
+      "scope": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 295,
+          "lineStart": 293,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "target": "fbca07eef509559528f9669abfc928058e27d0a960bc8d60394317ba1f51ffa6"
+    },
+    {
+      "kind": "finding",
+      "message": "The source separately requires CI to run the complete CLI contracts against the packaged release executable; requiring a native binary for the suite does not preserve that CI guarantee (docs/guide.md:295).",
+      "resolution": {
+        "evidence": [
+          {
+            "document": "docs/guide.md",
+            "lineEnd": 295,
+            "lineStart": 295,
+            "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+          }
+        ],
+        "reason": "The confirmed omission was repaired in completed work af5baf00-ff4b-468e-a79e-da42de9c0048. The admitted decision e2de5f02024ad4de075a982d03f86c4ed139629fe89f472211619c81800f0d08 explicitly states that CI runs unit tests in the development build and the complete CLI contracts once against the packaged release executable, preserving the local command, test placement and removal conditions. Its fresh check completed with zero findings. The separate native-binary decision remains valid; the required CI guarantee is now represented explicitly, not inferred from it."
+      },
+      "scope": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 269,
+          "lineStart": 269,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "target": "5083c2184b52204568681fdb81bce278b5af64d54b71210280d7b37e2e17ae98"
+    },
+    {
+      "kind": "finding",
+      "message": "The extraction retains general toolchain and test-runner guidance but omits the documented formatting, all-target check, Clippy, quality/architecture test, and pack/verify steps (docs/guide.md:257-267).",
+      "resolution": {
+        "evidence": [
+          {
+            "document": "docs/guide.md",
+            "lineEnd": 267,
+            "lineStart": 257,
+            "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+          },
+          {
+            "document": "docs/adr/0010-practical-knowledge-assistance.md",
+            "lineEnd": 51,
+            "lineStart": 51,
+            "version": "f6e5cc1babe764da2e25dbfbdc046bc082703a80d0811e51fd491e8f8863fa0e"
+          }
+        ],
+        "reason": "Independent GPT-6 Astra/high review verified that retained nodes preserve the required toolchain, native tests, synthetic server and package construction/verification. The cited source is the authoritative procedure for the exact fmt, check, Clippy, quality/architecture and pack/verify commands and flags. The summary does not substitute for that procedure. Reproducing its command checklist in the graph is not required by ADR 0010."
+      },
+      "scope": [
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 212,
+          "lineStart": 212,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 222,
+          "lineStart": 222,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 224,
+          "lineStart": 224,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 232,
+          "lineStart": 226,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 234,
+          "lineStart": 234,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 243,
+          "lineStart": 236,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 249,
+          "lineStart": 249,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 251,
+          "lineStart": 251,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 255,
+          "lineStart": 255,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 257,
+          "lineStart": 257,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 269,
+          "lineStart": 269,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 274,
+          "lineStart": 271,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 276,
+          "lineStart": 276,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 276,
+          "lineStart": 276,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 278,
+          "lineStart": 278,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 289,
+          "lineStart": 282,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        },
+        {
+          "document": "docs/guide.md",
+          "lineEnd": 295,
+          "lineStart": 293,
+          "version": "93b61d030fd471c860f3e754e2c4ef9425b6a932c3c1c105573b56de2b3ef0a4"
+        }
+      ],
+      "target": "docs/guide.md"
+    }
+  ]
+}
