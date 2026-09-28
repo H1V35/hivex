@@ -312,6 +312,76 @@ fn endpoint_maintenance_pauses_before_spending_when_required_context_cannot_fit(
 }
 
 #[test]
+fn retained_large_check_resumes_without_reextracting_or_resetting_its_budget() {
+  let p = Project::policy();
+  assert_eq!(
+    p.error(&["status", "--max-context-bytes", "1073741825"])["error"]["code"],
+    "INVALID_ARGUMENT"
+  );
+  let conditions: Vec<_> = (0..16)
+    .map(|index| format!("c{index:02}:{}", "x".repeat(2044)))
+    .collect();
+  let exceptions: Vec<_> = (0..16)
+    .map(|index| format!("e{index:02}:{}", "x".repeat(2044)))
+    .collect();
+  let decisions: Vec<_> = (0..4)
+    .map(|index| {
+      let mut entry = decision(
+        "cache.md",
+        &format!("c{index}"),
+        3,
+        &format!("Cache constraint {index}."),
+      );
+      entry["conditions"] = json!(conditions);
+      entry["exceptions"] = json!(exceptions);
+      entry
+    })
+    .collect();
+  let mut response = p.read_json("responses.json");
+  response["extract"]["decisions"] = json!(decisions);
+  response["extract"]["relationships"] = json!([]);
+  p.json("responses.json", &response);
+  let first = p.model_cli(&["update", "--max-context-bytes", "262144"]);
+  subset(
+    &first,
+    &json!({"status":"context-limit","work":{"calls":1}}),
+  );
+  assert!(
+    first["work"]["contextLimit"]["requiredBytes"]
+      .as_u64()
+      .unwrap()
+      > 262_144
+  );
+  assert_eq!(p.calls(), 1);
+
+  // More context does not authorize more total input consumption.
+  let held = p.model_cli(&["update", "--max-context-bytes", "1048576"]);
+  subset(
+    &held,
+    &json!({"status":"budget-exhausted","work":{"id":first["work"]["id"],"calls":1}}),
+  );
+  assert_eq!(held["work"]["inputBytes"], first["work"]["inputBytes"]);
+  assert_eq!(p.calls(), 1);
+
+  let resumed = p.model_cli(&[
+    "update",
+    "--max-context-bytes",
+    "1048576",
+    "--max-input-bytes",
+    "1048576",
+  ]);
+  subset(
+    &resumed,
+    &json!({"status":"ready","work":{"id":first["work"]["id"],"calls":2}}),
+  );
+  assert_eq!(p.calls(), 2);
+  let captured = packets(&p);
+  assert_eq!(captured.len(), 2);
+  assert_eq!(captured[0]["operation"], "extract");
+  assert_eq!(captured[1]["operation"], "check");
+}
+
+#[test]
 fn changed_supporting_source_precedes_unrelated_pending_sources() {
   let p = Project::policy();
   p.write(

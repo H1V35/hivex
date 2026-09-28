@@ -11,6 +11,8 @@ use std::collections::HashSet;
 use crate::knowledge::{current_graph, pending_documents, query_graph};
 use crate::work::Operation;
 
+const MAX_INPUT_BYTES: u64 = 1_073_741_824;
+
 fn argument(message: impl Into<String>) -> HivexError {
   HivexError::new("INVALID_ARGUMENT", message)
 }
@@ -121,9 +123,9 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
     limit: usize::try_from(bounded(values.get("limit"), 1, 64)?.unwrap_or(24))
       .expect("limit fits usize"),
     max_calls: bounded(values.get("max-calls"), 0, 4096)?,
-    max_input_bytes: bounded(values.get("max-input-bytes"), 1024, 1_073_741_824)?,
+    max_input_bytes: bounded(values.get("max-input-bytes"), 1024, MAX_INPUT_BYTES)?,
     max_context_bytes: usize::try_from(
-      bounded(values.get("max-context-bytes"), 1024, 262_144)?.unwrap_or(65_536),
+      bounded(values.get("max-context-bytes"), 1024, MAX_INPUT_BYTES)?.unwrap_or(65_536),
     )
     .expect("context limit fits usize"),
     repair,
