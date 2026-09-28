@@ -169,6 +169,8 @@ Resolved warnings remain in the graph with their original message, reason and ve
 
 Native operations accept `--integration codex`, `--model`, `--effort`, `--model-provider openai`, `--codex` and `--deadline-ms`; the default deadline is 30 minutes. Consultation context defaults to 65,536 bytes and can be bounded with `--max-context-bytes`. Limits are reported, not met by silently cutting a rule or pretending omitted evidence was reviewed. Input-byte and call budgets limit work; reported token usage is actual consumption, including known failed attempts.
 
+The explicit `--max-context-bytes` range is 1,024–1,073,741,824 bytes, matching the configurable total-input ceiling; its default remains 65,536 bytes. A materialized check can be larger than its extraction packet. If that check pauses for context, resume the same task with a sufficient explicit context limit while its sources, graph and execution profile still match: Hivex retains the extraction and runs the pending check. Increasing context does not raise the retained call or input-byte budget, authorize a retry of an adverse check, or guarantee that the selected model accepts that packet size. The existing work budget still applies before any new invocation.
+
 ### Execution profiles
 
 Integration and model selection are independent. `--integration` selects the connection; `--model` and `--effort` select a profile supported by that connection. Codex currently admits OpenAI through ChatGPT, so other `--model-provider` values and uninstalled integrations fail explicitly. Provider-specific options and authentication belong to their integration. A future integration can use different model options without requiring a reasoning level named `max`.
