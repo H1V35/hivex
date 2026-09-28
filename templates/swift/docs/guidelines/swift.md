@@ -24,6 +24,16 @@ Use the toolchain's official `swift-format` through `swift format`. Keep its def
 
 Keep one owner for formatting; do not run another formatter or enable contradictory SwiftLint spacing/layout rules. Use the [Swift API Design Guidelines](https://www.swift.org/documentation/api-design-guidelines/) for clear names, argument labels and idiomatic APIs. Prefer value semantics where appropriate, explicit ownership and typed errors. Avoid forced casts, forced tries and forced unwraps of fallible data; represent absence and failure honestly. Keep public/package interfaces small and implementation details private or internal. Introduce protocols, wrappers or abstractions for actual behavior or variation, not one per class or test double.
 
+## Module boundaries
+
+On adoption, record the project's concrete permitted dependencies/imports and map the owning responsibilities to its actual Swift modules and build targets where appropriate. Folders organize files; they do not create access boundaries inside a module. Use separate targets when a real responsibility needs that boundary, not one target per feature by default. Do not copy another project's dependency matrix or impose universally acyclic domain layering.
+
+Swift's [access-control rules](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/accesscontrol/) have different scopes: `private` restricts a declaration to its enclosing declaration and same-file extensions of that declaration; `fileprivate` to its file; `internal` (the default) to its entire module; `package` to modules in the same package, not every module in a workspace; and `public` to importing clients. `open` additionally permits external subclassing/overriding of classes and members. Keep implementation details at the narrowest useful scope and expose only intended capabilities. An `internal` implementation in another feature folder is still reachable within that module.
+
+Record which edges SwiftPM/Xcode manifests declare, which APIs the compiler protects, and how the architectural policy is verified. Build configuration and access control do not reject a semantically forbidden dependency that the build still makes available; the five configured SwiftLint rules do not inspect the project's dependency policy. Review changes to target dependencies, imports and cross-feature implementation access against the permitted edges. Where responsibilities share one module, explicitly record the boundary that requires review. Add a project-specific automated check only for a demonstrated need, with documented scope and representative allowed/forbidden cases; do not claim a check exists merely because the policy is written.
+
+Keep production targets/code independent of test targets, fixtures and test-only helpers. Tests may exercise internal APIs with `@testable import` when the module is built for testing; this does not make those dependencies or access paths production APIs. Record the actual architecture verification commands or required review in the project's engineering guide and update them with the module policy.
+
 ## Readability limits and their coverage
 
 The inherited limits remain cyclomatic complexity 20, cognitive complexity 15, control nesting 3 and at most 4 parameters. A tooling gap is not an exception or permission to relax them. Apply them with the definitions below; Swift tool scores are not interchangeable with the Rust or TypeScript scores. Equality passes. Do not split responsibilities, hide parameters in meaningless bags, raise thresholds or suppress findings merely to pass a number.
@@ -74,7 +84,7 @@ Keep transport models separate from domain and persistence responsibilities. Whe
 
 ## Adoption and verification
 
-Link the adopted guide from the project's documentation map and engineering guide, with the exact source/target scope and checks actually enabled. `Sources` and `Tests` below are SwiftPM layout examples, not required directories. Pass only the project's authored roots/files to format and lint; configure exclusions consistently when generated sources live nearby.
+Link the adopted guide from the project's documentation map and engineering guide, with the exact source/target scope, permitted module dependencies and checks or required review actually enabled. `Sources` and `Tests` below are SwiftPM layout examples, not required directories. Pass only the project's authored roots/files to format and lint; configure exclusions consistently when generated sources live nearby.
 
 ```sh
 swift --version
