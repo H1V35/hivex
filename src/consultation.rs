@@ -267,6 +267,7 @@ pub fn ask(project: &mut Project, runtime: &Options) -> Result<Value> {
   }
   let mut packet = answer_packet(project, runtime, &context, &documents)?;
   let mut store = Store::open(&project.root, StoreOptions::default())?;
+  store.progress = runtime.progress;
   let mut work = begin_consultation(project, runtime, &mut store, &packet)?;
   if work.retry_failed(runtime.retry_failed)? {
     store.save(&mut work)?;
@@ -340,6 +341,9 @@ impl Consultation<'_> {
       "review".clone_into(&mut request.stage);
     }
     let value = if self.work.status() == crate::work::State::Done {
+      self.work.progress.message(format_args!(
+        "consultation: reusing retained result; no model call"
+      ));
       Some(self.work.value()["result"].clone())
     } else {
       model_runtime::run_model(self.work, self.store, &runtime.execution, &request)?

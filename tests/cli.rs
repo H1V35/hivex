@@ -4,6 +4,7 @@ mod contracts {
   pub mod documents;
   pub mod knowledge;
   pub mod maintenance;
+  pub mod progress;
   pub mod relationships;
   pub mod repair;
   pub mod review;

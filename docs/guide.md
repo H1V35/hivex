@@ -169,6 +169,38 @@ Resolved warnings remain in the graph with their original message, reason and ve
 
 Native operations accept `--integration codex`, `--model`, `--effort`, `--model-provider openai`, `--codex` and `--deadline-ms`; the default deadline is 30 minutes. Consultation context defaults to 65,536 bytes and can be bounded with `--max-context-bytes`. Limits are reported, not met by silently cutting a rule or pretending omitted evidence was reviewed. Input-byte and call budgets limit work; reported token usage is actual consumption, including known failed attempts.
 
+### Visible progress
+
+`update` (including repairs), `ask` and `review` accept `--progress auto|always|never`.
+The default `auto` writes plain, newline-delimited checkpoints to stderr only when
+stderr is a terminal. Use `always` for agents, redirected logs and other non-TTY
+callers; `never` suppresses progress, but preserves error diagnostics. Stdout stays
+the final JSON result. Progress is a human-readable aid, not a stable event protocol.
+
+Checkpoints report work start/resumption, extraction, checking and admission at
+the existing transitions. Completed/pending units refer to the retained work plan;
+extracted units remain pending until their check and admission finish. Admission
+can preserve findings and uncertainty: it does not certify every interpretation.
+Cache hits and retained results are distinguished from new reserved model calls.
+Resumption keeps the work's existing attempts and total budget.
+
+During model execution a wait line appears every 15 seconds with elapsed time,
+without claiming knowledge of internal progress, percentages, ETA or unknown usage.
+Elapsed time starts with this CLI invocation; each model wait also reports its own
+duration. Limits, failures and handled interruptions retain their actual work state.
+An abruptly killed process cannot emit a final checkpoint; inspect it with `recover`.
+Progress contains no source text, prompts, model responses or internal reasoning.
+
+Keep stderr visible while saving the JSON, or duplicate stderr in Bash/Zsh:
+
+```sh
+npx hivex update --progress always > result.json
+npx hivex update --progress always > result.json 2> >(tee progress.log >&2)
+```
+
+Redirecting both streams to files hides progress from the terminal. Do not merge
+stderr into stdout when a caller expects a single parseable JSON result.
+
 ### Execution profiles
 
 Integration and model selection are independent. `--integration` selects the connection; `--model` and `--effort` select a profile supported by that connection. Codex currently admits OpenAI through ChatGPT, so other `--model-provider` values and uninstalled integrations fail explicitly. Provider-specific options and authentication belong to their integration. A future integration can use different model options without requiring a reasoning level named `max`.
