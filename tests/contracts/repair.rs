@@ -811,6 +811,378 @@ fn candidate_correction_requires_a_fresh_check_and_preserves_history_and_budget(
 }
 
 #[test]
+fn relationship_correction_reuses_extraction_and_requires_a_budgeted_check() {
+  for (replace, complete_check) in [(false, true), (true, true), (false, false)] {
+    let p = Project::policy();
+    p.model_cli(&["update"]);
+    let graph = p.graph();
+    let mut responses = preserving_repair(&p);
+    responses["byDocument"]["cache.md"]["decisions"][0]["text"] =
+      json!("Ordinary cached data expires after seven days.");
+    if replace {
+      responses["byDocument"]["cache.md"]["relationships"][0]["from"] = json!("unknown");
+    } else {
+      responses["byDocument"]["cache.md"]["relationships"] = json!([]);
+    }
+    responses["check"]["relationshipChanges"] = json!([]);
+    p.json("responses.json", &responses);
+    let rejected = p.model_cli(&REPAIR);
+    assert_eq!(rejected["status"], "failed");
+    let id = rejected["work"]["id"].as_str().unwrap();
+    let before = p.work(id);
+    let privacy = list(&graph, "decisions")
+      .iter()
+      .find(|node| node["document"] == "privacy.md")
+      .unwrap();
+    let evidence =
+      json!([{"document":"privacy.md","lineStart":3,"lineEnd":3,"version":privacy["version"]}]);
+    let mut correction = rejected["candidateResolutionContext"].clone();
+    correction["reason"] =
+      json!("Restore the omitted revocation exception from its current source.");
+    correction["evidence"] = evidence.clone();
+    correction["decisions"] = json!([]);
+    correction["relationships"] = json!([{"id":"r1","from":privacy["id"],"to":"c1","type":"exception-to","reason":"Revocation overrides ordinary retention.","evidence":evidence}]);
+    p.json("correction.json", &correction);
+    let path = p.path("correction.json");
+    let mut args = REPAIR.to_vec();
+    args.extend([
+      "--retry-failed",
+      "--correct",
+      path.to_str().unwrap(),
+      "--max-calls",
+      "2",
+    ]);
+    assert_eq!(p.model_cli(&args)["status"], "budget-exhausted");
+    assert_eq!(p.model_cli(&args)["status"], "budget-exhausted");
+    let staged = p.work(id);
+    assert_eq!(
+      staged["corrections"][0]["previousPending"],
+      before["pending"]
+    );
+    for field in ["attempts", "calls", "inputBytes", "totalTokens"] {
+      assert_eq!(staged[field], before[field]);
+    }
+    assert_eq!(
+      staged["pending"]["extraction"]["decisions"],
+      before["pending"]["extraction"]["decisions"]
+    );
+    assert_eq!(p.graph(), graph);
+    if complete_check {
+      responses["check"]["relationshipChanges"] = json!([{"previousId":"@removed:0","replacements":["@candidate:0"],"reason":"The corrected edge preserves the revocation exception.","evidence":[{"document":"privacy.md","lineStart":3,"lineEnd":3}]}]);
+    }
+    p.json("responses.json", &responses);
+    args.pop();
+    args.push("3");
+    let result = p.model_cli(&args);
+    subset(
+      &result,
+      &json!({"status":if complete_check { "ready" } else { "failed" },"work":{"calls":3}}),
+    );
+    if !complete_check {
+      assert_eq!(p.graph(), graph);
+    }
+    assert_eq!(result["work"]["id"], rejected["work"]["id"]);
+    let after = p.work(id);
+    assert_eq!(&list(&after, "attempts")[..2], list(&before, "attempts"));
+    assert_eq!(after["attempts"][2]["stage"], "check");
+    assert_ne!(
+      after["attempts"][2]["inputHash"],
+      before["attempts"][1]["inputHash"]
+    );
+    assert_eq!(list(&p.graph(), "relationships").len(), 1);
+    assert_eq!(p.model_cli(&args)["work"]["calls"], 3);
+    assert_eq!(p.calls(), 5);
+  }
+}
+
+#[test]
+fn correction_rechecks_relationships_that_the_original_candidate_preserved() {
+  let p = Project::policy();
+  let mut responses = p.read_json("responses.json");
+  let mut second = responses["extract"]["relationships"][0].clone();
+  second["id"] = json!("r2");
+  second["type"] = json!("supports");
+  second["reason"] = json!("The privacy policy supports the bounded cache policy.");
+  responses["extract"]["relationships"]
+    .as_array_mut()
+    .unwrap()
+    .push(second.clone());
+  p.json("responses.json", &responses);
+  p.model_cli(&["update"]);
+  let graph = p.graph();
+  let first = list(&graph, "relationships")
+    .iter()
+    .find(|edge| edge["localId"] == "r1")
+    .unwrap();
+  let second_id = list(&graph, "relationships")
+    .iter()
+    .find(|edge| edge["localId"] == "r2")
+    .unwrap()["id"]
+    .clone();
+  responses = preserving_repair(&p);
+  second["from"] = json!("@existing:privacy.md");
+  responses["byDocument"]["cache.md"]["relationships"] = json!([second]);
+  responses["check"]["relationshipChanges"] = json!([]);
+  p.json("responses.json", &responses);
+  let rejected = p.model_cli(&REPAIR);
+  assert_eq!(rejected["status"], "failed");
+  let id = rejected["work"]["id"].as_str().unwrap();
+  let before = p.work(id);
+  assert_eq!(
+    before["pending"]["protectedRelationships"],
+    json!([first["id"]])
+  );
+  let mut restored = responses["extract"]["relationships"][0].clone();
+  restored["from"] = first["from"].clone();
+  restored["evidence"] = first["evidence"].clone();
+  let mut rewritten = before["pending"]["extraction"]["relationships"][0].clone();
+  rewritten["type"] = json!("requires");
+  rewritten["evidence"] = first["evidence"].clone();
+  let mut correction = rejected["candidateResolutionContext"].clone();
+  correction["reason"] =
+    json!("Restore one relationship and revise another; both effects require checking.");
+  correction["evidence"] = first["evidence"].clone();
+  correction["decisions"] = json!([]);
+  correction["relationships"] = json!([restored, rewritten]);
+  p.json("correction.json", &correction);
+  responses["check"]["relationshipChanges"] = json!([{"previousId":first["id"],"replacements":[first["id"]],"reason":"The first relationship is restored.","evidence":[{"document":"privacy.md","lineStart":3,"lineEnd":3}]}]);
+  p.json("responses.json", &responses);
+  let path = p.path("correction.json");
+  let mut args = REPAIR.to_vec();
+  args.extend([
+    "--retry-failed",
+    "--correct",
+    path.to_str().unwrap(),
+    "--max-calls",
+    "3",
+  ]);
+  let result = p.model_cli(&args);
+  assert_eq!(result["status"], "failed");
+  assert_eq!(p.graph(), graph);
+  assert_eq!(
+    p.work(id)["pending"]["protectedRelationships"],
+    json!([second_id])
+  );
+  assert_eq!(
+    p.work(id)["corrections"][0]["previousPending"],
+    before["pending"]
+  );
+  let captured = packets(&p);
+  assert_eq!(
+    captured.last().unwrap()["removedRelationships"][0]["id"],
+    second_id
+  );
+  assert_eq!(p.calls(), 5);
+}
+
+#[test]
+fn correction_can_retarget_a_relationship_before_removing_its_duplicate_endpoint() {
+  let p = Project::policy();
+  p.model_cli(&["update"]);
+  let graph = p.graph();
+  let mut responses = preserving_repair(&p);
+  let mut duplicate = responses["byDocument"]["cache.md"]["decisions"][0].clone();
+  duplicate["id"] = json!("duplicate-node");
+  responses["byDocument"]["cache.md"]["decisions"]
+    .as_array_mut()
+    .unwrap()
+    .push(duplicate);
+  responses["byDocument"]["cache.md"]["relationships"][0]["to"] = json!("duplicate-node");
+  responses["check"]["relationshipChanges"] = json!([]);
+  p.json("responses.json", &responses);
+  let rejected = p.model_cli(&REPAIR);
+  assert_eq!(rejected["status"], "failed");
+  let id = rejected["work"]["id"].as_str().unwrap();
+  let mut edge = p.work(id)["pending"]["extraction"]["relationships"][0].clone();
+  edge["to"] = json!("c1");
+  edge["evidence"] = graph["relationships"][0]["evidence"].clone();
+  let mut correction = rejected["candidateResolutionContext"].clone();
+  correction["reason"] =
+    json!("Consolidate the duplicate without leaving a dangling relationship.");
+  correction["evidence"] = edge["evidence"].clone();
+  correction["decisions"] = json!([]);
+  correction["removeDecisions"] = json!(["duplicate-node"]);
+  correction["relationships"] = json!([edge]);
+  p.json("correction.json", &correction);
+  let path = p.path("correction.json");
+  let mut args = REPAIR.to_vec();
+  args.extend([
+    "--retry-failed",
+    "--correct",
+    path.to_str().unwrap(),
+    "--max-calls",
+    "3",
+  ]);
+  let checked = p.model_cli(&args);
+  subset(&checked, &json!({"status":"ready","work":{"calls":3}}));
+  assert_eq!(list(&p.graph(), "decisions").len(), 2);
+  assert_eq!(list(&p.graph(), "relationships").len(), 1);
+  assert_eq!(p.calls(), 5);
+}
+
+#[test]
+fn relationship_correction_requires_valid_local_endpoint_citations() {
+  for collision in [false, true] {
+    let p = Project::policy();
+    p.write("policy.md", "# Policy\n\nPreserve the privacy policy.\n");
+    let mut responses = p.read_json("responses.json");
+    responses["extract"]["decisions"]
+      .as_array_mut()
+      .unwrap()
+      .push(decision(
+        "policy.md",
+        "c3",
+        3,
+        "Preserve the privacy policy.",
+      ));
+    p.json("responses.json", &responses);
+    p.model_cli(&["update"]);
+    let graph = p.graph();
+    let privacy = list(&graph, "decisions")
+      .iter()
+      .find(|node| node["document"] == "privacy.md")
+      .unwrap();
+    let policy = list(&graph, "decisions")
+      .iter()
+      .find(|node| node["document"] == "policy.md")
+      .unwrap();
+    let local_id = if collision {
+      privacy["id"].as_str().unwrap()
+    } else {
+      "outside"
+    };
+    responses = preserving_repair(&p);
+    responses["byDocument"]["cache.md"]["decisions"]
+      .as_array_mut()
+      .unwrap()
+      .push(decision(
+        "cache.md",
+        local_id,
+        if collision { 3 } else { 99 },
+        "A discarded or invalid endpoint.",
+      ));
+    responses["byDocument"]["cache.md"]["relationships"] = json!([]);
+    responses["check"]["relationshipChanges"] = json!([]);
+    p.json("responses.json", &responses);
+    let mut args = REPAIR.to_vec();
+    args.extend(["--source", "policy.md"]);
+    let rejected = p.model_cli(&args);
+    assert_eq!(rejected["status"], "failed");
+    let id = rejected["work"]["id"].as_str().unwrap();
+    let before = p.work(id);
+    let mut edge = responses["extract"]["relationships"][0].clone();
+    edge["from"] = json!(local_id);
+    edge["to"] = if collision {
+      policy["id"].clone()
+    } else {
+      json!("c1")
+    };
+    edge["evidence"] = graph["relationships"][0]["evidence"].clone();
+    let mut correction = rejected["candidateResolutionContext"].clone();
+    correction["reason"] =
+      json!("Only valid materialized endpoints can establish the correction boundary.");
+    correction["evidence"] = edge["evidence"].clone();
+    correction["decisions"] = json!([]);
+    correction["relationships"] = json!([edge]);
+    p.json("correction.json", &correction);
+    let path = p.path("correction.json");
+    let model = p.path("codex");
+    args.extend([
+      "--retry-failed",
+      "--correct",
+      path.to_str().unwrap(),
+      "--max-calls",
+      "3",
+      "--codex",
+      model.to_str().unwrap(),
+    ]);
+    let error = p.error(&args);
+    assert_eq!(error["error"]["code"], "INVALID_CORRECTION");
+    assert_eq!(p.work(id)["attempts"], before["attempts"]);
+    assert_eq!(p.work(id)["pending"], before["pending"]);
+    assert_eq!(p.graph(), graph);
+    assert_eq!(p.calls(), 4);
+  }
+}
+
+#[test]
+fn relationship_correction_rejects_unsafe_or_unchanged_candidates_without_calls() {
+  let (p, rejected) = rejected_candidate_resolution("valid");
+  let id = rejected["work"]["id"].as_str().unwrap();
+  let work = p.work(id);
+  let graph = p.graph();
+  let mut edge = work["pending"]["extraction"]["relationships"][0].clone();
+  for citation in edge["evidence"].as_array_mut().unwrap() {
+    citation["version"] = graph["documents"][citation["document"].as_str().unwrap()].clone();
+  }
+  let mut original = rejected["candidateResolutionContext"].clone();
+  original["reason"] = json!("Correct the source-backed revocation exception.");
+  original["evidence"] = edge["evidence"].clone();
+  original["decisions"] = json!([]);
+  original["relationships"] = json!([edge]);
+  let path = p.path("correction.json");
+  let mut args = REPAIR.to_vec();
+  args.extend([
+    "--retry-failed",
+    "--correct",
+    path.to_str().unwrap(),
+    "--max-calls",
+    "3",
+  ]);
+  let model = p.path("codex");
+  args.extend(["--codex", model.to_str().unwrap()]);
+  for case in [
+    "no-change",
+    "unknown-endpoint",
+    "duplicate-id",
+    "stale-citation",
+    "unversioned-citation",
+    "unsupplied-citation",
+    "unknown-field",
+    "remove-conflict",
+    "outside-target",
+  ] {
+    let mut correction = original.clone();
+    let edge = &mut correction["relationships"][0];
+    match case {
+      "no-change" => {}
+      "unknown-endpoint" => edge["from"] = json!("unknown"),
+      "duplicate-id" => {
+        let duplicate = edge.clone();
+        correction["relationships"]
+          .as_array_mut()
+          .unwrap()
+          .push(duplicate);
+      }
+      "stale-citation" => edge["evidence"][0]["version"] = json!("stale"),
+      "unversioned-citation" => {
+        edge["evidence"][0]
+          .as_object_mut()
+          .unwrap()
+          .remove("version");
+      }
+      "unsupplied-citation" => {
+        edge["evidence"][0]["lineStart"] = json!(1);
+        edge["evidence"][0]["lineEnd"] = json!(1);
+      }
+      "unknown-field" => edge["extra"] = json!(true),
+      "remove-conflict" => correction["removeRelationships"] = json!(["r1"]),
+      "outside-target" => edge["to"] = edge["from"].clone(),
+      _ => unreachable!(),
+    }
+    p.json("correction.json", &correction);
+    let error = p.error(&args);
+    assert_eq!(
+      error["error"]["code"], "INVALID_CORRECTION",
+      "{case}: {error}"
+    );
+    assert_eq!(p.graph(), graph);
+    assert_eq!(p.work(id)["attempts"], work["attempts"]);
+    assert_eq!(p.calls(), 4);
+  }
+}
+
+#[test]
 fn candidate_correction_rejects_stale_or_out_of_scope_input_without_calls() {
   for case in [
     "wrong-work",
