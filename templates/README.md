@@ -4,10 +4,14 @@ Apply the matching standards when adopting Hivex, updating its installed guidanc
 
 Identify the languages of maintained source code in each project or workspace package using its sources, manifests and build configuration. A package manager used only to install Hivex does not make a project TypeScript; dependency, vendored and generated code do not determine the project's standards.
 
-| Language | Template | Suggested destination |
+| Language or target | Template | Suggested destination |
 | --- | --- | --- |
 | TypeScript | [TypeScript standard](typescript/docs/guidelines/typescript.md) | `docs/guidelines/typescript.md` |
 | Rust | [Rust standard](rust/docs/guidelines/rust.md) | `docs/guidelines/rust.md` |
+| Swift | [Swift standard](swift/docs/guidelines/swift.md) | `docs/guidelines/swift.md` |
+| iOS/iPadOS app in Swift | [Native iOS presentation](swift/docs/guidelines/ios.md), in addition to the Swift standard | `docs/guidelines/ios.md` |
+
+For Swift, inspect the target platforms and maintained framework usage as well as the language. A Swift CLI, server or platform-independent library uses the Swift guide only; Swift iOS/iPadOS app targets also use the iOS presentation guide. In a mixed or multiplatform project, scope the iOS guide to its app/presentation targets. The shared [engineering foundation](../skills/hivex/assets/project/docs/guidelines/engineering.md#design-and-implementation) retains DDD and workflow policy; link the project's owning authority when adopting these guides.
 
 For a single-language project, read and apply its matching template. For a mixed project, apply each matching template only to the code and packages written in that language. Use this catalogue from the installed Hivex version; if a language has no available template, preserve its accepted guidelines and report the gap rather than substituting another language's rules. Missing guidance does not authorize a package upgrade.
 
