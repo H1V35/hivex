@@ -275,7 +275,7 @@ fn batch_context(
   })
 }
 
-fn parse_range(id: &str) -> Option<RepairRange> {
+pub(crate) fn parse_range(id: &str) -> Option<RepairRange> {
   let (document, lines) = id.rsplit_once(':')?;
   let (start, end) = lines.split_once('-')?;
   let range = RepairRange {

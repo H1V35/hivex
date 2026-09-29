@@ -172,11 +172,7 @@ impl Store {
       })
       .optional()?;
     let Some(data) = data else {
-      if self
-        .works()?
-        .iter()
-        .any(|work| work.status() != crate::work::State::Done)
-      {
+      if self.works()?.iter().any(Work::unfinished) {
         return Ok(Self::empty_graph());
       }
       let root = self.directory.parent().unwrap_or(Path::new("."));
@@ -205,9 +201,7 @@ impl Store {
     let transaction = self
       .database
       .transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let unfinished = read_work_rows(&transaction)?
-      .iter()
-      .any(|work| work.status() != crate::work::State::Done);
+    let unfinished = read_work_rows(&transaction)?.iter().any(Work::unfinished);
     if unfinished {
       return Err(HivexError::new(
         "UNFINISHED_WORK",
@@ -350,6 +344,7 @@ impl Store {
       .database
       .transaction_with_behavior(TransactionBehavior::Immediate)?;
     let current = read_work_by_id(&transaction, work.row_id())?;
+    current.ensure_open()?;
     if current.calls() != work.calls() || current.status() == crate::work::State::Running {
       return Err(HivexError::new(
         "WORK_CONFLICT",
@@ -394,12 +389,7 @@ impl Store {
   }
 
   pub fn unfinished(&self) -> Result<bool> {
-    Ok(
-      self
-        .works()?
-        .iter()
-        .any(|work| work.status() != crate::work::State::Done),
-    )
+    Ok(self.works()?.iter().any(Work::unfinished))
   }
 
   pub fn empty_graph() -> Value {
@@ -510,7 +500,7 @@ fn read_work_rows(database: &Connection) -> Result<Vec<Work>> {
     .collect()
 }
 
-fn read_work_by_id(database: &Connection, row_id: &str) -> Result<Work> {
+pub(super) fn read_work_by_id(database: &Connection, row_id: &str) -> Result<Work> {
   let data = database
     .query_row("SELECT data FROM work WHERE id=?1", [row_id], |row| {
       row.get::<_, String>(0)
@@ -534,6 +524,19 @@ pub(crate) fn parse_work(row_id: String, data: &str) -> Result<Work> {
 }
 
 pub(crate) fn save_work(database: &Connection, work: &mut Work) -> Result<()> {
+  let saved: Option<String> = database
+    .query_row(
+      "SELECT data FROM work WHERE id=?1",
+      [work.row_id()],
+      |row| row.get(0),
+    )
+    .optional()?;
+  if let Some(saved) = saved {
+    let saved = parse_work(work.row_id().to_owned(), &saved)?;
+    if saved.value() != work.value() {
+      saved.ensure_open()?;
+    }
+  }
   if work.status() != crate::work::State::Running {
     remove_field(&mut work.value, "nativeProcessId");
   }
@@ -1119,15 +1122,18 @@ fn validate_execution_binding(
   let Some(binding) = binding else {
     return Ok(None);
   };
-  let conflicting=transaction.query_row(
-                "SELECT id,data FROM work WHERE kind=?1 AND key<>?2 AND (key=?3 OR json_extract(data,'$.operationKey')=?4) AND json_extract(data,'$.status')<>'done' LIMIT 1",
+  let conflicting=transaction.prepare(
+                "SELECT id,data FROM work WHERE kind=?1 AND key<>?2 AND (key=?3 OR json_extract(data,'$.operationKey')=?4) AND json_extract(data,'$.status')<>'done'",
+              )?.query_map(
                 params![options.kind,options.key,binding.legacy_key.as_deref(),binding.operation_key],
                 |row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?))
-            ).optional()?;
-  let Some((id, data)) = conflicting else {
+            )?.map(|row| { let (id,data) = row?; parse_work(id,&data) }).collect::<Result<Vec<_>>>()?;
+  for work in &conflicting {
+    work.ensure_open()?;
+  }
+  let Some(mut retained) = conflicting.into_iter().find(Work::unfinished) else {
     return Ok(None);
   };
-  let mut retained = parse_work(id, &data)?;
   if let Some(previous_profile) = &binding.replaced_profile
     && binding.legacy_key.as_deref() == Some(retained.key())
     && retained
@@ -1191,6 +1197,7 @@ fn resume_work(
   options: &BeginWork,
   previous_reusable: bool,
 ) -> Result<Work> {
+  work.ensure_open()?;
   if previous_reusable && work.status() == crate::work::State::Done {
     return Ok(work);
   }
@@ -1254,6 +1261,11 @@ fn previous_work(transaction: &Connection, options: &BeginWork) -> Result<Option
 }
 
 fn validate_retained_progress(object: &Map<String, Value>, row_id: &str) -> Result<()> {
+  if object.contains_key("supersession")
+    && !super::supersession::validate_record(&Value::Object(object.clone()))
+  {
+    return Err(malformed_work(row_id, "supersession record is invalid"));
+  }
   optional_string(object, "operationKey", row_id)?;
   validate_execution_profile(object, row_id)?;
   optional_pid(object, "ownerPid", row_id)?;

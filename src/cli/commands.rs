@@ -62,7 +62,7 @@ pub(super) fn warnings(args: &[String]) -> Result<Value> {
 
 const DEFAULT_KEEP_COMPLETED: usize = 8;
 const DEFAULT_KEEP_CACHES: usize = 64;
-const USAGE: &str = "Use recover [--acknowledge-uncertain] or prune [--keep-completed <count>] [--keep-caches <count>]";
+const USAGE: &str = "Use recover [--acknowledge-uncertain | --supersede <review.json>] or prune [--keep-completed <count>] [--keep-caches <count>]";
 
 fn invalid_usage() -> HivexError {
   HivexError::new("INVALID_ARGUMENT", USAGE)
@@ -99,7 +99,7 @@ pub(super) fn maintenance(args: &[String]) -> Result<Value> {
 
   let parsed = arguments::parse(
     &args[1..],
-    &["root", "keep-completed", "keep-caches"],
+    &["root", "keep-completed", "keep-caches", "supersede"],
     &["acknowledge-uncertain"],
   )?;
   if !parsed.positionals.is_empty() {
@@ -113,10 +113,12 @@ pub(super) fn maintenance(args: &[String]) -> Result<Value> {
       "recover does not accept retention options",
     ));
   }
-  if command == "prune" && parsed.flags.contains("acknowledge-uncertain") {
+  if command == "prune"
+    && (parsed.flags.contains("acknowledge-uncertain") || parsed.values.contains_key("supersede"))
+  {
     return Err(HivexError::new(
       "INVALID_ARGUMENT",
-      "prune does not accept --acknowledge-uncertain",
+      "prune does not accept recovery options",
     ));
   }
 
@@ -124,6 +126,12 @@ pub(super) fn maintenance(args: &[String]) -> Result<Value> {
     .values
     .get("root")
     .map_or_else(std::env::current_dir, |value| Ok(PathBuf::from(value)))?;
+  if let Some(path) = parsed.values.get("supersede") {
+    if parsed.flags.contains("acknowledge-uncertain") {
+      return Err(invalid_usage());
+    }
+    return crate::work::supersede(&root, path);
+  }
   let mut storage = crate::work::Store::open(
     &root,
     crate::work::StoreOptions {

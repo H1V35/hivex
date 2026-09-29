@@ -127,6 +127,24 @@ impl Work {
   pub fn status(&self) -> State {
     State::parse(self.value["status"].as_str().unwrap_or_default()).expect("validated work state")
   }
+  pub fn superseded_by(&self) -> Option<&str> {
+    self.value["supersession"]["request"]["replacementWorkId"].as_str()
+  }
+  pub fn unfinished(&self) -> bool {
+    self.status() != State::Done && self.superseded_by().is_none()
+  }
+  pub(super) fn ensure_open(&self) -> Result<()> {
+    if let Some(replacement) = self.superseded_by() {
+      return Err(HivexError::new(
+        "WORK_SUPERSEDED",
+        format!(
+          "Work {} was explicitly superseded by {replacement}; its history and budget are retained and cannot be resumed.",
+          self.id()
+        ),
+      ));
+    }
+    Ok(())
+  }
   pub fn phase(&self) -> Phase {
     Phase::parse(self.value["phase"].as_str().unwrap_or("update")).expect("validated work phase")
   }
@@ -386,6 +404,7 @@ impl Work {
     input_hash: &str,
     stage: &str,
   ) -> Result<()> {
+    self.ensure_open()?;
     if matches!(self.status(), State::Running | State::Done)
       || (self.status() == State::Failed && !self.retry_authorized)
     {
@@ -427,6 +446,7 @@ impl Work {
 
 impl Work {
   pub fn retry_failed(&mut self, requested: bool) -> Result<bool> {
+    self.ensure_open()?;
     let last = self.attempts().and_then(|attempts| attempts.last());
     if !requested || self.status() != State::Failed {
       return Ok(false);

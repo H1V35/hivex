@@ -9,4 +9,5 @@ mod contracts {
   pub mod repair;
   pub mod review;
   pub mod snapshots;
+  pub mod supersession;
 }

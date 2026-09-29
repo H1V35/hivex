@@ -10,7 +10,7 @@ fn packets(p: &Project) -> Vec<Value> {
     .map(|line| serde_json::from_str(line).unwrap())
     .collect()
 }
-fn preserving_repair(p: &Project) -> Value {
+pub(super) fn preserving_repair(p: &Project) -> Value {
   let mut r = p.read_json("responses.json");
   let d = r["extract"]["decisions"][0].clone();
   let mut edge = r["extract"]["relationships"][0].clone();
@@ -19,7 +19,7 @@ fn preserving_repair(p: &Project) -> Value {
   r["check"] = json!({"findings":[],"relationshipChanges":[{"previousId":"@removed:0","replacements":["@candidate:0"],"reason":"Retain the revocation exception.","evidence":[{"document":"privacy.md","lineStart":3,"lineEnd":3}]}]});
   r
 }
-const REPAIR: [&str; 5] = [
+pub(super) const REPAIR: [&str; 5] = [
   "update",
   "--repair-range",
   "cache.md:3-3",
@@ -697,7 +697,7 @@ fn unchanged_current_endpoints_survive_identical_relationship_repair() {
   }
 }
 
-fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
+pub(super) fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
   let p = Project::policy();
   p.model_cli(&["update"]);
   let graph = p.graph();
@@ -706,7 +706,9 @@ fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
     .find(|node| node["document"] == "privacy.md")
     .unwrap();
   let target = match case {
-    "batch" => json!("batch"),
+    "batch" | "batch-missing-edge" => json!("batch"),
+    "document" => json!("privacy.md"),
+    "unsupplied-document" => json!("unrelated.md"),
     "unknown" => json!("missing-decision"),
     _ => node["id"].clone(),
   };
@@ -720,7 +722,7 @@ fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
       .unwrap()
       .push(json!({"target":"batch","reason":"A separate unresolved batch defect."}));
   }
-  if case == "missing-edge" {
+  if ["missing-edge", "batch-missing-edge"].contains(&case) {
     r["check"]["relationshipChanges"] = json!([]);
   }
   if case == "duplicates" {
@@ -738,6 +740,9 @@ fn rejected_candidate_resolution(case: &str) -> (Project, Value) {
       .push(node);
   }
   p.json("responses.json", &r);
+  if case == "unsupplied-document" {
+    p.write("unrelated.md", "# Unrelated\n\nAnother topic.\n");
+  }
   let rejected = p.model_cli(&REPAIR);
   assert_eq!(rejected["status"], "failed");
   let mut resolution = rejected["candidateResolutionContext"].clone();
@@ -1369,6 +1374,88 @@ fn candidate_resolution_reuses_the_exact_check_and_preserves_native_quality_and_
   assert_eq!(privacy["quality"], "uncertain");
   assert_eq!(p.calls(), 4);
   assert_eq!(p.error(&args)["error"]["code"], "INVALID_RESOLUTION");
+}
+
+#[test]
+fn batch_and_document_dispositions_reuse_checks_without_waiving_relationship_protection() {
+  for case in ["batch", "document", "batch-missing-edge"] {
+    let (p, rejected) = rejected_candidate_resolution(case);
+    let id = rejected["work"]["id"].as_str().unwrap();
+    let before = p.work(id);
+    let graph = p.graph();
+    let mut resolution = p.read_json("resolution.json");
+    resolution["resolutions"][0]["evidence"]
+      .as_array_mut()
+      .unwrap()
+      .push(json!({
+        "document":"cache.md","lineStart":3,"lineEnd":3,"version":graph["documents"]["cache.md"]
+      }));
+    p.json("resolution.json", &resolution);
+    let path = p.path("resolution.json");
+    let mut args = REPAIR.to_vec();
+    args.extend([
+      "--retry-failed",
+      "--max-calls",
+      "0",
+      "--resolve",
+      path.to_str().unwrap(),
+      "--codex",
+      "/must-not-start",
+    ]);
+    let result = p.cli(&args);
+    assert_eq!(p.work(id)["attempts"], before["attempts"]);
+    assert_eq!(p.calls(), 4);
+    if case == "batch-missing-edge" {
+      assert_eq!(result["status"], "failed");
+      assert_eq!(p.graph(), graph);
+    } else {
+      assert_eq!(result["status"], "ready", "{case}: {result}");
+      assert_eq!(result["work"]["calls"], 2);
+      assert_eq!(result["warningSummary"]["resolved"], 1);
+      assert_eq!(list(&p.graph(), "relationships").len(), 1);
+      assert!(
+        list(&p.graph(), "decisions")
+          .iter()
+          .any(|node| node["quality"] == "uncertain")
+      );
+    }
+  }
+}
+
+#[test]
+fn scoped_dispositions_reject_unsupplied_documents_and_inadequate_evidence() {
+  for case in ["batch", "document", "unsupplied-document"] {
+    let (p, rejected) = rejected_candidate_resolution(case);
+    let id = rejected["work"]["id"].as_str().unwrap();
+    let before = p.work(id);
+    let graph = p.graph();
+    let mut resolution = p.read_json("resolution.json");
+    if case == "document" {
+      resolution["resolutions"][0]["evidence"] = json!([{
+        "document":"cache.md","lineStart":3,"lineEnd":3,"version":graph["documents"]["cache.md"]
+      }]);
+    }
+    p.json("resolution.json", &resolution);
+    let path = p.path("resolution.json");
+    let mut args = REPAIR.to_vec();
+    args.extend([
+      "--retry-failed",
+      "--max-calls",
+      "0",
+      "--resolve",
+      path.to_str().unwrap(),
+      "--codex",
+      "/must-not-start",
+    ]);
+    assert_eq!(
+      p.error(&args)["error"]["code"],
+      "INVALID_RESOLUTION",
+      "{case}"
+    );
+    assert_eq!(p.work(id)["attempts"], before["attempts"]);
+    assert_eq!(p.graph(), graph);
+    assert_eq!(p.calls(), 4);
+  }
 }
 
 #[test]

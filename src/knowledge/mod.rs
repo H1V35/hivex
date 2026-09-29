@@ -2,13 +2,13 @@ pub(crate) use ingestion::{RepairRange, ingestion_units};
 pub(crate) use model::{
   Citation, Graph, SuppliedDocument, active_warnings, digest, empty_graph, graph_value,
   normalize_integral_numbers, parse_check, parse_extraction, parse_graph, source_evidence,
-  supplied_citation, validate_citation, warning_summary,
+  supplied_citation, valid_citation, validate_citation, warning_summary,
 };
 pub(crate) use search::{Record, rank_lexically};
 pub(crate) use serialization::stringify_knowledge;
 pub(crate) use snapshot::{read_knowledge_snapshot, snapshot_report, write_knowledge_snapshot};
 pub(crate) use snapshot_file::shared_knowledge;
-pub(crate) use update::{document_excerpt, document_packet, update};
+pub(crate) use update::{document_excerpt, document_packet, parse_range, update};
 pub(crate) use warning_review::{parse_warning_resolutions, warning_baseline};
 mod ingestion;
 mod model;

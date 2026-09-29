@@ -157,7 +157,7 @@ For a false semantic finding that blocks a retained repair candidate, inspect `p
 }
 ```
 
-This local operation accepts only findings from that check on current canonical candidate decisions. It requires the exact completed check and unchanged candidate, graph and sources; it never starts a model call. Unknown, batch and structural findings cannot be resolved through it. Every protected relationship still requires its original supported replacement or removal. The original findings, native uncertainty, failed attempt and consumption remain intact; the work records the explicit disposition and the admitted graph retains its evidence. A closure is the reviewer's source-backed judgement, not a correctness proof. Do not use it for a real contradiction or missing dependency.
+This local operation accepts semantic findings from that exact check on current canonical candidate decisions. Materialized checks also permit findings directed at the batch or a current document supplied to that check. A document disposition must cite that document; a batch disposition must cite every pending target range. It requires the exact completed check and unchanged candidate, graph and sources; it never starts a model call. Unknown targets and structural validation failures remain blocking. Every protected relationship still requires its original supported replacement or removal. The original findings, native uncertainty, failed attempt and consumption remain intact; the work records the explicit disposition and the admitted graph retains its evidence. A closure is the reviewer's source-backed judgement, not a correctness proof. Do not use it for a real contradiction or missing dependency.
 
 Use `npx hivex warnings` to inspect active warnings and their IDs. After checking the current sources, `npx hivex warnings --resolve resolutions.json` records an explicit resolution without a model call. The file is an array of `{ "id": "<warning-id>", "reason": "<why the warning is resolved>", "evidence": [{ "document": "docs/example.md", "lineStart": 10, "lineEnd": 14, "version": "<current-source-hash>" }] }`. Unknown or repeated IDs and stale or invalid citations reject the whole operation. A resolution requires a reason and current evidence; it is a reviewed explanation, not automatic proof that the knowledge is correct. Findings about implementation or relationships require an explicit repair or correction, and a knowledge check does not turn a failure into a resolution. Keep real contradictions and missing dependencies open for repair.
 
@@ -165,7 +165,25 @@ Resolved warnings remain in the graph with their original message, reason and ve
 
 `recover` inspects abandoned work without invoking the model or killing processes. Live owners or native processes remain protected. If local processes ended but remote delivery is uncertain, `recover --acknowledge-uncertain` records an explicit acknowledgement; original reports and unknown usage remain visible. Recovery itself never retries: a subsequent `--retry-failed` uses the retained work budget. Do not treat acknowledgement as proof that the earlier remote turn completed.
 
-`prune` releases space occupied by old completed work and cached results, retaining the graph and all unfinished work, attempts and budgets. It keeps the newest eight completed works and 64 cached results by default; `--keep-completed` and `--keep-caches` change those counts. Pruned answers can require a new model call when requested again. Export evidence before pruning if historical reports are needed; pruning is explicit, never an automatic budget reset.
+A rejected update can be explicitly closed as superseded when a completed update has replaced its pending objectives. Use `recover --supersede supersession.json`; this makes no model call and does not admit the old candidate or turn its failure into success. The review file identifies the original work and last check (`checkInputHash` is reported in `candidateResolutionContext`), the completed replacement, a bounded reason, and current versioned source evidence for every affected document:
+
+```json
+{
+  "workId": "<failed-update-id>",
+  "checkInputHash": "<last-check-input-hash>",
+  "replacementWorkId": "<completed-update-id>",
+  "reason": "<why the admitted replacement covers the remaining objectives>",
+  "evidence": [
+    { "document": "docs/example.md", "lineStart": 10, "lineEnd": 14, "version": "<current-source-hash>" }
+  ]
+}
+```
+
+Supersession requires a failed update with a staged candidate and a completed last check. Every invocation in both works must have completed with confirmed acceptance and cleanup; a recovery acknowledgement cannot substitute for this evidence. The replacement must be a completed update with no pending stage. Its uniquely attributable current coverage units must occur in its original plan and cover every remaining or staged target range at the original, still-current source versions. If a later overlapping repair removed that attribution, the work key is ambiguous, or a range/version is missing, the command refuses rather than inferring completion from overall graph coverage. The source-backed review remains responsible for semantic adequacy; supersession does not resolve graph warnings or certify the graph.
+
+The command acquires the update lease and records the disposition atomically. The original failed status, candidate, attempts, results and budgets stay intact with a `supersession` record identifying the replacement and reviewed coverage. Repeating the exact review file is idempotent; a different disposition is rejected. A superseded work cannot resume, retry, change profile, correct or resolve its candidate. It no longer blocks snapshot import or relocation, while running, uncertain and other unfinished work still do. Both the superseded record and its referenced completed replacement are protected from pruning.
+
+`prune` releases space occupied by old completed work and cached results, retaining the graph and all unfinished work, attempts and budgets. In addition to completed replacements protected by supersession, it keeps the newest eight other completed works and 64 cached results by default; `--keep-completed` and `--keep-caches` change those counts. Pruned answers can require a new model call when requested again. Export evidence before pruning if historical reports are needed; pruning is explicit, never an automatic budget reset.
 
 Native operations accept `--integration codex`, `--model`, `--effort`, `--model-provider openai`, `--codex` and `--deadline-ms`; the default deadline is 30 minutes. Consultation context defaults to 65,536 bytes and can be bounded with `--max-context-bytes`. Limits are reported, not met by silently cutting a rule or pretending omitted evidence was reviewed. Input-byte and call budgets limit work; reported token usage is actual consumption, including known failed attempts.
 
