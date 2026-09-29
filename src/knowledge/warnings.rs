@@ -246,6 +246,51 @@ pub(super) fn candidate_report(
     .collect()
 }
 
+fn resolvable_target(target: &str, graph: &Graph, project: &Project, pending: &Value) -> bool {
+  if graph.decisions.iter().any(|node| {
+    node.id == target && super::is_current_source(project, &node.document, Some(&node.version))
+  }) {
+    return true;
+  }
+  pending["materializedCheck"] == true
+    && (target == "batch"
+      || pending["packet"]["documents"]
+        .as_array()
+        .is_some_and(|documents| {
+          documents.iter().any(|document| {
+            document["id"] == target
+              && super::is_current_source(project, target, document["version"].as_str())
+          })
+        }))
+}
+
+fn resolution_covers_target(resolution: &Resolution, target: &str, pending: &Value) -> bool {
+  if target == "batch" {
+    return pending["packet"]["units"].as_array().is_some_and(|units| {
+      !units.is_empty()
+        && units.iter().all(|unit| {
+          resolution.evidence.iter().any(|citation| {
+            unit["document"] == citation.document
+              && unit["lineStart"]
+                .as_u64()
+                .is_some_and(|start| citation.line_start as u64 <= start)
+              && unit["lineEnd"]
+                .as_u64()
+                .is_some_and(|end| citation.line_end as u64 >= end)
+          })
+        })
+    });
+  }
+  let document = pending["packet"]["documents"]
+    .as_array()
+    .is_some_and(|documents| documents.iter().any(|document| document["id"] == target));
+  !document
+    || resolution
+      .evidence
+      .iter()
+      .any(|citation| citation.document == target)
+}
+
 pub(super) fn resolve_candidate(
   graph: &Graph,
   project: &Project,
@@ -268,28 +313,35 @@ pub(super) fn resolve_candidate(
   let value = &attempt["result"];
   let check = crate::knowledge::model::parse_check(value)
     .ok_or_else(|| invalid_resolution("The candidate needs a retained check."))?;
-  let findings = crate::knowledge::model::check_warnings(graph, &check, "", &[]);
-  let eligible: Vec<_> = findings
+  let pending = &work.value()["pending"];
+  let ranges: Vec<Citation> = serde_json::from_value(pending["packet"]["units"].clone())
+    .map_err(|_| invalid_resolution("The retained check needs its original source ranges."))?;
+  let scope = crate::knowledge::model::warning_scope(&project.documents, Some(&ranges));
+  let findings = crate::knowledge::model::check_warnings(
+    graph,
+    &check,
+    pending["batch"].as_str().unwrap_or_default(),
+    &scope,
+  );
+  let eligible: HashMap<_, _> = findings
     .iter()
-    .filter(|warning| match warning {
-      Warning::Structured(warning) => graph.decisions.iter().any(|node| {
-        warning.target.as_deref() == Some(&node.id)
-          && project
-            .documents
-            .iter()
-            .any(|source| source.id == node.document && source.hash == node.version)
-      }),
-      Warning::Legacy(_) => false,
+    .filter_map(|warning| match warning {
+      Warning::Structured(record) => record
+        .target
+        .as_deref()
+        .filter(|target| resolvable_target(target, graph, project, &work.value()["pending"]))
+        .map(|target| (warning_id(warning), target)),
+      Warning::Legacy(_) => None,
     })
-    .map(warning_id)
     .collect();
   let resolutions = parse_resolutions(&file["resolutions"])?;
-  if resolutions
-    .iter()
-    .any(|resolution| !eligible.contains(&resolution.id))
-  {
+  if resolutions.iter().any(|resolution| {
+    eligible
+      .get(&resolution.id)
+      .is_none_or(|target| !resolution_covers_target(resolution, target, &work.value()["pending"]))
+  }) {
     return Err(invalid_resolution(
-      "Resolve only retained-check findings on current canonical candidate decisions; structural and unknown findings remain blocking.",
+      "Resolve only retained semantic findings on current candidate decisions, supplied documents or the batch. Cite the target document or all batch ranges; structural and unknown findings remain blocking.",
     ));
   }
   let resolved = resolve_warnings(graph, project, &resolutions)?;

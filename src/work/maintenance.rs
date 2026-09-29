@@ -562,6 +562,11 @@ fn prune(store: &mut Store, keep_completed: usize, keep_caches: usize) -> Result
     .collect();
   let work_rows_to_delete = completed
     .iter()
+    .filter(|id| {
+      !works
+        .iter()
+        .any(|work| work.superseded_by() == Some(id.as_str()))
+    })
     .skip(keep_completed)
     .cloned()
     .collect::<Vec<_>>();
@@ -600,10 +605,7 @@ fn prune(store: &mut Store, keep_completed: usize, keep_caches: usize) -> Result
     deleted_completed_works: work_rows_to_delete.len(),
     retained_caches: cache_rows.len() - cache_rows_to_delete.len(),
     retained_completed_works: completed.len() - work_rows_to_delete.len(),
-    unfinished_works: works
-      .iter()
-      .filter(|work| work.status() != crate::work::State::Done)
-      .count(),
+    unfinished_works: works.iter().filter(|work| work.unfinished()).count(),
   })
 }
 

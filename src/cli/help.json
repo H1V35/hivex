@@ -39,7 +39,7 @@
     {
       "modelCalls": 0,
       "name": "recover",
-      "usage": "recover [--root <project>] [--acknowledge-uncertain]"
+      "usage": "recover [--root <project>] [--acknowledge-uncertain | --supersede <review.json>]"
     },
     {
       "modelCalls": 0,
