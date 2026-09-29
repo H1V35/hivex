@@ -157,7 +157,33 @@ For a false semantic finding that blocks a retained repair candidate, inspect `p
 }
 ```
 
-This local operation accepts semantic findings from that exact check on current canonical candidate decisions. Materialized checks also permit findings directed at the batch or a current document supplied to that check. A document disposition must cite that document; a batch disposition must cite every pending target range. It requires the exact completed check and unchanged candidate, graph and sources; it never starts a model call. Unknown targets and structural validation failures remain blocking. Every protected relationship still requires its original supported replacement or removal. The original findings, native uncertainty, failed attempt and consumption remain intact; the work records the explicit disposition and the admitted graph retains its evidence. A closure is the reviewer's source-backed judgement, not a correctness proof. Do not use it for a real contradiction or missing dependency.
+This local operation accepts semantic findings from that exact check on current canonical candidate decisions. Materialized checks also permit findings directed at the batch, a current supplied document or relationship, or a protected previous relationship with an explicit replacement mapping below. A document disposition must cite that document; a batch disposition must cite every pending target range. It requires the exact completed check and unchanged candidate, graph and sources; it never starts a model call. Unknown targets and structural validation failures remain blocking. The original findings, native uncertainty, failed attempt, candidate, receipts, total budget and consumption remain intact. The work records the reviewed input and prior pending candidate, and the admitted graph retains the warning dispositions. Replaying the exact review is idempotent; a different disposition is rejected. A closure is the reviewer's source-backed judgement, not a correctness proof. Do not use it for a real contradiction or missing dependency.
+
+When a materialized check falsely reports a missing previous relationship or omits its replacement mapping, inspect `pendingRelationshipReview` in the failed update's JSON. Repeating the original update arguments without a retry or changed budget reports the retained failure and this context without model calls. The context is available only when the retained check still matches the reconstructed candidate: it supplies canonical previous/candidate relationships, their endpoint definitions, supplied source versions and line numbers, and the untouched native check. Use those IDs rather than local extraction IDs. Keep consumer evidence private.
+
+Add optional `relationshipChanges` to the same review file:
+
+```json
+{
+  "workId": "<retained-work-id>",
+  "checkInputHash": "<exact-check-input-hash>",
+  "resolutions": [],
+  "relationshipChanges": [
+    {
+      "previousId": "<protected-previous-relationship-id>",
+      "replacements": ["<present-canonical-candidate-relationship-id>"],
+      "reason": "Explain how the current endpoints, direction, scope, conditions and citations preserve the previous meaning.",
+      "evidence": [
+        {"document": "docs/example.md", "lineStart": 10, "lineEnd": 14, "version": "<current-source-hash>"}
+      ]
+    }
+  ]
+}
+```
+
+`resolutions` may be empty only when supplying mappings alone; a false finding still needs its warning ID, reason and evidence. Each mapping must name a unique protected relationship actually supplied in this check and one or more unique replacements actually present in its materialized or retained relationship context. Replacements preserve the relationship type and endpoint direction/authority; a retained endpoint keeps its ID. Each review citation must be current, versioned and within supplied lines. Evidence must cover the previous relationship and endpoint ranges at current source versions, and the replacement relationship citations and current endpoint ranges. Cite a complete range in one citation; add citations for each supporting range. A relationship finding's closure must cover those same ranges. Review entries allow at most 128 mappings, 128 replacements per mapping and 32 citations, with a non-empty reason bounded to 2,048 UTF-16 code units. Unknown fields, stale identity/evidence, absent replacements, empty removal mappings and duplicate IDs are rejected before any model invocation. Changes of type or endpoint authority require source-backed correction and a fresh check, not this false-finding path.
+
+Every protected relationship still needs a valid native disposition or validated reviewed mapping. Partial coverage, remaining findings affecting the batch, relationship or endpoints, and actual missing relationships keep admission blocked. The CLI checks identity, existence and evidence coverage; the independent reviewer remains responsible for semantic equivalence. It does not infer equivalence from text or promote native quality. Run the original update arguments with `--retry-failed --max-calls 0 --resolve candidate-resolution.json` to admit only the already extracted candidate. This command preserves the original total limits despite `--max-calls 0`, which enforces a local-only operation. `warnings --resolve` alone cannot supply replacement mappings.
 
 Use `npx hivex warnings` to inspect active warnings and their IDs. After checking the current sources, `npx hivex warnings --resolve resolutions.json` records an explicit resolution without a model call. The file is an array of `{ "id": "<warning-id>", "reason": "<why the warning is resolved>", "evidence": [{ "document": "docs/example.md", "lineStart": 10, "lineEnd": 14, "version": "<current-source-hash>" }] }`. Unknown or repeated IDs and stale or invalid citations reject the whole operation. A resolution requires a reason and current evidence; it is a reviewed explanation, not automatic proof that the knowledge is correct. Findings about implementation or relationships require an explicit repair or correction, and a knowledge check does not turn a failure into a resolution. Keep real contradictions and missing dependencies open for repair.
 

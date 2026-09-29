@@ -354,7 +354,19 @@ fn prepare_update(
   shared: Option<Work>,
 ) -> Result<(IngestionResult, Work)> {
   let mut prepared = plan_update(state, runtime, shared.as_ref())?;
-  let mut work = match shared {
+  let selected =
+    super::warnings::select_resolution_work(runtime.resolve.as_deref(), &prepared.key, store)?;
+  if let Some(work) = &selected
+    && super::warnings::replay_resolution(
+      work,
+      runtime.resolve.as_deref(),
+      state.project,
+      state.graph,
+    )?
+  {
+    return Ok((prepared.plan, work.clone()));
+  }
+  let mut work = match shared.or(selected) {
     Some(work) => work,
     None => store.begin_with_profile(
       &BeginWork {
@@ -583,7 +595,7 @@ fn reconcile_pending(
   Ok(())
 }
 
-fn pending_current(project: &Project, pending: &Value) -> bool {
+pub(super) fn pending_current(project: &Project, pending: &Value) -> bool {
   if pending.is_null() {
     return false;
   }
@@ -1283,14 +1295,17 @@ fn check_batch(
     return Ok(None);
   };
   let ids = strings(&pending["units"]);
-  let (mut checked, check) = apply_batch_check(evidence, &candidate, &pending, &value)?;
-  let reviewed = if let Some(path) = &runtime.resolve {
-    let (resolved, reviewed) = super::warnings::resolve_candidate(&checked, project, work, path)?;
-    checked = resolved;
-    reviewed
-  } else {
-    value.clone()
-  };
+  let (checked, check) = apply_batch_check(evidence, &candidate, &pending, &value)?;
+  let (mut checked, reviewed, resolution) = super::warnings::review_candidate(
+    super::warnings::CandidateContext {
+      graph: &checked,
+      project,
+      packet: &request.packet,
+    },
+    work,
+    runtime.resolve.as_deref(),
+    &value,
+  )?;
   let unresolved = unresolved_changes(evidence, &candidate, &pending, &reviewed)?;
   let local = retained_only && work.calls() == prior_calls;
   if local {
@@ -1320,23 +1335,65 @@ fn check_batch(
       &value,
     )?;
   }
-  if runtime.resolve.is_some() {
-    work.record_candidate_resolution(&json!(super::warnings::candidate_report(
-      &checked, project, &check
-    )));
-  }
   work.progress.message(format_args!(
     "check finished; findings={}; admission started",
     check.findings.len()
   ));
   work.accept_check();
   finish_round(evidence, &mut checked, work, &ids);
+  if let Some(mut record) = resolution {
+    record["admittedGraphHash"] = json!(super::warnings::graph_hash(&checked)?);
+    work.record_candidate_resolution(record);
+  }
   store.commit(work, &model::graph_value(&checked, false))?;
   work
     .progress
     .checkpoint("admission finished; batch checkpoint saved", work);
   Ok(Some(checked))
 }
+
+fn relationship_review_context(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  work: &Work,
+  runtime: &Options,
+) -> Option<Value> {
+  let pending = &work.value()["pending"];
+  if pending["staged"] != true || pending["materializedCheck"] != true {
+    return None;
+  }
+  let candidate = materialize(evidence, graph, pending, true).ok()?;
+  let request = check_request(graph, &candidate, pending);
+  let result = model_runtime::retained_check_result(work, &request, &runtime.execution).ok()??;
+  let packet = &request.packet;
+  let relationships: Vec<_> = packet["extraction"]["relationships"]
+    .as_array()?
+    .iter()
+    .chain(
+      packet["retainedRelationships"]
+        .as_array()
+        .into_iter()
+        .flatten(),
+    )
+    .cloned()
+    .collect();
+  let endpoints: HashSet<_> = relationships
+    .iter()
+    .flat_map(|edge| [edge["from"].as_str(), edge["to"].as_str()])
+    .flatten()
+    .collect();
+  Some(json!({
+    "workId":work.id(),
+    "checkInputHash":work.attempts()?.last()?["inputHash"],
+    "previousRelationships":packet["removedRelationships"],
+    "previousDecisions":packet["previousDecisions"],
+    "candidateRelationships":relationships,
+    "candidateDecisions":candidate.decisions.iter().filter(|node| endpoints.contains(node.id.as_str())).map(|node| without_execution(json!(node))).collect::<Vec<_>>(),
+    "suppliedSources":packet["documents"].as_array()?.iter().map(|document| json!({"document":document["id"],"version":document["version"],"lines":document["lines"].as_array().map(|lines| lines.iter().map(|line| &line[0]).collect::<Vec<_>>())})).collect::<Vec<_>>(),
+    "nativeCheck":result
+  }))
+}
+
 fn update_response(
   evidence: BatchEvidence<'_>,
   graph: &Graph,
@@ -1406,6 +1463,9 @@ fn update_response(
       baseline
     ));
   }
+  if let Some(context) = relationship_review_context(evidence, graph, work, runtime) {
+    response["pendingRelationshipReview"] = context;
+  }
   response
 }
 
@@ -1467,6 +1527,9 @@ pub fn update_with_store(
     project,
     plan: &plan,
   };
+  if super::warnings::replay_resolution(&work, runtime.resolve.as_deref(), project, &graph)? {
+    return Ok((update_response(evidence, &graph, &work, runtime), work));
+  }
   correction::apply(
     evidence,
     &graph,

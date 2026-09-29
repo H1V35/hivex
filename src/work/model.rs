@@ -133,7 +133,7 @@ impl Work {
   pub fn unfinished(&self) -> bool {
     self.status() != State::Done && self.superseded_by().is_none()
   }
-  pub(super) fn ensure_open(&self) -> Result<()> {
+  pub fn ensure_open(&self) -> Result<()> {
     if let Some(replacement) = self.superseded_by() {
       return Err(HivexError::new(
         "WORK_SUPERSEDED",
@@ -311,11 +311,17 @@ impl Work {
       .expect("validated work")
       .shift_remove("contextLimit");
   }
-  pub fn record_candidate_resolution(&mut self, warnings: &Value) {
-    self.value["candidateResolution"] = json!({
-      "checkInputHash":self.attempts().and_then(|attempts| attempts.last()).map(|attempt| &attempt["inputHash"]),
-      "warnings":warnings
-    });
+  pub fn record_candidate_resolution(&mut self, mut record: Value) {
+    if let Some(mut previous) = self.value.get("candidateResolution").cloned() {
+      let mut history = previous
+        .as_object_mut()
+        .and_then(|record| record.shift_remove("previousResolutions"))
+        .and_then(|records| records.as_array().cloned())
+        .unwrap_or_default();
+      history.push(previous);
+      record["previousResolutions"] = json!(history);
+    }
+    self.value["candidateResolution"] = record;
   }
   pub fn assess_retained_check(&mut self, accepted: bool) {
     self.value["retainedCheckAssessment"] = json!(if accepted { "accepted" } else { "blocked" });
