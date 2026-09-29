@@ -85,6 +85,7 @@ pub struct Completion {
 
 #[derive(Clone, Debug)]
 pub struct Work {
+  pub progress: super::Progress,
   pub(super) row_id: String,
   pub(super) value: Value,
   pub(super) retry_authorized: bool,

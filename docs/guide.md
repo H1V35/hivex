@@ -171,6 +171,38 @@ Native operations accept `--integration codex`, `--model`, `--effort`, `--model-
 
 The explicit `--max-context-bytes` range is 1,024–1,073,741,824 bytes, matching the configurable total-input ceiling; its default remains 65,536 bytes. A materialized check can be larger than its extraction packet. If that check pauses for context, resume the same task with a sufficient explicit context limit while its sources, graph and execution profile still match: Hivex retains the extraction and runs the pending check. Increasing context does not raise the retained call or input-byte budget, authorize a retry of an adverse check, or guarantee that the selected model accepts that packet size. The existing work budget still applies before any new invocation.
 
+### Visible progress
+
+`update` (including repairs), `ask` and `review` accept `--progress auto|always|never`.
+The default `auto` writes plain, newline-delimited checkpoints to stderr only when
+stderr is a terminal. Use `always` for agents, redirected logs and other non-TTY
+callers; `never` suppresses progress, but preserves error diagnostics. Stdout stays
+the final JSON result. Progress is a human-readable aid, not a stable event protocol.
+
+Checkpoints report work start/resumption, extraction, checking and admission at
+the existing transitions. Completed/pending units refer to the retained work plan;
+extracted units remain pending until their check and admission finish. Admission
+can preserve findings and uncertainty: it does not certify every interpretation.
+Cache hits and retained results are distinguished from new reserved model calls.
+Resumption keeps the work's existing attempts and total budget.
+
+During model execution a wait line appears every 15 seconds with elapsed time,
+without claiming knowledge of internal progress, percentages, ETA or unknown usage.
+Elapsed time starts with this CLI invocation; each model wait also reports its own
+duration. Limits, failures and handled interruptions retain their actual work state.
+An abruptly killed process cannot emit a final checkpoint; inspect it with `recover`.
+Progress contains no source text, prompts, model responses or internal reasoning.
+
+Keep stderr visible while saving the JSON, or duplicate stderr in Bash/Zsh:
+
+```sh
+npx hivex update --progress always > result.json
+npx hivex update --progress always > result.json 2> >(tee progress.log >&2)
+```
+
+Redirecting both streams to files hides progress from the terminal. Do not merge
+stderr into stdout when a caller expects a single parseable JSON result.
+
 ### Execution profiles
 
 Integration and model selection are independent. `--integration` selects the connection; `--model` and `--effort` select a profile supported by that connection. Codex currently admits OpenAI through ChatGPT, so other `--model-provider` values and uninstalled integrations fail explicitly. Provider-specific options and authentication belong to their integration. A future integration can use different model options without requiring a reasoning level named `max`.

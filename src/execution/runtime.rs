@@ -192,12 +192,22 @@ pub fn run_model(
 ) -> Result<Option<Value>> {
   work.ensure_execution_profile(&json!(execution.profile()))?;
   let input = model_input(request, execution);
+  let stage = match request.schema {
+    OutputSchema::Extraction => "extraction",
+    OutputSchema::Check { .. } => "check",
+    OutputSchema::Answer => "ask",
+    OutputSchema::Review => "review",
+  };
+  work.progress.message(format_args!("{stage}: started"));
   if let Some(attempt) = work.attempts().and_then(|attempts| {
     attempts
       .iter()
       .rev()
       .find(|attempt| attempt["inputHash"] == input.fingerprint && attempt.get("result").is_some())
   }) {
+    work.progress.message(format_args!(
+      "{stage}: reusing retained result; no model call"
+    ));
     return request
       .schema
       .parse(&attempt["result"])
@@ -215,11 +225,17 @@ pub fn run_model(
   {
     work.cache_hit()?;
     store.save(work)?;
+    work
+      .progress
+      .message(format_args!("{stage}: cache hit; no model call"));
     return Ok(Some(cached));
   }
   if !work.budget().admits(input.bytes as u64) {
     work.budget_exhausted();
     store.save(work)?;
+    work
+      .progress
+      .checkpoint("model call stopped: budget-exhausted", work);
     return Ok(None);
   }
   store.reserve(
@@ -230,9 +246,26 @@ pub fn run_model(
       stage: &request.stage,
     },
   )?;
-  let invocation = execution.invoke(input.prompt, input.schema, &mut |pid| {
-    store.record_native_process(work, pid)
-  })?;
+  work.progress.message(format_args!(
+    "{stage}: model call reserved; calls={}/{}",
+    work.calls(),
+    work.max_calls()
+  ));
+  let invocation = {
+    let _waiting = work.progress.waiting(stage);
+    execution.invoke(input.prompt, input.schema, &mut |pid| {
+      store.record_native_process(work, pid)
+    })?
+  };
+  record_invocation(work, store, request, invocation)
+}
+
+fn record_invocation(
+  work: &mut Work,
+  store: &mut Store,
+  request: &Request,
+  invocation: super::Receipt,
+) -> Result<Option<Value>> {
   let completed = invocation.completed();
   let raw = invocation.value.as_str().unwrap_or_default();
   let value = if completed {
@@ -257,6 +290,12 @@ pub fn run_model(
     None
   };
   let output_hash = completed.then(|| hash(raw));
+  work.progress.message(format_args!(
+    "model returned; outcome={}; code={}; interruption={}",
+    invocation.report["outcome"].as_str().unwrap_or("unknown"),
+    invocation.report["code"].as_str().unwrap_or("none"),
+    invocation.report["interruption"].as_str().unwrap_or("none")
+  ));
   work.record_completion(crate::work::Completion {
     report: invocation.report,
     result: value.clone(),
@@ -264,9 +303,19 @@ pub fn run_model(
     invalid_output,
   })?;
   if let Some(value) = &value {
-    store.cache(&input.fingerprint, value)?;
+    let fingerprint = work
+      .attempts()
+      .and_then(|attempts| attempts.last())
+      .and_then(|attempt| attempt["inputHash"].as_str())
+      .expect("reserved attempt");
+    store.cache(fingerprint, value)?;
   }
   store.save(work)?;
+  if value.is_none() {
+    work
+      .progress
+      .checkpoint("model result unavailable; work retained", work);
+  }
   Ok(value)
 }
 

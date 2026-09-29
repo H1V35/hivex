@@ -48,6 +48,7 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
   let parsed = arguments::parse(
     input,
     &[
+      "progress",
       "base",
       "codex",
       "integration",
@@ -99,6 +100,7 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
   );
   let values = &parsed.values;
   let options = Operation {
+    progress: progress(values.get("progress"), &command)?,
     command,
     query,
     root: values
@@ -143,7 +145,22 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
 }
 
 pub fn command(args: &[String]) -> Result<Value> {
-  let mut options = operation_for(args)?;
+  let options = operation_for(args)?;
+  let progress = options.progress;
+  let result = execute(options);
+  match &result {
+    Ok(value) => progress.message(format_args!(
+      "operation finished; status={}",
+      value["status"].as_str().unwrap_or("done")
+    )),
+    Err(_) => progress.message(format_args!(
+      "operation failed; see diagnostic; retained work is unchanged by progress reporting"
+    )),
+  }
+  result
+}
+
+fn execute(mut options: Operation) -> Result<Value> {
   let mut project = load_project(&options.root)?;
   if options
     .sources
@@ -290,4 +307,17 @@ fn validate_operation(options: &Operation) -> Result<()> {
     ));
   }
   Ok(())
+}
+
+fn progress(value: Option<&String>, command: &str) -> Result<crate::work::Progress> {
+  use std::io::IsTerminal;
+  let enabled = match value.map_or("auto", String::as_str) {
+    "auto" => std::io::stderr().is_terminal(),
+    "always" => true,
+    "never" => false,
+    _ => return Err(argument("Use --progress auto, always or never")),
+  };
+  Ok(crate::work::Progress::new(
+    enabled && ["update", "ask", "review"].contains(&command),
+  ))
 }

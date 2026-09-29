@@ -6,3 +6,6 @@ mod store;
 pub(crate) use operation::Operation;
 mod model;
 pub(crate) use model::{AttemptInput, Completion, Phase, State, Work};
+
+mod progress;
+pub(crate) use progress::Progress;

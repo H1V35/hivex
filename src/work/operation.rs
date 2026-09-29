@@ -2,6 +2,7 @@ use crate::documents::RepairRange;
 use serde_json::Value;
 
 pub struct Operation {
+  pub progress: super::Progress,
   pub command: String,
   pub query: String,
   pub root: String,

@@ -40,6 +40,7 @@ pub struct BeginWork {
 pub(crate) use super::Work;
 
 pub struct Store {
+  pub progress: super::Progress,
   database: Connection,
   directory: PathBuf,
   _lease: Option<UpdateLease>,
@@ -131,6 +132,7 @@ impl Store {
         database,
         directory,
         _lease: None,
+        progress: super::Progress::default(),
       });
     }
     database.busy_timeout(Duration::from_millis(1000))?;
@@ -150,6 +152,7 @@ impl Store {
       database,
       directory,
       _lease: lease,
+      progress: super::Progress::default(),
     })
   }
 
@@ -307,7 +310,7 @@ impl Store {
     {
       let work = create_bound_work(&transaction, options, binding, initial_graph.as_ref())?;
       transaction.commit()?;
-      return Ok(work);
+      return Ok(self.progress.begin(work, false));
     }
     let work = resume_work(
       &transaction,
@@ -316,7 +319,7 @@ impl Store {
       previous_reusable,
     )?;
     transaction.commit()?;
-    Ok(work)
+    Ok(self.progress.begin(work, true))
   }
 
   pub fn save(&mut self, work: &mut Work) -> Result<()> {
@@ -489,6 +492,7 @@ fn new_work(options: &BeginWork) -> Result<Work> {
   Ok(Work {
     row_id: id,
     retry_authorized: false,
+    progress: super::Progress::default(),
     value: Value::Object(value),
   })
 }
@@ -523,6 +527,7 @@ pub(crate) fn parse_work(row_id: String, data: &str) -> Result<Work> {
     row_id,
     value,
     retry_authorized: false,
+    progress: super::Progress::default(),
   };
   work.status_or_error()?;
   Ok(work)

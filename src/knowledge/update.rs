@@ -995,6 +995,9 @@ fn extract_batch(
       required,
     );
     store.save(work)?;
+    work
+      .progress
+      .checkpoint("extraction stopped: context-limit", work);
     return Ok(None);
   }
   work.clear_context_limit();
@@ -1034,9 +1037,15 @@ fn extract_batch(
   work.set_pending(pending);
   if staged {
     store.save(work)?;
+    work
+      .progress
+      .checkpoint("extraction finished; check pending", work);
     Ok(Some(graph.clone()))
   } else {
     store.commit(work, &model::graph_value(&candidate, false))?;
+    work
+      .progress
+      .checkpoint("extraction finished; check pending", work);
     Ok(Some(candidate))
   }
 }
@@ -1174,6 +1183,9 @@ fn admit_check_context(
       required,
     );
     store.save(work)?;
+    work
+      .progress
+      .checkpoint("check stopped: context-limit", work);
     return Ok(false);
   }
   work.clear_context_limit();
@@ -1194,13 +1206,38 @@ fn can_review_warnings(candidate: &Graph, pending: &Value, check: &model::Knowle
   !invalid && pending["packet"].get("warningCandidates").is_some() && check.findings.is_empty()
 }
 
+fn apply_batch_check(
+  evidence: BatchEvidence<'_>,
+  candidate: &Graph,
+  pending: &Value,
+  value: &Value,
+) -> Result<(Graph, model::KnowledgeCheck)> {
+  let BatchEvidence { project, plan } = evidence;
+  let ids = strings(&pending["units"]);
+  let ranges: Vec<_> = plan
+    .units
+    .iter()
+    .filter(|unit| ids.contains(&unit.id))
+    .map(unit_range)
+    .collect();
+  let check = model::parse_check(value)
+    .ok_or_else(|| HivexError::new("READ_FAILED", "Invalid knowledge check"))?;
+  let checked = model::apply_check(
+    candidate,
+    &check,
+    pending["batch"].as_str().unwrap_or_default(),
+    &model::warning_scope(&project.documents, Some(&ranges)),
+  );
+  Ok((checked, check))
+}
+
 fn check_batch(
   evidence: BatchEvidence<'_>,
   graph: &Graph,
   execution: BatchExecution<'_>,
   retained_only: bool,
 ) -> Result<Option<Graph>> {
-  let BatchEvidence { project, plan } = evidence;
+  let project = evidence.project;
   let BatchExecution {
     runtime,
     store,
@@ -1226,6 +1263,9 @@ fn check_batch(
   }
   let prior_calls = work.calls();
   let value = if retained_only {
+    work
+      .progress
+      .message(format_args!("check: started; reassessing retained result"));
     retained_check(
       evidence,
       graph,
@@ -1243,20 +1283,7 @@ fn check_batch(
     return Ok(None);
   };
   let ids = strings(&pending["units"]);
-  let ranges: Vec<_> = plan
-    .units
-    .iter()
-    .filter(|unit| ids.contains(&unit.id))
-    .map(unit_range)
-    .collect();
-  let check = model::parse_check(&value)
-    .ok_or_else(|| HivexError::new("READ_FAILED", "Invalid knowledge check"))?;
-  let mut checked = model::apply_check(
-    &candidate,
-    &check,
-    pending["batch"].as_str().unwrap_or_default(),
-    &model::warning_scope(&project.documents, Some(&ranges)),
-  );
+  let (mut checked, check) = apply_batch_check(evidence, &candidate, &pending, &value)?;
   let reviewed = if let Some(path) = &runtime.resolve {
     let (resolved, reviewed) = super::warnings::resolve_candidate(&checked, project, work, path)?;
     checked = resolved;
@@ -1275,6 +1302,10 @@ fn check_batch(
     work.set_pending(retained);
     work.reject_check(!local,format!("Previous graph retained. Unresolved relationship changes: {}. Inspect this result before proposing a different repair; no automatic retry.",unresolved.join(", ")));
     store.save(work)?;
+    work.progress.checkpoint(
+      "check failed; admission blocked; prior graph retained",
+      work,
+    );
     return Ok(Some(graph.clone()));
   }
 
@@ -1294,9 +1325,16 @@ fn check_batch(
       &checked, project, &check
     )));
   }
+  work.progress.message(format_args!(
+    "check finished; findings={}; admission started",
+    check.findings.len()
+  ));
   work.accept_check();
   finish_round(evidence, &mut checked, work, &ids);
   store.commit(work, &model::graph_value(&checked, false))?;
+  work
+    .progress
+    .checkpoint("admission finished; batch checkpoint saved", work);
   Ok(Some(checked))
 }
 fn update_response(
@@ -1307,6 +1345,7 @@ fn update_response(
 ) -> Value {
   let BatchEvidence { project, plan } = evidence;
   let units = &plan.units;
+  work.progress.checkpoint("update checkpoint", work);
   let summary = model::warning_summary(&graph.warnings, &project.documents);
   let status = if work.status() == crate::work::State::Done {
     if summary.findings + summary.validation + summary.unknown + project.warnings.len() > 0 {
@@ -1412,6 +1451,7 @@ pub fn update_with_store(
   store: &mut Store,
   shared: Option<Work>,
 ) -> Result<(Value, Work)> {
+  store.progress = runtime.progress;
   let mut graph = update_graph(project, store)?;
   let (plan, mut work) = prepare_update(
     SourceGraph {
