@@ -355,7 +355,8 @@ fn prepare_update(
 ) -> Result<(IngestionResult, Work)> {
   let mut prepared = plan_update(state, runtime, shared.as_ref())?;
   let selected =
-    super::warnings::select_resolution_work(runtime.resolve.as_deref(), &prepared.key, store)?;
+    super::warnings::select_resolution_work(runtime.resolve.as_deref(), &prepared.key, store)?
+      .map(|work| runtime.progress.begin(work, true));
   if let Some(work) = &selected
     && super::warnings::replay_resolution(
       work,

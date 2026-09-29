@@ -144,7 +144,9 @@ fn preserves_endpoints(
     .iter()
     .all(|(side, id)| {
       let old = &previous[*side];
-      if context.graph.decisions.iter().any(|node| *old == node.id) {
+      if context.graph.decisions.iter().any(|node| {
+        *old == node.id && is_current_source(context.project, &node.document, Some(&node.version))
+      }) {
         return old == *id;
       }
       let source = context.packet["previousDecisions"]

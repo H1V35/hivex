@@ -1,5 +1,5 @@
 use super::repair::{REPAIR, preserving_repair};
-use crate::support::{Project, list};
+use crate::support::{Project, decision, list};
 use serde_json::{Value, json};
 use std::fs;
 
@@ -61,7 +61,9 @@ fn review(failed: &Value, packet: &Value) -> Value {
     json!({"document":document["id"],"lineStart":3,"lineEnd":3,"version":document["version"]})
   }).collect();
   let changes: Vec<_> = list(packet, "removedRelationships").iter().enumerate().map(|(index, previous)| {
-    json!({"previousId":previous["id"],"replacements":[packet["extraction"]["relationships"][index]["id"]],
+    let replacement = list(&packet["extraction"], "relationships").get(index)
+      .map_or(&previous["id"], |edge| &edge["id"]);
+    json!({"previousId":previous["id"],"replacements":[replacement],
       "reason":"The current endpoint definitions and source passages preserve the previous relationship meaning, direction and conditions.","evidence":evidence})
   }).collect();
   let resolutions: Vec<_> = list(failed, "pendingCandidateWarnings").iter().map(|warning| {
@@ -71,6 +73,138 @@ fn review(failed: &Value, packet: &Value) -> Value {
   file["resolutions"] = json!(resolutions);
   file["relationshipChanges"] = json!(changes);
   file
+}
+
+fn transitioned_candidate(stale: bool) -> (Project, Value) {
+  let p = Project::new();
+  p.model("");
+  let sources = [
+    (
+      "a.md",
+      "Alpha requires Beta. Alternative requires Beta separately.",
+    ),
+    ("b.md", "Beta is a prerequisite."),
+    ("c.md", "An independent Gamma rule."),
+    ("d.md", "An independent Delta rule."),
+    ("z.md", "Zeta requires Alpha."),
+  ];
+  let mut responses = json!({"capturePackets":true,"byDocument":{},"check":{"findings":[]}});
+  for (name, text) in sources {
+    p.write(name, format!("# Rule\n\n{text}\n"));
+    responses["byDocument"][name] =
+      json!({"decisions":[decision(name,name,3,text)],"relationships":[]});
+  }
+  responses["byDocument"]["a.md"]["decisions"][0]["text"] = json!("Alpha requires Beta.");
+  responses["byDocument"]["a.md"]["decisions"]
+    .as_array_mut()
+    .unwrap()
+    .push(decision(
+      "a.md",
+      "alternative",
+      3,
+      "Alternative requires Beta separately.",
+    ));
+  responses["byDocument"]["a.md"]["relationships"] = json!([{
+    "id":"r1","from":"a.md","to":"b.md","type":"requires","reason":"Alpha requires the Beta prerequisite.",
+    "evidence":[{"document":"a.md","lineStart":3,"lineEnd":3},{"document":"b.md","lineStart":3,"lineEnd":3}]
+  }]);
+  responses["byDocument"]["z.md"]["relationships"] = json!([{
+    "id":"r2","from":"z.md","to":"@existing:a.md","type":"requires","reason":"Zeta requires Alpha.",
+    "evidence":[{"document":"a.md","lineStart":3,"lineEnd":3},{"document":"z.md","lineStart":3,"lineEnd":3}]
+  }]);
+  p.json("responses.json", &responses);
+  assert_eq!(
+    p.model_cli(&["update", "--max-calls", "8"])["status"],
+    "ready"
+  );
+  for (name, text) in sources {
+    if stale || name != "a.md" {
+      p.write(name, format!("# Rule\n\n{text} Clarified wording.\n"));
+    }
+  }
+  if !stale {
+    let graph = p.graph();
+    let alternative = list(&graph, "decisions")
+      .iter()
+      .find(|node| node["text"] == "Alternative requires Beta separately.")
+      .unwrap();
+    let mut edge = responses["byDocument"]["a.md"]["relationships"][0].clone();
+    edge["from"] = alternative["id"].clone();
+    responses["byDocument"]["b.md"]["relationships"] = json!([edge]);
+  }
+  responses["check"]["relationshipChanges"] = json!([]);
+  p.json("responses.json", &responses);
+  let failed = p.model_cli(&["update", "--max-calls", "8"]);
+  assert_eq!(failed["status"], "failed");
+  (p, failed)
+}
+
+#[test]
+fn relationship_review_rebinds_obsolete_transitional_endpoints_but_keeps_current_ids() {
+  for stale in [true, false] {
+    let (p, failed) = transitioned_candidate(stale);
+    let context = &failed["pendingRelationshipReview"];
+    let previous = &context["previousRelationships"][0];
+    let old = list(context, "previousDecisions")
+      .iter()
+      .find(|node| node["id"] == previous["from"])
+      .unwrap();
+    let beta = list(context, "candidateDecisions")
+      .iter()
+      .find(|node| node["document"] == "b.md")
+      .unwrap();
+    let edge = list(context, "candidateRelationships")
+      .iter()
+      .find(|edge| edge["to"] == beta["id"])
+      .unwrap();
+    let source = list(context, "suppliedSources")
+      .iter()
+      .find(|source| source["document"] == "a.md")
+      .unwrap();
+    assert_eq!(old["retainedInCandidate"], true);
+    assert_eq!(old["version"] != source["version"], stale);
+    assert_ne!(old["id"], edge["from"]);
+    let evidence: Vec<_> = list(context, "suppliedSources").iter().map(|source| {
+      json!({"document":source["document"],"lineStart":3,"lineEnd":3,"version":source["version"]})
+    }).collect();
+    let mut file = failed["candidateResolutionContext"].clone();
+    file["resolutions"] = json!([]);
+    file["relationshipChanges"] = json!([{"previousId":previous["id"],"replacements":[edge["id"]],
+      "reason":"The current source authorities and endpoint definitions preserve the same dependency. Obsolete endpoints survive only for a deferred relationship.","evidence":evidence}]);
+    p.json("review.json", &file);
+    let path = p.path("review.json");
+    let args = [
+      "update",
+      "--retry-failed",
+      "--max-calls",
+      "0",
+      "--resolve",
+      path.to_str().unwrap(),
+      "--codex",
+      "/must-not-start",
+    ];
+    let id = failed["work"]["id"].as_str().unwrap();
+    let before = p.work(id);
+    let graph = p.graph();
+    if stale {
+      let mut progress_args = args.to_vec();
+      progress_args.extend(["--progress", "always"]);
+      let output = p.raw(&progress_args);
+      assert!(output.status.success());
+      let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+      assert_eq!(result["status"], "pending");
+      let progress = String::from_utf8(output.stderr).unwrap();
+      assert!(progress.contains("work resumed"));
+      assert!(progress.contains("reassessing retained result"));
+      assert!(progress.contains("admission finished"));
+      assert_ne!(p.graph(), graph);
+    } else {
+      assert_eq!(p.error(&args)["error"]["code"], "INVALID_RESOLUTION");
+      assert_eq!(p.graph(), graph);
+    }
+    unchanged(&before, &p.work(id));
+    assert_eq!(p.calls(), 6);
+  }
 }
 
 fn resolve(p: &Project, file: &Value) -> Value {
