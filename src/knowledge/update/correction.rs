@@ -39,6 +39,24 @@ pub(super) fn restored_ranges(pending: &Value) -> Vec<Citation> {
   serde_json::from_value(pending["retainedDecisionRanges"].clone()).unwrap_or_default()
 }
 
+fn decision_in_scope(
+  original: &model::ExtractionDecision,
+  citation: &Citation,
+  pending: &Value,
+) -> bool {
+  let restored = restored_ranges(pending);
+  if let Some(range) = restored.iter().find(|range| {
+    range.document == original.document
+      && range.line_start <= original.line_start
+      && range.line_end >= original.line_end
+  }) {
+    return model::in_ranges(citation, Some(std::slice::from_ref(range)));
+  }
+  let ranges =
+    serde_json::from_value::<Vec<Citation>>(pending["packet"]["units"].clone()).unwrap_or_default();
+  model::in_ranges(citation, Some(&ranges))
+}
+
 fn parse_correction(value: &Value) -> Result<Correction> {
   let correction: Correction = serde_json::from_value(value.clone())?;
   if value["decisions"] != json!(correction.decisions)
@@ -111,8 +129,6 @@ fn replacement(
   validate_request(correction)?;
   validate_evidence(evidence, pending, &correction.evidence)?;
   let mut extraction = model::parse_extraction(&pending["extraction"]).ok_or_else(invalid)?;
-  let mut ranges: Vec<Citation> = serde_json::from_value(pending["packet"]["units"].clone())?;
-  ranges.extend(restored_ranges(pending));
   let mut seen = HashSet::new();
   for decision in &correction.decisions {
     let original = extraction
@@ -128,7 +144,7 @@ fn replacement(
     };
     if !seen.insert(&decision.id)
       || !model::valid_citation(&citation, &evidence.project.documents)
-      || !model::in_ranges(&citation, Some(&ranges))
+      || !decision_in_scope(original, &citation, pending)
       || !model::supplied_citation(&citation, &supplied)
     {
       return Err(invalid());
@@ -421,4 +437,42 @@ pub(super) fn apply(
   pending["boundCheckTargets"] = json!(true);
   work.correct_pending(pending, record);
   store.save(work)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn later_corrections_keep_restored_ranges_separate_from_ordinary_pending_targets() {
+    let pending = json!({"packet":{"units":[
+      {"document":"guide.md","lineStart":200,"lineEnd":215},
+      {"document":"guide.md","lineStart":216,"lineEnd":240}
+    ]},"retainedDecisionRanges":[{"document":"guide.md","lineStart":118,"lineEnd":118,"version":"current"}]});
+    let original = |line| model::ExtractionDecision {
+      document: "guide.md".into(),
+      line_start: line,
+      line_end: line,
+      ..Default::default()
+    };
+    let cite = |start, end| Citation {
+      document: "guide.md".into(),
+      line_start: start,
+      line_end: end,
+      version: None,
+    };
+    assert!(decision_in_scope(&original(118), &cite(118, 118), &pending));
+    assert!(!decision_in_scope(
+      &original(118),
+      &cite(240, 240),
+      &pending
+    ));
+    assert!(decision_in_scope(&original(205), &cite(240, 240), &pending));
+    assert!(decision_in_scope(&original(205), &cite(210, 220), &pending));
+    assert!(!decision_in_scope(
+      &original(205),
+      &cite(118, 118),
+      &pending
+    ));
+  }
 }
