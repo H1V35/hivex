@@ -377,9 +377,14 @@ fn uncertain_invocations_require_acknowledgement_before_explicit_retry() {
   for scenario in ["unconfirmed-interrupt", "start-unconfirmed"] {
     let p = Project::policy();
     p.model(scenario);
-    let failed = p.model_cli(&["update", "--deadline-ms", "100"]);
+    let failed = p.model_cli(&["update", "--deadline-ms", "1000"]);
     let id = failed["work"]["id"].as_str().unwrap();
     let before = p.work(id);
+    assert_eq!(
+      p.calls(),
+      1,
+      "{scenario}: the fixture must reach turn/start"
+    );
     p.model("");
     let blocked = p.error(&[
       "update",
