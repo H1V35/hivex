@@ -363,7 +363,14 @@ fn verified_candidate(
   correction: &Correction,
 ) -> Result<(Value, Graph)> {
   let work = &execution.work;
-  if !retained_reassessment(execution.runtime, work)?
+  let prepared = work.value()["corrections"]
+    .as_array()
+    .and_then(|records| records.last())
+    .is_some_and(|record| {
+      record["hash"] == work.value()["pending"]["packet"]["candidateCorrection"]
+        && record["correction"]["checkInputHash"] == correction.check_input_hash
+    });
+  if !(retained_reassessment(execution.runtime, work)? || prepared)
     || work.value()["pending"]["staged"] != true
     || !pending_current(evidence.project, &work.value()["pending"])
     || work
@@ -375,12 +382,47 @@ fn verified_candidate(
   }
   let pending = work.value()["pending"].clone();
   let candidate = materialize(evidence, graph, &pending, true)?;
-  model_runtime::verified_retained_check(
-    work,
-    &check_request(graph, &candidate, &pending),
-    &execution.runtime.execution,
-  )?;
+  verify_original_check(evidence, graph, execution, &pending)?;
   Ok((pending, candidate))
+}
+
+fn verify_original_check(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  execution: &BatchExecution<'_>,
+  pending: &Value,
+) -> Result<()> {
+  let verify = |pending: &Value| {
+    let candidate = materialize(evidence, graph, pending, true)?;
+    model_runtime::verified_retained_check(
+      execution.work,
+      &check_request(graph, &candidate, pending),
+      &execution.runtime.execution,
+    )
+    .map(|_| ())
+  };
+  if verify(pending).is_ok() {
+    return Ok(());
+  }
+  let mut previous = pending;
+  for record in execution.work.value()["corrections"]
+    .as_array()
+    .into_iter()
+    .flatten()
+    .rev()
+  {
+    if previous["packet"]["candidateCorrection"] != record["hash"] {
+      continue;
+    }
+    previous = &record["previousPending"];
+    if !pending_current(evidence.project, previous) || previous["units"] != pending["units"] {
+      return Err(invalid());
+    }
+    if verify(previous).is_ok() {
+      return Ok(());
+    }
+  }
+  Err(invalid())
 }
 
 pub(super) fn apply(

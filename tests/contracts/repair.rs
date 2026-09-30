@@ -816,6 +816,53 @@ fn candidate_correction_requires_a_fresh_check_and_preserves_history_and_budget(
 }
 
 #[test]
+fn prepared_correction_can_be_amended_before_one_fresh_check() {
+  let (p, rejected) = rejected_candidate_resolution("valid");
+  let mut correction = correction_file(&p, &rejected);
+  let id = rejected["work"]["id"].as_str().unwrap();
+  let before = p.work(id);
+  let graph = p.graph();
+  let path = p.path("correction.json");
+  let mut args = REPAIR.to_vec();
+  args.extend([
+    "--retry-failed",
+    "--correct",
+    path.to_str().unwrap(),
+    "--max-calls",
+    "2",
+  ]);
+  for text in [
+    "Ordinary cached data expires after seven days.",
+    "Cached data expires after seven days.",
+    "The ordinary cache lifetime is seven days.",
+  ] {
+    correction["decisions"][0]["text"] = json!(text);
+    p.json("correction.json", &correction);
+    let result = p.model_cli(&args);
+    assert_eq!(result["status"], "budget-exhausted");
+    assert_eq!(result["work"]["id"], id);
+    for field in ["attempts", "calls", "inputBytes", "totalTokens"] {
+      assert_eq!(p.work(id)[field], before[field]);
+    }
+    assert_eq!(p.graph(), graph);
+  }
+  assert_eq!(list(&p.work(id), "corrections").len(), 3);
+  let mut responses = p.read_json("responses.json");
+  responses["check"]["findings"] = json!([]);
+  p.json("responses.json", &responses);
+  args.pop();
+  args.push("3");
+  let result = p.model_cli(&args);
+  assert_eq!(result["status"], "ready");
+  assert_eq!(result["work"]["calls"], 3);
+  assert_eq!(
+    &list(&p.work(id), "attempts")[..2],
+    list(&before, "attempts")
+  );
+  assert_eq!(p.work(id)["attempts"][2]["stage"], "check");
+}
+
+#[test]
 fn relationship_correction_reuses_extraction_and_requires_a_budgeted_check() {
   for (replace, complete_check) in [(false, true), (true, true), (false, false)] {
     let p = Project::policy();
