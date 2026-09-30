@@ -229,6 +229,19 @@ pub fn retained_check_result(
   request: &Request,
   execution: &Execution,
 ) -> Result<Option<Value>> {
+  let value = verified_retained_check(work, request, execution)?;
+  let attempt = work
+    .attempts()
+    .and_then(|attempts| attempts.last())
+    .ok_or_else(invalid_retained)?;
+  Ok((attempt["inputHash"] == model_input(request, execution).fingerprint).then_some(value))
+}
+
+pub fn verified_retained_check(
+  work: &Work,
+  request: &Request,
+  execution: &Execution,
+) -> Result<Value> {
   let attempt = work
     .attempts()
     .and_then(|attempts| attempts.last())
@@ -240,11 +253,9 @@ pub fn retained_check_result(
   {
     return Err(invalid_retained());
   }
-  let value = request
+  request
     .parse(&attempt["result"])
-    .ok_or_else(invalid_retained)?;
-  // A replaced profile validates historical provenance but requires a new check.
-  Ok((attempt["inputHash"] == model_input(request, execution).fingerprint).then_some(value))
+    .ok_or_else(invalid_retained)
 }
 
 fn retained_input_matches(
@@ -257,11 +268,26 @@ fn retained_input_matches(
   if saved == &input.fingerprint {
     return true;
   }
-  work.value()["profileReplacement"]["to"] == json!(execution.profile())
-    && execution.legacy_identity.as_ref().is_some_and(|model| {
-      saved
-        == &hash(&json!({"prompt":input.prompt,"schema":input.schema,"model":model}).to_string())
-    })
+  let replacement = &work.value()["profileReplacement"];
+  replacement["to"] == json!(execution.profile())
+    && std::iter::once(replacement)
+      .chain(
+        replacement["previousReplacements"]
+          .as_array()
+          .into_iter()
+          .flatten(),
+      )
+      .any(|record| {
+        record
+          .get("previousModel")
+          .or(execution.legacy_identity.as_ref())
+          .is_some_and(|model| {
+            saved
+              == &hash(
+                &json!({"prompt":input.prompt,"schema":input.schema,"model":model}).to_string(),
+              )
+          })
+      })
 }
 
 pub fn run_model(

@@ -4,6 +4,7 @@ mod contracts {
   pub mod documents;
   pub mod knowledge;
   pub mod maintenance;
+  pub mod profile_continuity;
   pub mod progress;
   pub mod relationship_review;
   pub mod relationships;

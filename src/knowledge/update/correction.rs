@@ -375,15 +375,11 @@ fn verified_candidate(
   }
   let pending = work.value()["pending"].clone();
   let candidate = materialize(evidence, graph, &pending, true)?;
-  if model_runtime::retained_check_result(
+  model_runtime::verified_retained_check(
     work,
     &check_request(graph, &candidate, &pending),
     &execution.runtime.execution,
-  )?
-  .is_none()
-  {
-    return Err(invalid());
-  }
+  )?;
   Ok((pending, candidate))
 }
 

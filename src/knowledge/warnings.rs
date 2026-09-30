@@ -492,7 +492,12 @@ pub(super) fn select_resolution_work(
   path: Option<&str>,
   key: &str,
   store: &Store,
+  resume_with_profile: Option<&str>,
 ) -> Result<Option<Work>> {
+  // The explicit selector must pass the transactional profile/scope validation.
+  if resume_with_profile.is_some() {
+    return Ok(None);
+  }
   let Some(path) = path else {
     return Ok(None);
   };

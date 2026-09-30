@@ -378,11 +378,15 @@ fn prepare_update(
   runtime: &Options,
   store: &mut Store,
   shared: Option<Work>,
-) -> Result<(IngestionResult, Work)> {
+) -> Result<(IngestionResult, Work, Option<Graph>)> {
   let mut prepared = plan_update(state, runtime, shared.as_ref())?;
-  let selected =
-    super::warnings::select_resolution_work(runtime.resolve.as_deref(), &prepared.key, store)?
-      .map(|work| runtime.progress.begin(work, true));
+  let selected = super::warnings::select_resolution_work(
+    runtime.resolve.as_deref(),
+    &prepared.key,
+    store,
+    runtime.resume_with_profile.as_deref(),
+  )?
+  .map(|work| runtime.progress.begin(work, true));
   if let Some(work) = &selected
     && super::warnings::replay_resolution(
       work,
@@ -391,7 +395,7 @@ fn prepare_update(
       state.graph,
     )?
   {
-    return Ok((prepared.plan, work.clone()));
+    return Ok((prepared.plan, work.clone(), None));
   }
   let mut work = match shared.or(selected) {
     Some(work) => work,
@@ -406,17 +410,34 @@ fn prepare_update(
         snapshot: prepared.snapshot.clone(),
         warning_baseline: Some(json!(warnings::warning_baseline(state.graph))),
       },
-      &runtime.execution.binding(&prepared.identity),
+      &runtime.execution_binding(&prepared.identity),
     )?,
   };
+  let graph = work
+    .execution_changed()
+    .then(|| update_graph(state.project, store))
+    .transpose()?;
+  let current_graph = graph.as_ref().unwrap_or(state.graph);
+  if graph.is_some() {
+    let scoped = work.value()["plannedUnits"].as_array().map(|_| &work);
+    prepared = plan_update(
+      SourceGraph {
+        project: state.project,
+        graph: current_graph,
+      },
+      runtime,
+      scoped,
+    )?;
+  }
   prepared.restore(&mut work)?;
-  reconcile_pending(state.graph, runtime, &mut work, &prepared.remaining)?;
+  work.restore_retained_failure();
+  reconcile_pending(current_graph, runtime, &mut work, &prepared.remaining)?;
   work.set_remaining(prepared.remaining);
   store.save(&mut work)?;
   if work.retry_failed(runtime.retry_failed)? {
     store.save(&mut work)?;
   }
-  Ok((prepared.plan, work))
+  Ok((prepared.plan, work, graph))
 }
 
 fn plan_update(
@@ -476,7 +497,7 @@ fn plan_update(
   );
   let identity = update_identity(runtime, &snapshot, context_sources);
   let key = hash(&identity.to_string());
-  let binding = runtime.execution.binding(&identity);
+  let binding = runtime.execution_binding(&identity);
   let replaced_key = binding.replaced_profile.and(binding.legacy_key);
   let remaining: Vec<_> = plan
     .units
@@ -1600,7 +1621,7 @@ pub fn update_with_store(
 ) -> Result<(Value, Work)> {
   store.progress = runtime.progress;
   let mut graph = update_graph(project, store)?;
-  let (plan, mut work) = prepare_update(
+  let (plan, mut work, prepared_graph) = prepare_update(
     SourceGraph {
       project,
       graph: &graph,
@@ -1609,6 +1630,7 @@ pub fn update_with_store(
     store,
     shared,
   )?;
+  graph = prepared_graph.unwrap_or(graph);
   project.warnings.extend(plan.warnings.clone());
   let evidence = BatchEvidence {
     project,
@@ -1856,19 +1878,16 @@ fn retained_check(
   } = execution;
   let pending = work.value()["pending"].clone();
   if runtime.resolve.is_some() {
-    return model_runtime::retained_check_result(work, request, &runtime.execution)?
-      .map(Some)
-      .ok_or_else(|| {
-        HivexError::new(
-          "STALE_RETAINED_CHECK",
-          "Candidate resolutions require the exact retained check. No model call was made.",
-        )
-      });
+    return model_runtime::verified_retained_check(work, request, &runtime.execution).map(Some);
   }
   Ok(
     match model_runtime::retained_check_result(work, request, &runtime.execution) {
       Ok(Some(value)) => Some(value),
-      Ok(None) => model_runtime::run_model(work, store, &runtime.execution, request)?,
+      Ok(None) => Some(model_runtime::verified_retained_check(
+        work,
+        request,
+        &runtime.execution,
+      )?),
       Err(error) if error.code == "STALE_RETAINED_CHECK" => {
         let legacy = materialize(evidence, graph, &pending, false)?;
         let legacy_request = Request {

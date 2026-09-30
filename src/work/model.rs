@@ -89,9 +89,33 @@ pub struct Work {
   pub(super) row_id: String,
   pub(super) value: Value,
   pub(super) retry_authorized: bool,
+  pub(super) execution_changed: bool,
+  pub(super) invocation_limit: Option<u64>,
 }
 
 impl Work {
+  pub fn restore_retained_failure(&mut self) {
+    let Some(attempt) = self.attempts().and_then(|attempts| attempts.last()) else {
+      return;
+    };
+    let changed = self.value["corrections"]
+      .as_array()
+      .and_then(|records| records.last())
+      .is_some_and(|record| {
+        record["hash"] == self.value["pending"]["packet"]["candidateCorrection"]
+          && record["correction"]["checkInputHash"] == attempt["inputHash"]
+      });
+    if [State::BudgetExhausted, State::ContextLimit].contains(&self.status())
+      && self.value["pending"]["staged"] == true
+      && attempt["error"] == "RELATIONSHIP_LOSS"
+      && !changed
+    {
+      self.value["status"] = json!(State::Failed);
+    }
+  }
+  pub fn execution_changed(&self) -> bool {
+    self.execution_changed
+  }
   pub fn value(&self) -> &Value {
     &self.value
   }
@@ -225,7 +249,7 @@ impl Work {
     Budget {
       calls: self.calls(),
       input_bytes: self.input_bytes(),
-      max_calls: self.max_calls(),
+      max_calls: self.invocation_limit.unwrap_or_else(|| self.max_calls()),
       max_input_bytes: self.max_input_bytes(),
     }
   }
@@ -461,6 +485,12 @@ impl Work {
       self.retry_authorized = true;
       return Ok(false);
     }
+    self.ensure_retry_evidence()?;
+    self.resume();
+    Ok(true)
+  }
+  fn ensure_retry_evidence(&self) -> Result<()> {
+    let last = self.attempts().and_then(|attempts| attempts.last());
     let last = last.cloned().unwrap_or(Value::Null);
     let report = &last["report"];
     let confirmed = report["outcome"].is_string()
@@ -479,8 +509,7 @@ impl Work {
         ),
       ));
     }
-    self.resume();
-    Ok(true)
+    Ok(())
   }
   pub fn accept_check(&mut self) {
     self.resume();
@@ -488,9 +517,32 @@ impl Work {
 }
 
 impl Work {
-  pub(super) fn bind_execution(&mut self, key: &str, profile: &Value) {
+  pub(super) fn bind_execution(&mut self, key: &str, profile: &Value, identity: &Value) {
     self.value["operationKey"] = json!(key);
     self.value["executionProfile"] = profile.clone();
+    self.value["executionIdentity"] = identity.clone();
+  }
+
+  pub(super) fn ensure_profile_change(&self) -> Result<()> {
+    self.ensure_open()?;
+    if self.status() == State::Running {
+      return Err(HivexError::new(
+        "WORK_RUNNING",
+        "Inspect the unfinished invocation before replacing its execution profile",
+      ));
+    }
+    let report = self
+      .attempts()
+      .and_then(|attempts| attempts.last())
+      .map(|attempt| &attempt["report"]);
+    if self.status() == State::Failed
+      || report.is_some_and(|report| {
+        report["turnAccepted"] == "unknown" || report["interruption"] == "unconfirmed"
+      })
+    {
+      self.ensure_retry_evidence()?;
+    }
+    Ok(())
   }
 }
 
