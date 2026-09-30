@@ -75,6 +75,32 @@ mod context_tests {
       assert_eq!(packet["retainedRelationships"].as_array().unwrap().len(), 1);
     }
   }
+
+  #[test]
+  fn restored_check_scope_is_explicit_without_rewriting_older_request_contracts() {
+    let pending = json!({"batch":"work:pending","materializedCheck":true,
+      "retainedDecisionRanges":[{"document":"guide.md","lineStart":118,"lineEnd":118,"version":"current"}],
+      "packet":{"scope":"Original target ranges only.","units":[],"documents":[]}});
+    let graph = model::empty_graph();
+    let legacy = check_request(&graph, &graph, &pending);
+    assert!(legacy.packet.get("restoredDecisionRanges").is_none());
+    assert!(!legacy.instruction.contains("explicitly authorizes"));
+    let mut corrected = pending.clone();
+    corrected["restoredDecisionContext"] = json!(true);
+    let request = check_request(&graph, &graph, &corrected);
+    assert_eq!(
+      request.packet["restoredDecisionRanges"],
+      pending["retainedDecisionRanges"]
+    );
+    assert!(request.instruction.contains("not certify semantics"));
+    assert!(
+      request.packet["scope"]
+        .as_str()
+        .unwrap()
+        .contains("Original units bound ordinary replacement targets")
+    );
+    assert_eq!(legacy.packet["units"], request.packet["units"]);
+  }
 }
 
 fn unique(values: impl IntoIterator<Item = String>) -> Vec<String> {
@@ -1089,6 +1115,14 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
     instruction.push_str(warnings::WARNING_REVIEW_INSTRUCTION);
   }
   let mut packet = checked_packet(graph, candidate, pending, true);
+  if pending["restoredDecisionContext"] == true && !correction::restored_ranges(pending).is_empty()
+  {
+    packet["restoredDecisionRanges"] = json!(correction::restored_ranges(pending));
+    packet["scope"] = json!(
+      "Original units bound ordinary replacement targets. restoredDecisionRanges additionally permit explicitly restored protected endpoints in earlier processed units of this same work. Their current source ranges and work attribution were locally validated; this is permission to propose these endpoints, not approval of their semantic correctness. Other supplied knowledge remains context."
+    );
+    instruction.push_str(" restoredDecisionRanges explicitly authorizes candidate endpoint restorations outside the ordinary ingestion units, from earlier processed and attributable units of this work. Do not reject such a candidate merely because its range is outside ordinary units. Check its meaning and dependencies against current Markdown; the permission does not certify semantics or allow overwriting accepted knowledge.");
+  }
   if pending["boundCheckTargets"] == true {
     packet["checkTargets"] = check_targets(&packet);
     instruction.push_str(" Use only exact checkTargets IDs. Never shorten or reconstruct an ID. All protected previous relationship IDs remain eligible finding targets.");

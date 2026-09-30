@@ -62,6 +62,17 @@ fn restored_range(
   Ok(citation)
 }
 
+fn same_interpretation(entry: &model::Decision, node: &model::ExtractionDecision) -> bool {
+  entry.document == node.document
+    && entry.line_start == node.line_start
+    && entry.line_end == node.line_end
+    && entry.text == node.text
+    && entry.conditions == node.conditions
+    && entry.exceptions == node.exceptions
+    && entry.kind == node.kind
+    && entry.status == node.status
+}
+
 fn decision_collision(
   record: &DecisionReplacement,
   graph: &model::Graph,
@@ -76,7 +87,7 @@ fn decision_collision(
     entry.id == node.id
       || entry.local_id == node.id
       || (crate::knowledge::is_current_source(project, &entry.document, Some(&entry.version))
-        && overlaps(&entry.document, entry.line_start, entry.line_end))
+        && same_interpretation(entry, node))
   }) || pending["extraction"]["decisions"]
     .as_array()
     .into_iter()
@@ -178,6 +189,7 @@ pub(super) fn comparison_ranges(
   pending: &Value,
   graph: &model::Graph,
   records: &[Replacement],
+  project: &crate::documents::Project,
 ) -> Result<Vec<model::Citation>> {
   let mut ranges = Vec::new();
   for previous in pending["packet"]["previousRelationships"]
@@ -225,7 +237,53 @@ pub(super) fn comparison_ranges(
       ranges.push(decision_range(node));
     }
   }
+  ranges.extend(current_edge_ranges(graph, pending, project));
   Ok(ranges)
+}
+
+fn current_edge_ranges(
+  graph: &model::Graph,
+  pending: &Value,
+  project: &crate::documents::Project,
+) -> Vec<model::Citation> {
+  let mut ranges = Vec::new();
+  let work = pending["batch"]
+    .as_str()
+    .and_then(|batch| batch.split_once(':'))
+    .map(|(id, _)| id);
+  for edge in &graph.relationships {
+    let supplied = [&edge.from, &edge.to].iter().all(|id| {
+      pending["existing"]
+        .as_array()
+        .is_some_and(|ids| ids.contains(&json!(id)))
+        && graph.decisions.iter().any(|node| {
+          node.id == **id
+            && crate::knowledge::is_current_source(project, &node.document, Some(&node.version))
+        })
+    });
+    if edge.batch != pending["batch"]
+      && edge.batch.split_once(':').map(|(id, _)| id) == work
+      && supplied
+      && edge.evidence.iter().all(|citation| {
+        crate::knowledge::is_current_source(
+          project,
+          &citation.document,
+          citation.version.as_deref(),
+        ) && model::valid_citation(citation, &project.documents)
+          && pending["packet"]["documents"]
+            .as_array()
+            .is_some_and(|documents| {
+              documents.iter().any(|document| {
+                document["id"] == citation.document
+                  && document["version"].as_str() == citation.version.as_deref()
+              })
+            })
+      })
+    {
+      ranges.extend(edge.evidence.clone());
+    }
+  }
+  ranges
 }
 
 #[derive(Deserialize, Serialize)]
@@ -414,5 +472,65 @@ mod tests {
         "{case}"
       );
     }
+  }
+
+  #[test]
+  fn current_edge_context_does_not_add_an_unselected_third_authority() {
+    let document = |id: &str| Document {
+      id: id.into(),
+      path: id.into(),
+      title: id.into(),
+      text: "# Rule\n\nCurrent rule.\n".into(),
+      hash: "current".into(),
+      status: None,
+      historical: false,
+      links: Vec::new(),
+    };
+    let project = Project {
+      root: std::path::PathBuf::new(),
+      snapshot: String::new(),
+      current_snapshot: String::new(),
+      documents: vec![document("a.md"), document("b.md"), document("c.md")],
+      current_documents: Vec::new(),
+      historical_documents: Vec::new(),
+      warnings: Vec::new(),
+    };
+    let node = |id: &str| model::Decision {
+      id: id.into(),
+      document: id.into(),
+      version: "current".into(),
+      line_start: 3,
+      line_end: 3,
+      ..Default::default()
+    };
+    let evidence = model::Citation {
+      document: "c.md".into(),
+      line_start: 3,
+      line_end: 3,
+      version: Some("current".into()),
+    };
+    let graph = model::Graph {
+      decisions: vec![node("a.md"), node("b.md")],
+      relationships: vec![model::Relationship {
+        from: "a.md".into(),
+        to: "b.md".into(),
+        batch: "work:earlier".into(),
+        evidence: vec![evidence.clone()],
+        ..Default::default()
+      }],
+      ..Default::default()
+    };
+    let mut pending = json!({"batch":"work:pending","existing":["a.md","b.md"],"packet":{"documents":[
+      {"id":"a.md","version":"current"},{"id":"b.md","version":"current"}
+    ]}});
+    assert!(current_edge_ranges(&graph, &pending, &project).is_empty());
+    pending["packet"]["documents"]
+      .as_array_mut()
+      .unwrap()
+      .push(json!({"id":"c.md","version":"current"}));
+    assert_eq!(
+      current_edge_ranges(&graph, &pending, &project),
+      vec![evidence]
+    );
   }
 }

@@ -275,6 +275,27 @@ fn validate_changed_candidate(
   pending: &Value,
 ) -> Result<()> {
   let batch = pending["batch"].as_str().unwrap_or_default();
+  let ranges: Vec<Citation> = serde_json::from_value(pending["packet"]["units"].clone())?;
+  let present: std::collections::HashMap<_, _> = after
+    .graph
+    .decisions
+    .iter()
+    .map(|node| (&node.id, node))
+    .collect();
+  if !correction.retained_decisions.is_empty()
+    && before.decisions.iter().any(|node| {
+      node.batch != batch
+        && is_current_source(after.project, &node.document, Some(&node.version))
+        && !ranges
+          .iter()
+          .any(|range| super::overlaps(range, &super::decision_range(node)))
+        && present
+          .get(&node.id)
+          .is_none_or(|current| **current != *node)
+    })
+  {
+    return Err(invalid());
+  }
   let valid_edge = |edge: &model::Relationship| {
     let endpoints: Vec<_> = after
       .graph
@@ -392,8 +413,12 @@ pub(super) fn apply(
   let record = json!({"hash":fingerprint,"correction":value,"previousPending":pending});
   let retained_ranges = retained::decision_ranges(evidence, graph, work, &correction)?;
   retained::supply_ranges(evidence.project, &mut pending, &retained_ranges)?;
-  let comparison_ranges =
-    retained::comparison_ranges(&pending, graph, &correction.retained_relationships)?;
+  let comparison_ranges = retained::comparison_ranges(
+    &pending,
+    graph,
+    &correction.retained_relationships,
+    evidence.project,
+  )?;
   retained::supply_ranges(evidence.project, &mut pending, &comparison_ranges)?;
   retained::check_accepted(&correction.retained_relationships, graph)?;
   let extraction = replacement(evidence, &pending, &correction, &candidate)?;
@@ -435,6 +460,7 @@ pub(super) fn apply(
   // A new input identity also prevents reuse of any older native check.
   pending["packet"]["candidateCorrection"] = json!(fingerprint);
   pending["boundCheckTargets"] = json!(true);
+  pending["restoredDecisionContext"] = json!(true);
   work.correct_pending(pending, record);
   store.save(work)
 }

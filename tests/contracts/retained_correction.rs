@@ -28,14 +28,19 @@ fn failed_round(foreign: bool, missing_endpoint: bool) -> (Project, Value, Value
     if !foreign || name == "z.md" {
       p.write(
         name,
-        format!("# Rule\n\n{name} establishes the Alpha to Beta dependency. Clarified wording.\n"),
+        format!("# Rule\n\n{name} establishes the Alpha to Beta dependency. Clarified wording. Gamma also remains an independent rule.\n"),
       );
     }
   }
   responses["byDocument"]["a.md"]["relationships"] = json!([]);
   responses["byDocument"]["z.md"]["relationships"] = json!([]);
   if missing_endpoint {
-    responses["byDocument"]["a.md"]["decisions"] = json!([]);
+    responses["byDocument"]["a.md"]["decisions"] = json!([decision(
+      "a.md",
+      "gamma",
+      3,
+      "Gamma is an independent rule."
+    )]);
   }
   responses["check"]["relationshipChanges"] = json!([]);
   p.json("responses.json", &responses);
@@ -130,6 +135,16 @@ fn retained_relationship_correction_preserves_prior_rounds_and_requires_a_budget
     assert_eq!(after["attempts"][4]["stage"], "check");
     assert_eq!(p.calls(), calls + 1);
     assert_eq!(list(&p.graph(), "relationships").len(), 1);
+    for node in list(&graph, "decisions").iter().filter(|node| {
+      node["batch"]
+        .as_str()
+        .is_some_and(|batch| batch.starts_with(id))
+    }) {
+      assert!(
+        list(&p.graph(), "decisions").contains(node),
+        "accepted current interpretation changed"
+      );
+    }
     assert_eq!(p.model_cli(&args(&path, "5"))["work"]["id"], id);
     assert_eq!(p.calls(), calls + 1);
   }
@@ -219,6 +234,7 @@ fn omitted_endpoint_restoration_cannot_expand_scope_or_overwrite_current_knowled
         let previous = &failed["pendingRelationshipReview"]["previousRelationships"][0];
         record["previousId"] = previous["to"].clone();
         record["replacement"]["document"] = json!("b.md");
+        record["replacement"]["text"] = json!("b.md rule.");
       }
       "pending" => {
         record["previousId"] = json!("missing-z");
