@@ -68,7 +68,7 @@
     }
   ],
   "configuration": "Optional hivex.json with include/exclude/archive relative Markdown globs; archived sources are focused evidence.",
-  "modelOptions": "--integration <codex> --model <catalog-model> --effort <catalog-effort> --model-provider <openai> --codex <native-binary> --deadline-ms <100..1800000> --retry-failed",
+  "modelOptions": "--integration <codex> --model <catalog-model> --effort <catalog-effort> --model-provider <openai> --codex <native-binary> --deadline-ms <100..1800000> --retry-failed --resume-with-profile <work-id> (explicit update/ask/review continuation; original scope, history and budget)",
   "progress": "update, ask and review accept --progress auto|always|never (default auto: stderr terminal only). Plain stderr checkpoints and 15-second model waits; stdout remains the final JSON.",
   "purpose": "Project decisions, dependencies and exceptions for the responsible agent.",
   "stage": "Incremental project knowledge and task/diff assistance for the principal agent."

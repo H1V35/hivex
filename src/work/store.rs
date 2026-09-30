@@ -21,6 +21,10 @@ pub struct StoreOptions {
 pub struct ExecutionBinding {
   pub operation_key: String,
   pub profile: Value,
+  pub identity: Value,
+  pub resume_work_id: Option<String>,
+  pub legacy_identity: Option<Value>,
+  pub legacy_profile: Option<Value>,
   pub legacy_key: Option<String>,
   pub replaced_profile: Option<Value>,
 }
@@ -482,6 +486,8 @@ fn new_work(options: &BeginWork) -> Result<Work> {
   Ok(Work {
     row_id: id,
     retry_authorized: false,
+    execution_changed: false,
+    invocation_limit: None,
     progress: super::Progress::default(),
     value: Value::Object(value),
   })
@@ -517,6 +523,8 @@ pub(crate) fn parse_work(row_id: String, data: &str) -> Result<Work> {
     row_id,
     value,
     retry_authorized: false,
+    execution_changed: false,
+    invocation_limit: None,
     progress: super::Progress::default(),
   };
   work.status_or_error()?;
@@ -1119,51 +1127,7 @@ fn validate_execution_binding(
   options: &BeginWork,
   binding: Option<&ExecutionBinding>,
 ) -> Result<Option<Work>> {
-  let Some(binding) = binding else {
-    return Ok(None);
-  };
-  let conflicting=transaction.prepare(
-                "SELECT id,data FROM work WHERE kind=?1 AND key<>?2 AND (key=?3 OR json_extract(data,'$.operationKey')=?4) AND json_extract(data,'$.status')<>'done'",
-              )?.query_map(
-                params![options.kind,options.key,binding.legacy_key.as_deref(),binding.operation_key],
-                |row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?))
-            )?.map(|row| { let (id,data) = row?; parse_work(id,&data) }).collect::<Result<Vec<_>>>()?;
-  for work in &conflicting {
-    work.ensure_open()?;
-  }
-  let Some(mut retained) = conflicting.into_iter().find(Work::unfinished) else {
-    return Ok(None);
-  };
-  if let Some(previous_profile) = &binding.replaced_profile
-    && binding.legacy_key.as_deref() == Some(retained.key())
-    && retained
-      .value
-      .get("executionProfile")
-      .is_none_or(|profile| profile == previous_profile)
-  {
-    if retained.status() == crate::work::State::Running {
-      return Err(HivexError::new(
-        "WORK_RUNNING",
-        "Inspect the unfinished invocation before replacing its execution profile",
-      ));
-    }
-    retained.value["profileReplacement"] =
-      json!({"from":previous_profile,"to":binding.profile,"previousKey":retained.key()});
-    retained.value["key"] = json!(options.key);
-    retained.bind_execution(&binding.operation_key, &binding.profile);
-    transaction.execute(
-      "UPDATE work SET key=?1 WHERE id=?2",
-      params![options.key, retained.row_id()],
-    )?;
-    return Ok(Some(retained));
-  }
-  Err(HivexError::new(
-    "EXECUTION_PROFILE_CHANGED",
-    format!(
-      "Work {} is unfinished under a different execution profile. Resume that profile or explicitly finish/recover the work; its history and budget were preserved.",
-      retained.id()
-    ),
-  ))
+  super::profile::validate(transaction, options, binding)
 }
 
 fn create_bound_work(
@@ -1185,7 +1149,7 @@ fn create_bound_work(
   }
   let mut work = new_work(&new_options)?;
   if let Some(binding) = binding {
-    work.bind_execution(&binding.operation_key, &binding.profile);
+    work.bind_execution(&binding.operation_key, &binding.profile, &binding.identity);
   }
   insert_work(transaction, &mut work)?;
   Ok(work)
@@ -1214,8 +1178,10 @@ fn resume_work(
     remove_field(&mut work.value, "result");
     set_string(&mut work.value, "status", "pending")?;
   }
-  if let Some(max_calls) = options.max_calls {
-    set_u64(&mut work.value, "maxCalls", max_calls)?;
+  match options.max_calls {
+    Some(0) => work.invocation_limit = Some(0),
+    Some(max_calls) => set_u64(&mut work.value, "maxCalls", max_calls)?,
+    None => (),
   }
   if let Some(max_input_bytes) = options.max_input_bytes {
     set_u64(&mut work.value, "maxInputBytes", max_input_bytes)?;

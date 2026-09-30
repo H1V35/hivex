@@ -2,6 +2,7 @@ pub(crate) use store::{BeginWork, ExecutionBinding, Store, StoreOptions};
 mod maintenance;
 pub(crate) use maintenance::{Maintenance, maintain};
 mod operation;
+mod profile;
 mod store;
 mod supersession;
 pub(crate) use operation::Operation;

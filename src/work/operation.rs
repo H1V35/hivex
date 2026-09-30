@@ -17,6 +17,7 @@ pub struct Operation {
   pub repair_ranges: Vec<RepairRange>,
   pub repair_reason: String,
   pub retry_failed: bool,
+  pub resume_with_profile: Option<String>,
   pub resolve: Option<String>,
   pub correct: Option<String>,
   pub implementation: Option<Value>,
@@ -24,6 +25,11 @@ pub struct Operation {
 }
 
 impl Operation {
+  pub fn execution_binding(&self, identity: &Value) -> super::ExecutionBinding {
+    self
+      .execution
+      .binding(identity, self.resume_with_profile.as_deref())
+  }
   pub fn retrieval(&self) -> crate::knowledge::Retrieval<'_> {
     crate::knowledge::Retrieval {
       command: &self.command,

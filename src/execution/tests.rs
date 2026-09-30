@@ -90,7 +90,7 @@ fn integration_and_profile_changes_isolate_results_and_preserve_retained_work() 
     assert!(fingerprints.insert(model_input(&request, &execution).fingerprint));
     let id = identity(&execution, "fixture");
     let mut work = store
-      .begin_with_profile(&options(&id), &execution.binding(&id))
+      .begin_with_profile(&options(&id), &execution.binding(&id, None))
       .unwrap();
     assert_eq!(work.calls(), 0);
     assert!(work_ids.insert(work.id().to_owned()));
@@ -112,7 +112,7 @@ fn integration_and_profile_changes_isolate_results_and_preserve_retained_work() 
     work.complete(result.clone(), "result".into()).unwrap();
     store.save(&mut work).unwrap();
     let mut reused = store
-      .begin_with_profile(&options(&id), &execution.binding(&id))
+      .begin_with_profile(&options(&id), &execution.binding(&id, None))
       .unwrap();
     assert_eq!(
       run_model(&mut reused, &mut store, &execution, &request).unwrap(),
@@ -152,7 +152,7 @@ fn an_effective_profile_mismatch_is_retained_as_a_failed_paid_attempt() {
   );
   let id = identity(&execution, "mismatch");
   let mut work = store
-    .begin_with_profile(&options(&id), &execution.binding(&id))
+    .begin_with_profile(&options(&id), &execution.binding(&id, None))
     .unwrap();
   let request = Request {
     instruction: "Answer.".into(),
@@ -219,7 +219,7 @@ fn pending_work_preserves_profile_and_accounting() {
   );
   let id_a = identity(&execution_a, "pending");
   let mut work = store
-    .begin_with_profile(&options(&id_a), &execution_a.binding(&id_a))
+    .begin_with_profile(&options(&id_a), &execution_a.binding(&id_a, None))
     .unwrap();
   run_model(&mut work, &mut store, &execution_a, &request).unwrap();
   let retained = work.value().clone();
@@ -227,7 +227,7 @@ fn pending_work_preserves_profile_and_accounting() {
   let id_b = identity(&execution_b, "pending");
   assert_eq!(
     store
-      .begin_with_profile(&options(&id_b), &execution_b.binding(&id_b))
+      .begin_with_profile(&options(&id_b), &execution_b.binding(&id_b, None))
       .err()
       .unwrap()
       .code,

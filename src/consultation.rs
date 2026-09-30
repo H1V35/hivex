@@ -227,7 +227,7 @@ fn begin_consultation(
         .to_owned(),
       warning_baseline: Some(json!(crate::knowledge::warning_baseline(&graph))),
     },
-    &runtime.execution.binding(&identity),
+    &runtime.execution_binding(&identity),
   )
 }
 pub fn supplied_documents(packet: &Value) -> Result<Vec<SuppliedDocument>> {

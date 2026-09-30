@@ -65,6 +65,7 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
       "repair-range",
       "resolve",
       "correct",
+      "resume-with-profile",
       "root",
       "source",
     ],
@@ -135,6 +136,7 @@ pub fn operation_for(input: &[String]) -> Result<Operation> {
     repair_reason: trim_js_whitespace(values.get("reason").map(String::as_str).unwrap_or_default())
       .to_owned(),
     retry_failed: parsed.flags.contains("retry-failed"),
+    resume_with_profile: values.get("resume-with-profile").cloned(),
     resolve: values.get("resolve").cloned(),
     correct: values.get("correct").cloned(),
     implementation: None,
@@ -275,7 +277,14 @@ fn repair_ranges(parsed: &arguments::Parsed) -> Result<Vec<RepairRange>> {
   Ok(repair_ranges)
 }
 
-fn validate_operation(options: &Operation) -> Result<()> {
+fn validate_recovery_options(options: &Operation) -> Result<()> {
+  if options.resume_with_profile.as_ref().is_some_and(|id| {
+    !["update", "ask", "review"].contains(&options.command.as_str()) || id.trim().is_empty()
+  }) {
+    return Err(argument(
+      "Use --resume-with-profile <work-id> with update, ask or review.",
+    ));
+  }
   if options.correct.is_some()
     && (options.command != "update" || !options.retry_failed || options.resolve.is_some())
   {
@@ -290,6 +299,11 @@ fn validate_operation(options: &Operation) -> Result<()> {
       "Candidate resolutions require update --retry-failed --max-calls 0 --resolve <file>.",
     ));
   }
+  Ok(())
+}
+
+fn validate_operation(options: &Operation) -> Result<()> {
+  validate_recovery_options(options)?;
   if (options.command == "review") != options.base.as_ref().is_some_and(|base| !base.is_empty()) {
     return Err(argument(
       "Use review <task> --base <git-ref>; --base is only for review.",

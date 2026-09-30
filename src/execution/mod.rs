@@ -1,4 +1,6 @@
-pub(crate) use runtime::{OutputSchema, Request, retained_check_result, run_model, work_summary};
+pub(crate) use runtime::{
+  OutputSchema, Request, retained_check_result, run_model, verified_retained_check, work_summary,
+};
 mod runtime;
 #[cfg(test)]
 mod tests;
@@ -48,6 +50,9 @@ pub trait Integration {
   fn legacy_cache_identity(&self) -> Option<Value> {
     None
   }
+  fn legacy_profile(&self) -> Option<Profile> {
+    None
+  }
   fn replaced_profile(&self) -> Option<Profile> {
     None
   }
@@ -90,7 +95,7 @@ impl Execution {
   pub fn model_summary(&self) -> Value {
     self.summary.clone()
   }
-  pub fn binding(&self, identity: &Value) -> ExecutionBinding {
+  pub fn binding(&self, identity: &Value, resume_work_id: Option<&str>) -> ExecutionBinding {
     let mut continuity = identity.clone();
     continuity
       .as_object_mut()
@@ -104,6 +109,13 @@ impl Execution {
     ExecutionBinding {
       operation_key: hash(&continuity.to_string()),
       profile: json!(self.profile()),
+      identity: self.identity.clone(),
+      resume_work_id: resume_work_id.map(str::to_owned),
+      legacy_identity: self.legacy_identity.clone(),
+      legacy_profile: self
+        .integration
+        .legacy_profile()
+        .map(|profile| json!(profile)),
       legacy_key,
       replaced_profile: self
         .integration

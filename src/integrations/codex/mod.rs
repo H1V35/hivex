@@ -54,9 +54,16 @@ impl Integration for Codex {
     Some(legacy_identity())
   }
   fn replaced_profile(&self) -> Option<ExecutionProfile> {
-    (self.profile == default_profile()).then(|| ExecutionProfile {
+    (self.profile == default_profile())
+      .then(|| self.legacy_profile())
+      .flatten()
+  }
+  fn legacy_profile(&self) -> Option<ExecutionProfile> {
+    Some(ExecutionProfile {
+      integration: "codex".into(),
+      provider: "openai".into(),
       model: "gpt-5.6-luna".into(),
-      ..default_profile()
+      options: std::collections::BTreeMap::from([("effort".into(), "max".into())]),
     })
   }
   fn invoke(
