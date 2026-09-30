@@ -293,19 +293,40 @@ pub(super) struct Replacement {
   pub replacement: model::ExtractionRelationship,
 }
 
+fn exact_previous<'a>(
+  record: &Replacement,
+  graph: &'a model::Graph,
+) -> Option<&'a model::Relationship> {
+  graph.relationships.iter().find(|edge| {
+    edge.id == record.previous_id
+      && edge.local_id == record.replacement.id
+      && edge.from == record.replacement.from
+      && edge.to == record.replacement.to
+      && edge.kind == record.replacement.kind
+      && edge.reason == record.replacement.reason
+      && edge.evidence == record.replacement.evidence
+  })
+}
+
 pub(super) fn check_accepted(records: &[Replacement], graph: &model::Graph) -> Result<()> {
   if records.iter().any(|record| {
-    graph
-      .relationships
-      .iter()
-      .any(|edge| edge.id == record.replacement.id || edge.local_id == record.replacement.id)
+    exact_previous(record, graph).is_none()
+      && graph
+        .relationships
+        .iter()
+        .any(|edge| edge.id == record.replacement.id || edge.local_id == record.replacement.id)
   }) {
     return Err(invalid());
   }
   Ok(())
 }
 
-fn valid_endpoints(record: &Replacement, context: CandidateContext<'_>, pending: &Value) -> bool {
+fn valid_endpoints(
+  record: &Replacement,
+  context: CandidateContext<'_>,
+  pending: &Value,
+  exact: bool,
+) -> bool {
   let supplied: HashSet<_> = pending["existing"]
     .as_array()
     .into_iter()
@@ -329,22 +350,24 @@ fn valid_endpoints(record: &Replacement, context: CandidateContext<'_>, pending:
   endpoints.is_some_and(|nodes| {
     nodes.iter().all(|node| {
       node.batch != pending["batch"] && current_retained_citation(&decision_range(node), pending)
-    }) && nodes.iter().any(|node| {
-      node.batch != pending["batch"]
-        && node
-          .batch
-          .split_once(':')
-          .is_some_and(|(id, _)| Some(id) == work)
-    })
+    }) && (exact
+      || nodes.iter().any(|node| {
+        node.batch != pending["batch"]
+          && node
+            .batch
+            .split_once(':')
+            .is_some_and(|(id, _)| Some(id) == work)
+      }))
   })
 }
 
 pub(super) fn append(
-  context: CandidateContext<'_>,
+  context: (CandidateContext<'_>, &model::Graph),
   pending: &Value,
   correction: &super::Correction,
   extraction: &mut model::Extraction,
-) -> Result<()> {
+) -> Result<Vec<String>> {
+  let (context, accepted) = context;
   let protected: HashSet<_> = pending["protectedRelationships"]
     .as_array()
     .into_iter()
@@ -358,28 +381,72 @@ pub(super) fn append(
     .filter_map(|edge| edge["id"].as_str())
     .collect();
   let mut seen = HashSet::new();
+  let mut preserved = Vec::new();
   for record in &correction.retained_relationships {
     let edge = &record.replacement;
+    let exact = exact_previous(record, accepted);
     if !seen.insert(&record.previous_id)
       || !protected.contains(record.previous_id.as_str())
       || !previous.contains(record.previous_id.as_str())
-      || !valid_endpoints(record, context, pending)
+      || !valid_endpoints(record, context, pending, exact.is_some())
       || correction.remove_relationships.contains(&edge.id)
       || correction.remove_decisions.contains(&edge.from)
       || correction.remove_decisions.contains(&edge.to)
-      || extraction
-        .relationships
-        .iter()
-        .any(|entry| entry.id == edge.id)
+      || (exact.is_none()
+        && extraction
+          .relationships
+          .iter()
+          .any(|entry| entry.id == edge.id))
       || context.graph.relationships.iter().any(|entry| {
         entry.id == edge.id
-          || entry.local_id == edge.id
+          || (exact.is_none() && entry.local_id == edge.id)
           || (entry.from == edge.from && entry.to == edge.to && entry.kind == edge.kind)
       })
     {
       return Err(invalid());
     }
-    extraction.relationships.push(edge.clone());
+    if let Some(previous) = exact {
+      preserved.push(previous.id.clone());
+    } else {
+      extraction.relationships.push(edge.clone());
+    }
+  }
+  Ok(preserved)
+}
+
+pub(super) fn preserve(
+  accepted: &model::Graph,
+  candidate: &mut model::Graph,
+  pending: &Value,
+) -> Result<()> {
+  for id in super::super::strings(&pending["preservedRelationshipIds"]) {
+    let edge = accepted
+      .relationships
+      .iter()
+      .find(|edge| edge.id == id)
+      .ok_or_else(invalid)?;
+    // Eligibility was checked while the edge was lost. Restoring it removes it
+    // from the pending loss set, but its exact previous record remains bound.
+    if !pending["packet"]["previousRelationships"]
+      .as_array()
+      .is_some_and(|edges| edges.iter().any(|previous| *previous == json!(edge)))
+      || !super::super::current_retained_edge(edge, candidate, pending)
+      || [&edge.from, &edge.to].iter().any(|id| {
+        let previous = accepted.decisions.iter().find(|node| node.id == **id);
+        previous.is_none()
+          || !candidate
+            .decisions
+            .iter()
+            .any(|node| Some(node) == previous)
+      })
+      || candidate.relationships.iter().any(|entry| {
+        entry.id == edge.id
+          || (entry.from == edge.from && entry.to == edge.to && entry.kind == edge.kind)
+      })
+    {
+      return Err(invalid());
+    }
+    candidate.relationships.push(edge.clone());
   }
   Ok(())
 }
@@ -394,6 +461,13 @@ pub(super) fn validate(
   }
   let mut changes = Vec::new();
   for record in records {
+    if exact_previous(record, context.graph).is_some()
+      && pending["preservedRelationshipIds"]
+        .as_array()
+        .is_some_and(|ids| ids.contains(&json!(record.previous_id)))
+    {
+      continue;
+    }
     let edge = context
       .graph
       .relationships
@@ -405,7 +479,11 @@ pub(super) fn validate(
       "reason":record.replacement.reason,"evidence":record.replacement.evidence}),
     );
   }
-  validate_relationship_changes(context, pending, &json!(changes)).map_err(|_| invalid())
+  if changes.is_empty() {
+    Ok(())
+  } else {
+    validate_relationship_changes(context, pending, &json!(changes)).map_err(|_| invalid())
+  }
 }
 
 #[cfg(test)]

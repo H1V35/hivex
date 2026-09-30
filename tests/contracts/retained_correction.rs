@@ -97,6 +97,160 @@ fn args<'a>(path: &'a std::path::Path, budget: &'a str) -> Vec<&'a str> {
   ]
 }
 
+fn evidence_only_repair() -> (Project, Value, Value, Value) {
+  let p = Project::new();
+  p.model("");
+  let mut responses =
+    json!({"capturePackets":true,"byDocument":{},"check":{"findings":[],"relationshipChanges":[]}});
+  for name in ["a.md", "b.md", "z.md"] {
+    p.write(
+      name,
+      format!("# Rule\n\n{name} establishes the Alpha to Beta dependency.\n"),
+    );
+    responses["byDocument"][name] =
+      json!({"decisions":[decision(name,name,3,&format!("{name} rule."))],"relationships":[]});
+  }
+  responses["byDocument"]["a.md"]["relationships"] = json!([{
+    "id":"r1","from":"a.md","to":"b.md","type":"requires","reason":"Alpha requires Beta under Zeta's scope.",
+    "evidence":[{"document":"a.md","lineStart":3,"lineEnd":3},{"document":"b.md","lineStart":3,"lineEnd":3},{"document":"z.md","lineStart":3,"lineEnd":3}]
+  }]);
+  p.json("responses.json", &responses);
+  assert_eq!(
+    p.model_cli(&["update", "--source", "z.md", "--max-calls", "4"])["status"],
+    "ready"
+  );
+  let graph = p.graph();
+  let previous = &graph["relationships"][0];
+  responses["byDocument"]["a.md"]["relationships"] = json!([]);
+  p.json("responses.json", &responses);
+  let failed = p.model_cli(&[
+    "update",
+    "--repair-range",
+    "z.md:3-3",
+    "--reason",
+    "Restore omitted dependency.",
+    "--max-calls",
+    "2",
+  ]);
+  assert_eq!(failed["status"], "failed", "{failed}");
+  let id = failed["work"]["id"].as_str().unwrap();
+  let mut replacement = previous.clone();
+  replacement["id"] = replacement["localId"].clone();
+  for field in ["batch", "localId", "quality"] {
+    replacement.as_object_mut().unwrap().remove(field);
+  }
+  let correction = json!({"workId":id,"checkInputHash":failed["candidateResolutionContext"]["checkInputHash"],
+    "reason":"Retain the exact current protected dependency removed only by overlap with its unchanged evidence.",
+    "evidence":previous["evidence"],"decisions":[],"retainedRelationships":[{"previousId":previous["id"],"replacement":replacement}]});
+  (p, failed, graph, correction)
+}
+
+fn exact_repair_args<'a>(path: &'a std::path::Path, budget: &'a str) -> Vec<&'a str> {
+  vec![
+    "update",
+    "--repair-range",
+    "z.md:3-3",
+    "--reason",
+    "Restore omitted dependency.",
+    "--retry-failed",
+    "--max-calls",
+    budget,
+    "--correct",
+    path.to_str().unwrap(),
+  ]
+}
+
+#[test]
+fn exact_current_relationship_survives_evidence_only_repair_with_original_metadata() {
+  let (p, failed, graph, correction) = evidence_only_repair();
+  let previous = &graph["relationships"][0];
+  let id = failed["work"]["id"].as_str().unwrap();
+  let before = p.work(id);
+  assert_eq!(before["attempts"][1]["error"], "RELATIONSHIP_LOSS");
+  let calls = p.calls();
+  let path = p.path("correction.json");
+  for case in [
+    "reason",
+    "type",
+    "endpoint",
+    "stale-evidence",
+    "evidence",
+    "previous",
+    "id",
+    "duplicate",
+    "metadata",
+  ] {
+    let mut changed = correction.clone();
+    let record = &mut changed["retainedRelationships"][0];
+    match case {
+      "reason" => record["replacement"]["reason"] = json!("Different meaning."),
+      "type" => record["replacement"]["type"] = json!("supports"),
+      "endpoint" => record["replacement"]["from"] = json!("unknown"),
+      "stale-evidence" => record["replacement"]["evidence"][0]["version"] = json!("stale"),
+      "evidence" => {
+        record["replacement"]["evidence"]
+          .as_array_mut()
+          .unwrap()
+          .pop();
+      }
+      "previous" => record["previousId"] = json!("unprotected"),
+      "id" => record["replacement"]["id"] = json!("new-id"),
+      "duplicate" => {
+        let copy = record.clone();
+        changed["retainedRelationships"]
+          .as_array_mut()
+          .unwrap()
+          .push(copy);
+      }
+      "metadata" => record["replacement"]["quality"] = json!("checked"),
+      _ => unreachable!(),
+    }
+    p.json("correction.json", &changed);
+    assert_eq!(
+      p.error(&exact_repair_args(&path, "0"))["error"]["code"],
+      "INVALID_CORRECTION",
+      "{case}"
+    );
+    let after = p.work(id);
+    for field in ["attempts", "calls", "inputBytes", "pending", "corrections"] {
+      assert_eq!(after[field], before[field], "{case}: {field}");
+    }
+    assert_eq!(p.graph(), graph);
+    assert_eq!(p.calls(), calls);
+  }
+  p.json("correction.json", &correction);
+  let request = |budget| p.model_cli(&exact_repair_args(&path, budget));
+  let staged_result = request("0");
+  assert_eq!(
+    staged_result["status"], "budget-exhausted",
+    "{staged_result}"
+  );
+  let staged = p.work(id);
+  assert_eq!(staged["attempts"], before["attempts"]);
+  assert_eq!(
+    staged["corrections"][0]["previousPending"],
+    before["pending"]
+  );
+  assert_eq!(p.graph(), graph);
+  assert_eq!(p.calls(), calls);
+  assert_eq!(request("3")["status"], "ready");
+  assert_eq!(p.graph()["relationships"][0], *previous);
+  assert_eq!(
+    &list(&p.work(id), "attempts")[..2],
+    list(&before, "attempts")
+  );
+  assert_eq!(p.calls(), calls + 1);
+  let packet: Value = serde_json::from_str(
+    std::fs::read_to_string(p.path("responses.json.packets"))
+      .unwrap()
+      .lines()
+      .last()
+      .unwrap(),
+  )
+  .unwrap();
+  assert_eq!(packet["retainedRelationships"][0]["id"], previous["id"]);
+}
+
 #[test]
 fn retained_relationship_correction_preserves_prior_rounds_and_requires_a_budgeted_fresh_check() {
   for missing_endpoint in [false, true] {

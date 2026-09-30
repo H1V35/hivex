@@ -239,6 +239,55 @@ fn resolve_error(p: &Project, file: &Value) -> Value {
   p.error(&args)
 }
 
+#[test]
+fn original_native_mapping_can_refine_citations_without_reinterpreting_selection() {
+  for originally_adverse in [false, true] {
+    let p = Project::policy();
+    p.model_cli(&["update"]);
+    let mut responses = preserving_repair(&p);
+    responses["byDocument"]["cache.md"]["decisions"][0]["text"] =
+      json!("Ordinary cached data expires after seven days.");
+    responses["byDocument"]["cache.md"]["relationships"][0]["type"] = json!("requires");
+    responses["check"]["relationshipChanges"][0]["evidence"] = json!([
+      {"document":"cache.md","lineStart":2,"lineEnd":3},
+      {"document":"privacy.md","lineStart":3,"lineEnd":3}
+    ]);
+    if originally_adverse {
+      responses["check"]["findings"] = json!([{
+        "target":"@removed:0","reason":"A false claim on the existing replacement."
+      }]);
+    }
+    p.json("responses.json", &responses);
+    let failed = p.model_cli(&REPAIR);
+    assert_eq!(failed["status"], "failed");
+    let packet: Value = serde_json::from_str(
+      fs::read_to_string(p.path("responses.json.packets"))
+        .unwrap()
+        .lines()
+        .last()
+        .unwrap(),
+    )
+    .unwrap();
+    let file = review(&failed, &packet);
+    let id = failed["work"]["id"].as_str().unwrap();
+    let before = p.work(id);
+    let graph = p.graph();
+    if originally_adverse {
+      assert_eq!(
+        resolve_error(&p, &file)["error"]["code"],
+        "INVALID_RESOLUTION"
+      );
+      assert_eq!(p.graph(), graph);
+    } else {
+      let result = resolve(&p, &file);
+      assert_eq!(result["status"], "ready");
+      assert_eq!(p.graph()["relationships"][0]["type"], "requires");
+    }
+    unchanged(&before, &p.work(id));
+    assert_eq!(p.calls(), 4);
+  }
+}
+
 fn unchanged(before: &Value, after: &Value) {
   for field in [
     "attempts",

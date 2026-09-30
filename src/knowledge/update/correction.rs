@@ -8,6 +8,14 @@ use std::collections::HashSet;
 
 mod retained;
 
+pub(super) fn preserve_relationships(
+  graph: &Graph,
+  candidate: &mut Graph,
+  pending: &Value,
+) -> Result<()> {
+  retained::preserve(graph, candidate, pending)
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Correction {
@@ -123,8 +131,9 @@ fn replacement(
   evidence: BatchEvidence<'_>,
   pending: &Value,
   correction: &Correction,
-  candidate: &Graph,
-) -> Result<Value> {
+  graphs: (&Graph, &Graph),
+) -> Result<(Value, Vec<String>)> {
+  let (candidate, accepted) = graphs;
   let supplied = supplied_documents(pending)?;
   validate_request(correction)?;
   validate_evidence(evidence, pending, &correction.evidence)?;
@@ -162,12 +171,15 @@ fn replacement(
   );
   replace_relationships(pending, correction, candidate, &mut extraction)?;
   remove_duplicates(&mut extraction, correction)?;
-  retained::append(
-    super::super::warnings::CandidateContext {
-      graph: candidate,
-      project: evidence.project,
-      packet: &pending["packet"],
-    },
+  let preserved = retained::append(
+    (
+      super::super::warnings::CandidateContext {
+        graph: candidate,
+        project: evidence.project,
+        packet: &pending["packet"],
+      },
+      accepted,
+    ),
     pending,
     correction,
     &mut extraction,
@@ -175,7 +187,7 @@ fn replacement(
   if !model::validate_extraction(&extraction) {
     return Err(invalid());
   }
-  Ok(json!(extraction))
+  Ok((json!(extraction), preserved))
 }
 
 fn replace_relationships(
@@ -304,6 +316,9 @@ fn validate_changed_candidate(
       .filter(|node| node.id == edge.from || node.id == edge.to)
       .collect();
     (endpoints.iter().any(|node| node.batch == batch)
+      || pending["preservedRelationshipIds"]
+        .as_array()
+        .is_some_and(|ids| ids.contains(&json!(edge.id)))
       || correction
         .retained_relationships
         .iter()
@@ -326,11 +341,14 @@ fn validate_changed_candidate(
           .map(|record| &record.replacement),
       )
       .any(|edge| {
-        !after
-          .graph
-          .relationships
-          .iter()
-          .any(|entry| entry.local_id == edge.id && entry.batch == batch && valid_edge(entry))
+        !after.graph.relationships.iter().any(|entry| {
+          entry.local_id == edge.id
+            && (entry.batch == batch
+              || pending["preservedRelationshipIds"]
+                .as_array()
+                .is_some_and(|ids| ids.contains(&json!(entry.id))))
+            && valid_edge(entry)
+        })
       })
   {
     return Err(invalid());
@@ -421,8 +439,11 @@ pub(super) fn apply(
   )?;
   retained::supply_ranges(evidence.project, &mut pending, &comparison_ranges)?;
   retained::check_accepted(&correction.retained_relationships, graph)?;
-  let extraction = replacement(evidence, &pending, &correction, &candidate)?;
+  let (extraction, preserved) = replacement(evidence, &pending, &correction, (&candidate, graph))?;
   pending["extraction"] = extraction;
+  let mut ids = super::strings(&pending["preservedRelationshipIds"]);
+  ids.extend(preserved);
+  pending["preservedRelationshipIds"] = json!(ids);
   if !retained_ranges.is_empty() {
     let mut ranges = restored_ranges(&pending);
     ranges.extend(retained_ranges);

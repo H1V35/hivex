@@ -744,6 +744,7 @@ fn materialize(
     restored_ranges: Some(&restored_ranges),
   });
   transition::preserve(project, graph, &mut candidate, pending);
+  correction::preserve_relationships(graph, &mut candidate, pending)?;
   Ok(candidate)
 }
 fn without_execution(mut value: Value) -> Value {
@@ -899,7 +900,8 @@ fn add_retained_relationships(
         .relationships
         .iter()
         .filter(|edge| edge.batch != batch
-          && edge.batch.split_once(':').map(|(work, _)| work) == work
+          && (edge.batch.split_once(':').map(|(work, _)| work) == work
+            || strings(&pending["preservedRelationshipIds"]).contains(&edge.id))
           && visible.contains(edge.from.as_str())
           && visible.contains(edge.to.as_str()))
         .filter(|edge| pending["retainedRelationshipContext"] != 2
@@ -1110,6 +1112,9 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
   }
   if retained_context(pending) {
     instruction.push_str(" extraction contains only the current batch. retainedRelationships are actual candidate edges from earlier accepted rounds of this work between supplied endpoints. Evaluate their citations and meaning normally; their absence from extraction is not a loss. repairReason may span several rounds: check omissions within the current units and replacement impact, not unrelated completed or future units.");
+    if !strings(&pending["preservedRelationshipIds"]).is_empty() {
+      instruction.push_str(" retainedRelationships additionally includes exact unchanged protected edges preserved by the reviewed correction, with their original identity and provenance. Evaluate their meaning and current evidence normally.");
+    }
   }
   if warning_review {
     instruction.push_str(warnings::WARNING_REVIEW_INSTRUCTION);

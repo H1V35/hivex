@@ -29,7 +29,12 @@ pub(super) fn validate_relationship_changes(
   pending: &Value,
   changes: &Value,
 ) -> Result<()> {
-  relationships::review_changes(&json!({"relationshipChanges":changes}), &context, pending)?;
+  relationships::review_changes(
+    &json!({"relationshipChanges":changes}),
+    &context,
+    pending,
+    None,
+  )?;
   Ok(())
 }
 
@@ -344,7 +349,7 @@ pub(super) fn resolve_candidate(
   let check = crate::knowledge::model::parse_check(value)
     .ok_or_else(|| invalid_resolution("The candidate needs a retained check."))?;
   let pending = &work.value()["pending"];
-  let changes = relationships::review_changes(&file, &context, pending)?;
+  let changes = relationships::review_changes(&file, &context, pending, Some(value))?;
   let ranges: Vec<Citation> = serde_json::from_value(pending["packet"]["units"].clone())
     .map_err(|_| invalid_resolution("The retained check needs its original source ranges."))?;
   let scope = crate::knowledge::model::warning_scope(&project.documents, Some(&ranges));

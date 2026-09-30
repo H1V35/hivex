@@ -107,7 +107,28 @@ fn previous_ranges(id: &str, packet: &Value) -> Option<Vec<Citation>> {
   Some(ranges)
 }
 
-fn validate_change(change: &Change, context: &CandidateContext<'_>) -> Result<()> {
+fn approved_native_mapping(change: &Change, native: Option<&Value>) -> bool {
+  if change.replacements.is_empty() {
+    return false;
+  }
+  let Some(native) = native.filter(|value| value["findings"] == json!([])) else {
+    return false;
+  };
+  let mut matches = native["relationshipChanges"]
+    .as_array()
+    .into_iter()
+    .flatten()
+    .filter(|mapping| mapping["previousId"] == change.previous_id);
+  matches.next().is_some_and(|mapping| {
+    mapping["replacements"] == json!(change.replacements) && matches.next().is_none()
+  })
+}
+
+fn validate_change(
+  change: &Change,
+  context: &CandidateContext<'_>,
+  native: Option<&Value>,
+) -> Result<()> {
   let previous = previous_ranges(&change.previous_id, context.packet).ok_or_else(invalid)?;
   let previous_edge = context.packet["removedRelationships"]
     .as_array()
@@ -120,10 +141,11 @@ fn validate_change(change: &Change, context: &CandidateContext<'_>) -> Result<()
   {
     return Err(invalid());
   }
+  let native_approved = approved_native_mapping(change, native);
   for id in &change.replacements {
     let edge = supplied_edge(id, context).ok_or_else(invalid)?;
     let ranges = current_ranges(edge, context).ok_or_else(invalid)?;
-    if !preserves_endpoints(previous_edge, edge, context)
+    if !preserves_endpoints(previous_edge, edge, context, native_approved)
       || !ranges.iter().all(|range| covers(&change.evidence, range))
     {
       return Err(invalid());
@@ -136,8 +158,9 @@ fn preserves_endpoints(
   previous: &Value,
   edge: &Relationship,
   context: &CandidateContext<'_>,
+  native_approved: bool,
 ) -> bool {
-  if previous["type"] != edge.kind {
+  if !native_approved && previous["type"] != edge.kind {
     return false;
   }
   [("from", &edge.from), ("to", &edge.to)]
@@ -148,6 +171,9 @@ fn preserves_endpoints(
         *old == node.id && is_current_source(context.project, &node.document, Some(&node.version))
       }) {
         return old == *id;
+      }
+      if native_approved {
+        return true;
       }
       let source = context.packet["previousDecisions"]
         .as_array()
@@ -166,6 +192,7 @@ pub(super) fn review_changes(
   file: &Value,
   context: &CandidateContext<'_>,
   pending: &Value,
+  native: Option<&Value>,
 ) -> Result<Vec<Value>> {
   let Some(values) = file.get("relationshipChanges") else {
     return Ok(Vec::new());
@@ -190,7 +217,7 @@ pub(super) fn review_changes(
     {
       return Err(invalid());
     }
-    validate_change(&change, context)?;
+    validate_change(&change, context, native)?;
   }
   Ok(values.clone())
 }
@@ -241,4 +268,42 @@ pub(super) fn apply_changes(reviewed: &mut Value, changes: &[Value]) {
   });
   merged.extend_from_slice(changes);
   reviewed["relationshipChanges"] = json!(merged);
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn native_evidence_refinement_requires_original_clean_exact_unique_selection() {
+    let change = Change {
+      previous_id: "previous".to_owned(),
+      replacements: vec!["one".to_owned(), "two".to_owned()],
+      reason: "Review complete current source evidence.".to_owned(),
+      evidence: Vec::new(),
+    };
+    let mapping = json!({"previousId":"previous","replacements":["one","two"]});
+    let native = json!({"findings":[],"relationshipChanges":[mapping]});
+    assert!(approved_native_mapping(&change, Some(&native)));
+    assert!(!approved_native_mapping(&change, None));
+    for value in [
+      json!({"findings":[{"target":"previous","reason":"Still adverse."}],"relationshipChanges":[mapping]}),
+      json!({"relationshipChanges":[mapping]}),
+      json!({"findings":[],"relationshipChanges":[mapping,mapping]}),
+      json!({"findings":[],"relationshipChanges":[{"previousId":"previous","replacements":["two","one"]}]}),
+      json!({"findings":[],"relationshipChanges":[{"previousId":"previous","replacements":["other"]}]}),
+    ] {
+      assert!(!approved_native_mapping(&change, Some(&value)));
+    }
+    let empty = Change {
+      replacements: Vec::new(),
+      ..change
+    };
+    assert!(!approved_native_mapping(
+      &empty,
+      Some(
+        &json!({"findings":[],"relationshipChanges":[{"previousId":"previous","replacements":[]}]})
+      )
+    ));
+  }
 }
