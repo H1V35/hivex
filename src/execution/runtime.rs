@@ -113,6 +113,18 @@ pub struct Request {
 }
 
 impl Request {
+  pub fn input_bytes(&self) -> usize {
+    self.prompt().len()
+  }
+
+  fn prompt(&self) -> String {
+    format!(
+      "{COMMON_INSTRUCTIONS}\n{}\n\n{}",
+      self.instruction,
+      stringify_knowledge(&self.packet)
+    )
+  }
+
   fn output_schema(&self) -> Value {
     let mut schema = self.schema.schema();
     let Some(targets) = self.packet.get("checkTargets") else {
@@ -201,11 +213,7 @@ pub struct ModelInput {
 }
 
 pub fn model_input(request: &Request, execution: &Execution) -> ModelInput {
-  let prompt = format!(
-    "{COMMON_INSTRUCTIONS}\n{}\n\n{}",
-    request.instruction,
-    stringify_knowledge(&request.packet)
-  );
+  let prompt = request.prompt();
   let schema = request.output_schema();
   let fingerprint =
     hash(&json!({"prompt":prompt,"schema":schema,"model":execution.cache_identity()}).to_string());

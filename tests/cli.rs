@@ -2,6 +2,7 @@ mod support;
 mod contracts {
   pub mod codex;
   pub mod documents;
+  pub mod incremental_reuse;
   pub mod knowledge;
   pub mod maintenance;
   pub mod profile_continuity;
