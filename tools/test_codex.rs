@@ -522,10 +522,38 @@ fn spawn_descendants() {
   .unwrap();
 }
 
+fn resolve_finding_references(packet: &Value, result: &mut Value) {
+  if packet.get("checkTargets").is_none() {
+    return;
+  }
+  for finding in result["findings"].as_array_mut().unwrap() {
+    let reference = finding["target"].as_str().and_then(|id| {
+      ["c", "r"]
+        .into_iter()
+        .find_map(|prefix| id.strip_prefix(prefix).map(|id| (prefix, id)))
+    });
+    let index = reference
+      .and_then(|(_, id)| id.parse::<usize>().ok())
+      .and_then(|index| index.checked_sub(1));
+    let field = if reference.is_some_and(|(prefix, _)| prefix == "r") {
+      "relationships"
+    } else {
+      "decisions"
+    };
+    if let Some(id) = index
+      .and_then(|index| packet["extraction"][field].as_array()?.get(index))
+      .and_then(|node| node.get("id"))
+    {
+      finding["target"] = id.clone();
+    }
+  }
+}
+
 fn resolve_check_references(packet: &Value, result: &mut Value) {
   if packet["operation"] != "check" {
     return;
   }
+  resolve_finding_references(packet, result);
   let Some(changes) = result["relationshipChanges"].as_array_mut() else {
     return;
   };

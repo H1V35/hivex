@@ -75,6 +75,32 @@ mod context_tests {
       assert_eq!(packet["retainedRelationships"].as_array().unwrap().len(), 1);
     }
   }
+
+  #[test]
+  fn restored_check_scope_is_explicit_without_rewriting_older_request_contracts() {
+    let pending = json!({"batch":"work:pending","materializedCheck":true,
+      "retainedDecisionRanges":[{"document":"guide.md","lineStart":118,"lineEnd":118,"version":"current"}],
+      "packet":{"scope":"Original target ranges only.","units":[],"documents":[]}});
+    let graph = model::empty_graph();
+    let legacy = check_request(&graph, &graph, &pending);
+    assert!(legacy.packet.get("restoredDecisionRanges").is_none());
+    assert!(!legacy.instruction.contains("explicitly authorizes"));
+    let mut corrected = pending.clone();
+    corrected["restoredDecisionContext"] = json!(true);
+    let request = check_request(&graph, &graph, &corrected);
+    assert_eq!(
+      request.packet["restoredDecisionRanges"],
+      pending["retainedDecisionRanges"]
+    );
+    assert!(request.instruction.contains("not certify semantics"));
+    assert!(
+      request.packet["scope"]
+        .as_str()
+        .unwrap()
+        .contains("Original units bound ordinary replacement targets")
+    );
+    assert_eq!(legacy.packet["units"], request.packet["units"]);
+  }
 }
 
 fn unique(values: impl IntoIterator<Item = String>) -> Vec<String> {
@@ -354,7 +380,20 @@ fn prepare_update(
   shared: Option<Work>,
 ) -> Result<(IngestionResult, Work)> {
   let mut prepared = plan_update(state, runtime, shared.as_ref())?;
-  let mut work = match shared {
+  let selected =
+    super::warnings::select_resolution_work(runtime.resolve.as_deref(), &prepared.key, store)?
+      .map(|work| runtime.progress.begin(work, true));
+  if let Some(work) = &selected
+    && super::warnings::replay_resolution(
+      work,
+      runtime.resolve.as_deref(),
+      state.project,
+      state.graph,
+    )?
+  {
+    return Ok((prepared.plan, work.clone()));
+  }
+  let mut work = match shared.or(selected) {
     Some(work) => work,
     None => store.begin_with_profile(
       &BeginWork {
@@ -583,7 +622,7 @@ fn reconcile_pending(
   Ok(())
 }
 
-fn pending_current(project: &Project, pending: &Value) -> bool {
+pub(super) fn pending_current(project: &Project, pending: &Value) -> bool {
   if pending.is_null() {
     return false;
   }
@@ -616,6 +655,7 @@ fn materialize(
     .filter(|unit| ids.contains(&unit.id))
     .map(unit_range)
     .collect();
+  let restored_ranges = correction::restored_ranges(pending);
   let previous_ids: HashSet<_> = pending["packet"]["previousRelationships"]
     .as_array()
     .into_iter()
@@ -701,8 +741,10 @@ fn materialize(
     extraction: &extraction,
     graph,
     target_ranges: Some(&targets),
+    restored_ranges: Some(&restored_ranges),
   });
   transition::preserve(project, graph, &mut candidate, pending);
+  correction::preserve_relationships(graph, &mut candidate, pending)?;
   Ok(candidate)
 }
 fn without_execution(mut value: Value) -> Value {
@@ -858,7 +900,8 @@ fn add_retained_relationships(
         .relationships
         .iter()
         .filter(|edge| edge.batch != batch
-          && edge.batch.split_once(':').map(|(work, _)| work) == work
+          && (edge.batch.split_once(':').map(|(work, _)| work) == work
+            || strings(&pending["preservedRelationshipIds"]).contains(&edge.id))
           && visible.contains(edge.from.as_str())
           && visible.contains(edge.to.as_str()))
         .filter(|edge| pending["retainedRelationshipContext"] != 2
@@ -1016,6 +1059,7 @@ fn extract_batch(
   "existing":context.existing.iter().map(|entry|entry["id"].clone()).collect::<Vec<_>>(),
   "extraction":extraction,
   "materializedCheck":work.value()["materializedChecks"]==true,
+  "boundCheckTargets":work.value()["materializedChecks"]==true,
   "retainedRelationshipContext":2,
   "sourceTransition":packet["sourceTransition"],
   "packet":check_packet,
@@ -1068,19 +1112,74 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
   }
   if retained_context(pending) {
     instruction.push_str(" extraction contains only the current batch. retainedRelationships are actual candidate edges from earlier accepted rounds of this work between supplied endpoints. Evaluate their citations and meaning normally; their absence from extraction is not a loss. repairReason may span several rounds: check omissions within the current units and replacement impact, not unrelated completed or future units.");
+    if !strings(&pending["preservedRelationshipIds"]).is_empty() {
+      instruction.push_str(" retainedRelationships additionally includes exact unchanged protected edges preserved by the reviewed correction, with their original identity and provenance. Evaluate their meaning and current evidence normally.");
+    }
   }
   if warning_review {
     instruction.push_str(warnings::WARNING_REVIEW_INSTRUCTION);
   }
+  let mut packet = checked_packet(graph, candidate, pending, true);
+  if pending["restoredDecisionContext"] == true && !correction::restored_ranges(pending).is_empty()
+  {
+    packet["restoredDecisionRanges"] = json!(correction::restored_ranges(pending));
+    packet["scope"] = json!(
+      "Original units bound ordinary replacement targets. restoredDecisionRanges additionally permit explicitly restored protected endpoints in earlier processed units of this same work. Their current source ranges and work attribution were locally validated; this is permission to propose these endpoints, not approval of their semantic correctness. Other supplied knowledge remains context."
+    );
+    instruction.push_str(" restoredDecisionRanges explicitly authorizes candidate endpoint restorations outside the ordinary ingestion units, from earlier processed and attributable units of this work. Do not reject such a candidate merely because its range is outside ordinary units. Check its meaning and dependencies against current Markdown; the permission does not certify semantics or allow overwriting accepted knowledge.");
+  }
+  if pending["boundCheckTargets"] == true {
+    packet["checkTargets"] = check_targets(&packet);
+    instruction.push_str(" Use only exact checkTargets IDs. Never shorten or reconstruct an ID. All protected previous relationship IDs remain eligible finding targets.");
+  }
   Request {
     instruction,
-    packet: checked_packet(graph, candidate, pending, true),
+    packet,
     schema: OutputSchema::Check {
       relationships: guarded,
       warnings: warning_review,
     },
     stage: "check".to_owned(),
   }
+}
+
+fn check_targets(packet: &Value) -> Value {
+  let mut targets = std::collections::BTreeSet::from(["batch".to_owned()]);
+  for field in [
+    "documents",
+    "existing",
+    "removedRelationships",
+    "retainedRelationships",
+  ] {
+    targets.extend(
+      packet[field]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|node| node["id"].as_str())
+        .map(str::to_owned),
+    );
+  }
+  for field in ["decisions", "relationships"] {
+    targets.extend(
+      packet["extraction"][field]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|node| node["id"].as_str())
+        .map(str::to_owned),
+    );
+  }
+  targets.extend(
+    packet["previousDecisions"]
+      .as_array()
+      .into_iter()
+      .flatten()
+      .filter(|node| node["retainedInCandidate"] == true)
+      .filter_map(|node| node["id"].as_str())
+      .map(str::to_owned),
+  );
+  json!(targets)
 }
 fn unresolved_changes(
   evidence: BatchEvidence<'_>,
@@ -1283,14 +1382,17 @@ fn check_batch(
     return Ok(None);
   };
   let ids = strings(&pending["units"]);
-  let (mut checked, check) = apply_batch_check(evidence, &candidate, &pending, &value)?;
-  let reviewed = if let Some(path) = &runtime.resolve {
-    let (resolved, reviewed) = super::warnings::resolve_candidate(&checked, project, work, path)?;
-    checked = resolved;
-    reviewed
-  } else {
-    value.clone()
-  };
+  let (checked, check) = apply_batch_check(evidence, &candidate, &pending, &value)?;
+  let (mut checked, reviewed, resolution) = super::warnings::review_candidate(
+    super::warnings::CandidateContext {
+      graph: &checked,
+      project,
+      packet: &request.packet,
+    },
+    work,
+    runtime.resolve.as_deref(),
+    &value,
+  )?;
   let unresolved = unresolved_changes(evidence, &candidate, &pending, &reviewed)?;
   let local = retained_only && work.calls() == prior_calls;
   if local {
@@ -1320,23 +1422,65 @@ fn check_batch(
       &value,
     )?;
   }
-  if runtime.resolve.is_some() {
-    work.record_candidate_resolution(&json!(super::warnings::candidate_report(
-      &checked, project, &check
-    )));
-  }
   work.progress.message(format_args!(
     "check finished; findings={}; admission started",
     check.findings.len()
   ));
   work.accept_check();
   finish_round(evidence, &mut checked, work, &ids);
+  if let Some(mut record) = resolution {
+    record["admittedGraphHash"] = json!(super::warnings::graph_hash(&checked)?);
+    work.record_candidate_resolution(record);
+  }
   store.commit(work, &model::graph_value(&checked, false))?;
   work
     .progress
     .checkpoint("admission finished; batch checkpoint saved", work);
   Ok(Some(checked))
 }
+
+fn relationship_review_context(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  work: &Work,
+  runtime: &Options,
+) -> Option<Value> {
+  let pending = &work.value()["pending"];
+  if pending["staged"] != true || pending["materializedCheck"] != true {
+    return None;
+  }
+  let candidate = materialize(evidence, graph, pending, true).ok()?;
+  let request = check_request(graph, &candidate, pending);
+  let result = model_runtime::retained_check_result(work, &request, &runtime.execution).ok()??;
+  let packet = &request.packet;
+  let relationships: Vec<_> = packet["extraction"]["relationships"]
+    .as_array()?
+    .iter()
+    .chain(
+      packet["retainedRelationships"]
+        .as_array()
+        .into_iter()
+        .flatten(),
+    )
+    .cloned()
+    .collect();
+  let endpoints: HashSet<_> = relationships
+    .iter()
+    .flat_map(|edge| [edge["from"].as_str(), edge["to"].as_str()])
+    .flatten()
+    .collect();
+  Some(json!({
+    "workId":work.id(),
+    "checkInputHash":work.attempts()?.last()?["inputHash"],
+    "previousRelationships":packet["removedRelationships"],
+    "previousDecisions":packet["previousDecisions"],
+    "candidateRelationships":relationships,
+    "candidateDecisions":candidate.decisions.iter().filter(|node| endpoints.contains(node.id.as_str())).map(|node| without_execution(json!(node))).collect::<Vec<_>>(),
+    "suppliedSources":packet["documents"].as_array()?.iter().map(|document| json!({"document":document["id"],"version":document["version"],"lines":document["lines"].as_array().map(|lines| lines.iter().map(|line| &line[0]).collect::<Vec<_>>())})).collect::<Vec<_>>(),
+    "nativeCheck":result
+  }))
+}
+
 fn update_response(
   evidence: BatchEvidence<'_>,
   graph: &Graph,
@@ -1406,6 +1550,9 @@ fn update_response(
       baseline
     ));
   }
+  if let Some(context) = relationship_review_context(evidence, graph, work, runtime) {
+    response["pendingRelationshipReview"] = context;
+  }
   response
 }
 
@@ -1467,6 +1614,9 @@ pub fn update_with_store(
     project,
     plan: &plan,
   };
+  if super::warnings::replay_resolution(&work, runtime.resolve.as_deref(), project, &graph)? {
+    return Ok((update_response(evidence, &graph, &work, runtime), work));
+  }
   correction::apply(
     evidence,
     &graph,

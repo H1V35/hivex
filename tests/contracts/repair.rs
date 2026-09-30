@@ -621,7 +621,7 @@ fn a_finding_on_removed_context_cannot_bypass_the_relationship_guard() {
   let result = p.model_cli(&REPAIR);
   subset(
     &result,
-    &json!({"status":"failed","work":{"calls":2,"lastAttempt":{"code":"RELATIONSHIP_LOSS"}}}),
+    &json!({"status":"failed","work":{"calls":2,"lastAttempt":{"code":"INVALID_KNOWLEDGE_OUTPUT"}}}),
   );
   assert_eq!(p.graph(), before);
   let captured = packets(&p);
@@ -1373,7 +1373,9 @@ fn candidate_resolution_reuses_the_exact_check_and_preserves_native_quality_and_
     .unwrap();
   assert_eq!(privacy["quality"], "uncertain");
   assert_eq!(p.calls(), 4);
-  assert_eq!(p.error(&args)["error"]["code"], "INVALID_RESOLUTION");
+  assert_eq!(p.ok(&args)["work"]["id"], id);
+  assert_eq!(p.work(id)["attempts"], before["attempts"]);
+  assert_eq!(p.calls(), 4);
 }
 
 #[test]

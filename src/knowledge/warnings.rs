@@ -8,12 +8,35 @@ use crate::knowledge::model::{
 };
 use crate::knowledge::snapshot::{shared_knowledge, stored_graph};
 use crate::work::{Store, StoreOptions, Work};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 const MAX_RESOLUTION_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
+mod relationships;
+
+#[derive(Clone, Copy)]
+pub(super) struct CandidateContext<'a> {
+  pub graph: &'a Graph,
+  pub project: &'a Project,
+  pub packet: &'a Value,
+}
+
+pub(super) fn validate_relationship_changes(
+  context: CandidateContext<'_>,
+  pending: &Value,
+  changes: &Value,
+) -> Result<()> {
+  relationships::review_changes(
+    &json!({"relationshipChanges":changes}),
+    &context,
+    pending,
+    None,
+  )?;
+  Ok(())
+}
 
 #[derive(Clone, Debug)]
 struct Resolution {
@@ -69,8 +92,13 @@ fn parse_resolution(value: &Value) -> Result<Resolution> {
     .iter()
     .map(|value| {
       let value = crate::knowledge::model::normalize_integral_numbers(value.clone());
-      let citation: Citation = serde_json::from_value(value)
+      let citation: Citation = serde_json::from_value(value.clone())
         .map_err(|_| invalid_resolution("Each resolution citation is invalid."))?;
+      if value != json!(citation) {
+        return Err(invalid_resolution(
+          "Each resolution citation has unsupported fields.",
+        ));
+      }
       if citation.version.as_deref().is_none_or(str::is_empty) {
         return Err(invalid_resolution(
           "Each resolution citation needs a non-empty version.",
@@ -292,11 +320,11 @@ fn resolution_covers_target(resolution: &Resolution, target: &str, pending: &Val
 }
 
 pub(super) fn resolve_candidate(
-  graph: &Graph,
-  project: &Project,
+  context: CandidateContext<'_>,
   work: &Work,
   path: &str,
-) -> Result<(Graph, Value)> {
+) -> Result<(Graph, Value, Value)> {
+  let CandidateContext { graph, project, .. } = context;
   let file = read_resolution_file(Path::new(path))?;
   let attempt = work
     .attempts()
@@ -304,7 +332,14 @@ pub(super) fn resolve_candidate(
     .ok_or_else(|| invalid_resolution("The candidate needs a retained check."))?;
   if file["workId"] != work.id()
     || file["checkInputHash"] != attempt["inputHash"]
-    || file.as_object().is_none_or(|object| object.len() != 3)
+    || file.as_object().is_none_or(|object| {
+      object.keys().any(|key| {
+        !matches!(
+          key.as_str(),
+          "workId" | "checkInputHash" | "resolutions" | "relationshipChanges"
+        )
+      })
+    })
   {
     return Err(invalid_resolution(
       "Candidate resolutions must identify this work and exact check input hash.",
@@ -314,6 +349,7 @@ pub(super) fn resolve_candidate(
   let check = crate::knowledge::model::parse_check(value)
     .ok_or_else(|| invalid_resolution("The candidate needs a retained check."))?;
   let pending = &work.value()["pending"];
+  let changes = relationships::review_changes(&file, &context, pending, Some(value))?;
   let ranges: Vec<Citation> = serde_json::from_value(pending["packet"]["units"].clone())
     .map_err(|_| invalid_resolution("The retained check needs its original source ranges."))?;
   let scope = crate::knowledge::model::warning_scope(&project.documents, Some(&ranges));
@@ -329,19 +365,27 @@ pub(super) fn resolve_candidate(
       Warning::Structured(record) => record
         .target
         .as_deref()
-        .filter(|target| resolvable_target(target, graph, project, &work.value()["pending"]))
+        .filter(|target| {
+          resolvable_target(target, graph, project, pending)
+            || relationships::resolvable(target, &context, &changes)
+        })
         .map(|target| (warning_id(warning), target)),
       Warning::Legacy(_) => None,
     })
     .collect();
-  let resolutions = parse_resolutions(&file["resolutions"])?;
+  let resolutions = if file["resolutions"] == json!([]) && !changes.is_empty() {
+    Vec::new()
+  } else {
+    parse_resolutions(&file["resolutions"])?
+  };
   if resolutions.iter().any(|resolution| {
-    eligible
-      .get(&resolution.id)
-      .is_none_or(|target| !resolution_covers_target(resolution, target, &work.value()["pending"]))
+    eligible.get(&resolution.id).is_none_or(|target| {
+      !resolution_covers_target(resolution, target, pending)
+        || !relationships::covers_target(resolution, target, &context, &changes)
+    })
   }) {
     return Err(invalid_resolution(
-      "Resolve only retained semantic findings on current candidate decisions, supplied documents or the batch. Cite the target document or all batch ranges; structural and unknown findings remain blocking.",
+      "Resolve only retained semantic findings on current candidate knowledge, supplied documents, the batch or explicitly mapped protected relationships. Cite the target ranges; structural and unknown findings remain blocking.",
     ));
   }
   let resolved = resolve_warnings(graph, project, &resolutions)?;
@@ -366,7 +410,115 @@ pub(super) fn resolve_candidate(
       })
       .collect::<Vec<_>>(),
   )?;
-  Ok((resolved, reviewed))
+  relationships::apply_changes(&mut reviewed, &changes);
+  let record = json!({
+    "checkInputHash":attempt["inputHash"],
+    "review":file,
+    "previousPending":pending,
+    "warnings":candidate_report(&resolved, project, &check)
+  });
+  Ok((resolved, reviewed, record))
+}
+
+pub(super) fn review_candidate(
+  context: CandidateContext<'_>,
+  work: &Work,
+  path: Option<&str>,
+  value: &Value,
+) -> Result<(Graph, Value, Option<Value>)> {
+  let Some(path) = path else {
+    return Ok((context.graph.clone(), value.clone(), None));
+  };
+  let (graph, reviewed, record) = resolve_candidate(context, work, path)?;
+  Ok((graph, reviewed, Some(record)))
+}
+
+pub(super) fn replay_resolution(
+  work: &Work,
+  path: Option<&str>,
+  project: &Project,
+  graph: &Graph,
+) -> Result<bool> {
+  let Some(path) = path else {
+    return Ok(false);
+  };
+  let record = &work.value()["candidateResolution"];
+  if record.is_null() {
+    return Ok(false);
+  }
+  if work
+    .attempts()
+    .and_then(|attempts| attempts.last())
+    .is_some_and(|attempt| attempt["inputHash"] != record["checkInputHash"])
+  {
+    return Ok(false);
+  }
+  let file = read_resolution_file(Path::new(path))?;
+  if file != record["review"]
+    || file["workId"] != work.id()
+    || file["checkInputHash"] != record["checkInputHash"]
+    || work
+      .attempts()
+      .and_then(|attempts| attempts.last())
+      .is_none_or(|attempt| attempt["inputHash"] != file["checkInputHash"])
+  {
+    return Err(invalid_resolution(
+      "A completed candidate review can only replay its exact disposition.",
+    ));
+  }
+  if !super::update::pending_current(project, &record["previousPending"]) {
+    return Err(HivexError::new(
+      "STALE_RETAINED_CHECK",
+      "The reviewed source versions changed. No model call was made.",
+    ));
+  }
+  if record["admittedGraphHash"] != graph_hash(graph)? {
+    return Err(HivexError::new(
+      "STALE_RETAINED_CHECK",
+      "The admitted graph changed after this review. No model call was made.",
+    ));
+  }
+  Ok(true)
+}
+
+pub(super) fn graph_hash(graph: &Graph) -> Result<String> {
+  let normalized = parse_graph(&graph_value(graph, false), false).ok_or_else(invalid_snapshot)?;
+  Ok(crate::documents::hash(
+    &graph_value(&normalized, false).to_string(),
+  ))
+}
+
+pub(super) fn select_resolution_work(
+  path: Option<&str>,
+  key: &str,
+  store: &Store,
+) -> Result<Option<Work>> {
+  let Some(path) = path else {
+    return Ok(None);
+  };
+  let works = store.works()?;
+  if let Some(work) = works.iter().find(|work| work.key() == key) {
+    work.ensure_open()?;
+  }
+  let file = read_resolution_file(Path::new(path))?;
+  let work = works
+    .iter()
+    .find(|work| file["workId"] == work.id())
+    .ok_or_else(|| invalid_resolution("The review must identify an existing work."))?;
+  if work.key() != key {
+    return Err(HivexError::new(
+      "STALE_RETAINED_CHECK",
+      "The review belongs to different source versions, update arguments or execution profile. No model call was made.",
+    ));
+  }
+  work.ensure_open()?;
+  if work.status() == crate::work::State::Running {
+    return Err(HivexError::new(
+      "WORK_RUNNING",
+      "Inspect the unfinished invocation before reviewing its candidate.",
+    ));
+  }
+  Ok(Some(work.clone()))
 }
 
 pub fn warning_report(root: &str, resolve: Option<&str>, show_all: bool) -> Result<Value> {

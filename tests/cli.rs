@@ -5,8 +5,10 @@ mod contracts {
   pub mod knowledge;
   pub mod maintenance;
   pub mod progress;
+  pub mod relationship_review;
   pub mod relationships;
   pub mod repair;
+  pub mod retained_correction;
   pub mod review;
   pub mod snapshots;
   pub mod supersession;

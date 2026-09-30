@@ -6,6 +6,16 @@ use super::{
 use serde::Deserialize;
 use std::collections::HashSet;
 
+mod retained;
+
+pub(super) fn preserve_relationships(
+  graph: &Graph,
+  candidate: &mut Graph,
+  pending: &Value,
+) -> Result<()> {
+  retained::preserve(graph, candidate, pending)
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Correction {
@@ -20,6 +30,10 @@ struct Correction {
   remove_decisions: Vec<String>,
   #[serde(default)]
   remove_relationships: Vec<String>,
+  #[serde(default)]
+  retained_relationships: Vec<retained::Replacement>,
+  #[serde(default)]
+  retained_decisions: Vec<retained::DecisionReplacement>,
 }
 
 fn invalid() -> HivexError {
@@ -29,12 +43,40 @@ fn invalid() -> HivexError {
   )
 }
 
+pub(super) fn restored_ranges(pending: &Value) -> Vec<Citation> {
+  serde_json::from_value(pending["retainedDecisionRanges"].clone()).unwrap_or_default()
+}
+
+fn decision_in_scope(
+  original: &model::ExtractionDecision,
+  citation: &Citation,
+  pending: &Value,
+) -> bool {
+  let restored = restored_ranges(pending);
+  if let Some(range) = restored.iter().find(|range| {
+    range.document == original.document
+      && range.line_start <= original.line_start
+      && range.line_end >= original.line_end
+  }) {
+    return model::in_ranges(citation, Some(std::slice::from_ref(range)));
+  }
+  let ranges =
+    serde_json::from_value::<Vec<Citation>>(pending["packet"]["units"].clone()).unwrap_or_default();
+  model::in_ranges(citation, Some(&ranges))
+}
+
 fn parse_correction(value: &Value) -> Result<Correction> {
   let correction: Correction = serde_json::from_value(value.clone())?;
   if value["decisions"] != json!(correction.decisions)
     || value
       .get("relationships")
       .is_some_and(|value| *value != json!(correction.relationships))
+    || value
+      .get("retainedRelationships")
+      .is_some_and(|value| *value != json!(correction.retained_relationships))
+    || value
+      .get("retainedDecisions")
+      .is_some_and(|value| *value != json!(correction.retained_decisions))
   {
     return Err(invalid());
   }
@@ -69,12 +111,16 @@ fn validate_request(correction: &Correction) -> Result<()> {
     || !(1..=32).contains(&correction.evidence.len())
     || (correction.decisions.is_empty()
       && correction.relationships.is_empty()
+      && correction.retained_relationships.is_empty()
+      && correction.retained_decisions.is_empty()
       && correction.remove_decisions.is_empty()
       && correction.remove_relationships.is_empty())
     || correction.decisions.len() > 64
     || correction.relationships.len() > 128
     || correction.remove_decisions.len() > 64
     || correction.remove_relationships.len() > 128
+    || correction.retained_relationships.len() > 128
+    || correction.retained_decisions.len() > 64
   {
     return Err(invalid());
   }
@@ -85,13 +131,13 @@ fn replacement(
   evidence: BatchEvidence<'_>,
   pending: &Value,
   correction: &Correction,
-  candidate: &Graph,
-) -> Result<Value> {
+  graphs: (&Graph, &Graph),
+) -> Result<(Value, Vec<String>)> {
+  let (candidate, accepted) = graphs;
   let supplied = supplied_documents(pending)?;
   validate_request(correction)?;
   validate_evidence(evidence, pending, &correction.evidence)?;
   let mut extraction = model::parse_extraction(&pending["extraction"]).ok_or_else(invalid)?;
-  let ranges: Vec<Citation> = serde_json::from_value(pending["packet"]["units"].clone())?;
   let mut seen = HashSet::new();
   for decision in &correction.decisions {
     let original = extraction
@@ -106,12 +152,8 @@ fn replacement(
       version: None,
     };
     if !seen.insert(&decision.id)
-      || !ranges.iter().any(|range| {
-        range.document == citation.document
-          && range.line_start <= citation.line_start
-          && range.line_end >= citation.line_end
-      })
       || !model::valid_citation(&citation, &evidence.project.documents)
+      || !decision_in_scope(original, &citation, pending)
       || !model::supplied_citation(&citation, &supplied)
     {
       return Err(invalid());
@@ -121,12 +163,31 @@ fn replacement(
   for edge in &correction.relationships {
     validate_evidence(evidence, pending, &edge.evidence)?;
   }
+  extraction.decisions.extend(
+    correction
+      .retained_decisions
+      .iter()
+      .map(|record| record.replacement.clone()),
+  );
   replace_relationships(pending, correction, candidate, &mut extraction)?;
   remove_duplicates(&mut extraction, correction)?;
+  let preserved = retained::append(
+    (
+      super::super::warnings::CandidateContext {
+        graph: candidate,
+        project: evidence.project,
+        packet: &pending["packet"],
+      },
+      accepted,
+    ),
+    pending,
+    correction,
+    &mut extraction,
+  )?;
   if !model::validate_extraction(&extraction) {
     return Err(invalid());
   }
-  Ok(json!(extraction))
+  Ok((json!(extraction), preserved))
 }
 
 fn replace_relationships(
@@ -226,6 +287,27 @@ fn validate_changed_candidate(
   pending: &Value,
 ) -> Result<()> {
   let batch = pending["batch"].as_str().unwrap_or_default();
+  let ranges: Vec<Citation> = serde_json::from_value(pending["packet"]["units"].clone())?;
+  let present: std::collections::HashMap<_, _> = after
+    .graph
+    .decisions
+    .iter()
+    .map(|node| (&node.id, node))
+    .collect();
+  if !correction.retained_decisions.is_empty()
+    && before.decisions.iter().any(|node| {
+      node.batch != batch
+        && is_current_source(after.project, &node.document, Some(&node.version))
+        && !ranges
+          .iter()
+          .any(|range| super::overlaps(range, &super::decision_range(node)))
+        && present
+          .get(&node.id)
+          .is_none_or(|current| **current != *node)
+    })
+  {
+    return Err(invalid());
+  }
   let valid_edge = |edge: &model::Relationship| {
     let endpoints: Vec<_> = after
       .graph
@@ -233,7 +315,14 @@ fn validate_changed_candidate(
       .iter()
       .filter(|node| node.id == edge.from || node.id == edge.to)
       .collect();
-    endpoints.iter().any(|node| node.batch == batch)
+    (endpoints.iter().any(|node| node.batch == batch)
+      || pending["preservedRelationshipIds"]
+        .as_array()
+        .is_some_and(|ids| ids.contains(&json!(edge.id)))
+      || correction
+        .retained_relationships
+        .iter()
+        .any(|record| record.replacement.id == edge.local_id))
       && endpoints.iter().all(|node| {
         let citation = super::decision_range(node);
         model::valid_citation(&citation, &after.project.documents)
@@ -242,17 +331,60 @@ fn validate_changed_candidate(
   };
   if (before.decisions == after.graph.decisions
     && before.relationships == after.graph.relationships)
-    || correction.relationships.iter().any(|edge| {
-      !after
-        .graph
-        .relationships
-        .iter()
-        .any(|entry| entry.local_id == edge.id && entry.batch == batch && valid_edge(entry))
-    })
+    || correction
+      .relationships
+      .iter()
+      .chain(
+        correction
+          .retained_relationships
+          .iter()
+          .map(|record| &record.replacement),
+      )
+      .any(|edge| {
+        !after.graph.relationships.iter().any(|entry| {
+          entry.local_id == edge.id
+            && (entry.batch == batch
+              || pending["preservedRelationshipIds"]
+                .as_array()
+                .is_some_and(|ids| ids.contains(&json!(entry.id))))
+            && valid_edge(entry)
+        })
+      })
   {
     return Err(invalid());
   }
   Ok(())
+}
+
+fn verified_candidate(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  execution: &BatchExecution<'_>,
+  correction: &Correction,
+) -> Result<(Value, Graph)> {
+  let work = &execution.work;
+  if !retained_reassessment(execution.runtime, work)?
+    || work.value()["pending"]["staged"] != true
+    || !pending_current(evidence.project, &work.value()["pending"])
+    || work
+      .attempts()
+      .and_then(|attempts| attempts.last())
+      .is_none_or(|attempt| attempt["inputHash"] != correction.check_input_hash)
+  {
+    return Err(invalid());
+  }
+  let pending = work.value()["pending"].clone();
+  let candidate = materialize(evidence, graph, &pending, true)?;
+  if model_runtime::retained_check_result(
+    work,
+    &check_request(graph, &candidate, &pending),
+    &execution.runtime.execution,
+  )?
+  .is_none()
+  {
+    return Err(invalid());
+  }
+  Ok((pending, candidate))
 }
 
 pub(super) fn apply(
@@ -286,30 +418,37 @@ pub(super) fn apply(
     }
     return Ok(());
   }
-  if !retained_reassessment(runtime, work)?
-    || work.value()["pending"]["staged"] != true
-    || !pending_current(evidence.project, &work.value()["pending"])
-    || work
-      .attempts()
-      .and_then(|attempts| attempts.last())
-      .is_none_or(|attempt| attempt["inputHash"] != correction.check_input_hash)
-  {
-    return Err(invalid());
-  }
-  let mut pending = work.value()["pending"].clone();
-  let candidate = materialize(evidence, graph, &pending, true)?;
-  if model_runtime::retained_check_result(
-    work,
-    &check_request(graph, &candidate, &pending),
-    &runtime.execution,
-  )?
-  .is_none()
-  {
-    return Err(invalid());
-  }
-  let extraction = replacement(evidence, &pending, &correction, &candidate)?;
+  let (mut pending, candidate) = verified_candidate(
+    evidence,
+    graph,
+    &BatchExecution {
+      runtime,
+      store,
+      work,
+    },
+    &correction,
+  )?;
   let record = json!({"hash":fingerprint,"correction":value,"previousPending":pending});
+  let retained_ranges = retained::decision_ranges(evidence, graph, work, &correction)?;
+  retained::supply_ranges(evidence.project, &mut pending, &retained_ranges)?;
+  let comparison_ranges = retained::comparison_ranges(
+    &pending,
+    graph,
+    &correction.retained_relationships,
+    evidence.project,
+  )?;
+  retained::supply_ranges(evidence.project, &mut pending, &comparison_ranges)?;
+  retained::check_accepted(&correction.retained_relationships, graph)?;
+  let (extraction, preserved) = replacement(evidence, &pending, &correction, (&candidate, graph))?;
   pending["extraction"] = extraction;
+  let mut ids = super::strings(&pending["preservedRelationshipIds"]);
+  ids.extend(preserved);
+  pending["preservedRelationshipIds"] = json!(ids);
+  if !retained_ranges.is_empty() {
+    let mut ranges = restored_ranges(&pending);
+    ranges.extend(retained_ranges);
+    pending["retainedDecisionRanges"] = json!(ranges);
+  }
   let corrected = materialize(evidence, graph, &pending, true)?;
   validate_changed_candidate(
     &correction,
@@ -319,6 +458,15 @@ pub(super) fn apply(
       graph: &corrected,
     },
     &pending,
+  )?;
+  retained::validate(
+    super::super::warnings::CandidateContext {
+      graph: &corrected,
+      project: evidence.project,
+      packet: &check_request(graph, &corrected, &pending).packet,
+    },
+    &pending,
+    &correction.retained_relationships,
   )?;
   pending["protectedRelationships"] = json!(super::protected_relationships(
     super::SourceGraph {
@@ -332,6 +480,46 @@ pub(super) fn apply(
   pending["warnings"] = json!([]);
   // A new input identity also prevents reuse of any older native check.
   pending["packet"]["candidateCorrection"] = json!(fingerprint);
+  pending["boundCheckTargets"] = json!(true);
+  pending["restoredDecisionContext"] = json!(true);
   work.correct_pending(pending, record);
   store.save(work)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn later_corrections_keep_restored_ranges_separate_from_ordinary_pending_targets() {
+    let pending = json!({"packet":{"units":[
+      {"document":"guide.md","lineStart":200,"lineEnd":215},
+      {"document":"guide.md","lineStart":216,"lineEnd":240}
+    ]},"retainedDecisionRanges":[{"document":"guide.md","lineStart":118,"lineEnd":118,"version":"current"}]});
+    let original = |line| model::ExtractionDecision {
+      document: "guide.md".into(),
+      line_start: line,
+      line_end: line,
+      ..Default::default()
+    };
+    let cite = |start, end| Citation {
+      document: "guide.md".into(),
+      line_start: start,
+      line_end: end,
+      version: None,
+    };
+    assert!(decision_in_scope(&original(118), &cite(118, 118), &pending));
+    assert!(!decision_in_scope(
+      &original(118),
+      &cite(240, 240),
+      &pending
+    ));
+    assert!(decision_in_scope(&original(205), &cite(240, 240), &pending));
+    assert!(decision_in_scope(&original(205), &cite(210, 220), &pending));
+    assert!(!decision_in_scope(
+      &original(205),
+      &cite(118, 118),
+      &pending
+    ));
+  }
 }

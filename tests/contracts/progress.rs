@@ -39,7 +39,10 @@ fn progress_precedes_json_and_reports_wait_without_exposing_content() {
   let started = Instant::now();
   let observed = loop {
     let progress = fs::read_to_string(p.path("stderr")).unwrap();
-    if progress.contains("waiting for model") {
+    if progress
+      .split_inclusive('\n')
+      .any(|line| line.ends_with('\n') && line.contains("waiting for model"))
+    {
       break progress;
     }
     if started.elapsed() > Duration::from_secs(25) {

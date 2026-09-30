@@ -33,6 +33,10 @@ When sources move, use `snapshot relocate <old> <new>` before updating; relocati
 
 Repair a demonstrated interpretation error with `update --repair-range <document>:<start>-<end> --reason <correction>`, or `--repair <document>` when the whole document needs revisiting. Check the source, dependencies and replacements first. Do not repair correct knowledge merely because a warning omits context, or change doctrine to satisfy the model. For range requirements, `RELATIONSHIP_LOSS`, interrupted or limited work, and before `recover` or `prune`, read the [maintenance and recovery guide](../../docs/guide.md#update-and-repair-knowledge); do not retry automatically.
 
+For a false finding or omitted mapping in an unchanged retained relationship check, inspect `pendingRelationshipReview` and follow the guide's `update --retry-failed --max-calls 0 --resolve` contract. Review canonical protected/replacement IDs, current source ranges, endpoints and semantic meaning. This can supplement mappings without extracting or checking again; it cannot waive missing relationships, partial coverage or structural errors. Preserve native uncertainty, candidate history, receipts and the same work's budget.
+
+For a real omission in the retained candidate, follow the guide's `--correct` contract. A protected dependency or omitted obsolete endpoint from an earlier processed round can be restored within the same work's verified source scope; this requires a fresh check and available budget. Preserve the original packet and attempts when current comparison passages must be added to that new check, and reject unknown target IDs rather than rewriting a model finding.
+
 After `update`, review `warningChanges.new` entries with `state: "active"` and `warningChanges.reopened` in that work. Repair demonstrated implementation or relationship findings, or record an evidenced closure with `warnings --resolve`; use `warnings --all` for history. See the [warning guidance](../../docs/guide.md#update-and-repair-knowledge). Do not require closure of a real question or repeat the model for green output.
 
 ## Support review
