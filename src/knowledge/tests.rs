@@ -95,6 +95,7 @@ fn extraction_identities_are_bound_to_source_versions_and_evidence() {
     extraction: &extraction(),
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   assert_eq!(
     graph
@@ -329,6 +330,7 @@ fn relationship_with_missing_version_is_invalidated_by_context() {
     extraction: &extraction(),
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   graph.relationships[0].evidence[0].version = None;
   let next = apply_extraction(ExtractionOptions {
@@ -340,9 +342,79 @@ fn relationship_with_missing_version_is_invalidated_by_context() {
     extraction: &Extraction::default(),
     graph: &graph,
     target_ranges: None,
+    restored_ranges: None,
   });
   assert!(next.relationships.is_empty());
   assert_eq!(next.decisions.len(), graph.decisions.len());
+}
+
+#[test]
+fn restored_decision_location_does_not_expand_accepted_graph_or_warning_replacement_scope() {
+  let source = source();
+  let mut graph = apply_extraction(ExtractionOptions {
+    batch: "earlier",
+    context_documents: None,
+    context_ranges: None,
+    documents: std::slice::from_ref(&source),
+    existing_ids: None,
+    extraction: &extraction(),
+    graph: &empty_graph(),
+    target_ranges: None,
+    restored_ranges: None,
+  });
+  graph.warnings.push(Warning::Structured(WarningRecord {
+    message: "Keep the earlier finding visible.".into(),
+    kind: Some("finding".into()),
+    scope: vec![WarningScope {
+      document: source.id.clone(),
+      line_start: 3,
+      line_end: 3,
+      version: source.hash.clone(),
+    }],
+    ..WarningRecord::default()
+  }));
+  let mut restored = extraction();
+  restored.decisions.truncate(1);
+  "restored".clone_into(&mut restored.decisions[0].id);
+  "Restored meaning in the earlier passage.".clone_into(&mut restored.decisions[0].text);
+  restored.relationships.clear();
+  let citation = Citation {
+    document: source.id.clone(),
+    line_start: 3,
+    line_end: 3,
+    version: Some(source.hash.clone()),
+  };
+  let target = Citation {
+    line_start: 1,
+    line_end: 1,
+    ..citation.clone()
+  };
+  let candidate = apply_extraction(ExtractionOptions {
+    batch: "pending",
+    context_documents: Some(std::slice::from_ref(&source)),
+    context_ranges: None,
+    documents: std::slice::from_ref(&source),
+    existing_ids: None,
+    extraction: &restored,
+    graph: &graph,
+    target_ranges: Some(&[target]),
+    restored_ranges: Some(&[citation]),
+  });
+  assert_eq!(candidate.relationships, graph.relationships);
+  assert_eq!(candidate.warnings, graph.warnings);
+  assert!(
+    graph
+      .decisions
+      .iter()
+      .all(|node| candidate.decisions.contains(node))
+  );
+  let added = candidate
+    .decisions
+    .iter()
+    .find(|node| node.local_id == "restored")
+    .unwrap();
+  assert_eq!(added.quality, "unchecked");
+  assert_eq!(added.batch, "pending");
 }
 
 #[test]
@@ -376,6 +448,7 @@ fn invalid_relationship_id_does_not_poison_a_following_valid_entry() {
     extraction: &extraction,
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   assert_eq!(graph.relationships.len(), 1);
   assert_eq!(graph.warnings.len(), 1);
@@ -405,6 +478,7 @@ fn validators_cover_schema_limits_without_normalizing_live_order() {
     extraction: &extraction,
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   assert!(validate_graph(&graph));
   let mut invalid = graph.clone();
@@ -480,6 +554,7 @@ fn parsers_validate_model_input_and_keep_store_map_order() {
     extraction: &extraction,
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   let encoded_graph = graph_value(&graph, false);
   let parsed = parse_graph(&encoded_graph, true).expect("valid graph parses");
@@ -570,6 +645,7 @@ fn graph_serialization_preserves_each_record_order_and_optional_presence() {
     extraction: &extraction(),
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   graph.decisions[1].field_order = [
     "id",
@@ -711,6 +787,7 @@ fn decision_identity_uses_utf8_json_with_utf16_length_validation() {
     extraction: &extraction,
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   assert_eq!(
     graph.decisions[0].id,
@@ -775,6 +852,7 @@ fn rejects_unsafe_ranges_and_matches_javascript_citation_whitespace() {
     extraction: &extraction(),
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   graph.decisions[0].line_end = maximum + 1;
   assert!(!validate_graph(&graph));
@@ -791,6 +869,7 @@ fn check_targets_preserve_the_scope_and_provenance_of_retained_knowledge() {
     extraction: &extraction(),
     graph: &empty_graph(),
     target_ranges: None,
+    restored_ranges: None,
   });
   for decision in &mut graph.decisions {
     "checked".clone_into(&mut decision.quality);

@@ -629,6 +629,7 @@ fn materialize(
     .filter(|unit| ids.contains(&unit.id))
     .map(unit_range)
     .collect();
+  let restored_ranges = correction::restored_ranges(pending);
   let previous_ids: HashSet<_> = pending["packet"]["previousRelationships"]
     .as_array()
     .into_iter()
@@ -714,6 +715,7 @@ fn materialize(
     extraction: &extraction,
     graph,
     target_ranges: Some(&targets),
+    restored_ranges: Some(&restored_ranges),
   });
   transition::preserve(project, graph, &mut candidate, pending);
   Ok(candidate)
@@ -1029,6 +1031,7 @@ fn extract_batch(
   "existing":context.existing.iter().map(|entry|entry["id"].clone()).collect::<Vec<_>>(),
   "extraction":extraction,
   "materializedCheck":work.value()["materializedChecks"]==true,
+  "boundCheckTargets":work.value()["materializedChecks"]==true,
   "retainedRelationshipContext":2,
   "sourceTransition":packet["sourceTransition"],
   "packet":check_packet,
@@ -1085,15 +1088,59 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
   if warning_review {
     instruction.push_str(warnings::WARNING_REVIEW_INSTRUCTION);
   }
+  let mut packet = checked_packet(graph, candidate, pending, true);
+  if pending["boundCheckTargets"] == true {
+    packet["checkTargets"] = check_targets(&packet);
+    instruction.push_str(" Use only exact checkTargets IDs. Never shorten or reconstruct an ID. All protected previous relationship IDs remain eligible finding targets.");
+  }
   Request {
     instruction,
-    packet: checked_packet(graph, candidate, pending, true),
+    packet,
     schema: OutputSchema::Check {
       relationships: guarded,
       warnings: warning_review,
     },
     stage: "check".to_owned(),
   }
+}
+
+fn check_targets(packet: &Value) -> Value {
+  let mut targets = std::collections::BTreeSet::from(["batch".to_owned()]);
+  for field in [
+    "documents",
+    "existing",
+    "removedRelationships",
+    "retainedRelationships",
+  ] {
+    targets.extend(
+      packet[field]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|node| node["id"].as_str())
+        .map(str::to_owned),
+    );
+  }
+  for field in ["decisions", "relationships"] {
+    targets.extend(
+      packet["extraction"][field]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|node| node["id"].as_str())
+        .map(str::to_owned),
+    );
+  }
+  targets.extend(
+    packet["previousDecisions"]
+      .as_array()
+      .into_iter()
+      .flatten()
+      .filter(|node| node["retainedInCandidate"] == true)
+      .filter_map(|node| node["id"].as_str())
+      .map(str::to_owned),
+  );
+  json!(targets)
 }
 fn unresolved_changes(
   evidence: BatchEvidence<'_>,

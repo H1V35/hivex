@@ -264,6 +264,7 @@ pub struct ExtractionOptions<'a> {
   pub extraction: &'a Extraction,
   pub graph: &'a Graph,
   pub target_ranges: Option<&'a [Citation]>,
+  pub restored_ranges: Option<&'a [Citation]>,
 }
 
 fn utf16_len(value: &str) -> usize {
@@ -1128,7 +1129,7 @@ pub fn warning_summary(warnings: &[Warning], documents: &[Document]) -> WarningS
   summary
 }
 
-fn in_ranges(citation: &Citation, ranges: Option<&[Citation]>) -> bool {
+pub(super) fn in_ranges(citation: &Citation, ranges: Option<&[Citation]>) -> bool {
   let Some(ranges) = ranges else {
     return true;
   };
@@ -1590,6 +1591,21 @@ fn integrate_decisions(
     let Some(source) = options
       .documents
       .iter()
+      .chain(
+        options
+          .context_documents
+          .into_iter()
+          .flatten()
+          .filter(|document| {
+            options.restored_ranges.is_some_and(|ranges| {
+              ranges.iter().any(|range| {
+                range.document == document.id
+                  && range.line_start <= entry.line_start
+                  && range.line_end >= entry.line_end
+              })
+            })
+          }),
+      )
       .find(|document| document.id == entry.document)
     else {
       extraction_warnings.push(Warning::Structured(WarningRecord {
@@ -1613,8 +1629,11 @@ fn integrate_decisions(
       line_start: entry.line_start,
       version: Some(source.hash.clone()),
     };
-    let located =
-      valid_citation(&citation, options.documents) && in_ranges(&citation, options.target_ranges);
+    let located = valid_citation(&citation, std::slice::from_ref(source))
+      && (in_ranges(&citation, options.target_ranges)
+        || options
+          .restored_ranges
+          .is_some_and(|ranges| in_ranges(&citation, Some(ranges))));
     if !located {
       extraction_warnings.push(Warning::Structured(WarningRecord {
         kind: Some("validation".to_owned()),

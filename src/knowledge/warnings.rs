@@ -24,6 +24,15 @@ pub(super) struct CandidateContext<'a> {
   pub packet: &'a Value,
 }
 
+pub(super) fn validate_relationship_changes(
+  context: CandidateContext<'_>,
+  pending: &Value,
+  changes: &Value,
+) -> Result<()> {
+  relationships::review_changes(&json!({"relationshipChanges":changes}), &context, pending)?;
+  Ok(())
+}
+
 #[derive(Clone, Debug)]
 struct Resolution {
   evidence: Vec<Citation>,

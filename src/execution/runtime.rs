@@ -112,6 +112,87 @@ pub struct Request {
   pub stage: String,
 }
 
+impl Request {
+  fn output_schema(&self) -> Value {
+    let mut schema = self.schema.schema();
+    let Some(targets) = self.packet.get("checkTargets") else {
+      return schema;
+    };
+    schema["properties"]["findings"]["items"]["properties"]["target"]["enum"] = targets.clone();
+    if let OutputSchema::Check {
+      relationships: true,
+      ..
+    } = self.schema
+    {
+      schema["properties"]["relationshipChanges"]["items"]["properties"]["previousId"]["enum"] = json!(
+        self.packet["removedRelationships"]
+          .as_array()
+          .into_iter()
+          .flatten()
+          .map(|edge| &edge["id"])
+          .collect::<Vec<_>>()
+      );
+      let ids = self.relationship_ids();
+      if ids.is_empty() {
+        schema["properties"]["relationshipChanges"]["items"]["properties"]["replacements"]["maxItems"] =
+          json!(0);
+      } else {
+        schema["properties"]["relationshipChanges"]["items"]["properties"]["replacements"]["items"]
+          ["enum"] = json!(ids);
+      }
+    }
+    schema
+  }
+
+  fn relationship_ids(&self) -> Vec<&Value> {
+    self.packet["extraction"]["relationships"]
+      .as_array()
+      .into_iter()
+      .flatten()
+      .chain(
+        self.packet["retainedRelationships"]
+          .as_array()
+          .into_iter()
+          .flatten(),
+      )
+      .map(|edge| &edge["id"])
+      .collect()
+  }
+
+  fn parse(&self, value: &Value) -> Option<Value> {
+    let parsed = self.schema.parse(value)?;
+    let Some(targets) = self.packet.get("checkTargets") else {
+      return Some(parsed);
+    };
+    let targets = targets.as_array()?;
+    if !parsed["findings"]
+      .as_array()?
+      .iter()
+      .all(|finding| targets.contains(&finding["target"]))
+    {
+      return None;
+    }
+    let previous: Vec<_> = self.packet["removedRelationships"]
+      .as_array()
+      .into_iter()
+      .flatten()
+      .map(|edge| &edge["id"])
+      .collect();
+    let current = self.relationship_ids();
+    let valid = parsed["relationshipChanges"]
+      .as_array()
+      .into_iter()
+      .flatten()
+      .all(|change| {
+        previous.contains(&&change["previousId"])
+          && change["replacements"]
+            .as_array()
+            .is_some_and(|ids| ids.iter().all(|id| current.contains(&id)))
+      });
+    valid.then_some(parsed)
+  }
+}
+
 pub struct ModelInput {
   pub bytes: usize,
   pub fingerprint: String,
@@ -125,7 +206,7 @@ pub fn model_input(request: &Request, execution: &Execution) -> ModelInput {
     request.instruction,
     stringify_knowledge(&request.packet)
   );
-  let schema = request.schema.schema();
+  let schema = request.output_schema();
   let fingerprint =
     hash(&json!({"prompt":prompt,"schema":schema,"model":execution.cache_identity()}).to_string());
   ModelInput {
@@ -160,7 +241,6 @@ pub fn retained_check_result(
     return Err(invalid_retained());
   }
   let value = request
-    .schema
     .parse(&attempt["result"])
     .ok_or_else(invalid_retained)?;
   // A replaced profile validates historical provenance but requires a new check.
@@ -208,20 +288,16 @@ pub fn run_model(
     work.progress.message(format_args!(
       "{stage}: reusing retained result; no model call"
     ));
-    return request
-      .schema
-      .parse(&attempt["result"])
-      .map(Some)
-      .ok_or_else(|| {
-        HivexError::new(
-          "READ_FAILED",
-          "Retained model output does not match its schema",
-        )
-      });
+    return request.parse(&attempt["result"]).map(Some).ok_or_else(|| {
+      HivexError::new(
+        "READ_FAILED",
+        "Retained model output does not match its schema",
+      )
+    });
   }
   if let Some(cached) = store
     .cached(&input.fingerprint)?
-    .and_then(|cached| request.schema.parse(&cached))
+    .and_then(|cached| request.parse(&cached))
   {
     work.cache_hit()?;
     store.save(work)?;
@@ -271,7 +347,7 @@ fn record_invocation(
   let value = if completed {
     serde_json::from_str::<Value>(raw)
       .ok()
-      .and_then(|value| request.schema.parse(&value))
+      .and_then(|value| request.parse(&value))
   } else {
     None
   };
@@ -409,6 +485,48 @@ fn review_code_citation(citation: &Value) -> Option<Value> {
 mod tests {
   use super::*;
   use crate::work::{BeginWork, StoreOptions};
+
+  #[test]
+  fn bound_check_targets_reject_unknown_ids_in_schema_and_local_validation_without_rewriting_history()
+   {
+    let mut request = Request {
+      instruction: "Check the exact supplied IDs.".into(),
+      stage: "check".into(),
+      schema: OutputSchema::Check {
+        relationships: true,
+        warnings: false,
+      },
+      packet: json!({"checkTargets":["batch","docs/rule.md","current","previous"],
+        "removedRelationships":[{"id":"previous"}],"extraction":{"relationships":[{"id":"replacement"}]}}),
+    };
+    let check = json!({"findings":[{"target":"current","reason":"A source-supported defect."}],
+      "relationshipChanges":[{"previousId":"previous","replacements":["replacement"],
+        "reason":"Meaning is preserved.","evidence":[{"document":"docs/rule.md","lineStart":1,"lineEnd":1}]}]});
+    assert!(request.parse(&check).is_some());
+    let schema = request.output_schema();
+    assert_eq!(
+      schema["properties"]["findings"]["items"]["properties"]["target"]["enum"],
+      request.packet["checkTargets"]
+    );
+    for field in ["target", "previousId", "replacement"] {
+      let mut bad = check.clone();
+      match field {
+        "target" => bad["findings"][0]["target"] = json!("unknown-truncated-id"),
+        "previousId" => bad["relationshipChanges"][0]["previousId"] = json!("unknown-old-id"),
+        _ => bad["relationshipChanges"][0]["replacements"] = json!(["unknown-replacement"]),
+      }
+      assert!(request.parse(&bad).is_none(), "{field}");
+    }
+    let mut historical = check.clone();
+    historical["findings"][0]["target"] = json!("old-unbound-target");
+    request
+      .packet
+      .as_object_mut()
+      .unwrap()
+      .shift_remove("checkTargets");
+    assert!(request.parse(&historical).is_some());
+    assert_eq!(historical["findings"][0]["target"], "old-unbound-target");
+  }
 
   #[test]
   fn retains_v1_fingerprint_and_utf8_budget() {

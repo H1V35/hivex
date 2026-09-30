@@ -621,7 +621,7 @@ fn a_finding_on_removed_context_cannot_bypass_the_relationship_guard() {
   let result = p.model_cli(&REPAIR);
   subset(
     &result,
-    &json!({"status":"failed","work":{"calls":2,"lastAttempt":{"code":"RELATIONSHIP_LOSS"}}}),
+    &json!({"status":"failed","work":{"calls":2,"lastAttempt":{"code":"INVALID_KNOWLEDGE_OUTPUT"}}}),
   );
   assert_eq!(p.graph(), before);
   let captured = packets(&p);
