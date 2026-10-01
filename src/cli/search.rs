@@ -61,6 +61,7 @@ fn options(args: &[String]) -> Result<Options> {
 fn key(project: &Project, options: &Options) -> String {
   hash(
     &json!([
+      "context-v1",
       project.snapshot,
       options.query,
       options.sources,
@@ -83,7 +84,7 @@ fn offset(project: &Project, options: &Options) -> Result<usize> {
     )
   };
   let (identity, start) = cursor
-    .strip_prefix("q1.")
+    .strip_prefix("q2.")
     .and_then(|value| value.split_once('.'))
     .ok_or_else(invalid)?;
   if identity != key(project, options)
@@ -104,7 +105,7 @@ fn response(project: &Project, options: &Options, page: &[Value], bounds: (usize
     "coverage":if project.warnings.is_empty(){"selected-sources"}else{"partial"},
     "scope":"lexical source passages; a match does not establish semantic applicability or exhaust relevant context",
     "matches":page,"totalMatches":total,"warnings":project.warnings,
-    "continuation":if next<total{Some(format!("q1.{}.{}",key(project,options),next))}else{None}})
+    "continuation":if next<total{Some(format!("q2.{}.{}",key(project,options),next))}else{None}})
 }
 
 pub fn command(args: &[String]) -> Result<Value> {
@@ -134,7 +135,7 @@ pub fn command(args: &[String]) -> Result<Value> {
     page.pop();
     if page.is_empty() {
       return Err(HivexError::new("OUTPUT_LIMIT", "The next complete passage exceeds --max-bytes; read its cited range or increase the limit")
-        .with_details(json!({"document":found.document,"from":found.line_start,"to":found.line_end})));
+        .with_details(json!({"document":found.document,"from":found.line_start,"to":found.line_end,"context":{"from":found.context.line_start,"to":found.context.line_end}})));
     }
     break;
   }

@@ -304,6 +304,63 @@ fn scan_markdown(text: &str) -> Result<MarkdownScan> {
   Ok(scan)
 }
 
+pub(super) struct Section {
+  pub line_start: usize,
+  pub line_end: usize,
+  pub bytes: Range<usize>,
+  pub context_end: usize,
+}
+
+/// Bound heading scopes and byte ends without storing every source line.
+pub(super) fn sections(text: &str) -> Result<Vec<Section>> {
+  let scan = scan_markdown(text)?;
+  let (positions, line_count) = line_positions(text, &scan);
+  let mut headings = scan.headings.iter().enumerate().peekable();
+  let mut sections = Vec::new();
+  let mut is_heading = false;
+  let mut start = (1, 0);
+  let mut end = line_count;
+  let needed: BTreeSet<_> = positions
+    .values()
+    .map(|line| line.saturating_sub(1))
+    .chain([line_count])
+    .collect();
+  let mut ends = BTreeMap::new();
+  for (index, line) in raw_line_ranges(text).enumerate() {
+    if needed.contains(&(index + 1)) {
+      ends.insert(index + 1, line.end);
+    }
+    if headings
+      .peek()
+      .is_some_and(|(_, heading)| heading.start < line.end)
+    {
+      let line_end = if is_heading { end } else { index };
+      if line.start > start.1 {
+        sections.push(Section {
+          line_start: start.0,
+          line_end,
+          bytes: start.1..line.start,
+          context_end: 0,
+        });
+      }
+      let (heading_index, _) = headings.next().expect("peeked heading");
+      is_heading = true;
+      end = section_end(&scan.headings, heading_index, &positions, line_count);
+      start = (index + 1, line.start);
+    }
+  }
+  sections.push(Section {
+    line_start: start.0,
+    line_end: end,
+    bytes: start.1..text.len(),
+    context_end: 0,
+  });
+  for section in &mut sections {
+    section.context_end = ends[&section.line_end];
+  }
+  Ok(sections)
+}
+
 fn line_positions(text: &str, scan: &MarkdownScan) -> (BTreeMap<usize, usize>, usize) {
   let offsets: BTreeSet<_> = scan
     .headings
