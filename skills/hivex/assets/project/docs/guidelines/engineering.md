@@ -2,7 +2,7 @@
 
 ## Understand the change
 
-Use the project's Markdown and Hivex's relevant decisions, neighbors and sources to recover settled context. Apply the scope, conditions, exceptions and replacements. Ask the owner only when evidence cannot resolve a meaningful decision; give a clear recommendation.
+Use the project's Markdown and Hivex's relevant source passages and authored relationships to recover settled context. Apply the scope, conditions, exceptions and replacements. Ask the owner only when evidence cannot resolve a meaningful decision; give a clear recommendation.
 
 Choose the workflow the task needs. Implement a defined change directly, use a grill for open decisions, and use focused research or a disposable prototype when it answers a real question. Additional specs and tickets should help define or divide work. They are not mandatory stages for every task.
 
@@ -28,15 +28,15 @@ Run the relevant checks for the affected surfaces. Documentation and configurati
 
 ## Independent review
 
-Use one independent review by default, covering scope, correctness and project standards. Add another when concrete risk or findings justify it. The reviewer uses the implementing agent's model and reasoning effort; do not substitute the knowledge model for that review.
+Use one independent review by default, covering scope, correctness and project standards. Add another when concrete risk or findings justify it. The reviewer uses the implementing agent's model and reasoning effort. Hivex retrieval does not choose or invoke a model.
 
-The principal reviewer verifies possible conflicts with relevant decisions, dependencies and exceptions. Hivex assists that review. Start with local recovery of evidence; use model-assisted review when it adds value, rather than by ceremony. A model's lack of findings is not approval of an implementation.
+The principal reviewer verifies possible conflicts with relevant decisions, dependencies and exceptions. Hivex assists that review. Start with local recovery of evidence; the reviewer reasons about actual applicability. Structural validation does not approve an implementation.
 
 Resolve findings on their merits. Do not rerun reviewers or modify doctrine merely to obtain approval. Apply existing owner authorization and the repository's Git procedure to completion.
 
 ## Maintain knowledge and communicate clearly
 
-Before writing, consult the map and search for the existing authority, including relevant history and replacements. Update that authority for the same scope; use new documents only for distinct purposes. Preserve source versions, relevant history and honest uncertainty. When optional graph work is used, preserve its incremental progress and cumulative budget rather than reingesting the corpus. Existing work history and consumed budgets must not be reset when changing the retrieval approach.
+Before writing, consult the map and search for the existing authority, including relevant history and replacements. Update that authority for the same scope; use new documents only for distinct purposes. Preserve source versions, relevant history and honest uncertainty. Retain necessary historical execution evidence, failed results and consumed budgets when retiring old integration; source retrieval must not reset or reopen it.
 
 Use familiar language and concrete explanations. Briefly explain a technical term when the owner needs it to understand or decide; do not explain every term or change the requested level of detail.
 
@@ -46,7 +46,7 @@ Before integration, maintain Markdown that adds durable value in the authority t
 
 Review the affected authorities, their current conditions and history links, and the changed implementation at a defined revision. Resolve demonstrated contradictions, missing decisions needed by supported behavior, broken references and actionable defects. Treat a model finding as a claim to verify against those sources and code. Keep follow-up finite and scoped to the evidence that changed; do not repeatedly certify the whole corpus or chase a globally green result. A real current defect or unresolved policy decision that affects supported behavior blocks integration. When evidence cannot resolve a consequential question, preserve it as unresolved and ask the owner with the sources, impact and a recommendation.
 
-Start with the documentation map and relevant Markdown authorities, using deterministic search and following explicit links as the task requires. Hivex's inferred graph and model-assisted commands are optional derived assistance. A stale graph, pending check or unrelated warning alone does not block integration; use the Markdown authority when graph evidence is incomplete or uncertain. If graph or local work state is maintained, preserve its original sources, quality marks, uncertainty, failed results, receipts and consumption. Never reset accounting, erase evidence or relabel historical/native results as success to clear a warning. Correct current defects on their merits; do not dismiss them as historical because a graph also contains old evidence.
+Start with the documentation map and relevant Markdown authorities, using deterministic search and following explicit links as the task requires. Hivex's CLI reads authored Markdown and invokes no model. Missing source coverage or unread continuation limits the affected conclusions; expand with documentation and available tools before asking the owner. Historical graph status does not certify the current base or block unrelated work. Preserve necessary old sources, quality marks, uncertainty, failed results, receipts and consumption; do not erase or relabel history to clear a warning. Correct current defects on their merits.
 
 Keep the source and implementation revisions reviewed identifiable. Close the review when its concrete findings are resolved or an owner decision is needed. A bounded evidence update may resolve a concrete finding; a changed source or implementation requires review of the affected scope again. This policy complements independent implementation review, relevant behavioral checks and the project's existing merge authorization in the [tracker procedure](../procedures/issue-tracker.md).
 

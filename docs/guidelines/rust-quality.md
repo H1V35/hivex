@@ -46,15 +46,9 @@ The following direct dependencies are allowed in addition to a domain's own modu
 | Consumer | Permitted domains |
 | --- | --- |
 | documents, foundation | none |
-| knowledge | documents, work, execution |
-| work | documents, knowledge, execution |
-| execution | documents, knowledge, work |
-| integrations | execution |
-| consultation | documents, knowledge, work, execution, review |
-| review | documents, knowledge, work, execution |
-| CLI and binary entry point | compose the domains |
+| CLI and binary entry point | documents, foundation |
 
-Knowledge ingestion, work persistence and execution accounting have concrete collaborations; this matrix does not invent acyclic layering. Execution's runtime validates knowledge output and persists work evidence, while its integration contract stays vendor-neutral. Integration implementations remain isolated by vendor and cannot import knowledge, work or CLI. Choosing an integration, provider, model and its options remains independent.
+Documents own ephemeral SQLite retrieval alongside parsing and authored navigation. Foundation owns safe initialization. Neither imports CLI or the other domain. Retired graph, execution, provider and work domains have no active dependency entries.
 
 `cargo test --locked --test architecture` follows production module declarations from `src/main.rs`, checks imports and qualified paths (including relative paths and written macro tokens), and requires private submodules. Root aliases/glob imports and custom production `#[path]` redirection are rejected because they would obscure the dependency boundary. Normal local aliases remain usable: their imports establish the dependency and Rust privacy protects the exposed interface. Explicit test-only modules/functions are excluded from dependency checks; their behavior and source quality are still verified. The gate is a source policy check, not a compiler name-resolution engine or a security sandbox for arbitrary macro expansion.
 
@@ -68,6 +62,6 @@ cargo test --locked --test quality --test architecture
 cargo test --locked
 ```
 
-The Quality workflow runs these gates on the existing GitHub-hosted macOS ARM64 runner, then verifies the native package and CLI contracts. Neither gate makes model calls. The analyzer, syntax libraries, development utility and synthetic server are not distributed. Package notices follow only normal/build dependency edges, excluding development-only analyzers. `num-traits`, already present transitively, is an explicit runtime dependency for checked numeric conversions; the v1 numeric behavior remains protected by the existing contracts.
+The Quality workflow runs these gates on the existing GitHub-hosted macOS ARM64 runner, then verifies the native package and CLI contracts. Neither gate makes model calls. The analyzer, syntax libraries and development utility are not distributed. Package notices follow only normal/build dependency edges, excluding development-only analyzers. `num-traits`, already present transitively, is an explicit runtime dependency for checked numeric conversions; compatible Markdown numeric metadata remains protected by source contracts.
 
 Changes to rules, parser versions or the dependency matrix require updating this authority and representative positive/negative cases.

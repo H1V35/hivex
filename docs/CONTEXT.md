@@ -1,64 +1,35 @@
 # Hivex domain language
 
-Hivex supplies project knowledge to the agents responsible for implementation and review. Markdown records that knowledge; the authority map and explicit relationships guide focused reading. An optional graph can assist retrieval without becoming authority itself.
+Hivex gives agents and people a reusable project foundation and focused access to reliable Markdown. The agent reasons about applicability; the CLI discovers, searches, validates and reads authored sources.
 
 ## Language
 
-**Project foundation**: The recommended starting documents, workflow capabilities and knowledge practices that an adopting project tailors to its own purpose and decisions.
+**Project foundation**: Recommended starting documents, workflow capabilities and knowledge practices, tailored to the adopting project's purpose and decisions.
 
-**Initialization**: Preparing missing foundation files and configuration without supplying new project facts or replacing existing knowledge.
+**Initialization**: Preparing missing foundation files, configuration and skill links while preserving project-owned files.
 
-**Adoption**: Fitting the foundation to a project by completing its meaning, preserving useful existing knowledge and aligning documentation and working practices.
+**Adoption**: Completing the foundation from project evidence, preserving useful knowledge and aligning working practices.
 
-**Document**: A selected Markdown file, wherever its project, package or module keeps it.
+**Authority**: The maintained Markdown home for a topic and scope. Its current applicability depends on conditions, exceptions and replacements, not merely its folder or status.
 
-**Archived document**: Historical Markdown preserved as evidence of replaced decisions and their reasons. It remains available for focused retrieval without being presumed current authority.
+**Document**: A selected Markdown file at project, package or module scope.
 
-**Ingestion unit**: A bounded fragment of a document with its original line range. It permits processing and resumption in rounds without becoming a separate documentary authority.
+**Archived document**: Historical Markdown retained as evidence of replaced decisions. It is readable and searchable explicitly, without presumed current authority.
 
-**Document version**: The exact contents of a document at a point in the work. A working copy is a version even when it has not been committed; its existence does not establish approval.
+**Document version**: The hash of exact source contents, including working copies. A version identifies evidence, not approval.
 
-**Snapshot**: The selected document versions considered together for a particular work item.
+**Snapshot**: The selected document versions and source-selection configuration for a query. It is an identity, not a persistent knowledge database.
 
-**Decision**: A meaningful project choice or constraint together with its scope, conditions, exceptions and reasons. Proposals and historical decisions retain their declared state.
+**Passage**: A bounded range of original source lines returned by search. A passage can omit surrounding context; read relevant conditions and relationships before acting.
 
-**Explicit relationship**: An author-declared Markdown link between rules or decisions, naming a dependency, exception, application or replacement together with its relevant scope and reason.
+**Decision**: A project choice or constraint with its scope, conditions, exceptions and reasons. Acceptance, implementation, verification and permission are separate claims.
 
-**Inferred relationship**: A derived connection proposed without an authored link. It can assist investigation, but its meaning and applicability must be checked against sources.
+**Explicit relationship**: An author-declared connection with a fixed literal, Markdown target and scope/reason. Incoming navigation derives the inverse while preserving the written direction.
 
-**Evidence**: An identifiable passage of a particular document or implementation version that a reader can inspect. A model's paraphrase is not the passage itself.
+**Evidence**: An inspectable passage of a particular document or implementation version. A model's summary is not that passage.
 
-**Knowledge graph**: Optional derived decisions and relationships, with supporting definitions and lessons, that help an agent recover project context. It may be incomplete or uncertain without making every usable part unavailable.
+**Coverage**: The selected and successfully loaded sources considered by an operation. Omissions, bounds and unread continuation limit conclusions.
 
-**Knowledge snapshot**: A portable representation of reusable graph knowledge, its source versions, evidence, provenance and coverage. It is distinct from a document snapshot and from execution state.
+**Applicability**: Whether a decision governs the particular case after its conditions, exceptions and replacements are considered.
 
-**Applicability**: Whether a decision governs the case being considered after its conditions, exceptions and replacements have been taken into account.
-
-**Freshness**: Whether derived knowledge still corresponds to the selected document versions. Freshness does not establish applicability or correctness by itself.
-
-**Knowledge update**: Processing a selected set of document versions into decisions and relationships, followed by one bounded check of that set and its affected relationships.
-
-**Knowledge check**: Examination of an update against its sources to identify omissions or incorrect interpretations. It reports issues and uncertainty, not a certificate of global completeness.
-
-**Interpretation repair**: Replacing a wrong derived interpretation by comparing it with unchanged Markdown. It preserves source authority and does not resolve a genuine policy conflict by itself.
-
-**Source relocation**: Moving existing knowledge to a document's new location, retaining its decisions and relationships while distinguishing reusable evidence from content that needs a new check.
-
-**Context**: The decisions, related evidence and remaining uncertainties relevant to a particular task.
-
-**Implementation version**: The captured change against a particular base together with the exact contents of the affected files. Later code changes are outside that review.
-
-**Finding**: A possible conflict between an implementation and project knowledge. The principal reviewer verifies it and retains responsibility for the implementation review.
-
-**Work**: One requested update, consultation or review, including its phases and any resumed work.
-
-**Work budget**: The limits shared by every phase and attempt of one work item. Resuming does not reset its consumption, and unknown consumption remains visible.
-
-**Recovery**: Incorporating useful historical decisions, reasons and lessons into their appropriate Markdown authorities while identifying obsolete, duplicate or purely operational material.
-
-
-**Execution integration**: The connection through which Hivex asks an agent/runtime to perform a bounded model invocation and observes its result, usage, cancellation and cleanup. Codex is the currently supported integration, not a domain requirement.
-
-**Execution profile**: The requested integration, model provider, model identifier and result-affecting options. The selected profile must match the effective execution; similarly named effort levels across vendors are not presumed equivalent.
-
-**Attempt**: One accounted invocation within a work item, including failures and unknown usage. Retaining or resuming a work item preserves its attempts.
+**Historical execution evidence**: Preserved graph/runtime records, including failed work, attempts, receipts, uncertainty and consumed budgets. The current CLI does not reopen or mutate them.

@@ -271,22 +271,13 @@ fn verify(root: &Path, manifest: &Value, archive: &Path) -> Result<()> {
   }
   verify_initialization(&binary, &package, &temporary.0)?;
   verify_retained_contract(root, &binary, &temporary.0)?;
-  let verification = json!({"archive":archive,"sha256":report["sha256"],"nativeSha256":report["nativeSha256"],"target":TARGET,"checks":["public-allowlist-six-skills","extracted-native-executable","no-runtime-or-development-js-dependencies","no-bun-node-in-path","installed-init-and-skills","retained-v1-history","unchanged-graph-cache","source-read-snapshot"]});
+  let verification = json!({"archive":archive,"sha256":report["sha256"],"nativeSha256":report["nativeSha256"],"target":TARGET,"checks":["public-allowlist-six-skills","extracted-native-executable","no-runtime-or-development-js-dependencies","no-bun-node-in-path","installed-init-and-skills","retained-v1-bytes","source-only-search-relations-read"]});
   write_json(
     &PathBuf::from(format!("{}.verification.json", archive.display())),
     &verification,
   )?;
   println!("{}", serde_json::to_string_pretty(&verification)?);
   Ok(())
-}
-
-fn cache_rows(database: &Connection) -> Result<Vec<(String, String)>> {
-  Ok(
-    database
-      .prepare("SELECT key,value FROM model_cache ORDER BY key")?
-      .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-      .collect::<std::result::Result<_, _>>()?,
-  )
 }
 
 fn main() -> Result<()> {
@@ -479,35 +470,33 @@ fn verify_retained_contract(root: &Path, binary: &Path, temporary: &Path) -> Res
   fs::create_dir_all(project.join(".hivex"))?;
   let source = "# Policy\nUse bounded work.\nPreserve the budget.\n";
   fs::write(project.join("notes.md"), source)?;
-  let database = Connection::open(project.join(".hivex/knowledge.sqlite"))?;
+  let database_path = project.join(".hivex/knowledge.sqlite");
+  let database = Connection::open(&database_path)?;
   database.execute_batch(&fs::read_to_string(
     root.join("tests/fixtures/knowledge-cache-v1.sql"),
   )?)?;
-  let graph_before: String = database.query_row("SELECT data FROM graph", [], |row| row.get(0))?;
-  let cache_before = cache_rows(&database)?;
-  verify_historical_work(binary, &project, &database)?;
-  let graph_after: String = database.query_row("SELECT data FROM graph", [], |row| row.get(0))?;
-  if graph_after != graph_before || cache_rows(&database)? != cache_before {
-    return Err("Retained graph/cache changed".into());
+  drop(database);
+  let database_before = fs::read(&database_path)?;
+  let snapshot = project.join(".hivex/graph.json");
+  fs::write(
+    &snapshot,
+    "retained snapshot is intentionally not valid JSON",
+  )?;
+  let snapshot_before = fs::read(&snapshot)?;
+  verify_source_contract(binary, &project, source)?;
+  if fs::read(&database_path)? != database_before || fs::read(&snapshot)? != snapshot_before {
+    return Err("Retained legacy state changed during source retrieval".into());
   }
-  if cli(binary, &project, &["read", "notes.md"])?["text"] != source
-    || cli(binary, &project, &["sources"])?["totalDocuments"] != 1
-  {
-    return Err("Source contract changed".into());
-  }
-  cli(binary, &project, &["snapshot", "export"])?;
-  cli(binary, &project, &["warnings"])?;
   Ok(())
 }
 
-fn verify_historical_work(binary: &Path, project: &Path, database: &Connection) -> Result<()> {
-  let work_before: String = database.query_row("SELECT data FROM work", [], |row| row.get(0))?;
-  if cli(binary, project, &["status"])?["availableDecisions"] != 2 {
-    return Err("Retained v1 knowledge is unavailable".into());
-  }
-  let work_after: String = database.query_row("SELECT data FROM work", [], |row| row.get(0))?;
-  if work_after != work_before {
-    return Err("Historical work changed during read-only inspection".into());
+fn verify_source_contract(binary: &Path, project: &Path, source: &str) -> Result<()> {
+  if cli(binary, project, &["read", "notes.md"])?["text"] != source
+    || cli(binary, project, &["sources"])?["totalDocuments"] != 1
+    || cli(binary, project, &["search", "budget"])?["totalMatches"] != 1
+    || cli(binary, project, &["relations", "notes.md"])?["totalRelations"] != 0
+  {
+    return Err("Source-only retrieval contract changed".into());
   }
   Ok(())
 }

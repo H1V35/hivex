@@ -1,7 +1,6 @@
 use crate::error::{HivexError, Result};
 use std::collections::{HashMap, HashSet};
 
-pub(crate) use crate::compatibility::parse_number;
 #[derive(Default)]
 pub struct Parsed {
   pub positionals: Vec<String>,

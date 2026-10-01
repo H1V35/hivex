@@ -18,54 +18,10 @@
       "usage": "relations <document> [--direction outgoing|incoming|both] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]"
     },
     {
-      "modelCalls": "One extraction and one check per ordinary batch; eligible unchanged units reuse extraction and share one check. Retained work resumes within the same budget.",
-      "name": "update",
-      "usage": "update [--resolve <candidate-resolution.json> | --correct <candidate-correction.json>] [--root <project>] [--max-calls <total>] [--max-input-bytes <total>] [--max-context-bytes <bytes>] [--repair <document> | --repair-range <document>:<start>-<end>] [--reason <correction>] [--source <context-document>]"
-    },
-    {
       "modelCalls": 0,
       "name": "search",
-      "usage": "search <query> [--root <project>] [--limit <count>]"
-    },
-    {
-      "modelCalls": 0,
-      "name": "neighbors",
-      "usage": "neighbors <decision-id> [--root <project>] [--limit <count>]"
-    },
-    {
-      "modelCalls": "One bounded automatic update/check batch and Luna/max assistance share a total budget; identical retained answers are reused.",
-      "name": "ask",
-      "usage": "ask <task> [--root <project>] [--source <document>] [--max-calls <total>] [--max-input-bytes <total>] [--max-context-bytes <bytes>]"
-    },
-    {
-      "modelCalls": "One automatic update/check batch and a review share one budget. Checking saved versions needs no model.",
-      "name": "review",
-      "usage": "review <task> --base <git-ref> [--root <project>] [--source <document>] [--max-calls <total>] [--max-context-bytes <bytes>] | review --check <saved-report.json> [--root <project>]"
-    },
-    {
-      "modelCalls": 0,
-      "name": "recover",
-      "usage": "recover [--root <project>] [--acknowledge-uncertain | --supersede <review.json>]"
-    },
-    {
-      "modelCalls": 0,
-      "name": "prune",
-      "usage": "prune [--root <project>] [--keep-completed <count>] [--keep-caches <count>]"
-    },
-    {
-      "modelCalls": 0,
-      "name": "snapshot",
-      "usage": "snapshot export | import | relocate <from> <to> [--root <project>]"
-    },
-    {
-      "modelCalls": 0,
-      "name": "warnings",
-      "usage": "warnings [--all] [--resolve <resolutions.json>] [--root <project>]"
-    },
-    {
-      "modelCalls": 0,
-      "name": "status",
-      "usage": "status [--root <project>]"
+      "usage": "search <query> [--source <document>] [--historical] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
+      "maxIndexedPassages": 32768
     },
     {
       "modelCalls": 0,
@@ -74,8 +30,7 @@
     }
   ],
   "configuration": "Optional hivex.json with include/exclude/archive relative Markdown globs; archived sources are focused evidence.",
-  "modelOptions": "--integration <codex> --model <catalog-model> --effort <catalog-effort> --model-provider <openai> --codex <native-binary> --deadline-ms <100..1800000> --retry-failed --resume-with-profile <work-id> (explicit update/ask/review continuation; original scope, history and budget)",
-  "progress": "update, ask and review accept --progress auto|always|never (default auto: stderr terminal only). Plain stderr checkpoints and 15-second model waits; stdout remains the final JSON.",
   "purpose": "Project decisions, dependencies and exceptions for the responsible agent.",
-  "stage": "Incremental project knowledge and task/diff assistance for the principal agent."
+  "stage": "Deterministic Markdown retrieval and authored navigation; no model integration or persistent knowledge store.",
+  "migration": "Graph/model commands retired in 0.8.0; retained files are never opened or changed. See docs/guide.md#migrate-from-the-inferred-graph-runtime."
 }

@@ -5,8 +5,8 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 
-const IGNORE_RULES: [&str; 3] = ["!/.hivex/", "/.hivex/*", "!/.hivex/graph.json"];
-const IGNORE_BLOCK: &str = "!/.hivex/\n/.hivex/*\n!/.hivex/graph.json\n";
+const IGNORE_RULES: [&str; 1] = ["/.hivex/"];
+const IGNORE_BLOCK: &str = "/.hivex/\n";
 const SKILLS: [&str; 6] = [
   "hivex",
   "hivex-design",
@@ -207,26 +207,7 @@ fn split_crlf_lines(text: &str) -> impl Iterator<Item = &str> {
 }
 
 fn validate_nested_ignore(root: &Path) -> Result<()> {
-  let relative_path = ".hivex/.gitignore";
-  let target = destination(root, relative_path, DestinationKind::File)?;
-  if !target.exists {
-    return Ok(());
-  }
-  let bytes = fs::read(&target.absolute_path).map_err(|read_error| {
-    error(
-      "INIT_READ_FAILED",
-      format!("Unable to read {relative_path}: {read_error}"),
-    )
-  })?;
-  let text = String::from_utf8_lossy(&bytes);
-  if split_crlf_lines(&text)
-    .any(|line| !trim_js_whitespace(line).is_empty() && !line.starts_with('#'))
-  {
-    return Err(error(
-      "INIT_IGNORE_CONFLICT",
-      ".hivex/.gitignore contains rules that can override snapshot visibility or local state privacy.",
-    ));
-  }
+  destination(root, ".hivex/.gitignore", DestinationKind::File)?;
   Ok(())
 }
 

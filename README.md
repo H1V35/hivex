@@ -25,17 +25,18 @@ npx hivex init
 
 ```sh
 npx hivex search "cache policy"
+npx hivex relations docs/policy.md
 npx hivex read docs/policy.md --from 20 --to 45
 npx hivex --help
 ```
 
 Run these commands from the project root. In Bun projects, use `bun hivex …` instead.
 
-The native package currently supports **macOS ARM64**. Local search, source reading and initialization need no model. Optional graph/model commands still exist and require an authenticated Codex session for invocations; their limits and budgets are in the [CLI reference](docs/reference/graph-cli.md). They are not required for the source-first workflow.
+The native package supports **macOS ARM64**. All current CLI commands use Markdown directly without model calls or a persistent knowledge store. Version 0.8 retires the inferred graph runtime; the [migration guide](docs/guide.md#migrate-from-the-inferred-graph-runtime) explains the changed command contract and preservation of historical data.
 
 ## Documentation
 
-- [CLI guide](docs/guide.md): configuration, commands, budgets, recovery and snapshots.
+- [CLI guide](docs/guide.md): configuration, source retrieval, authored navigation and migration.
 - [Development](docs/guide.md#development): build, tests and package verification with Rust.
 - [Project decisions](docs/README.md): architecture and engineering conventions.
 
