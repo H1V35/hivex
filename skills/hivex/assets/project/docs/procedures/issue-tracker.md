@@ -16,7 +16,7 @@ Start from the current integration branch and keep changes coherent. Use the pro
 
 Complete the relevant verification and independent review, then open a clear PR linked to its issue. Explain the resulting behavior, the validation actually completed and material limits. Follow CI to an actual result; a queued or skipped check is not a pass.
 
-Complete the [knowledge-before-merge requirements](../guidelines/engineering.md#knowledge-before-merge) before integration. Include maintained Markdown and explicit relationships in the reviewed change, with source and code review against a defined revision. A real applicable knowledge defect still blocks; incomplete optional graph state alone does not.
+Complete the [knowledge-before-merge requirements](../guidelines/engineering.md#knowledge-before-merge) before integration. Include maintained Markdown and explicit relationships in the reviewed change, with source and code review against a defined revision. A real applicable knowledge defect still blocks; historical graph state alone does not.
 
 Merge within the owner's existing authorization after required checks and review. Do not infer authority from readiness or supervision labels. Preserve shared history and clean up the local/remote branches and worktrees belonging to finished work. Implementation changes must be integrated; completed research, evidence or prototypes must have their useful results and required history retained before cleanup. Keep unfinished or uncertain work intact, regardless of branch age or whether it has a PR. Do not discard unmerged work without an established disposition and the applicable owner authorization.
 

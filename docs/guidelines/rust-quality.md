@@ -46,15 +46,9 @@ The following direct dependencies are allowed in addition to a domain's own modu
 | Consumer | Permitted domains |
 | --- | --- |
 | documents, foundation | none |
-| knowledge | documents, work, execution |
-| work | documents, knowledge, execution |
-| execution | documents, knowledge, work |
-| integrations | execution |
-| consultation | documents, knowledge, work, execution, review |
-| review | documents, knowledge, work, execution |
-| CLI and binary entry point | compose the domains |
+| CLI and binary entry point | documents, foundation |
 
-Knowledge ingestion, work persistence and execution accounting have concrete collaborations; this matrix does not invent acyclic layering. Execution's runtime validates knowledge output and persists work evidence, while its integration contract stays vendor-neutral. Integration implementations remain isolated by vendor and cannot import knowledge, work or CLI. Choosing an integration, provider, model and its options remains independent.
+Documents own ephemeral SQLite retrieval alongside parsing and authored navigation. Foundation owns safe initialization. Neither imports CLI or the other domain. Retired graph, execution, provider and work domains have no active dependency entries.
 
 `cargo test --locked --test architecture` follows production module declarations from `src/main.rs`, checks imports and qualified paths (including relative paths and written macro tokens), and requires private submodules. Root aliases/glob imports and custom production `#[path]` redirection are rejected because they would obscure the dependency boundary. Normal local aliases remain usable: their imports establish the dependency and Rust privacy protects the exposed interface. Explicit test-only modules/functions are excluded from dependency checks; their behavior and source quality are still verified. The gate is a source policy check, not a compiler name-resolution engine or a security sandbox for arbitrary macro expansion.
 

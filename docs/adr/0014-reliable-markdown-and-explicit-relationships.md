@@ -26,7 +26,15 @@ Separate replaced material into a declared Markdown archive while preserving ori
 
 Agents start with the map, deterministic source search and bounded reading. They expand to explicit dependencies, exceptions, replacements and relevant historical evidence. Apply settled decisions autonomously. Ask the owner only after reasonable available evidence and tools cannot resolve a consequential question, with sources, impact and a recommendation.
 
-The inferred graph and model-assisted commands remain optional capabilities with their actual limits. Stale or uncertain derived records cannot certify current sources or block unrelated source-grounded work by themselves. Reading Markdown remains available when derived knowledge is insufficient. An alternative for reducing retrieval tokens and context is not yet selected; evaluate it against this simpler base with correctness, evidence recovered, agent context, model usage and maintenance cost measured together.
+## Retire the inferred graph runtime
+
+After validating explicit navigation, the owner approved the remaining five-point plan: complete source retrieval; remove graph/runtime code; close the shared methodology; measure bounded real use cases; prepare release and Compi adoption. Search and runtime retirement are one coherent delivery because both replace the old extracted-decision query contract. Maintenance validation and adoption follow as useful independently verifiable changes.
+
+Version 0.8.0 retires graph extraction, checks, inference, model-assisted consultation/review, repair, execution profiles, work orchestration and active snapshot operations. Source commands discover, search, navigate and read Markdown directly. They never open or change the historical graph stores. SQLite remains useful solely as in-memory FTS5/BM25 lexical search; do not add a persistent index or a second knowledge database without measured need.
+
+Preserve the old package/Git checkpoint and required execution evidence before integration, including snapshots, failed/pending work, attempts, receipts, uncertainty and consumption. A retirement diagnostic replaces removed commands; no current path resumes or silently rewrites legacy data. The #152 candidate is superseded as an optimization of removed runtime, not admitted or called completed maintenance. Preserve its checkpoint and adverse results.
+
+Evaluate retrieval against correct evidence recovered, agent context, query latency and maintenance cost together. The responsible agent follows available documents and tools autonomously before asking the owner. Do not introduce another inference accelerator without evidence that this simpler base falls short.
 
 ## Knowledge before integration
 
@@ -36,7 +44,7 @@ Recover settled rules before implementation and reconcile the affected authority
 
 Close the review against a defined source and implementation revision. Record new evidence as a bounded change to that review. A model finding is a claim to verify, not a reason to repeatedly certify the whole corpus. Current unresolved policy conflicts or implementation defects still block integration; a globally green graph, zero unrelated graph warnings or complete graph ingestion are not prerequisites. This does not authorize ignoring a real problem surfaced by the graph.
 
-Preserve existing graph snapshots, SQLite records, failed candidates, attempts, receipts, native uncertainty and consumption. Do not reset accounting, relabel failures as success, rewrite historical output or erase evidence to complete this transition. The unfinished #152 optimization remains separate from this decision.
+Preserve existing graph snapshots, SQLite records, failed candidates, attempts, receipts, native uncertainty and consumption. Do not reset accounting, relabel failures as success, rewrite historical output or erase evidence to complete this transition. Archive and report the #152 optimization as superseded with its unfinished results intact.
 
 ## Relationships
 
@@ -49,4 +57,4 @@ Preserve existing graph snapshots, SQLite records, failed candidates, attempts, 
 
 ## Preserved contracts and application
 
-[Runtime, data and execution compatibility](0013-domain-modules-and-execution-integrations.md) remain unchanged. The [source-reading guide](../guide.md#recover-context) and [engineering policy](../guidelines/engineering.md#knowledge-before-merge) apply this decision. Choosing a future retrieval accelerator requires separate evidence.
+[Source runtime boundaries and historical data preservation](0013-domain-modules-and-execution-integrations.md) govern retirement. The [source-reading guide](../guide.md#recover-context) and [engineering policy](../guidelines/engineering.md#knowledge-before-merge) apply this decision. Choosing a future retrieval accelerator requires separate evidence.

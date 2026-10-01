@@ -1,6 +1,6 @@
 # Documentation map
 
-Markdown records project intent, terminology, rules and reasons. The map and authored relationships guide focused retrieval; Hivex's inferred graph is optional derived assistance. The responsible agent checks applicability against the sources and the owner's current decisions.
+Markdown records project intent, terminology, rules and reasons. The map and authored relationships guide focused retrieval; Hivex retrieves current source evidence without an inferred graph or model invocation. The responsible agent checks applicability against the sources and the owner's current decisions.
 
 - [PRD](PRD.md): purpose, problem, vision, users and scope. Draft sections are open work, not accepted product decisions.
 - [CONTEXT](CONTEXT.md): the project's agreed domain language.

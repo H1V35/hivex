@@ -10,23 +10,8 @@ fn allowed(from: &str, to: &str) -> bool {
     return true;
   }
   let dependencies: &[&str] = match from {
-    "" | "cli" => &[
-      "cli",
-      "documents",
-      "knowledge",
-      "work",
-      "execution",
-      "integrations",
-      "consultation",
-      "review",
-      "foundation",
-    ],
+    "" | "cli" => &["cli", "documents", "foundation"],
     "documents" | "foundation" | "error" | "compatibility" => &[],
-    "knowledge" | "review" => &["documents", "work", "execution", "knowledge"],
-    "work" => &["documents", "knowledge", "execution"],
-    "execution" => &["documents", "knowledge", "work"],
-    "consultation" => &["documents", "knowledge", "work", "execution", "review"],
-    "integrations" => &["execution"],
     _ => return false,
   };
   dependencies.contains(&to)
@@ -279,10 +264,12 @@ fn dependency_gate_covers_imports_qualified_paths_and_test_boundaries() {
     );
   }
   boundary.issues.clear();
-  boundary.module = vec!["knowledge".into()];
+  boundary.module = vec!["cli".into()];
   boundary.visit_file(
-    &syn::parse_file("use crate::documents::Document; fn valid() { crate::work::save(); }")
-      .unwrap(),
+    &syn::parse_file(
+      "use crate::documents::Document; fn valid() { crate::foundation::initialize(); }",
+    )
+    .unwrap(),
   );
   assert_eq!(boundary.issues, Vec::<String>::new());
 }

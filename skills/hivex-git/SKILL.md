@@ -21,7 +21,7 @@ Start a coherent branch from the current integration branch. Follow the project'
 
 Follow CI to an actual result and confirm the independent review covers the revision being integrated under the project's engineering policy. Reuse valid verification. Resolve conflicts from both changes' intent and check affected behavior. Preserve shared history; avoid direct integration-branch pushes and force pushes.
 
-Verify the project's knowledge-before-merge requirements, using the [foundation policy](../hivex/assets/project/docs/guidelines/engineering.md#knowledge-before-merge) when establishing them. Review the current Markdown, explicit relationships and affected code together. A real source or implementation defect still blocks; incomplete optional graph coverage alone does not. Neither green CI nor a model label replaces that evidence.
+Verify the project's knowledge-before-merge requirements, using the [foundation policy](../hivex/assets/project/docs/guidelines/engineering.md#knowledge-before-merge) when establishing them. Review the current Markdown, explicit relationships and affected code together. A real source or implementation defect still blocks; historical graph coverage alone does not. Neither green CI nor a model label replaces that evidence.
 
 Merge when required checks/review pass and existing owner authorization covers it. Update the appropriate checkout safely after integration.
 

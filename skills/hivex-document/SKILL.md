@@ -15,7 +15,7 @@ For adoption, relevant Hivex guidance updates or a change of project languages, 
 
 When adopting or updating the foundation, establish its [knowledge-before-merge requirements](../hivex/assets/project/docs/guidelines/engineering.md#knowledge-before-merge) in the project's existing engineering or knowledge authority, linked from its Git procedure. `init` preserves existing files; package installation alone does not update their policy. Preserve explicit owner decisions and surface a genuine conflict instead of silently replacing them.
 
-Prefer migration to the standard when reasonably possible. Preserve useful content, links, history and monorepo/package/module authority. Reuse shared rules rather than duplicating them; keep product, stack and host details in the adopting project. Inspect source selection before moving documents and preserve archive links and provenance. Before any later optional graph maintenance, follow its relocation and unfinished-work safeguards.
+Prefer migration to the standard when reasonably possible. Preserve useful content, links, history and monorepo/package/module authority. Reuse shared rules rather than duplicating them; keep product, stack and host details in the adopting project. Inspect source selection before moving documents and preserve archive links and provenance. Preserve historical runtime evidence before retiring old integration; maintain links and versions when relocating sources.
 
 ## Keep documents useful
 
@@ -29,4 +29,4 @@ Preserve conditions, exceptions and partial replacements. Keep proposed, current
 
 Use a short [AGENTS.md entrypoint](../hivex/assets/project/AGENTS.md): orientation, development/verification guidance and indispensable project constraints. Explain when linked authorities matter; do not duplicate them or require every document on every task.
 
-Check affected links, source selection and the current authority against the change. An optional graph export is not required for the Markdown base; existing graph work, history and accounting remain preserved.
+Check affected links, source selection and the current authority against the change. No graph export or model check is required for the Markdown base; historical work and accounting remain preserved without being relabelled.

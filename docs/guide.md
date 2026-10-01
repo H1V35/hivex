@@ -1,75 +1,43 @@
 # Hivex guide
 
-The primary path is reliable Markdown, explicit relationships and focused source retrieval. See [ADR 0014](adr/0014-reliable-markdown-and-explicit-relationships.md). Optional graph/model commands keep their actual compatibility contracts.
-
-## Project foundation
-
-Hivex combines incremental knowledge, local retrieval, optional model assistance and a small adoption workflow. Its five general skills cover design, documentation, implementation, independent review and Git/triage. Use the capabilities a task needs rather than a compulsory sequence.
-
-No installed command approves an implementation. The principal reviewer checks findings, relevant tests and source evidence. The [knowledge decision](adr/0010-practical-knowledge-assistance.md) and [foundation decision](adr/0012-project-foundation-and-workflow.md) define these responsibilities.
+Hivex is an AI-first CLI for agents and people. The principal agent reasons and implements; Hivex supplies reusable workflow skills and deterministic retrieval of repository Markdown. No command invokes a model or requires a persistent knowledge database.
 
 ## Install the CLI and skills
 
-The native package targets macOS ARM64. The installed executable does not require Bun, Node.js or Rust; npm (or Bun) is used only to install the package. Other targets need native compatibility validation before distribution.
+The verified native target is macOS ARM64. Install a pinned project dependency:
 
 ```sh
 npm install -D -E @h1v35/hivex
-npx hivex --help
+npx hivex init
 ```
 
-The package includes `hivex`, `hivex-design`, `hivex-document`, `hivex-implement`, `hivex-review` and `hivex-git` under `skills/`. Install the directories together in the skill location your agent discovers. Keep them at the same release as the CLI; the relative references between these bundled skills should stay intact.
-
-Run `npx hivex init` after installation. It links the six bundled skills into `.agents/skills` and exposes them through `.claude/skills`, keeping them at the installed CLI release. Existing skill directories or links are preserved. Parent directory symlinks are rejected before any files are written. Other agents can use the same packaged skill directories.
-
-All examples run from the project root. Use `bun hivex` instead of `npx hivex` in a Bun project. For another directory, append `--root /path/to/project`. Install the scoped package first; if npx offers to download the unrelated unscoped `hivex` package, cancel. Automation can use `npx --no-install hivex` to forbid downloading.
-
-The default knowledge profile needs an authenticated Codex CLI session with Luna/max available. The Codex integration also accepts an explicitly selected `--model` and `--effort` advertised by its runtime. Invocation validates the requested configuration and effective profile without silent fallback. Document discovery, source/version checks, snapshot operations and initialization do not require a model.
-
-Codex CLI compatibility is established through the app-server protocol and the effective account, model and isolation settings, rather than an exact CLI version. Compatible tool updates remain usable; the actual CLI version is recorded with each admitted invocation. An incompatible protocol or profile stops execution instead of silently changing the knowledge model or its permissions.
+In Bun projects use `bun add -d -E @h1v35/hivex`, then `bun hivex init`. The scoped package is `@h1v35/hivex`; do not install the unrelated unscoped package. The executable needs no JavaScript launcher, model credentials or Codex process. npm/Bun are installation clients, not Hivex runtime dependencies.
 
 ## Initialize a project
 
-```sh
-npx hivex init
-# Or prepare another existing project directory:
-npx hivex init --root /path/to/project
-```
+`init [--root <project>]` prepares missing foundation documents, a source configuration, brief `AGENTS.md`, a `CLAUDE.md` import and relative links to six packaged skills in `.agents/skills/` and `.claude/skills/`. It preserves existing files, configuration, custom skills and historical runtime state. Run it from a complete package; copying the executable alone does not install its assets. Unsafe destination paths and symlink parents fail before writes.
 
-Initialization creates missing foundation documents and skill links, a source configuration and Git ignore rules that keep `.hivex/graph.json` shareable while local execution state stays ignored. It reports created, preserved and updated paths, makes no model calls, and does not install dependencies, configure global tools or write to GitHub. Repeating it preserves existing Markdown, configuration, graph and history.
+Initialization is a starting point. The responsible agent completes the project's purpose, vocabulary and scope from evidence and owner decisions, maps current authorities and preserves useful history. The [Markdown foundation](../skills/hivex/references/markdown.md) and [language-template catalogue](../templates/README.md) guide adoption. Installing a package does not replace an existing project's owner policy.
 
-An existing `.hivex/.gitignore` with active patterns can override the root rules, exposing local state or hiding the snapshot. Initialization reports this conflict before writing files; reconcile those nested patterns with the root ignore policy before continuing.
+New installations ignore `.hivex/` as retained local state. Previously tracked graph files remain tracked until the project deliberately preserves and retires them; `init` neither deletes nor untracks them. Existing nested ignore files are preserved.
 
-The foundation includes a short `AGENTS.md`, a `CLAUDE.md` that imports it, documentation map, draft PRD and glossary, ADR directory, engineering and triage guidelines, and a tracker procedure. Language-specific standards are packaged separately under [`templates/`](../templates/README.md); the adopting agent applies the matching template to the project. `init` copies only the language-neutral foundation. The principal agent completes the project's actual purpose, vision and language from evidence and owner decisions. Draft headings do not stand in for those decisions.
+## Select sources
 
-Use the documentation skill to migrate existing material to the standard when reasonably possible, preserving useful content, links, history and monorepo/package/module scope. The CLI does not infer semantic migrations or overwrite existing sources. The Git skill aligns useful labels and tracker conventions within the owner's authorization; project-specific areas remain local.
-
-## Run
-
-From a source checkout with the stable Rust toolchain:
-
-```sh
-cargo run --locked -- --help
-cargo run --locked -- sources
-cargo run --locked -- update --max-calls 0
-```
-
-The scoped package name is `@h1v35/hivex`, with command `hivex` and MIT license. Publication and registry installation are tracked separately; do not fetch the unrelated unscoped npm package.
-
-Documents need no Git repository or commit. They can live at monorepo, package or module level and use their project's own Markdown format. An optional `hivex.json` selects relative globs:
+Documents need no Git repository or committed revision. Keep them at their real project, package or module scope. Optional `hivex.json` selects relative Markdown globs:
 
 ```json
 {
-  "include": ["docs/**/*.md", "packages/**/*.md", "src/**/decisions/*.md"],
+  "include": ["docs/**/*.md", "packages/**/*.md"],
   "exclude": ["docs/generated/**"],
   "archive": ["docs/archive/**/*.md"]
 }
 ```
 
-Without configuration, Hivex selects Markdown files under the project. It skips dependencies, its own cache, Git metadata and private dot directories; explicitly named documentation directories can be selected. `archive` declares additional Markdown that remains readable evidence while staying out of ordinary update and consultation ingestion. Use `--source <document>` with `ask` or `review` to select it, or let a known relationship bring back the bounded ranges it requires. Historical metadata and evidence carry `historical: true`; an extracted decision from that source remains `historical`, even when the transport suggests another status. An `exclude` glob wins over `archive`. Symlinks are not followed and protected directories and scope escapes remain rejected. The previous experimental `collections` configuration is rejected with a migration message rather than silently reinterpreted. The former `history` field is still read for existing projects; new configuration uses `archive`. Specifying both is an error. Renaming the field preserves snapshots, retained work and caches.
+Without configuration, Hivex selects Markdown under the project. Dependencies, Git metadata, private dot directories and its own retained state are skipped. Explicit documentation directories can be selected; symlinks, protected directories and scope escapes are rejected. `exclude` wins over `archive`. The old `history` configuration field remains compatible; specifying both `history` and `archive` is invalid. Legacy `collections` configuration requires migration. Archive membership marks history explicitly rather than changing what its original status meant.
 
 ## Recover context
 
-Start with [the documentation map](README.md), choose the task's current authority, then search and read only the passages needed:
+Start from the documentation map and the authority for the task:
 
 ```sh
 npx hivex sources --limit 20
@@ -78,102 +46,57 @@ npx hivex relations docs/policy.md --direction both
 npx hivex read docs/policy.md --from 20 --to 45
 ```
 
-`sources`, `search`, `relations` and `read` make no model calls. Search returns source matches as well as available derived decisions; verify a result against its current Markdown. A preview, status label or graph entry does not settle applicability. Read the complete condition and exception, and follow authored dependencies, qualifications and replacements, including indirect ones.
+All operations use current working-copy sources without model calls or graph/SQLite-state access. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
 
-The [relationship convention](../skills/hivex/references/markdown.md#make-relationships-explicit) uses ordinary Markdown links with a reason and scope. Choose the source by the relationship's meaning rather than loading every document. Record the source version and any unread continuation; do not infer a missing decision from a partial excerpt.
+### Search source passages
 
-Apply settled decisions autonomously. Expand with available documentation and tools when the first passage is insufficient. Ask the owner only after those routes cannot resolve a consequential question, with the evidence, impact and a recommendation.
+`search <query>` uses deterministic SQLite FTS5/BM25 in memory over 32-line source windows. It tokenizes Unicode terms after lowercase/NFKC normalization and searches with OR semantics. Ranking is lexical relevance, not semantic approval. A window can cut across a paragraph or omit a condition; use its coordinates, the source map and relationships to recover the remaining context.
+
+Each `matches` entry carries `document`, `version`, `historical`, `lineStart`, `lineEnd` and exact `text`, reproducible with `read`. Ordinary searches exclude archives. Use `--historical` to include selected history or repeated `--source <document>` to restrict the search to specified selected documents, including archives. Invalid or excluded explicit sources are errors.
+
+`--limit` defaults to 6, maximum 64. `--max-bytes` defaults to 16384, maximum 65536, and bounds the complete serialized UTF-8 JSON. Passages are never cut to fit. Follow `continuation` with `--cursor` and identical sources/options; changed versions or options return `INVALID_CURSOR`. If the next complete passage cannot fit, `OUTPUT_LIMIT` cites its document/range for focused `read`. Indexing more than 32768 nonblank windows returns `SEARCH_LIMIT`; narrow source selection instead of accepting silent omissions. Source-discovery warnings mark `status` and `coverage` as `partial`. A complete empty lexical result proves only absence of matching terms within the declared scope.
 
 ### Navigate authored relationships
 
-`relations <document>` reads the current selected Markdown directly, without a graph, SQLite store or model. The document is an exact source ID from `sources`; it does not accept a fragment. Use `--direction outgoing`, `incoming` or `both` (default) to choose direct connections. Incoming navigation scans ordinary sources and the queried source; other archived declarations are excluded. Historical destinations remain reachable, and querying an archived source explicitly reads its own declarations.
+`relations <document>` uses an exact selected document ID, without a source fragment. `--direction outgoing|incoming|both` defaults to `both`. Incoming navigation scans ordinary sources and the queried document; other archived declarations are excluded. Historical destinations remain reachable, and explicitly querying an archived document reads its own declarations.
 
-Each result preserves the authored `kind`, exact `literal`, `from`, `to` and `reason`. `navigation` is `outgoing`, `incoming` or `self`; it never reverses the written statement. References include the document, optional destination anchor, current version, historical flag and one-based `lineStart`/`lineEnd`. Read the destination range with `read`, then query that document to follow relevant indirect dependencies. Navigation does not recursively load the corpus.
+Results preserve `kind`, exact `literal`, authored `from`/`to` and `reason`. `navigation` is `outgoing`, `incoming` or `self`. References carry source versions, historical flags, optional destination anchors and one-based ranges. Read the destination range, then query the next document to follow relevant indirect dependencies. No recursion or relationship inference runs automatically.
 
-The [shared relationship contract](../skills/hivex/references/markdown.md#make-relationships-explicit) defines the five literals and one-line entries under exact `## Relationships`. Missing targets, malformed entries, duplicate declarations and missing or ambiguous anchors return errors with source coordinates. Ordinary links outside this block are not formal relationships. An empty result means no declared connections within the reported source coverage, not proof that no relevant decision exists; use the map, search and reading to expand the evidence.
+The [authored relationship contract v1](../skills/hivex/references/markdown.md#make-relationships-explicit) owns the five literals and exact `## Relationships` grammar. Invalid declarations, duplicate entries, missing targets and missing/ambiguous anchors are located errors. Ordinary prose links outside the block remain useful navigation.
 
-`--limit` defaults to 20 (maximum 2048), and `--max-bytes` defaults to 16384 (maximum 65536). The byte limit covers the complete serialized UTF-8 JSON response; no relation is cut. Follow a non-null `continuation` with `--cursor` and the same query options. Changed sources or options return `INVALID_CURSOR`; a complete next entry that cannot fit returns `OUTPUT_LIMIT`. Source-discovery warnings produce `status: partial` and `coverage: partial`; inspect those warnings before treating navigation as complete. Otherwise coverage is `selected-sources`, not every file in the repository. Structural validation does not certify the meaning of an authored relationship.
+`--limit` defaults to 20, maximum 2048. `--max-bytes` defaults to 16384, maximum 65536, including complete JSON metadata. A cursor binds versions and query options. Entries are never cut; a nonfitting entry returns `OUTPUT_LIMIT`. Source warnings produce partial coverage. A query validates at most 2048 declarations across its scanned sources; excess returns `RELATION_LIMIT`, not a truncated success. Narrow source selection or query outgoing relations of one document when that bound is reached.
 
-A query validates at most 2048 authored declarations across the sources it scans. Exceeding that limit returns `RELATION_LIMIT` with a source line, even if the requested page is small; the CLI never silently drops excess declarations or claims complete coverage. Narrow selected sources or use outgoing navigation for one document when a larger repository reaches this bound.
+### Read exact sources
 
-### Current sources and accessible history
+`sources` lists source metadata with `--limit`, `--max-bytes` and snapshot-bound `--cursor`. `read <document> --from <line> --to <line>` returns exact source text and version. Read's `--max-bytes` bounds the text payload on complete line boundaries; metadata remains additional. Inspect `truncated` and `continuation`, and continue when needed. Reading an archived document explicitly preserves its historical flag.
 
-Declare replaced history separately from ordinary source selection:
+## Maintain project knowledge
 
-```json
-{
-  "include": ["docs/**/*.md"],
-  "archive": ["docs/archive/**/*.md"]
-}
-```
+Before writing, inspect the map and search existing current and relevant historical authorities. Update the existing home for the topic/scope. Keep acceptance, delivery, verification and permission distinct under the [state catalogue](../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Maintain affected Markdown, authored relationships and callers alongside code changes. Check references and supported behavior before integration; independent review judges semantic correctness against a defined source/code revision.
 
-Archived Markdown remains in Git and readable with `read`; it is excluded from ordinary ingestion and model consultation unless selected as evidence or required by a known relationship. Current authority documents link their applicable rules to history and replacements. An archive is evidence for its recorded scope, not an instruction to apply an obsolete command.
+<a id="update-and-repair-knowledge"></a>
+## Migrate from the inferred graph runtime
 
-Use `read docs/archive/adr/old-decision.md` for an explicit historical question. Source/derived freshness and current/historical selection are distinct from semantic approval. Preserve reported omissions and unavailable evidence. [ADR 0011](adr/0011-shared-knowledge-and-selective-history.md) owns archival safety.
+Version 0.8.0 retires `update`, `ask`, `neighbors`, model-assisted `review`, `warnings`, `snapshot`, `recover`, `prune` and graph `status`. They return `COMMAND_RETIRED`, without opening or changing legacy data. `search` now returns source passages rather than extracted decisions. Model/profile/budget options are no longer accepted by source commands. Use the responsible agent and workflow skills for interpretation and review.
 
-### Optional derived assistance
+Before removing a project's old shared graph from ordinary tracking, preserve its useful decisions in Markdown and retain needed execution evidence. Keep original SQLite, snapshots, failed candidates, receipts, unknown consumption and consumed budgets unchanged; do not relabel pending work as completed. The [0.7.8 command record](archive/runtime/graph-cli-0.7.8.md) and [domain contract](archive/runtime/domain-contract-0.7.8.md) describe historical behavior. Use a preserved pinned legacy package only for a concrete historical investigation; the current CLI does not resume those operations or silently replay them.
 
-`neighbors`, `ask`, `review` and graph maintenance remain available, but are not the primary workflow or a merge gate. `ask` and model-assisted `review` can run a graph update before answering; they may consume several invocations. Use them only when that cost adds value. They do not replace source review or owner authorization.
-
-The [optional CLI reference](reference/graph-cli.md) records budgets, profile continuity, recovery, graph warnings and snapshots. Existing failed work remains failed until its normal lifecycle records another disposition; this documentation change neither resumes it nor resets its consumption.
-
-
-## Workflow skills and Markdown practice
-
-The [Hivex skill](../skills/hivex/SKILL.md) handles local retrieval, incremental knowledge, uncertainty and accounting. The additional capabilities are [design](../skills/hivex-design/SKILL.md), [documentation](../skills/hivex-document/SKILL.md), [implementation](../skills/hivex-implement/SKILL.md), [review](../skills/hivex-review/SKILL.md) and [Git/triage](../skills/hivex-git/SKILL.md).
-
-The [Markdown foundation](../skills/hivex/references/markdown.md) defines the recommended adoption layout, concise agent entrypoint, purpose, glossary, decisions, guidelines and procedures. Knowledge operations continue to accept other Markdown layouts. Preserve a project's useful rules and exceptions when adopting the baseline.
-
-Prefer DDD and meaningful responsibilities, risk/value-based tests with TDD optional only for sufficiently defined critical flows, and one independent review by default. The reviewer matches the implementation agent's model and effort. Use local knowledge before model-assisted interpretation, and explain technical details clearly when they matter to the owner's understanding or decisions.
+The former #152 check-context optimization is superseded by runtime retirement, not completed graph maintenance. Its checkpoint and evidence remain preserved. Source-only operations create no persistent index or query artifacts. SQLite remains solely an ephemeral FTS implementation; existing execution databases remain historical files.
 
 ## Development
 
-The Rust CLI reads the existing SQLite and shared snapshot v1 formats and retains work budgets and attempts. The GPT-6 upgrade retires the old cache generation as described in [Execution profiles](#execution-profiles). The TypeScript runtime was retired after compatibility validation under [#80](https://github.com/H1V35/hivex/issues/80). Its fixed SQL fixtures and synthetic protocol server remain as independent compatibility evidence.
-
-Use the stable Rust toolchain and Git 2.45 or newer for development. The [Rust quality standard](guidelines/rust-quality.md) describes formatting, Clippy, metrics and domain boundaries. Cargo runs all unit and CLI integration tests, including the synthetic Codex server. No TypeScript, JavaScript, Bun or Node.js tooling is required.
+Use stable Rust and Git 2.45 or newer. The [engineering guideline](guidelines/engineering.md) and [Rust quality standard](guidelines/rust-quality.md) own review, checks and module boundaries.
 
 ```sh
 cargo fmt --check
 cargo check --locked --all-targets
 cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked --test quality --test architecture
 cargo test --locked
 cargo run --locked --bin hivex-dev -- pack
 cargo run --locked --bin hivex-dev -- verify
 ```
 
-The CLI suite requires the native binary and has no fallback to another implementation. Cargo builds the test executables automatically. Its SQLite fixtures include retained answers and extraction/check caches with exhausted budgets. Model tests use `tools/test_codex.rs` and consume no real model calls. `HIVEX_TEST_BINARY` selects an already built CLI when testing the packaged executable; `HIVEX_TEST_CODEX_BINARY` can select the synthetic server for isolated native unit tests.
-
-The development-only `hivex-dev` command builds and verifies the npm archive using Cargo and the system `tar`. It refuses to overwrite an existing artifact; provide a different output path for a new verification build. Only `bin/hivex` is distributed. `package.json` contains distribution metadata, not a second development toolchain. npm is needed only by the publisher or by users who choose registry installation.
-
-
-The native artifact is verified on macOS ARM64, using system ICU for source ordering. Package preparation, archive inspection and publication of the exact approved bytes follow the [release procedure](procedures/releasing.md).
-
-Tests use the public CLI and a simulated native transport. Real Luna evaluations are bounded and reported separately; simulated token usage is not a consumption measurement. Development is issue-first, with coherent PRs, an independent review covering scope/correctness/standards and CI on the final commit. See the [engineering workflow](guidelines/engineering.md).
-
-Earlier candidate/fidelity/comparison/admission protocols and their tests are retired from the active CLI. Their code remains in Git history and historical evidence keeps its original results. They do not impose a requirement to reproduce an Opus graph or exhaustively replay an old gold suite.
-
-## Source organization
-
-The [domain decision](adr/0013-domain-modules-and-execution-integrations.md) defines module ownership. `src/documents` handles sources and parsing; `src/knowledge` owns the graph and its derived state; `src/work` owns typed progress, budgets and persistence; consultation and review compose them. `src/execution` defines the integration-neutral contract, and `src/integrations/codex` contains its protocol, admission and process lifecycle. CLI parsing/output and development tools remain separate.
-
-CI runs unit tests in the development build and the complete CLI contracts once against the packaged release executable. `cargo test --locked` remains the convenient local check. The parser matrix belongs beside the parser; integration-specific protocol tests live in `tests/contracts/codex.rs`. Remove a test only when its meaningful guarantee is retained elsewhere or its behavior is retired.
-
-## Update and repair knowledge
-
-Optional graph maintenance, candidate correction, warning review and recovery are described in the [graph CLI reference](reference/graph-cli.md#update-and-repair-knowledge). Maintain source authority and explicit relationships under [the engineering policy](guidelines/engineering.md#knowledge-before-merge).
-
-## Execution profiles
-
-Optional invocation profiles and retained-work continuity are described in [the current CLI reference](reference/graph-cli.md#execution-profiles). No profile change or new invocation is implied by the Markdown-first workflow.
-
-## Share knowledge through Git
-
-Commit maintained Markdown, explicit relationships and preserved history together. Existing optional graph snapshots remain derived evidence with their original versions and uncertainty; the [snapshot reference](reference/graph-cli.md#share-knowledge-through-git) owns import/export safety. This transition preserves the current snapshot and local execution records rather than certifying or relocating stale graph entries.
-
-## Support an implementation review
-
-Read the task's sources and explicit relationships, then independently assess scope, correctness and standards. Optional model-assisted review and zero-call saved-report checks are documented in [the CLI reference](reference/graph-cli.md#support-an-implementation-review). Assistance is not implementation approval.
+CI runs unit/quality/architecture checks and the complete public CLI suite against the packaged release executable. `HIVEX_TEST_BINARY` selects that executable. Package verification runs with a PATH excluding Bun/Node and confirms initialization, source retrieval and exact preservation of fixed legacy SQLite/snapshot bytes. No synthetic model server or model test suite remains. The Rust development tool and system `tar` prepare the npm-compatible archive; existing artifacts are never overwritten. Follow the [release procedure](procedures/releasing.md) for exact artifact verification, installation and publication.
 
 ## Relationships
 

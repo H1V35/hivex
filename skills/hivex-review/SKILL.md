@@ -11,7 +11,7 @@ Assess the change independently under the project's engineering policy and state
 
 Assess scope, correctness, regressions and relevant standards. Ground findings in an affected scenario and evidence; omit speculative defects, existing problems outside scope and style preferences handled by configured tools. Identify simpler solutions when they materially improve the result.
 
-Recover decisions, dependencies, exceptions and replacements through the documentation map, current Markdown and authored links. Use deterministic source search/read to expand only the evidence needed. Model-assisted knowledge review is optional support; verify its findings against sources and code. Its silence is not implementation approval.
+Recover decisions, dependencies, exceptions and replacements through the documentation map, current Markdown and authored links. Use deterministic source search/read to expand only the evidence needed. The responsible reviewer assesses knowledge against sources and code; structural validation is not semantic approval.
 
 Check whether verification protects meaningful behavior and covers the change. TDD is optional and reserved for sufficiently defined critical flows; do not require it, a test per edit or assertions shaped around the implementation. Distinguish an unverified outcome from a demonstrated defect.
 

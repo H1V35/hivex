@@ -1,7 +1,10 @@
-pub(crate) use markdown::{hash, is_markdown_path, line_content, raw_markdown_lines, source_range};
+pub(crate) use markdown::{
+  hash, is_markdown_path, line_content, raw_line_ranges, raw_markdown_lines,
+};
 mod markdown;
 mod navigation;
 mod relations;
+mod search;
 use crate::error::{HivexError, Result};
 use globset::{GlobBuilder, GlobMatcher};
 #[cfg(not(target_os = "macos"))]
@@ -9,6 +12,7 @@ use icu_collator::{Collator, options::CollatorOptions};
 #[cfg(not(target_os = "macos"))]
 use icu_locale_core::locale;
 pub(crate) use navigation::relations as authored_relations;
+pub(crate) use search::search as search_sources;
 use serde_json::{Map, Value, json};
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -47,10 +51,7 @@ pub struct Document {
 pub struct Project {
   pub root: PathBuf,
   pub snapshot: String,
-  pub current_snapshot: String,
   pub documents: Vec<Document>,
-  pub current_documents: Vec<Document>,
-  pub historical_documents: Vec<Document>,
   pub warnings: Vec<Warning>,
 }
 
@@ -742,37 +743,15 @@ fn load_project_inner(root: &str) -> Result<Project> {
     .map(|parsed_document| parsed_document.document)
     .collect();
   documents.sort_by(|left, right| locale_compare(&left.path, &right.path));
-  let current_documents = documents
-    .iter()
-    .filter(|document| !document.historical)
-    .cloned()
-    .collect::<Vec<_>>();
-  let historical_documents = documents
-    .iter()
-    .filter(|document| document.historical)
-    .cloned()
-    .collect::<Vec<_>>();
   let snapshot = snapshot_for(&documents, &config);
-  let current_snapshot = snapshot_for(&current_documents, &config);
   Ok(Project {
     root,
     snapshot,
-    current_snapshot,
     documents,
-    current_documents,
-    historical_documents,
     warnings,
   })
 }
 
 pub fn load_project(root: &str) -> Result<Project> {
   load_project_inner(root)
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepairRange {
-  pub document: String,
-  pub line_end: usize,
-  pub line_start: usize,
 }

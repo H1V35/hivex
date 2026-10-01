@@ -14,7 +14,7 @@ Hivex supplies a reusable workflow and reliable project knowledge to people and 
 | Manage an issue, PR or merge | [Tracker procedure](procedures/issue-tracker.md) | [Triage labels](guidelines/triage-labels.md), [knowledge before merge](guidelines/engineering.md#knowledge-before-merge) |
 | Run development checks or CI | [Development guide](guide.md#development) | [Rust quality](guidelines/rust-quality.md), [hosted CI](procedures/self-hosted-runner.md) |
 | Prepare or publish a native package | [Release procedure](procedures/releasing.md) | [Development checks](guide.md#development), artifact-specific publication approval |
-| Inspect optional graph/model behavior | [CLI reference](reference/graph-cli.md) | [Runtime/data continuity](adr/0013-domain-modules-and-execution-integrations.md); sources still determine meaning |
+| Migrate the retired graph runtime | [Migration guide](guide.md#migrate-from-the-inferred-graph-runtime) | [Historical command record](archive/runtime/graph-cli-0.7.8.md); preserve evidence and accounting |
 | Investigate a replaced behavior | [History catalogue](archive/README.md) | The original dated record and its current replacement |
 
 A document's status alone does not settle its scope. Check conditions, exceptions, later replacements and the exact source version. Expand with available documentation and tools; ask the owner only if they cannot resolve a consequential question. Keep one current authority per topic and put each relationship next to the rule it qualifies.

@@ -1,14 +1,8 @@
 mod cli;
 mod compatibility;
-mod consultation;
 mod documents;
 mod error;
-mod execution;
 mod foundation;
-mod integrations;
-mod knowledge;
-mod review;
-mod work;
 
 use serde_json::Value;
 use std::io::{self, Write};

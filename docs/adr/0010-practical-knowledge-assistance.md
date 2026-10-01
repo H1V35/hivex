@@ -1,46 +1,33 @@
 ---
-title: Practical project knowledge with bounded work
+title: Practical project knowledge through deterministic sources
 status: accepted
 updated: 2026-10-01
 ---
 
-# Practical project knowledge with bounded work
+# Practical project knowledge through deterministic sources
 
-Hivex is an AI-first CLI for people and agents. It supplies reusable workflow capabilities and project knowledge, helping agents recover settled decisions, avoid contradictions and reduce repeated source reading. It does not become a session orchestrator or the principal implementation reviewer.
+Hivex is an AI-first CLI for people and agents. It supplies reusable workflow capabilities and reliable repository knowledge, helping agents recover settled decisions, avoid contradictions and reduce repeated reading. The responsible agent interprets sources and reviews implementation; Hivex does not orchestrate development sessions or become the principal reviewer.
 
-Markdown remains authoritative, wherever a project, package or module keeps it. Read relevant conditions, exceptions and replacements before acting. Apply settled decisions autonomously; use available documentation and tools before asking the owner about a question that remains unresolved. [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md) makes reliable sources and explicit relationships the primary retrieval path and the inferred graph optional.
+Markdown owns intent, scope, conditions, exceptions and reasons that code cannot explain. Apply settled decisions autonomously and expand with available evidence and tools before asking the owner. [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md) owns the source-first transition and retirement of the inferred graph runtime.
 
-## Runtime and compatibility
+<a id="runtime-and-compatibility"></a>
+## Runtime and retrieval
 
-The Rust CLI and Cargo development toolchain replace the TypeScript/Bun runtime. Use cohesive domain modules, stable Rust, rustfmt and Clippy; TypeScript lint rules do not prescribe Rust architecture. The retired runtime and migration stages remain in [the original decision history](../archive/adr/0010-practical-knowledge-assistance.md#rust-migration-80).
+The Rust CLI uses deterministic source discovery, lexical passage search, authored relationship navigation and exact reading. SQLite FTS5/BM25 runs in memory per search and remains useful without a persistent knowledge database. No command invokes a model, requires a provider profile or depends on a shared graph. Keep results bounded and report omitted sources, unread continuation and historical scope honestly. Lexical relevance and valid links do not establish semantic applicability.
 
-Keep compatible SQLite and shared snapshot v1 data, document versions, useful CLI guarantees, retained answers, caches, work identities, attempts, results, budgets and recovery evidence. Do not silently convert unknown legacy metadata into approval or reset work to migrate a runtime. Fixed compatibility fixtures preserve executable contracts; the old experimental Opus/cohort graph is not an acceptance target.
-
-## Optional model-assisted knowledge
-
-An explicit graph update processes bounded, source-preserving units with one normal check per batch and checkpointed progress. Reuse exact matching knowledge when its processing context permits it; a text hash alone does not certify scope or meaning. Maintain prior supported relationships or justify their changed meaning against sources. Report current findings and limitations without treating every incidental detail as a missing decision.
-
-A work budget spans its phases, attempts and resumption. Expose actual and unknown usage; limits preserve progress. A cheaper model does not justify unnecessary invocations or context. Keep profile selection local and explicit, with no silent fallback. The knowledge profile and the principal agent/reviewer profile are separate choices.
-
-Corrections and evidenced local dispositions retain the original candidate, failed checks, receipts and consumption. A changed candidate requires the applicable normal check; an unchanged adverse check is not repeated for green output. These mechanics describe the optional CLI and do not reinstate a global graph gate. Current interface and recovery conditions belong in the [graph CLI reference](../reference/graph-cli.md).
+Retired graph/model operations return a migration diagnostic rather than executing. Version 0.8.0 deliberately changes the `search` result contract and removes those operations. Preserve historical SQLite/snapshot files, failed candidates, attempts, receipts, uncertainty and consumption unchanged. The [retired command record](../archive/runtime/graph-cli-0.7.8.md) and [original decision](../archive/adr/0010-practical-knowledge-assistance.md) retain their prior meaning; do not carry the old engine into the current package solely to interpret history.
 
 ## Distribution and verification
 
-The package is `@h1v35/hivex`, its command is `hivex`, and its license is MIT. Retain the six workflow/knowledge skills and optional language templates. The first verified native package is macOS ARM64, with a direct executable and no JavaScript launcher, runtime dependency or installation hook. Further targets require their own build, behavior and artifact verification.
+The package is `@h1v35/hivex`, command `hivex`, license MIT. Retain the six workflow/knowledge skills and optional language templates. The verified native target is macOS ARM64, with a direct executable and no JavaScript launcher, runtime installation hook or model integration. Additional targets require their own behavior and artifact verification.
 
-Cargo and the Rust development utility prepare and verify the exact npm archive using system `tar`. npm remains the distribution channel and `package.json` remains metadata. Registry installation/publication is a separate release step; development changes do not authorize publication. Follow the [release procedure](../procedures/releasing.md).
+Cargo and the Rust development tool prepare and verify the exact npm archive using system `tar`. Registry installation/publication follows the [release procedure](../procedures/releasing.md); installing Hivex does not replace an adopting project's owner policy.
 
-Verify observable behavior, failures, source/version changes and recovery at useful boundaries. Tests are selected for value rather than count. Future retrieval alternatives must demonstrate correct decisions and evidence, including a conflict, exception, indirect dependency, insufficient evidence and a source change, with expected outcomes and measured total cost.
+Validate observable retrieval, failures, source changes, history and preservation at useful boundaries. Measure relevant evidence recovered, context read, latency and maintenance effort together. Include indirect dependency, exception, conflict, insufficient evidence and source-change cases; do not substitute identity with an old model graph or an exhaustive replay requirement.
 
 ## Relationships
 
-- Depends on [Versioned authority](0001-versioned-project-knowledge.md): source evidence governs derived results.
-- Depends on [Selective history](0011-shared-knowledge-and-selective-history.md): historical reasoning remains accessible with current scope identified.
-- Depends on [Execution continuity](0013-domain-modules-and-execution-integrations.md): optional model work retains its data and accounting safeguards.
-- Supersedes [Experimental cohort workflow](../archive/adr/0004-resumable-ingestion-store.md): the old cohort/admission runtime is replaced; its original evidence remains historical.
-
-## Extensions and history
-
-The project foundation extends this contract, and ADR 0014 partially supersedes the mandatory inferred-graph requirement. The declared connections live in those current authorities rather than duplicated inverse entries here.
-
-Historical delivery stages, Bun/Rust migration amendments, warning mechanisms and the #150 rationale remain in the [full record](../archive/adr/0010-practical-knowledge-assistance.md).
+- Depends on [Versioned authority](0001-versioned-project-knowledge.md): exact source evidence governs decisions and their applicability.
+- Depends on [Selective history](0011-shared-knowledge-and-selective-history.md): historical reasoning remains available with current scope identified.
+- Depends on [Markdown navigation](0014-reliable-markdown-and-explicit-relationships.md): deterministic retrieval and explicit links replace graph inference.
+- Supersedes [Retired graph runtime](../archive/runtime/graph-cli-0.7.8.md): removes model-assisted commands while preserving historical evidence and accounting.

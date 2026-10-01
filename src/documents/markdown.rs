@@ -6,6 +6,7 @@ use pulldown_cmark::{Event, Options, Parser, Tag as MarkdownTag, TagEnd};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
+use std::ops::Range;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -56,50 +57,34 @@ fn is_frontmatter_fence(line: &str) -> bool {
   line.trim_end_matches([' ', '\t']) == "---"
 }
 
+/// Borrow source ranges without allocating one string per line.
+pub fn raw_line_ranges(text: &str) -> impl Iterator<Item = Range<usize>> + '_ {
+  let mut start = 0;
+  let mut empty = text.is_empty();
+  std::iter::from_fn(move || {
+    if empty {
+      empty = false;
+      return Some(0..0);
+    }
+    if start >= text.len() {
+      return None;
+    }
+    let end = line_end(text, start);
+    let range = start..end;
+    start = end;
+    Some(range)
+  })
+}
+
 /// Split source text without normalizing line endings.
 pub fn raw_markdown_lines(text: &str) -> Vec<String> {
-  let mut lines = Vec::new();
-  let mut start = 0;
-  let mut index = 0;
-  while index < text.len() {
-    let byte = text.as_bytes()[index];
-    if byte == b'\r' || byte == b'\n' {
-      let end = line_end(text, index);
-      lines.push(text[start..end].to_owned());
-      start = end;
-      index = end;
-    } else {
-      index += text[index..].chars().next().map_or(1, char::len_utf8);
-    }
-  }
-  if start < text.len() {
-    lines.push(text[start..].to_owned());
-  }
-  if lines.is_empty() {
-    lines.push(String::new());
-  }
-  lines
+  raw_line_ranges(text)
+    .map(|range| text[range].to_owned())
+    .collect()
 }
 
 pub fn line_content(line: &str) -> &str {
   line_without_ending(line)
-}
-
-pub fn source_range(text: &str, from: usize, to: usize) -> String {
-  if from == 0 || to < from {
-    return String::new();
-  }
-  let lines = raw_markdown_lines(text);
-  let selected: Vec<_> = lines.iter().skip(from - 1).take(to - from + 1).collect();
-  let Some(last) = selected.last() else {
-    return String::new();
-  };
-  let mut result = selected[..selected.len() - 1]
-    .iter()
-    .map(|line| line.as_str())
-    .collect::<String>();
-  result.push_str(line_content(last));
-  result
 }
 
 struct Frontmatter<'a> {

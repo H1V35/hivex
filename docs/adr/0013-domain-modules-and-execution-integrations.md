@@ -1,42 +1,36 @@
 ---
-title: Domain modules and replaceable execution integrations
+title: Domain modules for deterministic Markdown retrieval
 status: accepted
 date: 2026-09-17
 updated: 2026-10-01
 ---
 
-# Domain modules and replaceable execution integrations
+# Domain modules for deterministic Markdown retrieval
 
-This decision records the Rust domain boundaries and the compatibility contracts for Hivex's supported runtime. The model-assisted CLI and derived graph remain optional capabilities. [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md) makes reliable Markdown and authored relationships the primary retrieval path; this decision preserves the current runtime and data contracts without making graph use mandatory or removing supported commands.
+Hivex remains a modular Rust monolith with small concrete interfaces. The owner approved retiring the inferred graph and its execution engine under [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md). The [0.7.8 domain record](../archive/runtime/domain-contract-0.7.8.md) preserves the replaced runtime boundaries and accounting guarantees.
 
 ## Module ownership
 
-Documents own source discovery, parsing and source coordinates. Knowledge owns derived graph operations, retrieval, ingestion, relationships, warnings, repairs and portable snapshots. Work owns progress, attempts, budgets, state transitions and recovery. Consultation and review compose these capabilities. CLI parsing and process exit/output belong at the entry boundary. Concrete SQLite persistence stays beside the behavior it serves; a repository interface is not required for every entity.
+Documents own source selection, Markdown parsing, exact source coordinates, lexical search and authored relationships. SQLite search belongs beside that retrieval responsibility and runs in memory. Foundation owns safe preparation of missing project files and skill links. CLI modules own arguments, bounded responses, continuation and process diagnostics. Shared error and compatibility utilities support those domains. Documents and foundation do not depend on CLI or each other; the entry boundary composes them.
 
-Keep execution contracts independent of vendors. The execution integration, model provider, model and result-affecting options are separate choices. An integration validates the effective profile, returns execution results, usage and lifecycle evidence, and fails unsupported choices without silent fallback. Knowledge-profile configuration remains separate from the implementing agent's and code reviewer's profiles.
+Keep submodules private and expose only operations/types consumers need. Reuse existing helpers and installed dependencies before adding an abstraction. There is no provider framework, model invocation, graph store, execution orchestrator or persisted query cache in the current runtime.
 
-## Data and execution compatibility
+## Historical data boundary
 
-The Rust CLI continues to read existing SQLite state and shared snapshot v1 data. Supported maintenance preserves source coordinates and versions, decision and relationship identities, citations, evidence, native quality, work identity and plans, attempts, results, receipts, caches, budgets and unknown consumption. A domain refactor or optional graph change does not by itself authorize migration, reingestion, relabeling or reset of existing data.
+Current commands do not open, rewrite or delete graph SQLite, snapshots, attempts or caches. Preserve them with their exact identities and actual status before retiring integration; earlier failure and unknown consumption remain historical facts. A preserved legacy package/Git checkpoint supports a concrete historical investigation without retaining the old engine in current code.
 
-Work budgets span operation phases, attempts and resumption. A profile change cannot grant a new allowance or silently change the work's operation, sources or arguments. Explicit profile resumption keeps the same work identity and scope, records the transition and integration request identity, and preserves coverage, prior results and receipts. Running or uncertain calls retain their recovery requirements; failed work retains explicit retry. Selecting a profile alone neither invokes a model nor makes an old result current under a different profile. A changed candidate uses the supported normal check; an unchanged adverse check is not repeated for a green result.
+Source versions identify exact working-copy text; snapshot identities bind source selection and continuations. A changed source or option invalidates its continuation. Neither a version hash nor a valid relationship grants semantic approval or execution permission.
 
-The exact profile-transition behavior, including the implemented default migration, is in the [optional graph and model-assisted CLI reference](../reference/graph-cli.md#execution-profiles). The work/data runtime contract and optional model-assisted operations are in [ADR 0010](0010-practical-knowledge-assistance.md). The implementation's build, compatibility and package checks are in the [Guide's Development section](../guide.md#development).
+## Verification
 
-Keep tests at observable boundaries: domain invariants, persisted v1 data, failures/recovery, and public CLI or integration behavior. Consolidate or retire coverage only when its meaningful guarantee is preserved; test counts and language statistics are not acceptance criteria.
+Protect current observable boundaries: source scope and exact ranges, deterministic search/navigation, bounded responses, argument errors, safe initialization and preservation of retained file bytes. Retire tests and dependencies exclusive to removed behavior; test count is not an acceptance goal. The architecture gate follows only current domain declarations.
+
+<a id="explicit-profile-continuity-148"></a>
+## Historical profile continuity
+
+The previous profile-resumption contract remains in the [retired domain record](../archive/runtime/domain-contract-0.7.8.md#explicit-profile-continuity-148). The current CLI has no model profile or operation to resume; removing the engine does not relabel or reset its recorded work.
 
 ## Relationships
 
-- Depends on [Product runtime contract](0010-practical-knowledge-assistance.md): optional model work preserves its accounting and data guarantees.
-- Extends [Reliable Markdown](0014-reliable-markdown-and-explicit-relationships.md): records runtime and execution boundaries without requiring graph use.
-
-## History and verification
-
-The Rust CLI is verified under the [development procedure](../guide.md#development). Historical rationale and delivery dates remain in the [original ADR 0013 record](../archive/adr/0013-domain-modules-and-execution-integrations.md).
-
-<a id="explicit-profile-continuity-148"></a>
-## Explicit profile continuity
-
-Profile resumption is an optional supported CLI operation. The original operation, source versions and arguments must match; the selected profile must be supported by its integration. Preserve the same work ID, plan, pending candidate, attempts, results, receipts, consumption and limits. Record each transition and opaque integration request identity so retained input can be checked without guessing serialization. Coverage remains attributed to the same work across profile-key changes; refuse ambiguous attribution. Keep decision/relationship IDs, evidence and native quality unchanged, and do not relabel completed historical results.
-
-An unchanged adverse check is not retried by changing profile. A source-backed candidate correction receives its normal check under the selected profile; an evidenced local disposition may inspect the exact historical check without invoking the former model. Profile changes alone do not mutate Markdown, reingest knowledge or reset the budget.
+- Implements [Source-first product contract](0010-practical-knowledge-assistance.md#runtime-and-retrieval): runtime domains own deterministic source operations rather than derived interpretation.
+- Depends on [Reliable Markdown](0014-reliable-markdown-and-explicit-relationships.md): authored knowledge and scoped review govern the replacement.
