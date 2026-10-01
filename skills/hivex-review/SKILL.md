@@ -13,6 +13,8 @@ Assess scope, correctness, regressions and relevant standards. Ground findings i
 
 Recover decisions, dependencies, exceptions and replacements through the documentation map, current Markdown and authored links. Use deterministic source search/read to expand only the evidence needed. The responsible reviewer assesses knowledge against sources and code; structural validation is not semantic approval.
 
+Check the implementer's interpretation of relevant rules against their governing context and the actual change, following the [shared context-reading method](../hivex/references/markdown.md#recover-enough-context-to-apply-a-rule). Read relevant qualifications outside a cited fragment and identify consequential unsupported assumptions; a paraphrase or declaration of understanding is not proof. Reuse current evidence and report concrete gaps without requiring a separate comprehension report or whole-corpus reading.
+
 Check whether verification protects meaningful behavior and covers the change. TDD is optional and reserved for sufficiently defined critical flows; do not require it, a test per edit or assertions shaped around the implementation. Distinguish an unverified outcome from a demonstrated defect.
 
 Report actionable findings with location, impact and evidence, or a clean result with material verification limits. Explain technical details when needed. Review later changes as a delta, reusing conclusions that remain valid. Add another pass only for concrete risk or findings; never repeat reviews to obtain approval. Review does not grant merge or publication permission.

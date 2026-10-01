@@ -97,6 +97,16 @@ HTML comments and raw-text elements such as `script`, `style` and `textarea` do 
 
 Authors and reviewers judge meaning, reason and conditions. A deterministic reader/checker verifies syntax, direction encoding, selected targets and anchors. Follow relevant links, including indirect dependencies, by querying the next document and reading the cited destination range. Reuse visited versions/ranges instead of repeatedly traversing cycles. A known authority can be read directly; queries are capabilities, not mandatory phases. Update relationship entries and callers when a target or scope changes.
 
+## Recover enough context to apply a rule
+
+A search passage locates possible evidence; its fixed line window does not establish a complete rule. Before applying it, read the complete relevant section and the document context that governs it, including scope, definitions and qualifications outside the match. Read the whole authority when those boundaries are unclear. A section or anchor range can also omit a document-wide condition. Reuse already inspected context when its source version is still current; another command is unnecessary if the needed context is already present.
+
+Follow relevant authored links in both directions, including indirect prerequisites, exceptions and replacements, and read their applicable text. Inspect warnings, coverage and continuation; finish needed ranges and pages before treating them as inspected. Missing search matches, absent declarations and structural success do not prove there are no other applicable rules. Use the authority map, ordinary links, domain terms and available sources to resolve gaps; consult history when it explains a relevant replacement or qualification.
+
+Before changing behavior, establish which rule applies, its scope and conditions, relevant exceptions or replacements, and how the proposed behavior respects them. Ground that interpretation in identifiable source versions and passages, distinguishing explicit rules from assumptions or unanswered questions. Keep a brief rationale in the task's existing plan or review when it helps assess the change; do not create a separate certificate or repeat every source. The independent reviewer checks this interpretation against the actual sources and implementation, not only a paraphrase.
+
+Expand until the consequential questions for the task are resolved by evidence, not until every repository document has been read. Apply settled decisions autonomously. If reasonable documentation and tool use cannot resolve a consequential gap, ask the owner with the sources, impact and a recommendation. No CLI result or self-reported comprehension can certify semantic completeness.
+
 ## Compact an ADR without losing its history
 
 When replaced text obscures a decision's current meaning, preserve that history in a clearly marked Markdown archive and keep the active document focused on applicable rules, reasons, dependencies and exceptions. Remove a fully archived ADR from the current directory and update necessary callers to its archive or current replacement. Preserve referenced anchors or update their links. Do not archive a live exception merely because it is old, or change what an earlier decision meant while shortening its current presentation.
