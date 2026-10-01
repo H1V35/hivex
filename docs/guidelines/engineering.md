@@ -5,7 +5,7 @@ status: accepted
 
 # Engineering workflow
 
-Hivex is a Rust CLI, migrated under [#80](https://github.com/H1V35/hivex/issues/80) and [ADR 0010](../archive/adr/0010-practical-knowledge-assistance.md#rust-migration-80). Fixed v1 fixtures and public CLI tests preserve the previous runtime contracts. Modules group behavior by domain responsibility and hide internal details behind small interfaces. Do not add a second development-session orchestrator or require an adopting project's layout, tracker or product packages. Codex, Git/GitHub and CI coordinate work.
+Hivex is a Rust CLI, migrated under [#80](https://github.com/H1V35/hivex/issues/80) and [ADR 0010](../archive/adr/0010-practical-knowledge-assistance.md#rust-migration-80). Public CLI tests protect the current source contract; fixed legacy fixtures verify that retained state remains unchanged without executing the retired runtime. Modules group behavior by domain responsibility and hide internal details behind small interfaces. Do not add a second development-session orchestrator or require an adopting project's layout, tracker or product packages. Codex, Git/GitHub and CI coordinate work.
 
 Skills provide task knowledge and judgment. The host harness handles agent coordination, effective model/effort configuration, execution permissions and process/session lifecycle. Project Markdown owns workflow policy; Hivex's CLI owns deterministic source retrieval and explicit coverage. Keep these responsibilities distinct rather than duplicating harness mechanics in each skill, as recorded in [ADR 0012](../adr/0012-project-foundation-and-workflow.md#keep-capabilities-focused).
 
@@ -89,7 +89,7 @@ Before writing, check the map and search current and relevant historical sources
 
 Close review against a defined revision. Later source or code changes require review of their affected delta, rather than repeated certification of the entire repository. A graph warning is a claim to verify against current evidence; a real applicable defect still blocks, while historical graph state alone does not. Complete ingestion, zero unrelated graph warnings and graph export are not merge prerequisites under [ADR 0014](../adr/0014-reliable-markdown-and-explicit-relationships.md#knowledge-before-integration).
 
-Preserve existing snapshots, local stores, candidates, adverse results, attempts, receipts and consumed budgets. The Markdown transition does not admit failed candidates, reset history or promise a model-free runtime. Apply the explicit 0.8 command migration and retain historical file bytes unchanged. Independent implementation review, applicable verification and owner merge authorization remain required.
+Preserve existing snapshots, local stores, candidates, adverse results, attempts, receipts and consumed budgets. Runtime retirement does not admit failed candidates or reset history. Current CLI commands invoke no model; apply the explicit 0.8 command migration and retain historical file bytes unchanged. Independent implementation review, applicable verification and owner merge authorization remain required.
 
 ## Relationships
 
