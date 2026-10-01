@@ -49,8 +49,6 @@ fn restored_range(
   if !protected
     || crate::knowledge::is_current_source(project, &old.document, Some(&old.version))
     || node.document != old.document
-    || node.line_start != old.line_start
-    || node.line_end != old.line_end
     || !crate::knowledge::is_current_source(
       project,
       &citation.document,

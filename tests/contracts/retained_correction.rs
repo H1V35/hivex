@@ -1,7 +1,7 @@
 use crate::support::{Project, decision, list};
 use serde_json::{Value, json};
 
-fn failed_round(foreign: bool, missing_endpoint: bool) -> (Project, Value, Value) {
+fn failed_round(foreign: bool, missing_endpoint: bool, moved: bool) -> (Project, Value, Value) {
   let p = Project::new();
   p.model("");
   let mut responses = json!({"capturePackets":true,"byDocument":{},"check":{"findings":[]}});
@@ -28,7 +28,7 @@ fn failed_round(foreign: bool, missing_endpoint: bool) -> (Project, Value, Value
     if !foreign || name == "z.md" {
       p.write(
         name,
-        format!("# Rule\n\n{name} establishes the Alpha to Beta dependency. Clarified wording. Gamma also remains an independent rule.\n"),
+        format!("# Rule\n\n{}{name} establishes the Alpha to Beta dependency. Clarified wording. Gamma also remains an independent rule.\n", if moved && name == "a.md" { "New introduction.\n\n" } else { "" }),
       );
     }
   }
@@ -38,7 +38,7 @@ fn failed_round(foreign: bool, missing_endpoint: bool) -> (Project, Value, Value
     responses["byDocument"]["a.md"]["decisions"] = json!([decision(
       "a.md",
       "gamma",
-      3,
+      if moved { 5 } else { 3 },
       "Gamma is an independent rule."
     )]);
   }
@@ -74,12 +74,23 @@ fn failed_round(foreign: bool, missing_endpoint: bool) -> (Project, Value, Value
     "reason":"Alpha still requires Beta under the unchanged Zeta scope; the source wording changed without removing this dependency.","evidence":evidence
   }}]});
   if missing_endpoint {
-    let restored = decision("a.md", "restore-a", 3, "a.md rule.");
+    let restored = decision("a.md", "restore-a", if moved { 5 } else { 3 }, "a.md rule.");
     correction["retainedDecisions"] =
       json!([{"previousId":previous["from"],"replacement":restored}]);
     correction["relationships"] =
       json!([correction["retainedRelationships"][0]["replacement"].clone()]);
     correction["retainedRelationships"] = json!([]);
+    if moved {
+      let citation = json!({"document":"a.md","lineStart":5,"lineEnd":5,"version":evidence.iter().find(|citation| citation["document"] == "a.md").unwrap()["version"]});
+      correction["evidence"]
+        .as_array_mut()
+        .unwrap()
+        .push(citation.clone());
+      correction["relationships"][0]["evidence"]
+        .as_array_mut()
+        .unwrap()
+        .push(citation);
+    }
   }
   (p, failed, correction)
 }
@@ -253,8 +264,8 @@ fn exact_current_relationship_survives_evidence_only_repair_with_original_metada
 
 #[test]
 fn retained_relationship_correction_preserves_prior_rounds_and_requires_a_budgeted_fresh_check() {
-  for missing_endpoint in [false, true] {
-    let (p, failed, correction) = failed_round(false, missing_endpoint);
+  for (missing_endpoint, moved) in [(false, false), (true, false), (true, true)] {
+    let (p, failed, correction) = failed_round(false, missing_endpoint, moved);
     let id = failed["work"]["id"].as_str().unwrap();
     let before = p.work(id);
     let graph = p.graph();
@@ -277,6 +288,12 @@ fn retained_relationship_correction_preserves_prior_rounds_and_requires_a_budget
     let mut responses = p.read_json("responses.json");
     responses["check"] = json!({"findings":[],"relationshipChanges":[{"previousId":"@removed:0","replacements":["@candidate:0"],
     "reason":"The current canonical endpoints preserve the original dependency.","evidence":[{"document":"a.md","lineStart":3,"lineEnd":3},{"document":"b.md","lineStart":3,"lineEnd":3},{"document":"z.md","lineStart":3,"lineEnd":3}]}]});
+    if moved {
+      responses["check"]["relationshipChanges"][0]["evidence"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"document":"a.md","lineStart":5,"lineEnd":5}));
+    }
     p.json("responses.json", &responses);
     let admitted = p.model_cli(&args(&path, "5"));
     assert_eq!(admitted["status"], "ready", "{admitted}");
@@ -288,14 +305,23 @@ fn retained_relationship_correction_preserves_prior_rounds_and_requires_a_budget
     assert_eq!(after["calls"], 5);
     assert_eq!(after["attempts"][4]["stage"], "check");
     assert_eq!(p.calls(), calls + 1);
-    assert_eq!(list(&p.graph(), "relationships").len(), 1);
+    let admitted_graph = p.graph();
+    assert_eq!(list(&admitted_graph, "relationships").len(), 1);
+    if moved {
+      let restored = list(&admitted_graph, "decisions")
+        .iter()
+        .find(|node| node["localId"] == "restore-a")
+        .unwrap();
+      assert_eq!(restored["lineStart"], 5);
+      assert_eq!(restored["lineEnd"], 5);
+    }
     for node in list(&graph, "decisions").iter().filter(|node| {
       node["batch"]
         .as_str()
         .is_some_and(|batch| batch.starts_with(id))
     }) {
       assert!(
-        list(&p.graph(), "decisions").contains(node),
+        list(&admitted_graph, "decisions").contains(node),
         "accepted current interpretation changed"
       );
     }
@@ -317,7 +343,7 @@ fn retained_relationship_correction_rejects_unrelated_stale_colliding_or_partial
     "stale",
     "coverage",
   ] {
-    let (p, failed, mut correction) = failed_round(case == "foreign", false);
+    let (p, failed, mut correction) = failed_round(case == "foreign", false, false);
     let id = failed["work"]["id"].as_str().unwrap();
     let before = p.work(id);
     let graph = p.graph();
@@ -368,20 +394,24 @@ fn omitted_endpoint_restoration_cannot_expand_scope_or_overwrite_current_knowled
     "document",
     "collision",
     "current",
+    "unplanned",
     "pending",
     "unused",
     "duplicate",
     "unknown-field",
   ] {
-    let (p, failed, mut correction) = failed_round(false, true);
+    let (p, failed, mut correction) = failed_round(false, true, false);
     let id = failed["work"]["id"].as_str().unwrap();
-    let before = p.work(id);
+    let mut before = p.work(id);
     let graph = p.graph();
     let calls = p.calls();
     let record = &mut correction["retainedDecisions"][0];
     match case {
       "previous" => record["previousId"] = json!("not-protected"),
-      "range" => record["replacement"]["lineStart"] = json!(1),
+      "range" => {
+        record["replacement"]["lineStart"] = json!(1);
+        record["replacement"]["lineEnd"] = json!(4);
+      }
       "document" => record["replacement"]["document"] = json!("c.md"),
       "collision" => record["replacement"]["id"] = json!("b.md"),
       "current" => {
@@ -389,6 +419,13 @@ fn omitted_endpoint_restoration_cannot_expand_scope_or_overwrite_current_knowled
         record["previousId"] = previous["to"].clone();
         record["replacement"]["document"] = json!("b.md");
         record["replacement"]["text"] = json!("b.md rule.");
+      }
+      "unplanned" => {
+        before["plannedUnits"]
+          .as_array_mut()
+          .unwrap()
+          .retain(|unit| !unit.as_str().unwrap().starts_with("a.md:"));
+        p.set_work(&before);
       }
       "pending" => {
         record["previousId"] = json!("missing-z");
