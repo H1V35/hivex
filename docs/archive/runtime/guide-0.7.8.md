@@ -1,4 +1,6 @@
 ---
+title: "Hivex guide"
+status: historical
 created_at: 2026-09-17
 archived_at: 2026-10-01
 source_path: docs/guide.md

@@ -1,8 +1,3 @@
----
-created_at: 2026-09-07
-updated_at: 2026-09-17
----
-
 # Hivex
 
 ## Orientation

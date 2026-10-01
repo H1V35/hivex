@@ -1,8 +1,6 @@
 ---
 name: hivex
 description: Adopt Hivex's project foundation, recover relevant Markdown decisions and explicit dependencies or exceptions, and maintain reusable source knowledge.
-created_at: 2026-09-08
-updated_at: 2026-10-01
 ---
 
 # Project knowledge and foundation

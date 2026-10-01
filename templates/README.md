@@ -1,8 +1,3 @@
----
-created_at: 2026-09-14
-updated_at: 2026-09-28
----
-
 # Language-specific project standards
 
 Apply the matching standards when adopting Hivex, updating its installed guidance or changing the project's languages. General workflow skills and the foundation copied by `hivex init` remain language-neutral; the adopting agent selects and applies the language templates.

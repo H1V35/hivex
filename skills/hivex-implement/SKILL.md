@@ -1,8 +1,6 @@
 ---
 name: hivex-implement
 description: Implement a defined change, diagnose a bug or refactor code with useful verification and independent review.
-created_at: 2026-09-13
-updated_at: 2026-09-16
 ---
 
 # Implement the intended outcome

@@ -1,15 +1,13 @@
 ---
 name: hivex-document
 description: Establish or maintain project purpose, domain language, decisions, guidelines and procedures, including Hivex adoption and documentation migration.
-created_at: 2026-09-13
-updated_at: 2026-10-01
 ---
 
 # Give knowledge an authoritative home
 
 Read the documentation map, relevant sources and current owner decisions. Update the document that owns the topic and scope; create another only for a distinct purpose. Markdown records intent and reasons; the authority map and explicit relationships guide focused source retrieval.
 
-Before writing, search current and relevant historical knowledge for an existing authority on the topic. Read likely matches and replacement links; do not create a parallel source merely because one query missed it. Maintain `created_at` on every Markdown, optional `updated_at` after content changes, and `archived_at` on archived records, using the shared date convention and verifiable provenance. Keep decision acceptance separate from implementation, verification and permission, using the packaged [state catalogue](../hivex/assets/project/docs/adr/README.md#decision-and-delivery-states).
+Before writing, search current and relevant historical knowledge for an existing authority on the topic. Read likely matches and replacement links; do not create a parallel source merely because one query missed it. Maintain `title`, truthful `status` and `created_at` on Markdown inside `docs/`, optional `updated_at` after content changes, and `archived_at` on archived records, using the [shared metadata convention](../hivex/references/markdown.md#document-dates) and verifiable provenance. Entry points and skills outside `docs/` do not require documentary metadata. Keep decision acceptance separate from implementation, verification and permission, using the packaged [state catalogue](../hivex/assets/project/docs/adr/README.md#decision-and-delivery-states).
 
 For adoption, use the installed `hivex init` when available and read its report. Complete missing meaning from evidence and the owner, keeping unresolved content provisional. Do not invent vision, requirements or vocabulary, or index empty scaffolding. The [foundation templates](../hivex/assets/project/docs/README.md) are starting material.
 

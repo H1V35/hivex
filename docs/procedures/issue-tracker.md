@@ -1,4 +1,6 @@
 ---
+title: "Issues, triage and pull requests"
+status: accepted
 created_at: 2026-09-13
 updated_at: 2026-10-01
 ---

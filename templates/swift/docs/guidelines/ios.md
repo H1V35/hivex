@@ -1,4 +1,6 @@
 ---
+title: "Native iOS presentation standard"
+status: draft
 created_at: 2026-09-28
 updated_at: 2026-09-28
 ---

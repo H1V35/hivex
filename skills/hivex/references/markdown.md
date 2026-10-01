@@ -1,8 +1,3 @@
----
-created_at: 2026-09-09
-updated_at: 2026-10-01
----
-
 # Recommended Markdown foundation
 
 Use this foundation when adopting Hivex. Prefer migration to its standard structure when reasonably possible, preserving and completing useful existing documents, their authority, history and links. Hivex accepts other Markdown layouts; the authority map and authored relationships guide source reading. The inferred graph runtime is retired.
@@ -33,13 +28,17 @@ For example, a project may use `docs/README.md`, `docs/CONTEXT.md`, `docs/adr/`,
 
 ## Document dates
 
-Every authored Markdown file has YAML frontmatter with `created_at`, an ISO calendar date (`YYYY-MM-DD`) recording the document's creation. Preserve a documented creation date across moves; when it is missing, recover the earliest recorded creation from Git or explicit source provenance and state that limit instead of inventing earlier history. The former `date` key is renamed to `created_at`, and `updated` to `updated_at`.
+Markdown documentation inside a `docs/` directory, including nested project/module docs and documentation templates, has YAML frontmatter with nonempty `title`, `status` and `created_at`. Root entrypoints such as `AGENTS.md`, `CLAUDE.md` and `README.md`, skills and other Markdown outside `docs/` do not require this documentary metadata. Keep metadata required by their own tools, such as skill `name` and `description`.
+
+`title` identifies the document. `status` uses the shared state catalogue: incomplete project templates remain `draft`, maintained approved guidance is `accepted`, and dated evidence or retired runtime material is `historical`. Preserve an original accepted/rejected status in an archived decision when it records the decision at that time; archival scope and provenance distinguish it from present authority. Status never establishes delivery or permission.
+
+`created_at` is an ISO calendar date (`YYYY-MM-DD`) recording the document's creation. Preserve a documented creation date across moves; when it is missing, recover the earliest recorded creation from Git or explicit source provenance and state that limit instead of inventing earlier history. The former `date` key is renamed to `created_at`, and `updated` to `updated_at`.
 
 `updated_at` is optional until a later content change. Maintain it when meaning, links or appended material change after creation; do not reset creation or add an update merely because a template is copied. Existing dates and Git-backed updates survive metadata-only migration.
 
 An archived Markdown record also has `archived_at` for its first archival event. Retain its original `created_at`; later additions or repairs update `updated_at` and leave `archived_at` unchanged. Source path/revision metadata identifies the original record when needed. Fully archived ADRs live only in the archive: repair necessary callers rather than retaining duplicate current-path stubs.
 
-Repository templates carry their own source dates. `init` dates newly created project Markdown with its UTC creation day and removes template update/archive provenance; it preserves existing files byte-for-byte. Apply the same dating convention when an agent creates or maintains documentation. Titles, decision states, delivery states and tags remain purpose-specific; dates do not grant authority, establish implementation or imply permission.
+Documentation templates carry their own source dates. `init` dates newly created project files under `docs/` with their UTC creation day and removes template update/archive dates, retaining their title and provisional status. It copies plain `AGENTS.md` and `CLAUDE.md` entrypoints and preserves all existing files byte-for-byte. Apply the same dating convention when an agent creates or maintains documentation. Delivery states and tags remain purpose-specific; dates do not grant authority, establish implementation or imply permission.
 
 ## Write decisions for the next reader
 
@@ -48,12 +47,18 @@ State what was decided and why. Include the scope, conditions and exceptions tha
 For a consequential architectural trade-off, an ADR might be:
 
 ```markdown
+---
+title: Remove private cached data when access is revoked
+status: proposed
+created_at: 2026-10-01
+---
+
 # Remove private cached data when access is revoked
 
 Cached private data is removed immediately when access is revoked. The normal cache lifetime still applies while access remains valid. This prevents stale local access after a permission change. See the cache policy for the general retention rule.
 ```
 
-A title and truthful status can improve cataloguing alongside the required creation date. Tags are optional. If a rule is replaced, identify the replacement and whether the change is partial. Keep the historical reasoning readable; do not silently rewrite the past. A missing status means uncertainty to resolve from the content, not permission to assume acceptance.
+Include the required title, truthful status and creation date in documentation frontmatter. Tags are optional. If a rule is replaced, identify the replacement and whether the change is partial. Keep the historical reasoning readable; do not silently rewrite the past. A missing status in legacy sources means uncertainty to resolve from the content, not permission to assume acceptance.
 
 Keep decision status separate from delivery and verification. The [shared state catalogue](../assets/project/docs/adr/README.md#decision-and-delivery-states), also prepared by `init`, defines draft, proposed, accepted, rejected, superseded and historical decisions. An accepted choice may be unimplemented or only partly delivered. Record implementation scope and verification evidence independently when they apply; preserve compatible project-specific statuses instead of silently reclassifying them.
 
@@ -110,7 +115,7 @@ Before changing behavior, recover the existing authority and follow its relevant
 
 Use a short `AGENTS.md` with orientation and knowledge pointers, development/verification guidance and project-specific constraints only where needed. Link the relevant authority with enough context to know when it matters. Do not duplicate the PRD, glossary or guidelines, or require every document on every task.
 
-The public [AGENTS.md convention](https://agents.md/) uses ordinary Markdown. Hivex adds its shared date frontmatter while keeping the entrypoint concise; it does not add a knowledge schema or line-count gate.
+The public [AGENTS.md convention](https://agents.md/) uses ordinary Markdown. Keep agent entrypoints plain and concise; Hivex's documentary metadata applies inside `docs/`, not to these entrypoints.
 
 ## Relationships
 
@@ -120,4 +125,4 @@ The public [AGENTS.md convention](https://agents.md/) uses ordinary Markdown. Hi
 
 Run `check --source <document>` for the affected authorities and callers, or `check` for ordinary selected sources. It validates formal relationship grammar and selected local Markdown targets/anchors without a model. Archived declarations are checked only through explicit source selection or `--historical`; a historical destination remains readable without validating all of its old prose. Unknown or excluded references are located findings, not silently skipped evidence.
 
-Review every finding against its source/scope. An incomplete source load is `partial`; invalid references or declarations produce `failed`, with paginated findings and source-bound continuation. A `ready` report confirms only the stated structural scope; it does not validate required date metadata. Authors maintain dates under the convention above, and legacy source layouts remain readable during migration. It cannot find an undeclared relationship, establish a unique semantic authority, verify implementation/permission or resolve contradictory rules. Authors and independent reviewers perform those checks against the actual task and source/code versions.
+Review every finding against its source/scope. An incomplete source load is `partial`; invalid references or declarations produce `failed`, with paginated findings and source-bound continuation. A `ready` report confirms only the stated structural scope; it does not validate required documentary metadata. Authors maintain metadata under the convention above, and legacy source layouts remain readable during migration. It cannot find an undeclared relationship, establish a unique semantic authority, verify implementation/permission or resolve contradictory rules. Authors and independent reviewers perform those checks against the actual task and source/code versions.

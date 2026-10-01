@@ -1,8 +1,3 @@
----
-created_at: 2026-09-05
-updated_at: 2026-10-01
----
-
 # Hivex
 
 Project knowledge for people and agents. Hivex combines reusable workflow guidance with reliable Markdown, explicit decision relationships and focused source retrieval.
