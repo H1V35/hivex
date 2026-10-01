@@ -7,6 +7,14 @@ use std::process::Command;
 #[test]
 fn empty_project_initialization_creates_the_complete_foundation() {
   let p = Project::new();
+  let before = String::from_utf8(
+    Command::new("/bin/date")
+      .args(["-u", "+%Y-%m-%d"])
+      .output()
+      .unwrap()
+      .stdout,
+  )
+  .unwrap();
   let result = p.ok(&["init"]);
   subset(
     &result,
@@ -36,6 +44,12 @@ fn empty_project_initialization_creates_the_complete_foundation() {
       .stdout,
   )
   .unwrap();
+  let agents = fs::read_to_string(p.path("AGENTS.md")).unwrap();
+  let created = agents
+    .lines()
+    .find_map(|line| line.strip_prefix("created_at: "))
+    .unwrap();
+  assert!(created == before.trim() || created == today.trim());
   for file in [
     "AGENTS.md",
     "CLAUDE.md",
@@ -48,7 +62,7 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     "docs/procedures/issue-tracker.md",
   ] {
     let text = fs::read_to_string(p.path(file)).unwrap();
-    assert!(text.contains(&format!("created_at: {}", today.trim())));
+    assert!(text.contains(&format!("created_at: {created}")));
     assert!(!text.contains("updated_at:"));
     assert!(!text.contains("archived_at:"));
   }
