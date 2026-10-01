@@ -1,4 +1,6 @@
 ---
+title: "Rust standard"
+status: draft
 created_at: 2026-09-23
 updated_at: 2026-09-23
 ---

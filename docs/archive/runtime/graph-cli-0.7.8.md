@@ -1,4 +1,6 @@
 ---
+title: "Optional graph and model-assisted CLI reference"
+status: historical
 created_at: 2026-10-01
 archived_at: 2026-10-01
 source_path: docs/reference/graph-cli.md

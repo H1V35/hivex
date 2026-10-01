@@ -44,15 +44,13 @@ fn empty_project_initialization_creates_the_complete_foundation() {
       .stdout,
   )
   .unwrap();
-  let agents = fs::read_to_string(p.path("AGENTS.md")).unwrap();
-  let created = agents
+  let map = fs::read_to_string(p.path("docs/README.md")).unwrap();
+  let created = map
     .lines()
     .find_map(|line| line.strip_prefix("created_at: "))
     .unwrap();
   assert!(created == before.trim() || created == today.trim());
   for file in [
-    "AGENTS.md",
-    "CLAUDE.md",
     "docs/README.md",
     "docs/PRD.md",
     "docs/CONTEXT.md",
@@ -63,13 +61,25 @@ fn empty_project_initialization_creates_the_complete_foundation() {
   ] {
     let text = fs::read_to_string(p.path(file)).unwrap();
     assert!(text.contains(&format!("created_at: {created}")));
+    let header = text
+      .strip_prefix("---\n")
+      .unwrap()
+      .split_once("\n---\n")
+      .unwrap()
+      .0;
+    assert!(header.lines().any(|line| line.starts_with("title: ")));
+    assert!(header.lines().any(|line| line.starts_with("status: ")));
     assert!(!text.contains("updated_at:"));
     assert!(!text.contains("archived_at:"));
   }
+  assert_eq!(
+    fs::read_to_string(p.path("CLAUDE.md")).unwrap(),
+    "@AGENTS.md\n"
+  );
   assert!(
-    fs::read_to_string(p.path("CLAUDE.md"))
+    !fs::read_to_string(p.path("AGENTS.md"))
       .unwrap()
-      .ends_with("\n@AGENTS.md\n")
+      .starts_with("---\n")
   );
   assert!(p.read_json("hivex.json").get("archive").is_some());
   assert!(p.read_json("hivex.json").get("history").is_none());

@@ -1,4 +1,6 @@
 ---
+title: "Triage labels"
+status: draft
 created_at: 2026-09-13
 ---
 

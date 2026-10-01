@@ -236,17 +236,11 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
       let target = destination(root, path, DestinationKind::File)?;
       Ok(FileOperation {
         absolute_path: target.absolute_path,
-        content: FileContent::Bytes(
-          if !target.exists
-            && Path::new(path)
-              .extension()
-              .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
-          {
-            dated_template(bytes, &created_at)
-          } else {
-            bytes.to_vec()
-          },
-        ),
+        content: FileContent::Bytes(if !target.exists && path.starts_with("docs/") {
+          dated_template(bytes, &created_at)
+        } else {
+          bytes.to_vec()
+        }),
         path: (*path).to_owned(),
         state: if target.exists {
           OperationState::Preserved
@@ -287,7 +281,7 @@ fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
   let (header, body) = text
     .strip_prefix("---\n")
     .and_then(|text| text.split_once("\n---\n"))
-    .expect("bundled Markdown has date frontmatter");
+    .expect("bundled documentation has frontmatter");
   let mut metadata = header
     .lines()
     .filter(|line| {

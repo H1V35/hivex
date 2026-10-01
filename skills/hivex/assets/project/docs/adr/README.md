@@ -1,4 +1,6 @@
 ---
+title: "Architectural and domain decisions"
+status: draft
 created_at: 2026-09-13
 updated_at: 2026-10-01
 ---
@@ -13,7 +15,7 @@ Preserve the distinction between proposed, current and replaced decisions. When 
 
 ## Decision and delivery states
 
-Use these shared meanings for new documentation. Compatible existing project labels remain valid; document their mapping rather than silently rewriting them. State may be expressed in ordinary Markdown or existing metadata. Date frontmatter follows the shared created_at/updated_at/archived_at convention; decision and delivery states remain separate from those dates.
+Use these shared meanings for new documentation. Compatible existing project labels remain valid; document their mapping rather than silently rewriting them. Documentation inside `docs/` has frontmatter with `title`, truthful `status` and `created_at`, optional `updated_at` after changes, and `archived_at` on archived records. Decision status, delivery and permission remain separate. Existing source layouts stay readable while adopting this convention.
 
 | Decision state | Meaning |
 |---|---|

@@ -1,8 +1,6 @@
 ---
 name: hivex-design
 description: Resolve open product or architectural decisions through a grill, focused research or a useful prototype, and define scope or execution slices when needed.
-created_at: 2026-09-13
-updated_at: 2026-09-13
 ---
 
 # Resolve what matters
