@@ -336,7 +336,11 @@ pub(super) fn resolve_candidate(
       object.keys().any(|key| {
         !matches!(
           key.as_str(),
-          "workId" | "checkInputHash" | "resolutions" | "relationshipChanges"
+          "workId"
+            | "checkInputHash"
+            | "resolutions"
+            | "relationshipChanges"
+            | "relationshipRemovals"
         )
       })
     })
