@@ -155,6 +155,26 @@ fn a_document_title_does_not_make_every_window_a_match() {
       .unwrap()
       .contains("Retention")
   );
+  p.write(
+    "preamble.md",
+    format!(
+      "---\ntitle: preambleneedle\n---\n{}## Unrelated\nDifferent rule.\n",
+      "Unheaded context.\n".repeat(40)
+    ),
+  );
+  let preamble = p.ok(&["search", "preambleneedle"]);
+  assert_eq!(preamble["matches"][0]["context"]["lineEnd"], 43);
+  assert!(
+    preamble["matches"][0]["context"]["complete"]
+      .as_bool()
+      .unwrap()
+  );
+  assert!(
+    !preamble["matches"][0]["text"]
+      .as_str()
+      .unwrap()
+      .contains("Unrelated")
+  );
 }
 
 #[test]
