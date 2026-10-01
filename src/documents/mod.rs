@@ -448,6 +448,7 @@ fn explicit_directory(pattern: &str, name: &str, path: &str) -> bool {
   if pattern.bytes().take_while(|byte| *byte == b'!').count() % 2 == 1 {
     return false;
   }
+  let pattern = pattern.trim_start_matches('!');
   let segments: Vec<_> = pattern.split('/').collect();
   segments
     .iter()

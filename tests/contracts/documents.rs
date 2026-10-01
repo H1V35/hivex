@@ -296,6 +296,8 @@ fn generated_rust_outputs_are_skipped_unless_explicitly_selected() {
   assert_eq!(paths(&p.ok(&["sources"])), ["docs/current.md"]);
   p.json("hivex.json", &json!({"include":["target/**/*.md"]}));
   assert_eq!(paths(&p.ok(&["sources"])), ["target/generated.md"]);
+  p.json("hivex.json", &json!({"include":["!!target/**/*.md"]}));
+  assert_eq!(paths(&p.ok(&["sources"])), ["target/generated.md"]);
 }
 
 #[test]
