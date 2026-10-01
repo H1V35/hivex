@@ -308,6 +308,12 @@ fn selecting_nested_generated_docs_does_not_open_a_root_build_tree() {
   let sources = p.ok(&["sources"]);
   assert_eq!(paths(&sources), ["docs/target/decision.md"]);
   assert_eq!(sources["warnings"].as_array().unwrap().len(), 0);
+  symlink("missing", p.path("docs/target/excluded-link.md")).unwrap();
+  p.write("other.md", "# Ordinary\n");
+  p.json("hivex.json", &json!({"include":["!docs/target/**/*.md"]}));
+  let excluded = p.ok(&["sources"]);
+  assert_eq!(paths(&excluded), ["other.md"]);
+  assert_eq!(excluded["warnings"].as_array().unwrap().len(), 0);
 }
 
 #[test]
