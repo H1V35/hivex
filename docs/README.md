@@ -6,7 +6,7 @@ Hivex supplies a reusable workflow and reliable project knowledge to people and 
 
 | Task | Read first | Follow when relevant |
 |---|---|---|
-| Understand product purpose, users and scope | [Product brief](PRD.md) | Applicable choices and reasons in the ADRs; the bundled PRD is a template |
+| Understand product purpose, users and scope | [Product brief](PRD.md) | Applicable choices and reasons in the ADRs; the bundled adopting-project PRD is a template |
 | Understand retrieval and distribution choices | [Runtime decision](adr/0010-practical-knowledge-assistance.md) | [Source authority](adr/0001-versioned-project-knowledge.md), [reliable Markdown](adr/0014-reliable-markdown-and-explicit-relationships.md) |
 | Find a project decision without a model | [Source-reading guide](guide.md#recover-context) | The result's current passage and its explicit relationships |
 | Validate affected knowledge | [Structural checks](guide.md#validate-structure) | Source and code review still judge meaning, scope and permission |
