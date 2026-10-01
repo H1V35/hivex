@@ -134,7 +134,10 @@ fn many_short_or_blank_lines_use_bounded_search_windows() {
     "--max-bytes",
     "65536",
   ]);
-  assert_ne!(bounded["matches"].as_array().unwrap().as_slice(), []);
+  assert_ne!(
+    bounded["matches"].as_array().unwrap().as_slice(),
+    &[] as &[serde_json::Value]
+  );
 }
 
 #[test]
