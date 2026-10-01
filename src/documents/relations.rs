@@ -177,10 +177,10 @@ fn explicit_ids(html: &str, ignored_until: &mut Option<&'static str>) -> Vec<(St
   let mut result = Vec::new();
   while cursor < html.len() {
     if let Some(ending) = *ignored_until {
-      let Some(end) = lower[cursor..].find(ending) else {
+      let Some(end) = ignored_html_end(&lower[cursor..], ending) else {
         break;
       };
-      cursor += end + ending.len();
+      cursor += end;
       *ignored_until = None;
       continue;
     }
@@ -217,6 +217,22 @@ fn explicit_ids(html: &str, ignored_until: &mut Option<&'static str>) -> Vec<(St
     }
   }
   result
+}
+
+fn ignored_html_end(html: &str, ending: &str) -> Option<usize> {
+  if ending == "\0" {
+    return None;
+  }
+  html.match_indices(ending).find_map(|(index, _)| {
+    let boundary = html[index + ending.len()..].chars().next();
+    if ending == "-->" {
+      Some(index + ending.len())
+    } else if boundary.is_some_and(|value| value.is_whitespace() || ['>', '/'].contains(&value)) {
+      html_tag_end(&html[index..]).map(|end| index + end + 1)
+    } else {
+      None
+    }
+  })
 }
 
 fn html_tag_end(tag: &str) -> Option<usize> {

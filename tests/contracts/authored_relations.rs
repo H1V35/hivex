@@ -277,6 +277,7 @@ fn comments_and_raw_html_text_do_not_create_destination_anchors() {
   for hidden in [
     "<!-- <a id=\"phantom\"></a> -->",
     "<script>\n<a id=\"phantom\"></a>\n</script>",
+    "<script>\n</scripture><a id=\"phantom\"></a>\n</script>",
     "<style>\n<a id=\"phantom\"></a>\n</style>",
     "<textarea><a id=\"phantom\"></a></textarea>",
     "<div title='<fake> <a id=\"phantom\"></a>'></div>",
