@@ -1,6 +1,8 @@
 ---
 title: Engineering workflow
 status: accepted
+created_at: 2026-09-13
+updated_at: 2026-10-01
 ---
 
 # Engineering workflow
@@ -23,7 +25,7 @@ Choose verification for the affected surfaces. Code changes require typechecking
 
 GitHub Actions runs Quality on an ephemeral GitHub-hosted `macos-15` ARM64 runner. The owner approved retiring the personal Mac runner in preparation for public contributions; the workflow checks the hosted environment and architecture before running the native gates. PRs receive read-only repository permissions and no stored credentials or publishing secrets. Do not reconnect a personal workstation or introduce a `pull_request_target` checkout of untrusted code. A queued, skipped or interrupted run is not a pass. Local verification remains required when CI is unavailable. See the [CI procedure](../procedures/self-hosted-runner.md) for the execution boundary and checks.
 
-Use Cargo with the committed lockfile for the runtime, development tools and tests. The stable toolchain in `rust-toolchain.toml`, two-space rustfmt, Clippy all + pedantic with warnings denied, source-quality and domain-dependency gates, and behavioral checks form the development gate. The [Rust quality standard](rust-quality.md) defines their scope, thresholds and analyzer limits. TypeScript, JavaScript and Bun are retired from Hivex development under the owner's clarification of [#80](https://github.com/H1V35/hivex/issues/80). The earlier [Bun installation decision](../adr/0003-independent-bun-installation.md) is historical context.
+Use Cargo with the committed lockfile for the runtime, development tools and tests. The stable toolchain in `rust-toolchain.toml`, two-space rustfmt, Clippy all + pedantic with warnings denied, source-quality and domain-dependency gates, and behavioral checks form the development gate. The [Rust quality standard](rust-quality.md) defines their scope, thresholds and analyzer limits. TypeScript, JavaScript and Bun are retired from Hivex development under the owner's clarification of [#80](https://github.com/H1V35/hivex/issues/80).
 
 Follow [ADR 0013](../adr/0013-domain-modules-and-execution-integrations.md) for the modular monolith. Documents own source selection, parsing, coordinates, lexical search and authored relationships; foundation owns safe missing-file preparation; CLI composes those operations and owns argument parsing/output. Documents and foundation cannot import each other or CLI. Shared errors and compatible Markdown utilities remain small. The [Rust quality standard](rust-quality.md#domain-boundaries) records the permitted dependency matrix. Public CLI tests exercise the compiled executable; fixed legacy bytes verify preservation, without retaining graph/model behavior or a synthetic app-server.
 
@@ -35,8 +37,6 @@ Package preparation and verification use the Rust development utility and system
 
 Choose tests for value and risk, prioritizing critical flows, stable rules and demonstrated regressions. TDD is optional and reserved for critical flows whose behavior is sufficiently defined; explore unresolved behavior before committing its assumptions to tests. Do not require a test for every function, component, wrapper or line. A test must identify a supported behavior, meaningful invariant or regression it protects. Prefer the caller's observable interface and results that survive an internal refactor.
 
-For UI, test visible content, accessibility, interactions and loading/error/empty-state behavior. Do not freeze arbitrary child arrays, wrapper counts or class/style arrangements. A visual dimension needs a test only when it is an intentional requirement worth maintaining. For example, displaying "2 of 4" is a behavior; representing it as exactly three React children is not.
-
 Mocks, call counts, ordering and exact bytes are not automatically wrong. They can protect an external protocol, idempotency, a query budget or faithful source reproduction. Their justification must be the contract, not the current arrangement of internal helpers. Expected results must be independent examples, not the implementation's own calculation repeated in the test.
 
 Review existing tests as retain, rewrite, consolidate or remove. Remove tests for retired behavior with that behavior; preserve still-needed guarantees at the replacement's actual interface. Do not port a legacy battery mechanically, chase a test-count target or retain duplicate suites indefinitely.
@@ -45,7 +45,7 @@ Review existing tests as retain, rewrite, consolidate or remove. Remove tests fo
 
 Create a source file for a meaningful responsibility and a document for a distinct authoritative purpose. Do not create files for every helper, task, turn, attempt or handoff merely to satisfy a layout convention or a lint threshold.
 
-Before introducing persistent state, define its purpose, location, owner and retention. Prefer a small project-local data store to an unbounded tree of per-event files. A per-unit atomic checkpoint can be a database transaction; it does not require a separate file. Fewer filenames alone do not bound data growth: cached data, run history and diagnostics also need size/count/age limits and cleanup behavior.
+Before introducing persistent state, define its purpose, location, owner and retention. Prefer a small project-local data store to an unbounded tree of per-event files. Fewer filenames alone do not bound data growth: cached data, run history and diagnostics also need size/count/age limits and cleanup behavior.
 
 Normal read-only queries should leave no per-query artifacts. Clean up owned temporary resources on ordinary completion and handled failures. Interrupted work must remain recoverable without being silently retried or discarded. Export diagnostic bundles when needed rather than automatically writing a new report for every successful step. Retention must preserve the accepted state and the evidence needed by supported historical/recovery operations; it must not invent a successful cleanup.
 

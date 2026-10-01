@@ -1,6 +1,8 @@
 ---
 name: hivex-review
 description: Independently review a change for intended scope, correctness and project standards, including relevant decision dependencies and exceptions.
+created_at: 2026-09-13
+updated_at: 2026-10-01
 ---
 
 # Review the actual change

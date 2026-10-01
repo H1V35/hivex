@@ -1,9 +1,10 @@
-use crate::compatibility::trim_js_whitespace;
+use crate::compatibility::{normalize_path, trim_js_whitespace};
 use crate::error::{HivexError, Result};
 use serde_json::{Map, Value};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 
 const IGNORE_RULES: [&str; 1] = ["/.hivex/"];
 const IGNORE_BLOCK: &str = "/.hivex/\n";
@@ -90,24 +91,6 @@ struct Destination {
 
 fn error(code: &str, message: impl Into<String>) -> HivexError {
   HivexError::new(code, message)
-}
-
-fn normalize_path(path: &Path) -> PathBuf {
-  let mut normalized = PathBuf::new();
-  for component in path.components() {
-    match component {
-      Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-      Component::RootDir => normalized.push(std::path::MAIN_SEPARATOR_STR),
-      Component::CurDir => {}
-      Component::ParentDir => {
-        if !normalized.pop() && !normalized.is_absolute() {
-          normalized.push(component.as_os_str());
-        }
-      }
-      Component::Normal(part) => normalized.push(part),
-    }
-  }
-  normalized
 }
 
 fn resolve_path(path: &Path) -> std::io::Result<PathBuf> {
@@ -246,13 +229,24 @@ fn ignore_update(existing: Option<&[u8]>) -> Option<Vec<u8>> {
 }
 
 fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
+  let created_at = creation_date()?;
   TEMPLATE_FILES
     .iter()
     .map(|(path, bytes)| {
       let target = destination(root, path, DestinationKind::File)?;
       Ok(FileOperation {
         absolute_path: target.absolute_path,
-        content: FileContent::Bytes(bytes.to_vec()),
+        content: FileContent::Bytes(
+          if !target.exists
+            && Path::new(path)
+              .extension()
+              .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+          {
+            dated_template(bytes, &created_at)
+          } else {
+            bytes.to_vec()
+          },
+        ),
         path: (*path).to_owned(),
         state: if target.exists {
           OperationState::Preserved
@@ -262,6 +256,49 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
       })
     })
     .collect()
+}
+
+fn creation_date() -> Result<String> {
+  let output = Command::new("/bin/date")
+    .env("LC_ALL", "C")
+    .args(["-u", "+%Y-%m-%d"])
+    .output()
+    .map_err(|failure| error("INIT_DATE_FAILED", failure.to_string()))?;
+  let value = String::from_utf8(output.stdout)
+    .map_err(|failure| error("INIT_DATE_FAILED", failure.to_string()))?;
+  let day = value.trim();
+  if !output.status.success()
+    || day.len() != 10
+    || !day.bytes().enumerate().all(|(index, byte)| match index {
+      4 | 7 => byte == b'-',
+      _ => byte.is_ascii_digit(),
+    })
+  {
+    return Err(error(
+      "INIT_DATE_FAILED",
+      "Unable to determine the UTC creation date",
+    ));
+  }
+  Ok(day.to_owned())
+}
+
+fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
+  let text = std::str::from_utf8(bytes).expect("bundled Markdown is UTF-8");
+  let (header, body) = text
+    .strip_prefix("---\n")
+    .and_then(|text| text.split_once("\n---\n"))
+    .expect("bundled Markdown has date frontmatter");
+  let mut metadata = header
+    .lines()
+    .filter(|line| {
+      !["created_at:", "updated_at:", "archived_at:"]
+        .iter()
+        .any(|key| line.starts_with(key))
+    })
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
+  metadata.push(format!("created_at: {created_at}"));
+  format!("---\n{}\n---\n{body}", metadata.join("\n")).into_bytes()
 }
 
 fn ignore_operation(root: &Path) -> Result<FileOperation> {

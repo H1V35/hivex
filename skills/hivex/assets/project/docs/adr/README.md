@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-13
+updated_at: 2026-10-01
+---
+
 # Architectural and domain decisions
 
 Add a numbered Markdown decision when its rationale, alternatives, scope or exceptions will help future work. A short statement of the context, decision and reason can be sufficient; add detail when it matters.
@@ -8,7 +13,7 @@ Preserve the distinction between proposed, current and replaced decisions. When 
 
 ## Decision and delivery states
 
-Use these shared meanings for new documentation. Compatible existing project labels remain valid; document their mapping rather than silently rewriting them. State may be expressed in ordinary Markdown or existing metadata, without a required frontmatter schema.
+Use these shared meanings for new documentation. Compatible existing project labels remain valid; document their mapping rather than silently rewriting them. State may be expressed in ordinary Markdown or existing metadata. Date frontmatter follows the shared created_at/updated_at/archived_at convention; decision and delivery states remain separate from those dates.
 
 | Decision state | Meaning |
 |---|---|

@@ -1,7 +1,8 @@
 ---
 title: Hivex purpose and product scope
 status: accepted
-updated: 2026-10-01
+created_at: 2026-10-01
+updated_at: 2026-10-01
 ---
 
 # Hivex product brief

@@ -1,10 +1,12 @@
 ---
 title: Project foundation and adaptive workflow
 status: accepted
-date: 2026-09-13
+created_at: 2026-09-13
+archived_at: 2026-10-01
+source_path: docs/adr/0012-project-foundation-and-workflow.md
+source_revision: 1e3768f65f901522a63e00bde51069020049e123
+updated_at: 2026-10-01
 ---
-
-> Historical record of the document at commit `1e3768f65f901522a63e00bde51069020049e123`, before the Markdown-first decision on 2026-10-01. Original decisions, dates and wording are retained; relative links were adjusted for this location. This archive is not current policy. See the [current authority](../../adr/0012-project-foundation-and-workflow.md) and [the current approach](../../adr/0014-reliable-markdown-and-explicit-relationships.md).
 
 # Project foundation and adaptive workflow
 

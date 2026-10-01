@@ -1,7 +1,8 @@
 ---
 title: Project foundation and adaptive workflow
 status: accepted
-date: 2026-09-13
+created_at: 2026-09-13
+updated_at: 2026-10-01
 ---
 
 # Project foundation and adaptive workflow
@@ -26,7 +27,7 @@ Use mature engineering and documentation practices. Prefer domain-driven design 
 
 Choose tests by value and risk, including critical flows, stable rules and regressions. TDD is optional and reserved for sufficiently defined critical behavior. Use one independent review by default; add another only when concrete risk or findings justify it. The reviewer uses the implementation agent's model and effort. The principal reviewer verifies conflicts with relevant decisions, dependencies and exceptions. CLI retrieval supports the responsible agent and is separate from independent implementation review.
 
-Keep `AGENTS.md` a concise entrypoint with orientation, development and verification guidance, and indispensable project constraints. Links explain when an authority applies; they do not require every source on every task. Ordinary Markdown is sufficient: the foundation does not impose a proprietary schema or line-count limit. Skills use focused descriptions and conditional references, preserving the user's scope and existing authorization.
+Keep `AGENTS.md` a concise entrypoint with orientation, development and verification guidance, and indispensable project constraints. Links explain when an authority applies; they do not require every source on every task. Use the shared creation/update/archive date convention. Other metadata remains purpose-specific; the foundation imposes no proprietary knowledge schema or line-count limit. Skills use focused descriptions and conditional references, preserving the user's scope and existing authorization.
 
 ## Source-led integration
 

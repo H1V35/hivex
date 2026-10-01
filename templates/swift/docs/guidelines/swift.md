@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-28
+updated_at: 2026-09-28
+---
+
 # Swift standard
 
 Apply this guide to maintained Swift code in libraries, tools and apps, including tests and development utilities. It does not impose an Apple UI framework or a screen architecture on a CLI or server. The project's existing engineering authority owns DDD, domain responsibilities and the Hivex workflow; link that authority when adopting this guide instead of creating another architecture policy.

@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-13
+updated_at: 2026-10-01
+---
+
 # GitHub Actions execution
 
 Quality runs on an ephemeral GitHub-hosted `macos-15` ARM64 runner. The owner approved this replacement of the personal Mac runner when preparing the repository for public contributions. This document keeps its existing path for published-package and historical links.

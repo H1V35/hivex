@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-17
+updated_at: 2026-10-01
+---
+
 # Hivex guide
 
 Hivex is an AI-first CLI for agents and people. The principal agent reasons and implements; Hivex supplies reusable workflow skills and deterministic retrieval of repository Markdown. No command invokes a model or requires a persistent knowledge database.
@@ -15,7 +20,7 @@ In Bun projects use `bun add -d -E @h1v35/hivex`, then `bun hivex init`. The sco
 
 ## Initialize a project
 
-`init [--root <project>]` prepares missing foundation documents, a source configuration, brief `AGENTS.md`, a `CLAUDE.md` import and relative links to six packaged skills in `.agents/skills/` and `.claude/skills/`. It preserves existing files, configuration, custom skills and historical runtime state. Run it from a complete package; copying the executable alone does not install its assets. Unsafe destination paths and symlink parents fail before writes.
+`init [--root <project>]` prepares missing foundation documents, a source configuration, brief `AGENTS.md`, a `CLAUDE.md` import and relative links to six packaged skills in `.agents/skills/` and `.claude/skills/`. It preserves existing files, configuration, custom skills and historical runtime state. Run it from a complete package; copying the executable alone does not install its assets. Unsafe destination paths and symlink parents fail before writes. Newly created Markdown gets `created_at` for its UTC creation day; source-template update/archive dates are not copied. Existing document dates and contents are preserved.
 
 Initialization is a starting point. The responsible agent completes the project's purpose, vocabulary and scope from evidence and owner decisions, maps current authorities and preserves useful history. The [Markdown foundation](../skills/hivex/references/markdown.md) and [language-template catalogue](../templates/README.md) guide adoption. Installing a package does not replace an existing project's owner policy.
 

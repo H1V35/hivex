@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-07
+updated_at: 2026-10-01
+---
+
 # Documentation map
 
 Hivex supplies a reusable workflow and reliable project knowledge to people and agents. Markdown owns intent and decisions; authored links expose dependencies, exceptions and replacements. Start with the task route below, then follow relevant relationships instead of loading every document. [ADR 0014](adr/0014-reliable-markdown-and-explicit-relationships.md) owns this approach.

@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-09
+updated_at: 2026-10-01
+---
+
 # Recommended Markdown foundation
 
 Use this foundation when adopting Hivex. Prefer migration to its standard structure when reasonably possible, preserving and completing useful existing documents, their authority, history and links. Hivex accepts other Markdown layouts; the authority map and authored relationships guide source reading. The inferred graph runtime is retired.
@@ -22,9 +27,19 @@ A useful catalogue distinguishes:
 - Procedures for concrete operational or recovery tasks.
 - Research and evidence identified as dated support, not automatically current decisions.
 
-Prefer kebab-case for authored document and directory names, with numeric prefixes for ADRs where used. Keep conventional entrypoints such as `AGENTS.md`, `README.md`, `CONTEXT.md`, `PRD.md` and `SKILL.md`, and names required by the project's tools or language. Preserve links and history when renaming existing files.
+Prefer kebab-case for authored document and directory names, with numeric prefixes for ADRs where used. Keep conventional entrypoints such as `AGENTS.md`, `README.md`, `CONTEXT.md`, `PRD.md` and `SKILL.md`, and names required by the project's tools or language. Preserve necessary links and history when renaming or retiring files.
 
 For example, a project may use `docs/README.md`, `docs/CONTEXT.md`, `docs/adr/`, `docs/guidelines/`, `docs/procedures/` and `docs/research/`. Keep standing rules and design guidance in `guidelines`, and instructions for carrying out tasks in `procedures`; avoid overlapping directories with indistinct purposes. These are the adoption defaults; an existing project may retain another arrangement where migration would not be appropriate. Multiple bounded contexts may have their own glossary and decisions with a small context map linking them; a monorepo need not duplicate one shared product glossary.
+
+## Document dates
+
+Every authored Markdown file has YAML frontmatter with `created_at`, an ISO calendar date (`YYYY-MM-DD`) recording the document's creation. Preserve a documented creation date across moves; when it is missing, recover the earliest recorded creation from Git or explicit source provenance and state that limit instead of inventing earlier history. The former `date` key is renamed to `created_at`, and `updated` to `updated_at`.
+
+`updated_at` is optional until a later content change. Maintain it when meaning, links or appended material change after creation; do not reset creation or add an update merely because a template is copied. Existing dates and Git-backed updates survive metadata-only migration.
+
+An archived Markdown record also has `archived_at` for its first archival event. Retain its original `created_at`; later additions or repairs update `updated_at` and leave `archived_at` unchanged. Source path/revision metadata identifies the original record when needed. Fully archived ADRs live only in the archive: repair necessary callers rather than retaining duplicate current-path stubs.
+
+Repository templates carry their own source dates. `init` dates newly created project Markdown with its UTC creation day and removes template update/archive provenance; it preserves existing files byte-for-byte. Apply the same dating convention when an agent creates or maintains documentation. Titles, decision states, delivery states and tags remain purpose-specific; dates do not grant authority, establish implementation or imply permission.
 
 ## Write decisions for the next reader
 
@@ -38,7 +53,7 @@ For a consequential architectural trade-off, an ADR might be:
 Cached private data is removed immediately when access is revoked. The normal cache lifetime still applies while access remains valid. This prevents stale local access after a permission change. See the cache policy for the general retention rule.
 ```
 
-A title, truthful status and decision date can improve cataloguing. Tags are optional. If a rule is replaced, identify the replacement and whether the change is partial. Keep the historical reasoning readable; do not silently rewrite the past. A missing status means uncertainty to resolve from the content, not permission to assume acceptance.
+A title and truthful status can improve cataloguing alongside the required creation date. Tags are optional. If a rule is replaced, identify the replacement and whether the change is partial. Keep the historical reasoning readable; do not silently rewrite the past. A missing status means uncertainty to resolve from the content, not permission to assume acceptance.
 
 Keep decision status separate from delivery and verification. The [shared state catalogue](../assets/project/docs/adr/README.md#decision-and-delivery-states), also prepared by `init`, defines draft, proposed, accepted, rejected, superseded and historical decisions. An accepted choice may be unimplemented or only partly delivered. Record implementation scope and verification evidence independently when they apply; preserve compatible project-specific statuses instead of silently reclassifying them.
 
@@ -79,7 +94,7 @@ Authors and reviewers judge meaning, reason and conditions. A deterministic read
 
 ## Compact an ADR without losing its history
 
-When replaced text obscures a decision's current meaning, preserve that history in a clearly marked Markdown archive and keep the active document focused on applicable rules, reasons, dependencies and exceptions. A wholly superseded ADR can remain as a short pointer to its replacement and archive. Preserve referenced anchors or update their links. Do not archive a live exception merely because it is old, or change what an earlier decision meant while shortening its current presentation.
+When replaced text obscures a decision's current meaning, preserve that history in a clearly marked Markdown archive and keep the active document focused on applicable rules, reasons, dependencies and exceptions. Remove a fully archived ADR from the current directory and update necessary callers to its archive or current replacement. Preserve referenced anchors or update their links. Do not archive a live exception merely because it is old, or change what an earlier decision meant while shortening its current presentation.
 
 A project may use `docs/archive/adr/` for this purpose; other layouts remain valid. Historical evidence should be available for focused consultation without being loaded into every model context. Declare its relative globs in `hivex.json` under `archive`, then use the installed CLI's `--source` selection or a known relationship for bounded retrieval. Compaction must not silently make necessary evidence inaccessible. The principal agent maintains and migrates the documents. The CLI prepares missing foundation files; source moves require maintained caller links and fresh query snapshots, without deciding product doctrine or silently renaming sources.
 
@@ -95,7 +110,7 @@ Before changing behavior, recover the existing authority and follow its relevant
 
 Use a short `AGENTS.md` with orientation and knowledge pointers, development/verification guidance and project-specific constraints only where needed. Link the relevant authority with enough context to know when it matters. Do not duplicate the PRD, glossary or guidelines, or require every document on every task.
 
-The public [AGENTS.md convention](https://agents.md/) is ordinary Markdown without required fields. The foundation supplies a consistent starting shape rather than another schema or a line-count gate.
+The public [AGENTS.md convention](https://agents.md/) uses ordinary Markdown. Hivex adds its shared date frontmatter while keeping the entrypoint concise; it does not add a knowledge schema or line-count gate.
 
 ## Relationships
 
@@ -105,4 +120,4 @@ The public [AGENTS.md convention](https://agents.md/) is ordinary Markdown witho
 
 Run `check --source <document>` for the affected authorities and callers, or `check` for ordinary selected sources. It validates formal relationship grammar and selected local Markdown targets/anchors without a model. Archived declarations are checked only through explicit source selection or `--historical`; a historical destination remains readable without validating all of its old prose. Unknown or excluded references are located findings, not silently skipped evidence.
 
-Review every finding against its source/scope. An incomplete source load is `partial`; invalid references or declarations produce `failed`, with paginated findings and source-bound continuation. A `ready` report confirms only the stated structural scope. It cannot find an undeclared relationship, establish a unique semantic authority, verify implementation/permission or resolve contradictory rules. Authors and independent reviewers perform those checks against the actual task and source/code versions.
+Review every finding against its source/scope. An incomplete source load is `partial`; invalid references or declarations produce `failed`, with paginated findings and source-bound continuation. A `ready` report confirms only the stated structural scope; it does not validate required date metadata. Authors maintain dates under the convention above, and legacy source layouts remain readable during migration. It cannot find an undeclared relationship, establish a unique semantic authority, verify implementation/permission or resolve contradictory rules. Authors and independent reviewers perform those checks against the actual task and source/code versions.

@@ -1,10 +1,12 @@
 ---
 title: Shared knowledge snapshots and selective documentary history
 status: accepted
-date: 2026-09-11
+created_at: 2026-09-11
+archived_at: 2026-10-01
+source_path: docs/adr/0011-shared-knowledge-and-selective-history.md
+source_revision: 180ea2750e0da9253494b02e7bbbb25938720758
+updated_at: 2026-10-01
 ---
-
-> Historical 0.7.8 record from `docs/adr/0011-shared-knowledge-and-selective-history.md` at `180ea2750e0da9253494b02e7bbbb25938720758`. The [current archival policy](../../adr/0011-shared-knowledge-and-selective-history.md) replaces active graph sharing.
 
 
 # Shared knowledge snapshots and selective documentary history

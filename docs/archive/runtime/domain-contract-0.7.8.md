@@ -1,11 +1,12 @@
 ---
 title: Domain modules and replaceable execution integrations
 status: accepted
-date: 2026-09-17
-updated: 2026-10-01
+created_at: 2026-09-17
+archived_at: 2026-10-01
+source_path: docs/adr/0013-domain-modules-and-execution-integrations.md
+source_revision: 180ea2750e0da9253494b02e7bbbb25938720758
+updated_at: 2026-10-01
 ---
-
-> Historical runtime record copied from `docs/adr/0013-domain-modules-and-execution-integrations.md` at Git revision `180ea2750e0da9253494b02e7bbbb25938720758` (0.7.8). The source-only replacement is [the current guide](../../guide.md#migrate-from-the-inferred-graph-runtime). Original behavior and accounting describe that retired version.
 
 
 # Domain modules and replaceable execution integrations
@@ -24,7 +25,7 @@ The Rust CLI continues to read existing SQLite state and shared snapshot v1 data
 
 Work budgets span operation phases, attempts and resumption. A profile change cannot grant a new allowance or silently change the work's operation, sources or arguments. Explicit profile resumption keeps the same work identity and scope, records the transition and integration request identity, and preserves coverage, prior results and receipts. Running or uncertain calls retain their recovery requirements; failed work retains explicit retry. Selecting a profile alone neither invokes a model nor makes an old result current under a different profile. A changed candidate uses the supported normal check; an unchanged adverse check is not repeated for a green result.
 
-The exact profile-transition behavior, including the implemented default migration, is in the [optional graph and model-assisted CLI reference](../../reference/graph-cli.md#execution-profiles). The work/data runtime contract and optional model-assisted operations are in [ADR 0010](../../adr/0010-practical-knowledge-assistance.md). The implementation's build, compatibility and package checks are in the [Guide's Development section](../../guide.md#development).
+The exact profile-transition behavior, including the implemented default migration, is in the [optional graph and model-assisted CLI reference](graph-cli-0.7.8.md#execution-profiles). The work/data runtime contract and optional model-assisted operations are in [ADR 0010](../../adr/0010-practical-knowledge-assistance.md). The implementation's build, compatibility and package checks are in the [Guide's Development section](../../guide.md#development).
 
 Keep tests at observable boundaries: domain invariants, persisted v1 data, failures/recovery, and public CLI or integration behavior. Consolidate or retire coverage only when its meaningful guarantee is preserved; test counts and language statistics are not acceptance criteria.
 

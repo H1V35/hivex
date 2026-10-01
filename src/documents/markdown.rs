@@ -455,7 +455,7 @@ fn heading_text<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Option<Strin
   None
 }
 
-fn markdown_options() -> Options {
+pub(super) fn markdown_options() -> Options {
   let mut options = Options::empty();
   options.insert(Options::ENABLE_TABLES);
   options.insert(Options::ENABLE_STRIKETHROUGH);

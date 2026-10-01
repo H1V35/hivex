@@ -1,6 +1,8 @@
 ---
 name: hivex-git
 description: Manage issue triage, execution tickets, branches, commits, pull requests, CI, merge conflicts and completed-work cleanup under project conventions and existing authorization.
+created_at: 2026-09-13
+updated_at: 2026-10-01
 ---
 
 # Keep work and Git coherent

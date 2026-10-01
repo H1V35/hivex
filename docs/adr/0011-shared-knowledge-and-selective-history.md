@@ -1,7 +1,8 @@
 ---
 title: Selective documentary history and preserved evidence
 status: accepted
-date: 2026-09-11
+created_at: 2026-09-11
+updated_at: 2026-10-01
 ---
 
 # Selective documentary history and preserved evidence
@@ -10,7 +11,7 @@ The owner accepted two changes while reviewing the project under [Hivex #17](htt
 
 ## Compact current decisions, preserve accessible history
 
-An author may move replaced decision text into a clearly historical Markdown archive, preserving the original text, dates and provenance. The current ADR retains the applicable decision, reasons, dependencies and exceptions, with links to its history and replacements. A completely superseded ADR may become a short pointer at its original path. Preserve referenced anchors or update their callers; age alone never makes a still-applicable condition obsolete.
+An author may move replaced decision text into a clearly historical Markdown archive, preserving the original text, dates and provenance. The current ADR retains the applicable decision, reasons, dependencies and exceptions, with links to its history and replacements. A fully archived ADR is removed from the current directory. Update necessary callers to its archive or live replacement instead of keeping a duplicate pointer. Preserve referenced anchors or update their callers; age alone never makes a still-applicable condition obsolete.
 
 `docs/archive/adr/` is one valid convention, not a required layout for every project. Historical sources remain explicitly available for bounded retrieval when needed. They do not enter ordinary search simply because they are accessible. Hivex must respect the project's declared source scope and report unavailable necessary evidence rather than silently omitting a dependency or treating an old rule as current. The author performs documentary compaction; Hivex does not rewrite project decisions automatically.
 

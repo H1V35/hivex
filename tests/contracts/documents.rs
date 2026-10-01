@@ -28,9 +28,34 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     assert!(list(&result, "created").contains(&json!(file)));
     assert_ne!(fs::read(p.path(file)).unwrap().len(), 0);
   }
-  assert_eq!(
-    fs::read_to_string(p.path("CLAUDE.md")).unwrap(),
-    "@AGENTS.md\n"
+  let today = String::from_utf8(
+    Command::new("/bin/date")
+      .args(["-u", "+%Y-%m-%d"])
+      .output()
+      .unwrap()
+      .stdout,
+  )
+  .unwrap();
+  for file in [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/README.md",
+    "docs/PRD.md",
+    "docs/CONTEXT.md",
+    "docs/adr/README.md",
+    "docs/guidelines/engineering.md",
+    "docs/guidelines/triage-labels.md",
+    "docs/procedures/issue-tracker.md",
+  ] {
+    let text = fs::read_to_string(p.path(file)).unwrap();
+    assert!(text.contains(&format!("created_at: {}", today.trim())));
+    assert!(!text.contains("updated_at:"));
+    assert!(!text.contains("archived_at:"));
+  }
+  assert!(
+    fs::read_to_string(p.path("CLAUDE.md"))
+      .unwrap()
+      .ends_with("\n@AGENTS.md\n")
   );
   assert!(p.read_json("hivex.json").get("archive").is_some());
   assert!(p.read_json("hivex.json").get("history").is_none());

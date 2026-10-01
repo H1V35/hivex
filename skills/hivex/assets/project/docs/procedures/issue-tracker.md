@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-13
+updated_at: 2026-10-01
+---
+
 # Issues, triage and pull requests
 
 Use the repository's configured tracker and conventions. The default workflow is issue-first with a coherent branch and pull request for each change. Repository-specific tracker location, language and commands belong in this procedure when established.

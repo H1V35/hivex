@@ -433,7 +433,7 @@ fn verify_initialization(binary: &Path, package: &Path, temporary: &Path) -> Res
   fs::create_dir_all(initialized.join("node_modules/@h1v35"))?;
   std::os::unix::fs::symlink(package, initialized.join("node_modules/@h1v35/hivex"))?;
   cli(binary, &initialized, &["init"])?;
-  if fs::read_to_string(initialized.join("CLAUDE.md"))? != "@AGENTS.md\n" {
+  if !fs::read_to_string(initialized.join("CLAUDE.md"))?.ends_with("\n@AGENTS.md\n") {
     return Err("Missing shared agent instructions".into());
   }
   for skill in [
