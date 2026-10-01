@@ -26,7 +26,7 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     "docs/procedures/issue-tracker.md",
   ] {
     assert!(list(&result, "created").contains(&json!(file)));
-    assert!(!fs::read(p.path(file)).unwrap().is_empty());
+    assert_ne!(fs::read(p.path(file)).unwrap().len(), 0);
   }
   assert_eq!(
     fs::read_to_string(p.path("CLAUDE.md")).unwrap(),
@@ -300,7 +300,7 @@ fn excluded_subtrees_symlinks_invalid_utf8_and_history_are_bounded() {
   );
   let result = p.ok(&["sources"]);
   assert_eq!(paths(&result), ["app/docs.md"]);
-  assert!(list(&result, "warnings").is_empty());
+  assert_eq!(list(&result, "warnings").len(), 0);
   for (exclude, expected) in [
     ("app/ios/*", vec!["app/docs.md", "app/ios/nested/guide.md"]),
     ("!app/ios/nested/**", vec!["app/ios/nested/guide.md"]),
@@ -452,7 +452,7 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
     .output()
     .unwrap();
   assert_eq!(output.status.code(), Some(1));
-  assert!(output.stdout.is_empty());
+  assert_eq!(output.stdout.len(), 0);
   let result: Value = serde_json::from_slice(&output.stderr).unwrap();
   assert_eq!(result["error"]["code"], "INIT_SKILLS_UNAVAILABLE");
   assert!(!p.path("AGENTS.md").exists());

@@ -94,8 +94,8 @@ fn stale_or_unavailable_snapshot_sources_preserve_unaffected_knowledge() {
         .unwrap()
         .contains(&json!("cache.md"))
     );
-    assert!(list(&p.ok(&["search", "seven days"]), "decisions").is_empty());
-    assert!(!list(&p.ok(&["search", "revocation"]), "decisions").is_empty());
+    assert_eq!(list(&p.ok(&["search", "seven days"]), "decisions").len(), 0);
+    assert_ne!(list(&p.ok(&["search", "revocation"]), "decisions").len(), 0);
   }
 }
 
@@ -457,13 +457,13 @@ fn assert_relocation(kind: &str) {
       .any(|d| d["id"] == original_id && d["document"] == destination)
   );
   if kind == "identical" {
-    assert!(list(&relocated, "pendingUnits").is_empty());
+    assert_eq!(list(&relocated, "pendingUnits").len(), 0);
     assert_eq!(
       p.ok(&["update", "--max-calls", "0", "--codex", "/no-model"])["status"],
       "ready"
     );
   } else {
-    assert!(!list(&relocated, "pendingUnits").is_empty());
+    assert_ne!(list(&relocated, "pendingUnits").len(), 0);
   }
   assert_eq!(p.calls(), 2);
   if kind == "existing-target" {

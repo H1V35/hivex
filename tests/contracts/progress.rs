@@ -66,7 +66,7 @@ fn progress_precedes_json_and_reports_wait_without_exposing_content() {
     std::thread::sleep(Duration::from_millis(20));
   }
   assert!(running);
-  assert!(stdout_before.is_empty());
+  assert_eq!(stdout_before.len(), 0);
   assert!(observed.contains("extraction: started"));
   assert!(observed.contains("internal progress unknown"));
   let result = p.read_json("stdout");
@@ -100,7 +100,7 @@ fn progress_preserves_budget_resumption_cache_and_silence() {
   for mode in ["never", "auto"] {
     let (again, progress) = run(&p, &["update", "--progress", mode]);
     assert_eq!(again, second);
-    assert!(progress.is_empty());
+    assert_eq!(progress.len(), 0);
   }
   // Reset only the synthetic graph/work: preserve the cache to exercise reuse.
   p.db()

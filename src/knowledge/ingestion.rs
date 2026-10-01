@@ -405,7 +405,7 @@ mod tests {
   fn preserves_small_text_and_raw_line_endings() {
     let source = document("notes.md", "First line\rSecond line\r\nThird line\n");
     let result = ingestion_units(&[source]);
-    assert!(result.warnings.is_empty());
+    assert_eq!(result.warnings.len(), 0);
     assert_eq!(result.units.len(), 1);
     assert_eq!(
       result.units[0].text,
@@ -449,7 +449,7 @@ mod tests {
     let fence = "```ts\n# inside\n~~~\nstill inside\n```\n";
     let text = format!("# First\n\nparagraph\n\n{fence}\n# Second\n");
     let result = ingestion_units(&[document("fences.md", &text)]);
-    assert!(result.warnings.is_empty());
+    assert_eq!(result.warnings.len(), 0);
     assert_eq!(
       result
         .units

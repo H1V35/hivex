@@ -599,7 +599,7 @@ mod tests {
     let mut pending = json!({"batch":"work:pending","existing":["a.md","b.md"],"packet":{"documents":[
       {"id":"a.md","version":"current"},{"id":"b.md","version":"current"}
     ]}});
-    assert!(current_edge_ranges(&graph, &pending, &project).is_empty());
+    assert_eq!(current_edge_ranges(&graph, &pending, &project).len(), 0);
     pending["packet"]["documents"]
       .as_array_mut()
       .unwrap()

@@ -1,6 +1,6 @@
 # Recommended Markdown foundation
 
-Use this foundation when adopting Hivex. Prefer migration to its standard structure when reasonably possible, preserving and completing useful existing documents, their authority, history and links. Hivex's knowledge reader continues to accept other Markdown layouts; document organization is not an ingestion prerequisite.
+Use this foundation when adopting Hivex. Prefer migration to its standard structure when reasonably possible, preserving and completing useful existing documents, their authority, history and links. Hivex accepts other Markdown layouts; the authority map and explicit relationships guide source reading. An inferred graph is optional assistance.
 
 The foundation combines a clear authority map, project purpose, domain language and maintainable decisions. The bundled documentation skill guides adoption and completion; no retired planning framework or external skill set is required.
 
@@ -9,6 +9,8 @@ When establishing engineering guidance, read `templates/README.md` in the instal
 ## Give knowledge one authoritative home
 
 Keep shared decisions at project or monorepo level. Package-specific or module-specific knowledge can stay with that package or module. Link shared rules instead of copying them into each area. Initialization prepares the core documents and directories. Complete project-specific drafts from evidence and the owner, and add further documents only for useful distinct purposes.
+
+Before writing or creating a document, check the authority map and search existing current and relevant archived sources for the topic and its terminology. Read likely matches and their replacements. Extend the existing authority when it owns the same scope; create a document only after establishing a distinct useful responsibility, then update the map and callers. A failed keyword search alone does not establish that no authority exists.
 
 A useful catalogue distinguishes:
 
@@ -38,19 +40,45 @@ Cached private data is removed immediately when access is revoked. The normal ca
 
 A title, truthful status and decision date can improve cataloguing. Tags are optional. If a rule is replaced, identify the replacement and whether the change is partial. Keep the historical reasoning readable; do not silently rewrite the past. A missing status means uncertainty to resolve from the content, not permission to assume acceptance.
 
+Keep decision status separate from delivery and verification. The [shared state catalogue](../assets/project/docs/adr/README.md#decision-and-delivery-states), also prepared by `init`, defines draft, proposed, accepted, rejected, superseded and historical decisions. An accepted choice may be unimplemented or only partly delivered. Record implementation scope and verification evidence independently when they apply; preserve compatible project-specific statuses instead of silently reclassifying them.
+
 Use an ADR when the choice is consequential, reflects a real trade-off and would be surprising without its rationale. Do not create one for every routine edit or dependency. Sequential names such as `0001-short-decision.md` are convenient if the project adopts that convention.
+
+## Make relationships explicit
+
+Put the relationship next to the rule that owns it. Use an ordinary Markdown link to the relevant decision or stable section, and a short explanation of why it matters. Keep conditions and exceptions with the rule; no separate relation database or mandatory frontmatter schema is needed.
+
+- **Depends on** points from a rule to its prerequisite. State the condition if it applies only in a particular case.
+- **Exception to** points from the scoped exception to the base rule it qualifies.
+- **Supersedes** points from the current replacement to preserved history; name any scope that remains applicable.
+- **Applied by** points from a policy to the procedure that carries it out. A procedure can link back with **Implements**.
+
+For example:
+
+```markdown
+## Relationships
+
+- Depends on [retention policy](../guidelines/retention.md#work-records): unfinished attempts must survive cleanup.
+- Exception to [default cleanup](../procedures/cleanup.md#completed-work): referenced replacement work remains protected.
+```
+
+These directions describe meaning, not execution order. Do not declare a prerequisite merely because two topics are related. Authors and reviewers judge the relationship; a link checker verifies the target exists but cannot certify its truth.
+
+Use the authority map to choose the initial source, then follow relevant links, including indirect dependencies. Read enough of each target to recover its conditions, exceptions and replacements. A compact map can save repeated reading without claiming the repository is semantically complete. Update both the relationship and its callers when a target or scope changes.
 
 ## Compact an ADR without losing its history
 
 When replaced text obscures a decision's current meaning, preserve that history in a clearly marked Markdown archive and keep the active document focused on applicable rules, reasons, dependencies and exceptions. A wholly superseded ADR can remain as a short pointer to its replacement and archive. Preserve referenced anchors or update their links. Do not archive a live exception merely because it is old, or change what an earlier decision meant while shortening its current presentation.
 
-A project may use `docs/archive/adr/` for this purpose; other layouts remain valid. Historical evidence should be available for focused consultation without being loaded into every model context. Declare its relative globs in `hivex.json` under `archive`, then use the installed CLI's `--source` selection or a known relationship for bounded retrieval. Compaction must not silently make necessary evidence inaccessible. The principal agent maintains and migrates the documents. The CLI prepares missing foundation files and explicitly relocates derived graph references; it does not decide new product doctrine or silently rename existing sources.
+A project may use `docs/archive/adr/` for this purpose; other layouts remain valid. Historical evidence should be available for focused consultation without being loaded into every model context. Declare its relative globs in `hivex.json` under `archive`, then use the installed CLI's `--source` selection or a known relationship for bounded retrieval. Compaction must not silently make necessary evidence inaccessible. The principal agent maintains and migrates the documents. The CLI prepares missing foundation files and offers explicit relocation for optional graph maintenance; it does not decide new product doctrine or silently rename existing sources.
 
 ## Keep the glossary focused
 
 Define each project-specific concept briefly and use that term consistently. A glossary explains what a concept is; it is not an implementation manual, task plan or collection of general programming terms. Group related concepts when it helps and link context-specific definitions instead of copying.
 
 Code and executable contracts explain mechanics. Markdown preserves the intent, constraints, decisions and reasons that code cannot explain. Update that knowledge alongside the change rather than leaving the only explanation in a conversation or private agent memory.
+
+Before changing behavior, recover the existing authority and follow its relevant dependencies, exceptions and replacements. During the same change, reconcile the resulting code, documentary rules, delivery state and evidence. Before integration, independently review that affected set against a defined revision and repair contradictions or unsupported claims. This maintenance prevents the next agent from implementing against obsolete intent; link and format checks alone cannot detect a hallucinated rule. New evidence reopens only the affected review scope.
 
 ## Keep the agent entrypoint small
 

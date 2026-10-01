@@ -175,7 +175,7 @@ fn multiround_profile_change_preserves_coverage_and_completed_repair_reuse() {
   let id = first["work"]["id"].as_str().unwrap();
   let before = p.work(id);
   let graph = p.graph();
-  assert!(!first["pendingUnits"].as_array().unwrap().is_empty());
+  assert_ne!(first["pendingUnits"].as_array().unwrap().len(), 0);
   let mut change = repair.to_vec();
   change.extend([
     "--resume-with-profile",

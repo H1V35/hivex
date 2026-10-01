@@ -1,6 +1,6 @@
 # Hivex domain language
 
-Hivex supplies project knowledge to the agents responsible for implementation and review. Markdown records that knowledge; the graph helps locate and interpret it without becoming authority itself.
+Hivex supplies project knowledge to the agents responsible for implementation and review. Markdown records that knowledge; the authority map and explicit relationships guide focused reading. An optional graph can assist retrieval without becoming authority itself.
 
 ## Language
 
@@ -22,11 +22,13 @@ Hivex supplies project knowledge to the agents responsible for implementation an
 
 **Decision**: A meaningful project choice or constraint together with its scope, conditions, exceptions and reasons. Proposals and historical decisions retain their declared state.
 
-**Relationship**: An evidenced connection between decisions, such as a dependency, exception or replacement. It may cross documents that have no authored link; its interpretation can be uncertain.
+**Explicit relationship**: An author-declared Markdown link between rules or decisions, naming a dependency, exception, application or replacement together with its relevant scope and reason.
+
+**Inferred relationship**: A derived connection proposed without an authored link. It can assist investigation, but its meaning and applicability must be checked against sources.
 
 **Evidence**: An identifiable passage of a particular document or implementation version that a reader can inspect. A model's paraphrase is not the passage itself.
 
-**Knowledge graph**: Derived decisions and relationships, with supporting definitions and lessons, that help an agent recover project context. It may be incomplete or uncertain without making every usable part unavailable.
+**Knowledge graph**: Optional derived decisions and relationships, with supporting definitions and lessons, that help an agent recover project context. It may be incomplete or uncertain without making every usable part unavailable.
 
 **Knowledge snapshot**: A portable representation of reusable graph knowledge, its source versions, evidence, provenance and coverage. It is distinct from a document snapshot and from execution state.
 
