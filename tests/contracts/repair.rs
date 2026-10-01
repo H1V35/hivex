@@ -437,7 +437,7 @@ fn explicit_repair_ranges_share_one_byte_bounded_round_and_resume_accounting() {
   assert_eq!(checked["work"]["id"], extracted["work"]["id"]);
   assert_eq!(checked["work"]["calls"], 2);
   assert_eq!(checked["decisions"], 6);
-  assert!(list(&checked, "pendingUnits").is_empty());
+  assert_eq!(list(&checked, "pendingUnits").len(), 0);
   let captured = packets(&p);
   assert_eq!(list(&captured[captured.len() - 2], "units").len(), 6);
 }
@@ -674,7 +674,7 @@ fn unchanged_current_endpoints_survive_identical_relationship_repair() {
       .rev()
       .find(|packet| packet["operation"] == "extract")
       .unwrap();
-    assert!(list(extract, "existing").is_empty());
+    assert_eq!(list(extract, "existing").len(), 0);
     let replacing = list(extract, "replacingDecisions");
     assert_eq!(replacing.len(), 2);
     for decision in list(&graph, "decisions") {
@@ -693,7 +693,7 @@ fn unchanged_current_endpoints_survive_identical_relationship_repair() {
           .any(|entry| entry["id"] == d["id"] && entry["retainedInCandidate"] == true)
       );
     }
-    assert!(list(check, "validationWarnings").is_empty());
+    assert_eq!(list(check, "validationWarnings").len(), 0);
   }
 }
 

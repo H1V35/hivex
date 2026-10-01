@@ -18,7 +18,7 @@ impl Integration for Synthetic {
     _observer: &mut dyn FnMut(u32) -> Result<()>,
   ) -> Result<Receipt> {
     assert_eq!(request.deadline_ms, 1000);
-    assert!(!request.prompt.is_empty());
+    assert_ne!(request.prompt.len(), 0);
     assert!(request.schema.is_object());
     self.calls.set(self.calls.get() + 1);
     Ok(Receipt {

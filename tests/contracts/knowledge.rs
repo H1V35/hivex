@@ -272,7 +272,7 @@ fn prioritizes_matching_fragment_and_plans_large_documents() {
     format!("# Large\n\n{}", "A useful bounded line.\n".repeat(110_000)),
   );
   let plan = huge.cli(&["update", "--max-calls", "0"]);
-  assert!(!list(&plan, "pendingUnits").is_empty());
+  assert_ne!(list(&plan, "pendingUnits").len(), 0);
 }
 
 #[test]
@@ -469,7 +469,7 @@ fn large_document_retains_early_knowledge_and_cites_late_lines_with_omissions() 
   let first = p.model_cli(&["update", "--max-calls", "2"]);
   assert_eq!(first["status"], "budget-exhausted");
   assert_eq!(first["pendingDocuments"], json!(["cache.md"]));
-  assert!(!list(&first, "pendingUnits").is_empty());
+  assert_ne!(list(&first, "pendingUnits").len(), 0);
   assert!(
     p.ok(&["search", "Rule 0"])["decisions"]
       .to_string()

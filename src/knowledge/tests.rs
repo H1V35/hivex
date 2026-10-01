@@ -268,9 +268,9 @@ fn warning_closures_keep_identity_and_report_baseline_changes() {
   );
   let baseline = warning_baseline(&closed);
   let changes = warning_changes(&closed, std::slice::from_ref(&source), &baseline);
-  assert!(changes.new.is_empty());
-  assert!(changes.reopened.is_empty());
-  assert!(changes.resolved.is_empty());
+  assert_eq!(changes.new.len(), 0);
+  assert_eq!(changes.reopened.len(), 0);
+  assert_eq!(changes.resolved.len(), 0);
   assert_eq!(warning_id(&warning), warning_id(&closed.warnings[0]));
 }
 
@@ -344,7 +344,7 @@ fn relationship_with_missing_version_is_invalidated_by_context() {
     target_ranges: None,
     restored_ranges: None,
   });
-  assert!(next.relationships.is_empty());
+  assert_eq!(next.relationships.len(), 0);
   assert_eq!(next.decisions.len(), graph.decisions.len());
 }
 
@@ -909,7 +909,7 @@ fn check_targets_preserve_the_scope_and_provenance_of_retained_knowledge() {
   for target in ["unknown-target", "batch"] {
     let impact = check_impact(&graph, &check(target), "current", &[]);
     assert!(impact.is_uncertain_batch);
-    assert!(impact.decision_ids.is_empty());
+    assert_eq!(impact.decision_ids.len(), 0);
     let applied = apply_check(&graph, &check(target), "current", &[]);
     assert!(
       applied.decisions[..2]
@@ -938,8 +938,8 @@ fn check_targets_preserve_the_scope_and_provenance_of_retained_knowledge() {
   };
   let impact = check_impact(&graph, &check, "current", &[]);
   assert!(!impact.is_uncertain_batch);
-  assert!(impact.decision_ids.is_empty());
-  assert!(impact.relationship_ids.is_empty());
+  assert_eq!(impact.decision_ids.len(), 0);
+  assert_eq!(impact.relationship_ids.len(), 0);
   assert_eq!(
     apply_check(&graph, &check, "current", &[]).relationships[0].quality,
     "uncertain"

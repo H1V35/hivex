@@ -231,7 +231,7 @@ fn independent_supporting_evidence_is_supplied_and_invalidated_on_change() {
     "# Scope\n\nThis relationship is awaiting a decision.\n",
   );
   let neighbors = p.ok(&["neighbors", id]);
-  assert!(list(&neighbors, "relationships").is_empty());
+  assert_eq!(list(&neighbors, "relationships").len(), 0);
   assert_eq!(list(&neighbors, "unexpandedDecisions").len(), 1);
 }
 
@@ -406,7 +406,7 @@ fn changed_supporting_source_precedes_unrelated_pending_sources() {
   let result = p.model_cli(&["ask", "cache"]);
   assert_eq!(result["work"]["calls"], 3);
   assert!(!list(&result, "pendingDocuments").contains(&json!("z-scope.md")));
-  assert!(!list(&result, "pendingDocuments").is_empty());
+  assert_ne!(list(&result, "pendingDocuments").len(), 0);
   assert!(!list(&result, "unavailableDocuments").contains(&json!("z-scope.md")));
 }
 

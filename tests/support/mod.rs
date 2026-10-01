@@ -78,7 +78,7 @@ impl Project {
   pub fn error(&self, args: &[&str]) -> Value {
     let result = self.raw(args);
     assert_eq!(result.status.code(), Some(1), "{args:?}");
-    assert!(result.stdout.is_empty());
+    assert_eq!(result.stdout.len(), 0);
     serde_json::from_slice(&result.stderr).unwrap()
   }
   pub fn model(&self, scenario: &str) {
