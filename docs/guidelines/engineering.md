@@ -90,3 +90,7 @@ Before writing, check the map and search current and relevant historical sources
 Close review against a defined revision. Later source or code changes require review of their affected delta, rather than repeated certification of the entire repository. A graph warning is a claim to verify against current evidence; a real applicable defect still blocks, while incomplete or uncertain optional graph state alone does not. Complete ingestion, zero unrelated graph warnings and graph export are not merge prerequisites under [ADR 0014](../adr/0014-reliable-markdown-and-explicit-relationships.md#knowledge-before-integration).
 
 Preserve existing snapshots, local stores, candidates, adverse results, attempts, receipts and consumed budgets. The Markdown transition does not admit failed candidates, reset history or promise a model-free runtime. Retain current runtime compatibility and optional-command safeguards. Independent implementation review, applicable verification and owner merge authorization remain required.
+
+## Relationships
+
+- Implements [Knowledge before integration](../adr/0014-reliable-markdown-and-explicit-relationships.md#knowledge-before-integration): affected authorities, relationships and code are maintained and reviewed together before merge.

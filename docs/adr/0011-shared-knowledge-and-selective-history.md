@@ -32,6 +32,8 @@ An explicit source relocation keeps knowledge usable when documentation changes 
 
 ## Relationships
 
-- Depends on [versioned source authority](0001-versioned-project-knowledge.md) to distinguish historical evidence from current decisions.
-- Applied by [the Markdown convention](../../skills/hivex/references/markdown.md#compact-an-adr-without-losing-its-history) and [history catalogue](../archive/README.md).
-- Qualified by [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md): committing the source base is required; inferred graph maintenance and export are optional. Existing snapshot and local-store safety remain intact.
+- Depends on [Versioned source authority](0001-versioned-project-knowledge.md): historical evidence is distinguished from current decisions.
+
+## Application and qualification
+
+The [Markdown convention](../../skills/hivex/references/markdown.md#compact-an-adr-without-losing-its-history) and [history catalogue](../archive/README.md) apply the archival contract. [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md) qualifies graph sharing: committing the source base is required, while inferred graph maintenance/export is optional. Existing snapshot and local-store safety remain intact.

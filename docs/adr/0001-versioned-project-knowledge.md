@@ -15,6 +15,8 @@ Status is a declaration, not precedence. Read later amendments and explicit rela
 
 ## Relationships
 
-- Depends on [selective history](0011-shared-knowledge-and-selective-history.md#compact-current-decisions-preserve-accessible-history) to keep replaced reasoning available without loading it routinely.
-- Applied by [the reliable Markdown workflow](0014-reliable-markdown-and-explicit-relationships.md#decision), which makes source retrieval the primary path.
-- The first TypeScript/Bun interface, in-memory index and initial migration conditions remain in the [original record](../archive/adr/0001-versioned-project-knowledge.md).
+- Depends on [Selective history](0011-shared-knowledge-and-selective-history.md#compact-current-decisions-preserve-accessible-history): replaced reasoning stays available without ordinary loading.
+
+## History
+
+The first TypeScript/Bun interface, in-memory index and initial migration conditions remain in the [original record](../archive/adr/0001-versioned-project-knowledge.md).

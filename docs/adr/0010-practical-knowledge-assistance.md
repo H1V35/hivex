@@ -34,8 +34,13 @@ Verify observable behavior, failures, source/version changes and recovery at use
 
 ## Relationships
 
-- Depends on [versioned authority](0001-versioned-project-knowledge.md), [selective history](0011-shared-knowledge-and-selective-history.md) and [execution/data continuity](0013-domain-modules-and-execution-integrations.md).
-- Extended by [the project foundation](0012-project-foundation-and-workflow.md); the capabilities are independent rather than compulsory phases.
-- Partially superseded by [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md): inferred relationships no longer define the required knowledge base or integration gate.
-- Replaces the [experimental cohort/admission workflow](../archive/adr/0004-resumable-ingestion-store.md), whose original rules and evidence remain historical.
-- Historical delivery stages, Bun/Rust migration amendments, warning mechanisms and the #150 rationale remain in [the full record](../archive/adr/0010-practical-knowledge-assistance.md).
+- Depends on [Versioned authority](0001-versioned-project-knowledge.md): source evidence governs derived results.
+- Depends on [Selective history](0011-shared-knowledge-and-selective-history.md): historical reasoning remains accessible with current scope identified.
+- Depends on [Execution continuity](0013-domain-modules-and-execution-integrations.md): optional model work retains its data and accounting safeguards.
+- Supersedes [Experimental cohort workflow](../archive/adr/0004-resumable-ingestion-store.md): the old cohort/admission runtime is replaced; its original evidence remains historical.
+
+## Extensions and history
+
+The project foundation extends this contract, and ADR 0014 partially supersedes the mandatory inferred-graph requirement. The declared connections live in those current authorities rather than duplicated inverse entries here.
+
+Historical delivery stages, Bun/Rust migration amendments, warning mechanisms and the #150 rationale remain in the [full record](../archive/adr/0010-practical-knowledge-assistance.md).

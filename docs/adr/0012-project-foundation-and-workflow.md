@@ -35,3 +35,8 @@ Keep `AGENTS.md` a concise entrypoint with orientation, development and verifica
 The inferred graph is optional derived assistance, not a universal merge gate. Preserve graph snapshots and local work history, including failed results, quality marks, uncertainty and consumption. Do not reset accounting, erase evidence or relabel a historical/native result as success to clear a warning. A stale graph or unrelated warning alone does not block integration; a real current defect or unresolved decision affecting supported behavior does.
 
 The former graph-completeness and zero-warning gate is retained in the [historical foundation decision](../archive/adr/0012-project-foundation-and-workflow.md#knowledge-before-merge-2026-09-18). ADR 0014 supersedes that gate while preserving project-specific owner decisions and existing merge authorization.
+
+## Relationships
+
+- Extends [Product contract](0010-practical-knowledge-assistance.md): adds the project foundation and independent capabilities without making every phase mandatory.
+- Depends on [Reliable Markdown](0014-reliable-markdown-and-explicit-relationships.md): source-led integration preserves explicit authorities, revisions and applicable defects.
