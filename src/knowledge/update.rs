@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 
 mod correction;
+mod reuse;
 mod transition;
 
 #[cfg(test)]
@@ -962,7 +963,7 @@ fn finish_round(evidence: BatchEvidence<'_>, graph: &mut Graph, work: &mut Work,
     }
     graph.units.insert(
       unit.id.clone(),
-      json!({"document":source.id,"version":source.hash,"workKey":work.key()}),
+      json!({"document":source.id,"version":source.hash,"unitHash":unit.hash,"workKey":work.key()}),
     );
   }
   for source in &project.documents {
@@ -1009,22 +1010,59 @@ fn batch_units(plan: &IngestionResult, work: &Work, runtime: &Options) -> Vec<In
   units
 }
 
-fn extract_batch(
-  evidence: BatchEvidence<'_>,
-  graph: &Graph,
+fn admit_extraction_context(
+  context: &BatchContext,
+  request: &Request,
   execution: BatchExecution<'_>,
-) -> Result<Option<Graph>> {
-  let BatchEvidence { project, plan } = evidence;
+) -> Result<bool> {
   let BatchExecution {
     runtime,
     store,
     work,
   } = execution;
-  let units = batch_units(plan, work, runtime);
-  let documents = unique(units.iter().map(|unit| unit.document.clone()));
+  let required = stringify_knowledge(&request.packet).len();
+  if context.missing.is_empty() && required <= runtime.max_context_bytes {
+    work.clear_context_limit();
+    return Ok(true);
+  }
+  work.limit_context(
+    &unique(
+      context.missing.iter().cloned().chain(
+        context
+          .documents
+          .iter()
+          .filter_map(|document| document["id"].as_str().map(str::to_owned)),
+      ),
+    ),
+    runtime.max_context_bytes,
+    required,
+  );
+  store.save(work)?;
+  work
+    .progress
+    .checkpoint("extraction stopped: context-limit", work);
+  Ok(false)
+}
+
+struct PreparedBatch {
+  units: Vec<IngestionUnit>,
+  context: BatchContext,
+  request: Request,
+  reused: Option<model::Extraction>,
+}
+
+fn prepare_units(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  units: &[IngestionUnit],
+  execution: &BatchExecution<'_>,
+) -> Result<PreparedBatch> {
+  let BatchEvidence { project, plan } = evidence;
+  let runtime = execution.runtime;
+  let work = &execution.work;
   let context = batch_context(
     SourceGraph { project, graph },
-    &units,
+    units,
     &strings(&work.value()["pending"]["context"]),
     if runtime.command == "update" {
       &runtime.sources
@@ -1034,85 +1072,202 @@ fn extract_batch(
   )?;
   let mut request = extraction_request(
     &context,
-    &units,
+    units,
     runtime,
     work.value().get("warningBaseline").is_some(),
   );
   if runtime.repair.is_empty() {
     request.packet["sourceTransition"] =
-      transition::scope(SourceGraph { project, graph }, plan, &units);
+      transition::scope(SourceGraph { project, graph }, plan, units);
     request.instruction.push_str(" Previous relationships may reference older source versions. Use current supplied endpoints and Markdown for replacements. sourceTransition.remainingDocuments lists sources with unprocessed units: old relationships depending on them are retained for later rounds, not silently removed. Extract only this round's units; do not invent current endpoints for deferred passages.");
   }
-  let packet = &request.packet;
-  let required = stringify_knowledge(packet).len();
-  if !context.missing.is_empty() || required > runtime.max_context_bytes {
-    work.limit_context(
-      &unique(
-        context.missing.into_iter().chain(
-          context
-            .documents
-            .iter()
-            .filter_map(|document| document["id"].as_str().map(str::to_owned)),
-        ),
-      ),
-      runtime.max_context_bytes,
-      required,
-    );
-    store.save(work)?;
-    work
-      .progress
-      .checkpoint("extraction stopped: context-limit", work);
+  Ok(PreparedBatch {
+    units: units.to_vec(),
+    context,
+    request,
+    reused: None,
+  })
+}
+
+fn prepare_batch(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  execution: &BatchExecution<'_>,
+) -> Result<PreparedBatch> {
+  let runtime = execution.runtime;
+  let work = &execution.work;
+  let ordinary = || {
+    prepare_units(
+      evidence,
+      graph,
+      &batch_units(evidence.plan, work, runtime),
+      execution,
+    )
+  };
+  if runtime.command != "update"
+    || !runtime.repair.is_empty()
+    || !runtime.repair_ranges.is_empty()
+    || work.value()["unitReuse"] != true
+  {
+    return ordinary();
+  }
+  let units = evidence
+    .plan
+    .units
+    .iter()
+    .filter(|unit| {
+      work.remaining().contains(&unit.id)
+        && graph
+          .units
+          .get(&unit.id)
+          .is_some_and(|coverage| coverage["unitHash"] == unit.hash)
+    })
+    .cloned()
+    .collect::<Vec<_>>();
+  if units.is_empty() {
+    return ordinary();
+  }
+  let mut batch = prepare_units(evidence, graph, &units, execution)?;
+  batch.reused = reuse::prepare(
+    SourceGraph {
+      project: evidence.project,
+      graph,
+    },
+    &units,
+    &mut batch.request,
+    runtime.max_context_bytes,
+  );
+  if let Some(extraction) = &batch.reused
+    && batch.context.missing.is_empty()
+  {
+    let mut pending = pending_extraction(graph, work, &batch, &json!(extraction));
+    let candidate = prepare_candidate(evidence, graph, execution, &mut pending)?;
+    let check = check_request(graph, &candidate, &pending);
+    let bytes = check.input_bytes() as u64;
+    if stringify_knowledge(&check.packet).len() <= runtime.max_context_bytes
+      && work
+        .input_bytes()
+        .checked_add(bytes)
+        .is_some_and(|bytes| bytes <= work.max_input_bytes())
+    {
+      return Ok(batch);
+    }
+  }
+  ordinary()
+}
+
+fn extract_batch(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  execution: BatchExecution<'_>,
+) -> Result<Option<Graph>> {
+  let batch = prepare_batch(evidence, graph, &execution)?;
+  let BatchExecution {
+    runtime,
+    store,
+    work,
+  } = execution;
+  if !admit_extraction_context(
+    &batch.context,
+    &batch.request,
+    BatchExecution {
+      runtime,
+      store,
+      work,
+    },
+  )? {
     return Ok(None);
   }
-  work.clear_context_limit();
-  let Some(mut extraction) = model_runtime::run_model(work, store, &runtime.execution, &request)?
+  let Some(mut extraction) = batch.reused.as_ref().map_or_else(
+    || model_runtime::run_model(work, store, &runtime.execution, &batch.request),
+    |extraction| Ok(Some(json!(extraction))),
+  )?
   else {
     return Ok(None);
   };
-  mark_historical_extraction(project, &mut extraction);
+  mark_historical_extraction(evidence.project, &mut extraction);
+  let pending = pending_extraction(graph, work, &batch, &extraction);
+  stage_pending(
+    evidence,
+    graph,
+    BatchExecution {
+      runtime,
+      store,
+      work,
+    },
+    pending,
+  )
+}
+
+fn pending_extraction(
+  graph: &Graph,
+  work: &Work,
+  batch: &PreparedBatch,
+  extraction: &Value,
+) -> Value {
+  let packet = &batch.request.packet;
   let mut check_packet = packet.clone();
   check_packet["operation"] = json!("check");
-  let mut pending = json!({
+  json!({
   "baseExtraction":graph.last_extraction,
   "batch":format!("{}:{}",work.id(),hash(&stringify_knowledge(packet))),
-  "context":context.documents.iter().map(|document|document["id"].clone()).collect::<Vec<_>>(),
-  "documents":documents,
-  "existing":context.existing.iter().map(|entry|entry["id"].clone()).collect::<Vec<_>>(),
+  "context":batch.context.documents.iter().map(|document|document["id"].clone()).collect::<Vec<_>>(),
+  "documents":unique(batch.units.iter().map(|unit| unit.document.clone())),
+  "existing":batch.context.existing.iter().map(|entry|entry["id"].clone()).collect::<Vec<_>>(),
   "extraction":extraction,
   "materializedCheck":work.value()["materializedChecks"]==true,
   "boundCheckTargets":work.value()["materializedChecks"]==true,
   "retainedRelationshipContext":2,
+  "reusedExtraction":batch.reused.is_some(),
   "sourceTransition":packet["sourceTransition"],
   "packet":check_packet,
-  "units":units.iter().map(|unit|&unit.id).collect::<Vec<_>>()
-  });
-  let candidate = materialize(evidence, graph, &pending, true)?;
-  let protected = protected_relationships(SourceGraph { project, graph }, &candidate, &pending);
-  pending["staged"] = json!(!protected.is_empty());
+  "units":batch.units.iter().map(|unit|&unit.id).collect::<Vec<_>>()
+  })
+}
+
+fn prepare_candidate(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  execution: &BatchExecution<'_>,
+  pending: &mut Value,
+) -> Result<Graph> {
+  let project = evidence.project;
+  let candidate = materialize(evidence, graph, pending, true)?;
+  let protected = protected_relationships(SourceGraph { project, graph }, &candidate, pending);
+  pending["staged"] = json!(pending["reusedExtraction"] == true || !protected.is_empty());
   pending["protectedRelationships"] = json!(protected);
-  if work.value().get("warningBaseline").is_some() {
+  if execution.work.value().get("warningBaseline").is_some() {
     offer_warning_candidates(
       SourceGraph { project, graph },
       &candidate,
-      &mut pending,
-      runtime.max_context_bytes,
+      pending,
+      execution.runtime.max_context_bytes,
     )?;
   }
+  Ok(candidate)
+}
+
+fn stage_pending(
+  evidence: BatchEvidence<'_>,
+  graph: &Graph,
+  execution: BatchExecution<'_>,
+  mut pending: Value,
+) -> Result<Option<Graph>> {
+  let candidate = prepare_candidate(evidence, graph, &execution, &mut pending)?;
+  let BatchExecution { store, work, .. } = execution;
   let staged = pending["staged"] == true;
   work.set_pending(pending);
-  if staged {
+  let result = if staged {
     store.save(work)?;
-    work
-      .progress
-      .checkpoint("extraction finished; check pending", work);
-    Ok(Some(graph.clone()))
+    graph.clone()
   } else {
     store.commit(work, &model::graph_value(&candidate, false))?;
-    work
-      .progress
-      .checkpoint("extraction finished; check pending", work);
-    Ok(Some(candidate))
-  }
+    candidate
+  };
+  work
+    .progress
+    .checkpoint("extraction finished; check pending", work);
+  Ok(Some(result))
 }
 
 fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
@@ -1130,6 +1285,9 @@ fn check_request(graph: &Graph, candidate: &Graph, pending: &Value) -> Request {
   }
   if pending["sourceTransition"].is_object() {
     instruction.push_str(" Source hashes may have changed. Previous decisions and removed relationships retain their original citations for comparison, not current authority. Justify replacements or removals with the supplied current Markdown. Old records whose source units are still pending are deferred, not missing; never relabel their old citations as current.");
+  }
+  if pending["reusedExtraction"] == true {
+    instruction.push_str(" This extraction reuses previously checked interpretations of byte-identical target units. Text equality does not certify meaning: evaluate them anew against the complete current target documents, including changed general conditions, status and scope, and the supplied dependencies. Report any obsolete interpretation or newly required relationship normally. Coverage is pending until this check is admitted.");
   }
   if retained_context(pending) {
     instruction.push_str(" extraction contains only the current batch. retainedRelationships are actual candidate edges from earlier accepted rounds of this work between supplied endpoints. Evaluate their citations and meaning normally; their absence from extraction is not a loss. repairReason may span several rounds: check omissions within the current units and replacement impact, not unrelated completed or future units.");

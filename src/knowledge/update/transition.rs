@@ -66,6 +66,17 @@ pub(super) fn preserve(project: &Project, graph: &Graph, candidate: &mut Graph, 
   }
   let remaining = strings(&transition["remainingDocuments"]);
   let documents = strings(&transition["documents"]);
+  for (id, coverage) in &graph.units {
+    if remaining
+      .iter()
+      .any(|document| coverage["document"] == *document)
+    {
+      candidate
+        .units
+        .entry(id.clone())
+        .or_insert_with(|| coverage.clone());
+    }
+  }
   let deferred: Vec<_> = graph
     .relationships
     .iter()

@@ -575,3 +575,129 @@ fn relationship_review_rejects_changed_sources_candidate_graph_and_receipts() {
     assert_eq!(p.calls(), 4);
   }
 }
+
+fn unsupported_relationship_review() -> (Project, Value, Value) {
+  let p = Project::policy();
+  let mut response = p.read_json("responses.json");
+  let mut unsupported = response["extract"]["relationships"][0].clone();
+  unsupported["id"] = json!("unsupported");
+  unsupported["type"] = json!("requires");
+  unsupported["from"] = json!("c1");
+  unsupported["to"] = json!("c2");
+  unsupported["reason"] = json!("Cache expiry requires revocation.");
+  response["extract"]["relationships"]
+    .as_array_mut()
+    .unwrap()
+    .push(unsupported);
+  p.json("responses.json", &response);
+  assert_eq!(p.model_cli(&["update"])["status"], "ready");
+  let accepted = p.graph();
+  let removed = list(&accepted, "relationships")
+    .iter()
+    .find(|edge| edge["type"] == "requires")
+    .unwrap()["id"]
+    .clone();
+  let retained = list(&accepted, "relationships")
+    .iter()
+    .find(|edge| edge["type"] == "exception-to")
+    .unwrap()["id"]
+    .clone();
+  let mut response = preserving_repair(&p);
+  response["byDocument"]["cache.md"]["decisions"][0]["text"] =
+    json!("Ordinary cached data expires after seven days.");
+  response["check"] = json!({"findings":[{"target":removed,"reason":"The previous requires edge is missing."}],
+    "relationshipChanges":[{"previousId":retained,"replacements":["@candidate:0"],
+      "reason":"The source preserves the valid revocation exception.",
+      "evidence":[{"document":"cache.md","lineStart":3,"lineEnd":3},
+        {"document":"privacy.md","lineStart":3,"lineEnd":3}]}]});
+  p.json("responses.json", &response);
+  let failed = p.model_cli(&REPAIR);
+  assert_eq!(failed["status"], "failed");
+  let context = &failed["pendingRelationshipReview"];
+  let evidence: Vec<_> = list(context, "suppliedSources").iter().map(|source|
+    json!({"document":source["document"],"lineStart":3,"lineEnd":3,"version":source["version"]}))
+    .collect();
+  let reason = "The two source rules do not require revocation for ordinary expiry; preserve the actual exception and remove this unsupported prerequisite.";
+  let warning = list(&failed, "pendingCandidateWarnings")
+    .iter()
+    .find(|warning| warning["target"] == removed)
+    .unwrap();
+  let mut review = failed["candidateResolutionContext"].clone();
+  review["resolutions"] = json!([{"id":warning["id"],"reason":reason,"evidence":evidence}]);
+  review["relationshipRemovals"] = json!([{"id":removed,"reason":reason,"evidence":evidence}]);
+  (p, failed, review)
+}
+
+#[test]
+fn explicit_relationship_removal_review_preserves_supported_edges_and_native_history() {
+  let (p, failed, review) = unsupported_relationship_review();
+  let id = failed["work"]["id"].as_str().unwrap();
+  let before = p.work(id);
+  p.json("remove.json", &review);
+  let path = p.path("remove.json");
+  let mut args = REPAIR.to_vec();
+  args.extend([
+    "--retry-failed",
+    "--max-calls",
+    "0",
+    "--resolve",
+    path.to_str().unwrap(),
+  ]);
+  let result = p.model_cli(&args);
+  assert_eq!(result["status"], "ready");
+  assert_eq!(result["work"]["calls"], 2);
+  assert_eq!(list(&p.graph(), "relationships").len(), 1);
+  assert_eq!(p.graph()["relationships"][0]["type"], "exception-to");
+  for field in ["attempts", "calls", "inputBytes", "totalTokens"] {
+    assert_eq!(p.work(id)[field], before[field]);
+  }
+  assert_eq!(p.model_cli(&args)["work"]["calls"], 2);
+}
+
+#[test]
+fn explicit_removal_review_rejects_unproven_or_conflicting_dispositions() {
+  let (p, failed, original) = unsupported_relationship_review();
+  let id = failed["work"]["id"].as_str().unwrap();
+  let before = p.work(id);
+  let graph = p.graph();
+  let path = p.path("invalid-removal.json");
+  let mut args = REPAIR.to_vec();
+  args.extend([
+    "--retry-failed",
+    "--max-calls",
+    "0",
+    "--resolve",
+    path.to_str().unwrap(),
+  ]);
+  let codex = p.path("codex");
+  args.extend(["--codex", codex.to_str().unwrap()]);
+  for case in ["unknown", "stale", "missing", "duplicate", "conflict"] {
+    let mut review = original.clone();
+    match case {
+      "unknown" => review["relationshipRemovals"][0]["id"] = json!("unknown"),
+      "stale" => review["relationshipRemovals"][0]["evidence"][0]["version"] = json!("old"),
+      "missing" => review["relationshipRemovals"][0]["evidence"] = json!([]),
+      "duplicate" => {
+        review["relationshipRemovals"] = json!([
+          original["relationshipRemovals"][0],
+          original["relationshipRemovals"][0]
+        ]);
+      }
+      "conflict" => {
+        let mapping = &before["attempts"][1]["result"]["relationshipChanges"][0];
+        review["relationshipRemovals"][0]["id"] = mapping["previousId"].clone();
+        review["relationshipChanges"] = json!([{
+          "previousId":mapping["previousId"], "replacements":mapping["replacements"],
+          "reason":"The same protected relation cannot be replaced and removed.",
+          "evidence":original["relationshipRemovals"][0]["evidence"]}]);
+      }
+      _ => unreachable!(),
+    }
+    p.json("invalid-removal.json", &review);
+    assert_eq!(p.error(&args)["error"]["code"], "INVALID_RESOLUTION");
+    assert_eq!(p.graph(), graph);
+    for field in ["attempts", "calls", "inputBytes", "totalTokens"] {
+      assert_eq!(p.work(id)[field], before[field]);
+    }
+  }
+}

@@ -21,7 +21,7 @@ During adoption, relevant guidance updates or language changes, follow the insta
 
 Start with focused `search`, `neighbors` and `read`. Read the evidence and follow relevant dependencies, exceptions and replacements, including indirect ones. Reuse current context instead of repeating a query for every file.
 
-A preview, accepted label or isolated warning does not establish the full meaning. Check scope, conditions, versions and later decisions. If the sources settle the matter, apply it; otherwise explain the actual unresolved decision and recommend a course of action.
+A preview, accepted label or isolated warning does not establish the full meaning. Check scope, conditions, versions and later decisions. When the graph is insufficient, search and read the relevant Markdown and follow its supporting sources. Apply settled decisions autonomously; ask the owner only after reasonable available evidence and tools cannot resolve the question, with the sources, impact and a recommendation.
 
 Use `ask` for model-assisted interpretation when it adds value; it can first maintain a relevant pending batch within the same work budget. Explicit `--source` selection can focus current or historical evidence. Ordinary queries do not require ingesting all declared history.
 

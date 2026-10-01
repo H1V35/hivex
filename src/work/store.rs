@@ -480,6 +480,7 @@ fn new_work(options: &BeginWork) -> Result<Work> {
   value.insert("pending".to_owned(), Value::Null);
   value.insert("attempts".to_owned(), Value::Array(Vec::new()));
   value.insert("materializedChecks".to_owned(), Value::Bool(true));
+  value.insert("unitReuse".to_owned(), Value::Bool(true));
   if let Some(baseline) = &options.warning_baseline {
     value.insert("warningBaseline".to_owned(), baseline.clone());
   }
@@ -1250,6 +1251,11 @@ fn validate_retained_progress(object: &Map<String, Value>, row_id: &str) -> Resu
     && !materialized.is_boolean()
   {
     return Err(malformed_work(row_id, "materializedChecks is invalid"));
+  }
+  if let Some(reuse) = object.get("unitReuse")
+    && !reuse.is_boolean()
+  {
+    return Err(malformed_work(row_id, "unitReuse is invalid"));
   }
   validate_context_limit(object, row_id)?;
   validate_warning_baseline(object, row_id)?;

@@ -194,6 +194,25 @@ pub(super) fn review_changes(
   pending: &Value,
   native: Option<&Value>,
 ) -> Result<Vec<Value>> {
+  let mut changes = review_replacements(file, context, pending, native)?;
+  let removals = review_removals(file, context, pending)?;
+  if removals.iter().any(|removal| {
+    changes
+      .iter()
+      .any(|change| change["previousId"] == removal["previousId"])
+  }) {
+    return Err(invalid());
+  }
+  changes.extend(removals);
+  Ok(changes)
+}
+
+fn review_replacements(
+  file: &Value,
+  context: &CandidateContext<'_>,
+  pending: &Value,
+  native: Option<&Value>,
+) -> Result<Vec<Value>> {
   let Some(values) = file.get("relationshipChanges") else {
     return Ok(Vec::new());
   };
@@ -225,6 +244,51 @@ pub(super) fn review_changes(
 pub(super) fn resolvable(target: &str, context: &CandidateContext<'_>, changes: &[Value]) -> bool {
   changes.iter().any(|change| change["previousId"] == target)
     || supplied_edge(target, context).is_some_and(|edge| current_ranges(edge, context).is_some())
+}
+
+pub(super) fn review_removals(
+  file: &Value,
+  context: &CandidateContext<'_>,
+  pending: &Value,
+) -> Result<Vec<Value>> {
+  let invalid = || {
+    invalid_resolution(
+      "Explicit relationship removals require unique protected IDs absent from the candidate, a semantic reason and complete current supplied evidence.",
+    )
+  };
+  let Some(values) = file.get("relationshipRemovals") else {
+    return Ok(Vec::new());
+  };
+  let values = values.as_array().ok_or_else(invalid)?;
+  if !(1..=128).contains(&values.len())
+    || pending["materializedCheck"] != true
+    || pending["staged"] != true
+  {
+    return Err(invalid());
+  }
+  let mut seen = HashSet::new();
+  let mut removals = Vec::new();
+  for value in values {
+    let review = parse_resolution(value)?;
+    let previous = previous_ranges(&review.id, context.packet).ok_or_else(invalid)?;
+    if !seen.insert(review.id.clone())
+      || !pending["protectedRelationships"]
+        .as_array()
+        .is_some_and(|ids| ids.contains(&json!(review.id)))
+      || context
+        .graph
+        .relationships
+        .iter()
+        .any(|edge| edge.id == review.id)
+      || !current_evidence(&review.evidence, context)
+      || !previous.iter().all(|range| covers(&review.evidence, range))
+    {
+      return Err(invalid());
+    }
+    removals.push(json!({"previousId":review.id,"replacements":[],
+      "reason":review.reason,"evidence":review.evidence}));
+  }
+  Ok(removals)
 }
 
 pub(super) fn covers_target(
