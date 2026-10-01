@@ -20,6 +20,8 @@ A local debug observation performed nine CLI operations, returned 6819 JSON cont
 
 Native release executable on macOS ARM64, warm local filesystem, five sequential runs per operation. The corpus contained 47 ordinary sources: 185572 bytes after the small discovery-guide amendment. The preceding corpus had 185406 bytes; response byte counts were unchanged. The local Rust `target/` tree contained 114279 generated files and occupied about 8 GiB.
 
+The prior measurements used source snapshot `0d5bc3bf50694450244303c0fb1fee9cbdb6ec987d521ca5bf7592899c0e4cc0` and native executable SHA-256 `5cca67d89d34758038638fab31d09e6ee436e923eb16a3733ed0a1d8dd6ec14c`, retained with the local measurement archive. Both measurements identify the working-copy source versions rather than claiming a published release.
+
 Before optimization, source discovery traversed `target/` despite explicit project documentation selection. Adding that conventional generated directory to default exclusions avoids the walk. A named include/archive pattern can still select intended documentation there; existing exclusions inside that selected path continue to apply.
 
 | Operation | Prior median ms | Optimized median ms | Response UTF-8 bytes |
