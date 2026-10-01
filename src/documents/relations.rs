@@ -276,7 +276,19 @@ fn scan_markdown(text: &str) -> MarkdownScan {
     body_offset,
     ..MarkdownScan::default()
   };
-  for (event, range) in Parser::new_ext(body, markdown_options()).into_offset_iter() {
+  let mut events = Parser::new_ext(body, markdown_options())
+    .into_offset_iter()
+    .peekable();
+  while let Some((event, mut range)) = events.next() {
+    if matches!(event, Event::Html(_) | Event::InlineHtml(_)) {
+      while events.peek().is_some_and(|(next, next_range)| {
+        matches!(next, Event::Html(_) | Event::InlineHtml(_)) && next_range.start == range.end
+      }) {
+        range.end = events.next().expect("peeked event").1.end;
+      }
+      scan.accept(Event::Html(body[range.clone()].into()), range);
+      continue;
+    }
     scan.accept(event, range);
   }
   scan

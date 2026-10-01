@@ -300,6 +300,15 @@ fn comments_and_raw_html_text_do_not_create_destination_anchors() {
       "## Relationships\n- Depends on [B](b.md#phantom): reason\n",
     );
   }
+  p.write("b.md", "<script>\n</script\n>\n<a id=\"real\"></a>\n");
+  p.write(
+    "a.md",
+    "## Relationships\n- Depends on [B](b.md#real): reason\n",
+  );
+  assert_eq!(
+    p.ok(&["relations", "a.md", "--direction", "outgoing"])["relations"][0]["to"]["anchor"],
+    "real"
+  );
 }
 
 #[test]
