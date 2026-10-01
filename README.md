@@ -37,6 +37,7 @@ The native package supports **macOS ARM64**. All current CLI commands use Markdo
 
 ## Documentation
 
+- [Product brief](docs/PRD.md): purpose, users, intended outcomes and scope.
 - [CLI guide](docs/guide.md): configuration, source retrieval, authored navigation and migration.
 - [Development](docs/guide.md#development): build, tests and package verification with Rust.
 - [Project decisions](docs/README.md): architecture and engineering conventions.

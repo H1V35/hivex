@@ -1,6 +1,6 @@
 # Recommended Markdown foundation
 
-Use this foundation when adopting Hivex. Prefer migration to its standard structure when reasonably possible, preserving and completing useful existing documents, their authority, history and links. Hivex accepts other Markdown layouts; the authority map and explicit relationships guide source reading. An inferred graph is optional assistance.
+Use this foundation when adopting Hivex. Prefer migration to its standard structure when reasonably possible, preserving and completing useful existing documents, their authority, history and links. Hivex accepts other Markdown layouts; the authority map and authored relationships guide source reading. The inferred graph runtime is retired.
 
 The foundation combines a clear authority map, project purpose, domain language and maintainable decisions. The bundled documentation skill guides adoption and completion; no retired planning framework or external skill set is required.
 

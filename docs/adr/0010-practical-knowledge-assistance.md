@@ -6,9 +6,7 @@ updated: 2026-10-01
 
 # Practical project knowledge through deterministic sources
 
-Hivex is an AI-first CLI for people and agents. It supplies reusable workflow capabilities and reliable repository knowledge, helping agents recover settled decisions, avoid contradictions and reduce repeated reading. The responsible agent interprets sources and reviews implementation; Hivex does not orchestrate development sessions or become the principal reviewer.
-
-Markdown owns intent, scope, conditions, exceptions and reasons that code cannot explain. Apply settled decisions autonomously and expand with available evidence and tools before asking the owner. [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md) owns the source-first transition and retirement of the inferred graph runtime.
+This decision owns Hivex's retrieval/runtime and distribution choices. The [product brief](../PRD.md) owns purpose, users, intended outcomes and scope. [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md) records why reliable Markdown and authored navigation replaced the inferred graph runtime.
 
 <a id="runtime-and-compatibility"></a>
 ## Runtime and retrieval
@@ -27,6 +25,7 @@ Validate observable retrieval, failures, source changes, history and preservatio
 
 ## Relationships
 
+- Implements [Product requirements](../PRD.md#scope-and-non-goals): the source-only runtime and distribution choices carry out the accepted product scope.
 - Depends on [Versioned authority](0001-versioned-project-knowledge.md): exact source evidence governs decisions and their applicability.
 - Depends on [Selective history](0011-shared-knowledge-and-selective-history.md): historical reasoning remains available with current scope identified.
 - Depends on [Markdown navigation](0014-reliable-markdown-and-explicit-relationships.md): deterministic retrieval and explicit links replace graph inference.
