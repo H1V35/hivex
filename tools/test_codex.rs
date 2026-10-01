@@ -206,7 +206,7 @@ impl Server {
     );
     assert_eq!(params["sandboxPolicy"]["networkAccess"], false);
     let prompt = params["input"][0]["text"].as_str().unwrap();
-    assert!(!prompt.trim().is_empty());
+    assert_ne!(prompt.trim(), "");
     if ["start-unconfirmed", "update-uncertain"].contains(&scenario) {
       return None;
     }

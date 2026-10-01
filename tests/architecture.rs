@@ -284,5 +284,5 @@ fn dependency_gate_covers_imports_qualified_paths_and_test_boundaries() {
     &syn::parse_file("use crate::documents::Document; fn valid() { crate::work::save(); }")
       .unwrap(),
   );
-  assert!(boundary.issues.is_empty());
+  assert_eq!(boundary.issues, Vec::<String>::new());
 }

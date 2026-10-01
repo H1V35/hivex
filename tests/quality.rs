@@ -306,11 +306,11 @@ fn thresholds_and_flow_rules_reject_violations() {
       .iter()
       .any(|issue| issue.contains("four parameters"))
   );
-  assert!(
+  assert_eq!(
     analyze("fn closure_arity() { let closure = |a,b,c,d| {}; }")
       .unwrap()
-      .issues
-      .is_empty()
+      .issues,
+    Vec::<String>::new()
   );
   for body in ["|| if true { { { {} } } }", "|| { if true { { { {} } } } }"] {
     let source = format!("fn closure_nesting() {{ let closure = {body}; }}");
@@ -331,10 +331,10 @@ fn thresholds_and_flow_rules_reject_violations() {
   );
   let macros = analyze("fn macro_input(value: bool) { json!({\"answer\": if value { 1 } else if value { 2 } else { 0 }}); }").unwrap();
   assert!(macros.issues.iter().any(|issue| issue.contains("else-if")));
-  assert!(
+  assert_eq!(
     analyze("impl Example { fn allowed(&self,a:i32,b:i32,c:i32) { { { {} } } } }")
       .unwrap()
-      .issues
-      .is_empty()
+      .issues,
+    Vec::<String>::new()
   );
 }
