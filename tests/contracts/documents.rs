@@ -299,6 +299,18 @@ fn generated_rust_outputs_are_skipped_unless_explicitly_selected() {
 }
 
 #[test]
+fn selecting_nested_generated_docs_does_not_open_a_root_build_tree() {
+  let p = Project::new();
+  p.write("docs/target/decision.md", "# Selected\n");
+  p.write("target/unselected.md", "# Build output\n");
+  symlink("missing", p.path("target/unselected-link.md")).unwrap();
+  p.json("hivex.json", &json!({"include":["docs/target/**/*.md"]}));
+  let sources = p.ok(&["sources"]);
+  assert_eq!(paths(&sources), ["docs/target/decision.md"]);
+  assert_eq!(sources["warnings"].as_array().unwrap().len(), 0);
+}
+
+#[test]
 fn excluded_subtrees_symlinks_invalid_utf8_and_history_are_bounded() {
   let p = Project::new();
   let outside = Project::new();

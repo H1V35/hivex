@@ -429,7 +429,7 @@ fn pattern_matches(path: &str, patterns: &[String]) -> bool {
   })
 }
 
-fn is_excluded_name(name: &str, config: &Config) -> bool {
+fn is_excluded_name(name: &str, path: &str, config: &Config) -> bool {
   if PROTECTED_DIRECTORIES.contains(&name) {
     return true;
   }
@@ -441,7 +441,18 @@ fn is_excluded_name(name: &str, config: &Config) -> bool {
     .include
     .iter()
     .chain(config.archive.iter())
-    .all(|pattern| !pattern.split('/').any(|segment| segment == name))
+    .all(|pattern| !explicit_directory(pattern, name, path))
+}
+
+fn explicit_directory(pattern: &str, name: &str, path: &str) -> bool {
+  let segments: Vec<_> = pattern.split('/').collect();
+  segments
+    .iter()
+    .enumerate()
+    .filter(|(_, segment)| **segment == name)
+    .any(|(index, _)| {
+      compile_glob(&segments[..=index].join("/")).is_some_and(|glob| glob.is_match(path))
+    })
 }
 
 fn is_excluded_subtree(path: &str, config: &Config) -> bool {
@@ -486,11 +497,11 @@ fn collect_candidates(
   let mut candidates = Vec::new();
   for entry in entries {
     let name = entry.file_name().to_string_lossy().into_owned();
-    if is_excluded_name(&name, config) {
-      continue;
-    }
     let absolute_path = current.join(&name);
     let path = path_for(root, &absolute_path);
+    if is_excluded_name(&name, &path, config) {
+      continue;
+    }
     let Ok(file_type) = entry.file_type() else {
       continue;
     };
