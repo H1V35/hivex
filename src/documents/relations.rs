@@ -1,4 +1,4 @@
-use super::markdown::markdown_options;
+use super::markdown::{frontmatter, markdown_options};
 use super::{is_markdown_path, line_content, raw_line_ranges};
 use crate::error::{HivexError, Result};
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
@@ -145,32 +145,6 @@ fn heading_level(level: HeadingLevel) -> u8 {
   }
 }
 
-fn is_frontmatter_fence(line: &str) -> bool {
-  let content = line_content(line).trim_end_matches([' ', '\t']);
-  content == "---"
-}
-
-fn source_body(text: &str) -> (usize, &str) {
-  let mut lines = raw_line_ranges(text);
-  let Some(first) = lines.next() else {
-    return (0, text);
-  };
-  let first_content = line_content(&text[first]).trim_end_matches([' ', '\t']);
-  if first_content
-    .strip_prefix('\u{feff}')
-    .unwrap_or(first_content)
-    != "---"
-  {
-    return (0, text);
-  }
-  for range in lines {
-    if is_frontmatter_fence(&text[range.clone()]) {
-      return (range.end, &text[range.end..]);
-    }
-  }
-  (0, text)
-}
-
 fn explicit_ids(html: &str, ignored_until: &mut Option<&'static str>) -> Vec<(String, usize)> {
   const PREFIX: &str = "<a id=\"";
   const SUFFIX: &str = "\">";
@@ -273,7 +247,8 @@ fn raw_text_ending(tag: &str) -> Option<&'static str> {
 }
 
 fn scan_markdown(text: &str) -> Result<MarkdownScan> {
-  let (body_offset, body) = source_body(text);
+  let body = frontmatter(text).map_or(text, |front| front.body);
+  let body_offset = text.len() - body.len();
   let mut scan = MarkdownScan {
     body_offset,
     ..MarkdownScan::default()

@@ -80,12 +80,12 @@ pub fn line_content(line: &str) -> &str {
   line_without_ending(line)
 }
 
-struct Frontmatter<'a> {
-  body: &'a str,
+pub(super) struct Frontmatter<'a> {
+  pub(super) body: &'a str,
   yaml: &'a str,
 }
 
-fn frontmatter(text: &str) -> Option<Frontmatter<'_>> {
+pub(super) fn frontmatter(text: &str) -> Option<Frontmatter<'_>> {
   // The frontmatter extension recognizes a YAML fence only at the start of
   // the document. A BOM is source content for hashing but does not prevent
   // the first fence from being recognized.
@@ -109,21 +109,19 @@ fn frontmatter(text: &str) -> Option<Frontmatter<'_>> {
   None
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum ScalarValue {
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum Node {
   Boolean(bool),
   Null,
-  Number(Option<u64>),
+  Number(u64),
   Object,
   String(String),
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-enum KeyIdentity {
-  Boolean(bool),
-  Null,
-  Number(u64),
-  String(String),
+#[derive(Clone, Copy, PartialEq)]
+enum NumberKind {
+  Integer,
+  Float,
 }
 
 fn number_key(value: f64) -> Option<u64> {
@@ -137,57 +135,33 @@ fn number_key(value: f64) -> Option<u64> {
   })
 }
 
-fn parse_yaml_number(value: &str) -> Option<f64> {
-  static INT: OnceLock<Regex> = OnceLock::new();
-  static HEX: OnceLock<Regex> = OnceLock::new();
-  static OCT: OnceLock<Regex> = OnceLock::new();
-  static NAN_OR_INF: OnceLock<Regex> = OnceLock::new();
-  static EXP: OnceLock<Regex> = OnceLock::new();
-  static FLOAT: OnceLock<Regex> = OnceLock::new();
-  let is_int = INT
-    .get_or_init(|| Regex::new(r"^[-+]?[0-9]+$").expect("valid YAML integer regex"))
-    .is_match(value);
-  let is_hex = HEX
-    .get_or_init(|| Regex::new(r"^0x[0-9a-fA-F]+$").expect("valid YAML hex regex"))
-    .is_match(value);
-  let is_oct = OCT
-    .get_or_init(|| Regex::new(r"^0o[0-7]+$").expect("valid YAML octal regex"))
-    .is_match(value);
-  let is_nan_or_inf = NAN_OR_INF
+fn yaml_number(value: &str) -> Option<(NumberKind, f64)> {
+  static NUMBER: OnceLock<Regex> = OnceLock::new();
+  let captures = NUMBER
     .get_or_init(|| {
-      Regex::new(r"^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$")
-        .expect("valid YAML non-finite regex")
+      Regex::new(concat!(
+        r"^(?:(?P<integer>[-+]?[0-9]+|0x[0-9a-fA-F]+|0o[0-7]+)|(?P<float>",
+        r"[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN|",
+        r"[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+|",
+        r"[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)))$"
+      ))
+      .expect("valid YAML number regex")
     })
-    .is_match(value);
-  let is_exp = EXP
-    .get_or_init(|| {
-      Regex::new(r"^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$")
-        .expect("valid YAML exponent regex")
-    })
-    .is_match(value);
-  let is_float = FLOAT
-    .get_or_init(|| {
-      Regex::new(r"^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$").expect("valid YAML float regex")
-    })
-    .is_match(value);
-  if is_nan_or_inf {
-    return match value {
-      ".nan" | ".NaN" | ".NAN" => Some(f64::NAN),
-      ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" => Some(f64::INFINITY),
-      "-.inf" | "-.Inf" | "-.INF" => Some(f64::NEG_INFINITY),
-      _ => None,
-    };
-  }
-  if is_hex {
-    return Some(radix_number(&value[2..], 4));
-  }
-  if is_oct {
-    return Some(radix_number(&value[2..], 3));
-  }
-  if is_int || is_exp || is_float {
-    return value.parse::<f64>().ok();
-  }
-  None
+    .captures(value)?;
+  let kind = if captures.name("integer").is_some() {
+    NumberKind::Integer
+  } else {
+    NumberKind::Float
+  };
+  let number = match value {
+    ".nan" | ".NaN" | ".NAN" => f64::NAN,
+    ".inf" | ".Inf" | ".INF" | "+.inf" | "+.Inf" | "+.INF" => f64::INFINITY,
+    "-.inf" | "-.Inf" | "-.INF" => f64::NEG_INFINITY,
+    hex if hex.starts_with("0x") => radix_number(&hex[2..], 4),
+    octal if octal.starts_with("0o") => radix_number(&octal[2..], 3),
+    ordinary => ordinary.parse::<f64>().ok()?,
+  };
+  Some((kind, number))
 }
 
 // YAML integers become JavaScript Numbers. Keep the leading significand and
@@ -223,44 +197,6 @@ fn radix_number(digits: &str, digit_bits: u32) -> f64 {
   significand.to_f64().expect("53-bit significand") * 2.0_f64.powi(count - 53)
 }
 
-fn is_yaml_int(value: &str) -> bool {
-  static INT: OnceLock<Regex> = OnceLock::new();
-  static HEX: OnceLock<Regex> = OnceLock::new();
-  static OCT: OnceLock<Regex> = OnceLock::new();
-  INT
-    .get_or_init(|| Regex::new(r"^[-+]?[0-9]+$").expect("valid YAML integer regex"))
-    .is_match(value)
-    || HEX
-      .get_or_init(|| Regex::new(r"^0x[0-9a-fA-F]+$").expect("valid YAML hex regex"))
-      .is_match(value)
-    || OCT
-      .get_or_init(|| Regex::new(r"^0o[0-7]+$").expect("valid YAML octal regex"))
-      .is_match(value)
-}
-
-fn is_yaml_float(value: &str) -> bool {
-  static NAN_OR_INF: OnceLock<Regex> = OnceLock::new();
-  static EXP: OnceLock<Regex> = OnceLock::new();
-  static FLOAT: OnceLock<Regex> = OnceLock::new();
-  NAN_OR_INF
-    .get_or_init(|| {
-      Regex::new(r"^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$")
-        .expect("valid YAML non-finite regex")
-    })
-    .is_match(value)
-    || EXP
-      .get_or_init(|| {
-        Regex::new(r"^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$")
-          .expect("valid YAML exponent regex")
-      })
-      .is_match(value)
-    || FLOAT
-      .get_or_init(|| {
-        Regex::new(r"^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$").expect("valid YAML float regex")
-      })
-      .is_match(value)
-}
-
 fn explicit_tag_name(tag: Option<&Tag>) -> Option<String> {
   let tag = tag?;
   tag.core_suffix().map(str::to_owned).or_else(|| {
@@ -270,57 +206,38 @@ fn explicit_tag_name(tag: Option<&Tag>) -> Option<String> {
   })
 }
 
-fn scalar_value(value: &str, style: ScalarStyle, tag: Option<&Tag>) -> Option<ScalarValue> {
+fn scalar_value(value: &str, style: ScalarStyle, tag: Option<&Tag>) -> Option<Node> {
   let tag_name = explicit_tag_name(tag);
   if tag.is_some() && tag_name.is_none() {
-    return Some(ScalarValue::String(value.to_owned()));
+    return Some(Node::String(value.to_owned()));
   }
   match tag_name.as_deref() {
-    Some("binary") => Some(ScalarValue::Object),
+    Some("binary") => Some(Node::Object),
     Some("timestamp") => {
       static TIMESTAMP: OnceLock<Regex> = OnceLock::new();
       TIMESTAMP
                 .get_or_init(|| Regex::new(r"^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:(?:t|T|[ \t]+)[0-9]{1,2}:[0-9]{1,2}:[0-9]{1,2}(?:\.[0-9]+)?(?:[ \t]*(?:Z|[-+][012]?[0-9](?::[0-9]{2})?))?)?$").expect("valid YAML timestamp regex"))
                 .is_match(value)
-                .then_some(ScalarValue::Object)
+                .then_some(Node::Object)
     }
-    Some("null") if matches!(value, "" | "~" | "null" | "Null" | "NULL") => Some(ScalarValue::Null),
+    Some("null") if matches!(value, "" | "~" | "null" | "Null" | "NULL") => Some(Node::Null),
     Some("bool") => match value {
-      "true" | "True" | "TRUE" => Some(ScalarValue::Boolean(true)),
-      "false" | "False" | "FALSE" => Some(ScalarValue::Boolean(false)),
-      _ => Some(ScalarValue::String(value.to_owned())),
+      "true" | "True" | "TRUE" => Some(Node::Boolean(true)),
+      "false" | "False" | "FALSE" => Some(Node::Boolean(false)),
+      _ => Some(Node::String(value.to_owned())),
     },
-    Some("int") => is_yaml_int(value)
-      .then(|| parse_yaml_number(value).map(number_value))
-      .flatten()
-      .or_else(|| Some(ScalarValue::String(value.to_owned()))),
-    Some("float") => is_yaml_float(value)
-      .then(|| parse_yaml_number(value).map(number_value))
-      .flatten()
-      .or_else(|| Some(ScalarValue::String(value.to_owned()))),
-    Some("null" | "str" | _) => Some(ScalarValue::String(value.to_owned())),
-    None if style != ScalarStyle::Plain => Some(ScalarValue::String(value.to_owned())),
+    Some(kind @ ("int" | "float")) => yaml_number(value)
+      .filter(|(parsed, _)| (*parsed == NumberKind::Integer) == (kind == "int"))
+      .map(|(_, value)| number_value(value))
+      .or_else(|| Some(Node::String(value.to_owned()))),
+    Some("null" | "str" | _) => Some(Node::String(value.to_owned())),
+    None if style != ScalarStyle::Plain => Some(Node::String(value.to_owned())),
     None => Some(plain_scalar(value)),
   }
 }
 
-fn number_value(value: f64) -> ScalarValue {
-  ScalarValue::Number(number_key(value))
-}
-
-fn key_identity(value: &ScalarValue) -> Option<KeyIdentity> {
-  match value {
-    ScalarValue::Boolean(value) => Some(KeyIdentity::Boolean(*value)),
-    ScalarValue::Null => Some(KeyIdentity::Null),
-    ScalarValue::Number(Some(value)) => Some(KeyIdentity::Number(*value)),
-    ScalarValue::Number(None) | ScalarValue::Object => None,
-    ScalarValue::String(value) => Some(KeyIdentity::String(value.clone())),
-  }
-}
-
-enum NodeResult {
-  Object,
-  Scalar(ScalarValue),
+fn number_value(value: f64) -> Node {
+  number_key(value).map_or(Node::Object, Node::Number)
 }
 
 #[derive(Default)]
@@ -328,7 +245,7 @@ struct MappingFrame {
   is_root: bool,
   pending_field: Option<RootField>,
   pending_key: bool,
-  seen: HashSet<KeyIdentity>,
+  seen: HashSet<Node>,
 }
 
 enum Frame {
@@ -351,18 +268,18 @@ enum RootField {
   Title,
 }
 
-fn field_for_key(value: &NodeResult, is_root: bool) -> Option<RootField> {
+fn field_for_key(value: &Node, is_root: bool) -> Option<RootField> {
   if !is_root {
     return None;
   }
   match value {
-    NodeResult::Scalar(ScalarValue::String(value)) if value == "status" => Some(RootField::Status),
-    NodeResult::Scalar(ScalarValue::String(value)) if value == "title" => Some(RootField::Title),
+    Node::String(value) if value == "status" => Some(RootField::Status),
+    Node::String(value) if value == "title" => Some(RootField::Title),
     _ => None,
   }
 }
 
-fn record_value(state: &mut MetadataState, value: NodeResult) -> std::result::Result<(), ()> {
+fn record_value(state: &mut MetadataState, value: Node) -> std::result::Result<(), ()> {
   let Some(frame) = state.frames.last_mut() else {
     if state.root_seen {
       return Err(());
@@ -373,10 +290,7 @@ fn record_value(state: &mut MetadataState, value: NodeResult) -> std::result::Re
   match frame {
     Frame::Sequence => Ok(()),
     Frame::Mapping(mapping) if !mapping.pending_key => {
-      let identity = match &value {
-        NodeResult::Scalar(value) => key_identity(value),
-        NodeResult::Object => None,
-      };
+      let identity = (!matches!(value, Node::Object)).then(|| value.clone());
       if let Some(identity) = identity
         && !mapping.seen.insert(identity)
       {
@@ -388,7 +302,7 @@ fn record_value(state: &mut MetadataState, value: NodeResult) -> std::result::Re
     }
     Frame::Mapping(mapping) => {
       if let Some(field) = mapping.pending_field.take()
-        && let NodeResult::Scalar(ScalarValue::String(value)) = value
+        && let Node::String(value) = value
       {
         match field {
           RootField::Status => state.status = Some(value),
@@ -519,14 +433,15 @@ pub fn describe_markdown(path: &str, content: &str) -> MarkdownDescription {
   }
 }
 
-fn plain_scalar(value: &str) -> ScalarValue {
+fn plain_scalar(value: &str) -> Node {
   match value {
-    "" | "~" | "null" | "Null" | "NULL" => ScalarValue::Null,
-    "true" | "True" | "TRUE" => ScalarValue::Boolean(true),
-    "false" | "False" | "FALSE" => ScalarValue::Boolean(false),
-    _ => {
-      parse_yaml_number(value).map_or_else(|| ScalarValue::String(value.to_owned()), number_value)
-    }
+    "" | "~" | "null" | "Null" | "NULL" => Node::Null,
+    "true" | "True" | "TRUE" => Node::Boolean(true),
+    "false" | "False" | "FALSE" => Node::Boolean(false),
+    _ => yaml_number(value).map_or_else(
+      || Node::String(value.to_owned()),
+      |(_, value)| number_value(value),
+    ),
   }
 }
 
@@ -549,9 +464,7 @@ impl MetadataState {
         }
         return Some(());
       }
-      YamlEvent::Scalar(value, style, _, tag) => {
-        NodeResult::Scalar(scalar_value(&value, style, tag.as_deref())?)
-      }
+      YamlEvent::Scalar(value, style, _, tag) => scalar_value(&value, style, tag.as_deref())?,
       YamlEvent::SequenceStart(_, _, _) => {
         self.frames.push(Frame::Sequence);
         return Some(());
@@ -567,7 +480,7 @@ impl MetadataState {
         if !matches!(self.frames.pop(), Some(Frame::Sequence)) {
           return None;
         }
-        NodeResult::Object
+        Node::Object
       }
       YamlEvent::MappingEnd => {
         let Some(Frame::Mapping(mapping)) = self.frames.pop() else {
@@ -576,7 +489,7 @@ impl MetadataState {
         if mapping.pending_key {
           return None;
         }
-        NodeResult::Object
+        Node::Object
       }
       _ => return None,
     };
