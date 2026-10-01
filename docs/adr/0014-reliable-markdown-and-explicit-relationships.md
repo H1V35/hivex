@@ -16,6 +16,10 @@ The owner approved prioritizing a reliable Markdown base, archived history and e
 
 Maintain one current authority for each meaningful topic. The documentation map directs a task to the relevant sources. Authors state dependencies, exceptions and replacements as ordinary Markdown links with their relationship and scope, rather than relying on inferred edges. Follow those links, including indirect dependencies, only as far as the task requires.
 
+Before writing, the agent checks the map and searches existing current and relevant historical knowledge for that topic. Read likely matches and their replacements; update the existing authority for the same scope. Create another document only after establishing a distinct useful responsibility. This prevents parallel sources of truth from diverging.
+
+Use the [shared decision/delivery state catalogue](../../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Approval, implementation, verification and permission are separate claims: an accepted future decision is not an implemented feature or an implementation GO. Missing state is unknown; current applicability still depends on scope, conditions and replacements.
+
 Separate replaced material into a declared Markdown archive while preserving original text, dates, provenance and reachable history. Keep applicable guarantees in their current authority; age alone does not retire them. A partially replaced decision keeps its live conditions and identifies the replaced scope.
 
 Agents start with the map, deterministic source search and bounded reading. They expand to explicit dependencies, exceptions, replacements and relevant historical evidence. Apply settled decisions autonomously. Ask the owner only after reasonable available evidence and tools cannot resolve a consequential question, with sources, impact and a recommendation.
@@ -25,6 +29,8 @@ The inferred graph and model-assisted commands remain optional capabilities with
 ## Knowledge before integration
 
 Maintain valuable Markdown and its explicit relationships before merging. The reviewer checks the affected authorities, current conditions, exceptions, history links and code together. Repair demonstrated contradictions, missing decisions needed by supported behavior, broken references and easy actionable defects. Do not leave durable decisions only in chats or tracker comments.
+
+Recover settled rules before implementation and reconcile the affected authority during the same change. Keep delivery and evidence aligned with the actual code revision. This shared methodology applies to Hivex and its adopting-project foundation to prevent hallucinated rules and contradictions; installing an updated package does not silently replace an existing project's explicit owner policy.
 
 Close the review against a defined source and implementation revision. Record new evidence as a bounded change to that review. A model finding is a claim to verify, not a reason to repeatedly certify the whole corpus. Current unresolved policy conflicts or implementation defects still block integration; a globally green graph, zero unrelated graph warnings or complete graph ingestion are not prerequisites. This does not authorize ignoring a real problem surfaced by the graph.
 

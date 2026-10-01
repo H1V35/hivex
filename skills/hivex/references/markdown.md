@@ -10,6 +10,8 @@ When establishing engineering guidance, read `templates/README.md` in the instal
 
 Keep shared decisions at project or monorepo level. Package-specific or module-specific knowledge can stay with that package or module. Link shared rules instead of copying them into each area. Initialization prepares the core documents and directories. Complete project-specific drafts from evidence and the owner, and add further documents only for useful distinct purposes.
 
+Before writing or creating a document, check the authority map and search existing current and relevant archived sources for the topic and its terminology. Read likely matches and their replacements. Extend the existing authority when it owns the same scope; create a document only after establishing a distinct useful responsibility, then update the map and callers. A failed keyword search alone does not establish that no authority exists.
+
 A useful catalogue distinguishes:
 
 - An authority map explaining where each kind of knowledge belongs.
@@ -37,6 +39,8 @@ Cached private data is removed immediately when access is revoked. The normal ca
 ```
 
 A title, truthful status and decision date can improve cataloguing. Tags are optional. If a rule is replaced, identify the replacement and whether the change is partial. Keep the historical reasoning readable; do not silently rewrite the past. A missing status means uncertainty to resolve from the content, not permission to assume acceptance.
+
+Keep decision status separate from delivery and verification. The [shared state catalogue](../assets/project/docs/adr/README.md#decision-and-delivery-states), also prepared by `init`, defines draft, proposed, accepted, rejected, superseded and historical decisions. An accepted choice may be unimplemented or only partly delivered. Record implementation scope and verification evidence independently when they apply; preserve compatible project-specific statuses instead of silently reclassifying them.
 
 Use an ADR when the choice is consequential, reflects a real trade-off and would be surprising without its rationale. Do not create one for every routine edit or dependency. Sequential names such as `0001-short-decision.md` are convenient if the project adopts that convention.
 
@@ -73,6 +77,8 @@ A project may use `docs/archive/adr/` for this purpose; other layouts remain val
 Define each project-specific concept briefly and use that term consistently. A glossary explains what a concept is; it is not an implementation manual, task plan or collection of general programming terms. Group related concepts when it helps and link context-specific definitions instead of copying.
 
 Code and executable contracts explain mechanics. Markdown preserves the intent, constraints, decisions and reasons that code cannot explain. Update that knowledge alongside the change rather than leaving the only explanation in a conversation or private agent memory.
+
+Before changing behavior, recover the existing authority and follow its relevant dependencies, exceptions and replacements. During the same change, reconcile the resulting code, documentary rules, delivery state and evidence. Before integration, independently review that affected set against a defined revision and repair contradictions or unsupported claims. This maintenance prevents the next agent from implementing against obsolete intent; link and format checks alone cannot detect a hallucinated rule. New evidence reopens only the affected review scope.
 
 ## Keep the agent entrypoint small
 

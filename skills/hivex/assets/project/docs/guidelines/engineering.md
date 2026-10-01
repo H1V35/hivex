@@ -36,7 +36,7 @@ Resolve findings on their merits. Do not rerun reviewers or modify doctrine mere
 
 ## Maintain knowledge and communicate clearly
 
-Update the document that owns an accepted decision, using new documents only for distinct purposes. Preserve source versions, relevant history and honest uncertainty. When optional graph work is used, preserve its incremental progress and cumulative budget rather than reingesting the corpus. Existing work history and consumed budgets must not be reset when changing the retrieval approach.
+Before writing, consult the map and search for the existing authority, including relevant history and replacements. Update that authority for the same scope; use new documents only for distinct purposes. Preserve source versions, relevant history and honest uncertainty. When optional graph work is used, preserve its incremental progress and cumulative budget rather than reingesting the corpus. Existing work history and consumed budgets must not be reset when changing the retrieval approach.
 
 Use familiar language and concrete explanations. Briefly explain a technical term when the owner needs it to understand or decide; do not explain every term or change the requested level of detail.
 
@@ -49,3 +49,5 @@ Review the affected authorities, their current conditions and history links, and
 Start with the documentation map and relevant Markdown authorities, using deterministic search and following explicit links as the task requires. Hivex's inferred graph and model-assisted commands are optional derived assistance. A stale graph, pending check or unrelated warning alone does not block integration; use the Markdown authority when graph evidence is incomplete or uncertain. If graph or local work state is maintained, preserve its original sources, quality marks, uncertainty, failed results, receipts and consumption. Never reset accounting, erase evidence or relabel historical/native results as success to clear a warning. Correct current defects on their merits; do not dismiss them as historical because a graph also contains old evidence.
 
 Keep the source and implementation revisions reviewed identifiable. Close the review when its concrete findings are resolved or an owner decision is needed. A bounded evidence update may resolve a concrete finding; a changed source or implementation requires review of the affected scope again. This policy complements independent implementation review, relevant behavioral checks and the project's existing merge authorization in the [tracker procedure](../procedures/issue-tracker.md).
+
+Keep decision approval separate from implementation and verification under the project decision/delivery catalogue. Reconcile affected authorities alongside code changes to prevent invented rules and contradictions.

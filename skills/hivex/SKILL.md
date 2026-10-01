@@ -25,9 +25,9 @@ Apply settled decisions autonomously. Expand with available documentation and to
 
 ## Maintain the Markdown base
 
-Update the authority that owns each durable decision. State useful relationships as ordinary Markdown links with their scope and reason, following [the Markdown convention](references/markdown.md#make-relationships-explicit). Keep one current home per topic; archive replaced text with dates, provenance and links rather than deleting it or retiring a live exception by age.
+Before writing, check the map and search current and relevant historical knowledge for the existing authority; read its scope and replacements. Update that authority for the same topic instead of creating a parallel source. State useful relationships as ordinary Markdown links with their scope and reason, following [the Markdown convention](references/markdown.md#make-relationships-explicit). Keep one current home per topic; archive replaced text with dates, provenance and links rather than deleting it or retiring a live exception by age.
 
-Check changed links, relevant source selection, current rules and the affected code before integration. Repair real contradictions and easy actionable defects; record an evidenced disposition for a false claim. Close review against a defined revision and review later changes as a delta. Do not require complete graph ingestion or globally zero graph warnings for source-grounded work. The project's engineering policy and existing owner authorization govern integration.
+Maintain affected knowledge alongside the code change, then check links, source selection, current rules and implementation together before integration. Distinguish accepted choices from implemented or verified behavior using the packaged decision/delivery catalogue; neither acceptance nor a state label grants a new permission. Repair real contradictions and easy actionable defects; record an evidenced disposition for a false claim. Close review against a defined revision and review later changes as a delta. Do not require complete graph ingestion or globally zero graph warnings for source-grounded work. The project's engineering policy and existing owner authorization govern integration.
 
 ## Optional derived assistance
 

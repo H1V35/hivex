@@ -85,7 +85,7 @@ Keep AGENTS.md as a brief, consistent entrypoint with relevant pointers and indi
 
 ## Knowledge before merge
 
-Maintain the Markdown and explicit relationships that add durable value before integration. Review affected rules with their conditions, exceptions, replacements, source versions and code. Validate links and source selection, preserve relevant history, repair easy actionable defects and resolve genuine contradictions. A change is not complete while a decision needed for its supported behavior remains unresolved.
+Before writing, check the map and search current and relevant historical sources for an existing authority. Maintain that authority and its explicit relationships alongside the code change, keeping accepted, implemented and verified claims distinct before integration. Review affected rules with their conditions, exceptions, replacements, source versions and code. Validate links and source selection, preserve relevant history, repair easy actionable defects and resolve genuine contradictions. A change is not complete while a decision needed for its supported behavior remains unresolved.
 
 Close review against a defined revision. Later source or code changes require review of their affected delta, rather than repeated certification of the entire repository. A graph warning is a claim to verify against current evidence; a real applicable defect still blocks, while incomplete or uncertain optional graph state alone does not. Complete ingestion, zero unrelated graph warnings and graph export are not merge prerequisites under [ADR 0014](../adr/0014-reliable-markdown-and-explicit-relationships.md#knowledge-before-integration).
 

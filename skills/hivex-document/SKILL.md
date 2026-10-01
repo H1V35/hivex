@@ -7,6 +7,8 @@ description: Establish or maintain project purpose, domain language, decisions, 
 
 Read the documentation map, relevant sources and current owner decisions. Update the document that owns the topic and scope; create another only for a distinct purpose. Markdown records intent and reasons; the authority map and explicit relationships guide focused source retrieval.
 
+Before writing, search current and relevant historical knowledge for an existing authority on the topic. Read likely matches and replacement links; do not create a parallel source merely because one query missed it. Keep decision acceptance separate from implementation, verification and permission, using the packaged [state catalogue](../hivex/assets/project/docs/adr/README.md#decision-and-delivery-states).
+
 For adoption, use the installed `hivex init` when available and read its report. Complete missing meaning from evidence and the owner, keeping unresolved content provisional. Do not invent vision, requirements or vocabulary, or index empty scaffolding. The [foundation templates](../hivex/assets/project/docs/README.md) are starting material.
 
 For adoption, relevant Hivex guidance updates or a change of project languages, follow the installed [language-template catalogue](../../templates/README.md) to select, scope and integrate the applicable standards. If copied skills cannot resolve that link, read `templates/README.md` in the installed `@h1v35/hivex` package. Maintain the project's documentation map and engineering links so later implementation and review use the appropriate adopted guides.
