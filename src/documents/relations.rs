@@ -1,6 +1,7 @@
+use super::markdown::markdown_options;
 use super::{is_markdown_path, line_content, raw_line_ranges};
 use crate::error::{HivexError, Result};
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ops::Range;
@@ -168,16 +169,6 @@ fn source_body(text: &str) -> (usize, &str) {
     }
   }
   (0, text)
-}
-
-fn markdown_options() -> Options {
-  let mut options = Options::empty();
-  options.insert(Options::ENABLE_TABLES);
-  options.insert(Options::ENABLE_STRIKETHROUGH);
-  options.insert(Options::ENABLE_TASKLISTS);
-  options.insert(Options::ENABLE_FOOTNOTES);
-  options.insert(Options::ENABLE_GFM);
-  options
 }
 
 fn explicit_ids(html: &str, ignored_until: &mut Option<&'static str>) -> Vec<(String, usize)> {

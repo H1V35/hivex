@@ -1,4 +1,10 @@
-> Historical runtime record copied from `docs/guide.md` at Git revision `180ea2750e0da9253494b02e7bbbb25938720758` (0.7.8). The source-only replacement is [the current guide](../../guide.md#migrate-from-the-inferred-graph-runtime). Original behavior and accounting describe that retired version.
+---
+created_at: 2026-09-17
+archived_at: 2026-10-01
+source_path: docs/guide.md
+source_revision: 180ea2750e0da9253494b02e7bbbb25938720758
+updated_at: 2026-10-01
+---
 
 # Hivex guide
 
@@ -117,7 +123,7 @@ Use `read docs/archive/adr/old-decision.md` for an explicit historical question.
 
 `neighbors`, `ask`, `review` and graph maintenance remain available, but are not the primary workflow or a merge gate. `ask` and model-assisted `review` can run a graph update before answering; they may consume several invocations. Use them only when that cost adds value. They do not replace source review or owner authorization.
 
-The [optional CLI reference](../../reference/graph-cli.md) records budgets, profile continuity, recovery, graph warnings and snapshots. Existing failed work remains failed until its normal lifecycle records another disposition; this documentation change neither resumes it nor resets its consumption.
+The [optional CLI reference](graph-cli-0.7.8.md) records budgets, profile continuity, recovery, graph warnings and snapshots. Existing failed work remains failed until its normal lifecycle records another disposition; this documentation change neither resumes it nor resets its consumption.
 
 
 ## Workflow skills and Markdown practice
@@ -163,19 +169,19 @@ CI runs unit tests in the development build and the complete CLI contracts once 
 
 ## Update and repair knowledge
 
-Optional graph maintenance, candidate correction, warning review and recovery are described in the [graph CLI reference](../../reference/graph-cli.md#update-and-repair-knowledge). Maintain source authority and explicit relationships under [the engineering policy](../../guidelines/engineering.md#knowledge-before-merge).
+Optional graph maintenance, candidate correction, warning review and recovery are described in the [graph CLI reference](graph-cli-0.7.8.md#update-and-repair-knowledge). Maintain source authority and explicit relationships under [the engineering policy](../../guidelines/engineering.md#knowledge-before-merge).
 
 ## Execution profiles
 
-Optional invocation profiles and retained-work continuity are described in [the current CLI reference](../../reference/graph-cli.md#execution-profiles). No profile change or new invocation is implied by the Markdown-first workflow.
+Optional invocation profiles and retained-work continuity are described in [the current CLI reference](graph-cli-0.7.8.md#execution-profiles). No profile change or new invocation is implied by the Markdown-first workflow.
 
 ## Share knowledge through Git
 
-Commit maintained Markdown, explicit relationships and preserved history together. Existing optional graph snapshots remain derived evidence with their original versions and uncertainty; the [snapshot reference](../../reference/graph-cli.md#share-knowledge-through-git) owns import/export safety. This transition preserves the current snapshot and local execution records rather than certifying or relocating stale graph entries.
+Commit maintained Markdown, explicit relationships and preserved history together. Existing optional graph snapshots remain derived evidence with their original versions and uncertainty; the [snapshot reference](graph-cli-0.7.8.md#share-knowledge-through-git) owns import/export safety. This transition preserves the current snapshot and local execution records rather than certifying or relocating stale graph entries.
 
 ## Support an implementation review
 
-Read the task's sources and explicit relationships, then independently assess scope, correctness and standards. Optional model-assisted review and zero-call saved-report checks are documented in [the CLI reference](../../reference/graph-cli.md#support-an-implementation-review). Assistance is not implementation approval.
+Read the task's sources and explicit relationships, then independently assess scope, correctness and standards. Optional model-assisted review and zero-call saved-report checks are documented in [the CLI reference](graph-cli-0.7.8.md#support-an-implementation-review). Assistance is not implementation approval.
 
 ## Relationships
 

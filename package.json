@@ -23,7 +23,6 @@
     "README.md",
     "LICENSE",
     "THIRD-PARTY-NOTICES.txt",
-    "docs/reference/graph-cli.md",
     "docs/archive/",
     "docs/adr/"
   ],

@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-13
+updated_at: 2026-10-01
+---
+
 # Documentation map
 
 Markdown records project intent, terminology, rules and reasons. The map and authored relationships guide focused retrieval; Hivex retrieves current source evidence without an inferred graph or model invocation. The responsible agent checks applicability against the sources and the owner's current decisions.

@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-17
+updated_at: 2026-10-01
+---
+
 # Native package release
 
 The npm package is `@h1v35/hivex`; its command is `hivex`. Prepare a release from the reviewed Git revision on the admitted macOS ARM64 runner. The native package declares `os: darwin` and `cpu: arm64`; do not add another target before its runtime behavior and package have been tested.

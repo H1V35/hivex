@@ -1,7 +1,8 @@
 ---
 title: Practical project knowledge through deterministic sources
 status: accepted
-updated: 2026-10-01
+created_at: 2026-09-09
+updated_at: 2026-10-01
 ---
 
 # Practical project knowledge through deterministic sources

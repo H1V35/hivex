@@ -1,7 +1,8 @@
 ---
 title: Reliable Markdown and explicit relationships before inferred graphs
 status: accepted
-date: 2026-10-01
+created_at: 2026-10-01
+updated_at: 2026-10-01
 ---
 
 # Reliable Markdown and explicit relationships before inferred graphs

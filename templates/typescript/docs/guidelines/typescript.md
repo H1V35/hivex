@@ -1,3 +1,7 @@
+---
+created_at: 2026-09-14
+---
+
 # TypeScript standard
 
 Use Ultracite's ESLint and Prettier presets with `eslint-plugin-boundaries` for TypeScript projects. Use the applicable official framework presets and preserve useful framework checks they do not cover. This standard does not apply to code written in other languages.

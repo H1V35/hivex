@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-05
+updated_at: 2026-10-01
+---
+
 # Hivex domain language
 
 Hivex gives agents and people a reusable project foundation and focused access to reliable Markdown. The agent reasons about applicability; the CLI discovers, searches, validates and reads authored sources.

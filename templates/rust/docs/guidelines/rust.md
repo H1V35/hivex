@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-23
+updated_at: 2026-09-23
+---
+
 # Rust standard
 
 Use stable Rust, rustfmt and Clippy for Rust projects. Apply this standard to runtime code, development utilities and tests. It does not apply to code written in other languages.

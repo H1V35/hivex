@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-13
+updated_at: 2026-10-01
+---
+
 # Triage labels
 
 Labels should help people and agents select or act on work. Keep their meanings distinct and the catalogue small.
@@ -27,3 +32,9 @@ Use native issue dependencies for actual blockers and `blocked` when a visible b
 Use useful work types such as `bug`, `enhancement`, `documentation`, `refactor`, `testing`, `architecture`, `security`, `performance` or `ci`. `epic` groups coherent child work; `research`, `prototype` and `decision` identify work that resolves uncertainty. These names describe the work and do not depend on a particular skill.
 
 Use area or component labels that match this project. Preserve useful existing classification when adopting the standard; do not import another product's area catalogue or add labels that repeat the title. Follow the [tracker procedure](../procedures/issue-tracker.md).
+
+## Hivex catalogue alignment
+
+The common catalogue is owned by [the Git skill](../../skills/hivex-git/assets/labels.json). GitHub mirrors those names, colours and meanings. Product-specific area labels belong to each adopting project, so Compi areas are not copied here.
+
+The former Hivex `spec` label on #17 and #80 is retired after preserving their architectural classification with `architecture`; their titles, specification criteria and existing readiness/type labels remain unchanged. Unused default aliases are removed rather than maintaining duplicate roles. Historical issue text is not rewritten.

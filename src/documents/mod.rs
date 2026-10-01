@@ -1,3 +1,4 @@
+use crate::compatibility::normalize_path;
 pub(crate) use markdown::{hash, is_markdown_path, line_content, raw_line_ranges};
 mod markdown;
 mod navigation;
@@ -16,7 +17,7 @@ use serde_json::{Map, Value, json};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 #[cfg(not(target_os = "macos"))]
 use std::sync::OnceLock;
 pub(crate) use validation::validate_sources;
@@ -174,24 +175,6 @@ fn locale_compare(left: &str, right: &str) -> Ordering {
       .expect("compiled ICU collation data")
   });
   collator.compare(left, right)
-}
-
-fn normalize_path(path: &Path) -> PathBuf {
-  let mut normalized = PathBuf::new();
-  for component in path.components() {
-    match component {
-      Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
-      Component::RootDir => normalized.push(Path::new(std::path::MAIN_SEPARATOR_STR)),
-      Component::CurDir => {}
-      Component::ParentDir => {
-        if !normalized.pop() && !normalized.is_absolute() {
-          normalized.push(component.as_os_str());
-        }
-      }
-      Component::Normal(part) => normalized.push(part),
-    }
-  }
-  normalized
 }
 
 fn absolute_root(root: &str) -> Result<PathBuf> {

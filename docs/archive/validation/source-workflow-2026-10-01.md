@@ -1,7 +1,9 @@
 ---
 title: Source workflow validation and local measurements
 status: historical
-date: 2026-10-01
+created_at: 2026-10-01
+archived_at: 2026-10-01
+updated_at: 2026-10-01
 ---
 
 # Source workflow validation and local measurements

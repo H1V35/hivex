@@ -1,3 +1,7 @@
+---
+created_at: 2026-09-13
+---
+
 # Triage labels
 
 Labels should help people and agents select or act on work. Keep their meanings distinct and the catalogue small.

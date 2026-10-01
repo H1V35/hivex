@@ -1,8 +1,8 @@
 ---
 title: Domain modules for deterministic Markdown retrieval
 status: accepted
-date: 2026-09-17
-updated: 2026-10-01
+created_at: 2026-09-17
+updated_at: 2026-10-01
 ---
 
 # Domain modules for deterministic Markdown retrieval

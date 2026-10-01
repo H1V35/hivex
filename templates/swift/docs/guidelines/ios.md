@@ -1,3 +1,8 @@
+---
+created_at: 2026-09-28
+updated_at: 2026-09-28
+---
+
 # Native iOS presentation standard
 
 Apply this guide alongside the [Swift standard](swift.md) to Swift iOS/iPadOS app targets and their presentation code. Do not apply its screen, lifecycle or visual rules to a general Swift CLI, server or platform-independent library. DDD, domain responsibilities, testing philosophy and the Hivex workflow remain in the project's existing engineering authority; this guide supplies iOS-specific application of those decisions.
