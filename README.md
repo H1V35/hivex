@@ -1,13 +1,13 @@
 # Hivex
 
-Project knowledge for people and agents. Hivex turns your Markdown into searchable decisions, dependencies and exceptions, with citations back to the original source.
+Project knowledge for people and agents. Hivex combines reusable workflow guidance with reliable Markdown, explicit decision relationships and focused source retrieval.
 
 [![npm version](https://img.shields.io/npm/v/%40h1v35%2Fhivex)](https://www.npmjs.com/package/@h1v35/hivex)
 
 [![Support Hivex on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jivssssss)
 
 - Recover project context without reading the whole repository every time.
-- Keep knowledge current as documents change, with resumable work and explicit budgets.
+- Keep current decisions concise, link their dependencies and exceptions, and retain accessible history.
 - Give agents shared guidance for design, documentation, implementation, review and Git.
 
 Your Markdown remains the authority. Hivex helps the responsible agent interpret it; it does not approve changes or replace human judgment.
@@ -25,14 +25,13 @@ npx hivex init
 
 ```sh
 npx hivex search "cache policy"
-npx hivex ask "Which rules apply to this change?"
-npx hivex update
+npx hivex read docs/policy.md --from 20 --to 45
 npx hivex --help
 ```
 
 Run these commands from the project root. In Bun projects, use `bun hivex …` instead.
 
-The native package currently supports **macOS ARM64**. Model-assisted commands require an authenticated Codex session; the default is Luna/max, with explicit model selection available. Local search, source reading and initialization need no model.
+The native package currently supports **macOS ARM64**. Local search, source reading and initialization need no model. Optional graph/model commands still exist and require an authenticated Codex session for invocations; their limits and budgets are in the [CLI reference](docs/reference/graph-cli.md). They are not required for the source-first workflow.
 
 ## Documentation
 

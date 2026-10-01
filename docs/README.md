@@ -1,17 +1,22 @@
 # Documentation map
 
-- [Domain language](CONTEXT.md): documents, decisions, relationships, evidence and bounded work.
-- [Engineering guidelines](guidelines/engineering.md): development, verification and knowledge maintenance.
-- [Rust quality standard](guidelines/rust-quality.md): maintained lint baseline, readability, metrics and domain boundaries.
-- [Triage labels](guidelines/triage-labels.md) and [tracker procedure](procedures/issue-tracker.md): work selection, Git and review.
-- [CI procedure](procedures/self-hosted-runner.md): hosted execution, native verification and runner retirement.
-- [Release procedure](procedures/releasing.md): prepare, inspect and publish the exact native npm archive.
-- [Practical knowledge assistance](adr/0010-practical-knowledge-assistance.md): the current approved contract, staged delivery, autonomy, semantic relationships, uncertainty and cost.
-- [Shared knowledge and selective history](adr/0011-shared-knowledge-and-selective-history.md): accepted extension for compact ADRs, bounded historical retrieval and a Git-versioned knowledge snapshot.
-- [Project foundation and workflow](adr/0012-project-foundation-and-workflow.md): initialization, the five shared capabilities, triage and efficient agent instructions.
-- [Recommended Markdown convention](../skills/hivex/references/markdown.md): the default adoption structure and writing practices, with preservation of existing project knowledge.
-- [CLI guide](guide.md) and [agent skill](../skills/hivex/SKILL.md): the interface actually available.
+Hivex supplies a reusable workflow and reliable project knowledge to people and agents. Markdown owns intent and decisions; authored links expose dependencies, exceptions and replacements. Start with the task route below, then follow relevant relationships instead of loading every document. [ADR 0014](adr/0014-reliable-markdown-and-explicit-relationships.md) owns this approach.
 
-Earlier decisions remain in `adr/` as history. ADRs 0004–0009 describe the replaced experimental cohort/admission workflow; ADR 0010 supersedes its mandatory ceremony. Historical evidence is scoped to its original revision and is not a current acceptance result. An adopting project retains its own Markdown at monorepo, package or module level; Hivex does not own that source tree.
+## Choose the authority for the task
 
-The [domain-module and execution decision](adr/0013-domain-modules-and-execution-integrations.md) defines ownership, replaceable integrations and model/profile independence.
+| Task | Read first | Follow when relevant |
+|---|---|---|
+| Understand product purpose or retrieval | [Product contract](adr/0010-practical-knowledge-assistance.md) | [Source authority](adr/0001-versioned-project-knowledge.md), [reliable Markdown](adr/0014-reliable-markdown-and-explicit-relationships.md) |
+| Find a project decision without a model | [Source-reading guide](guide.md#recover-context) | The result's current passage and its explicit relationships |
+| Write, replace or archive knowledge | [Markdown convention](../skills/hivex/references/markdown.md) | [Archival contract](adr/0011-shared-knowledge-and-selective-history.md), [history catalogue](archive/README.md) |
+| Implement or review a change | [Engineering policy](guidelines/engineering.md) | [Module/execution boundaries](adr/0013-domain-modules-and-execution-integrations.md), [Rust quality](guidelines/rust-quality.md), [domain language](CONTEXT.md) |
+| Adopt Hivex or update workflow skills | [Project foundation](adr/0012-project-foundation-and-workflow.md) | [Initialization](guide.md#initialize-a-project), [language templates](../templates/README.md) |
+| Manage an issue, PR or merge | [Tracker procedure](procedures/issue-tracker.md) | [Triage labels](guidelines/triage-labels.md), [knowledge before merge](guidelines/engineering.md#knowledge-before-merge) |
+| Run development checks or CI | [Development guide](guide.md#development) | [Rust quality](guidelines/rust-quality.md), [hosted CI](procedures/self-hosted-runner.md) |
+| Prepare or publish a native package | [Release procedure](procedures/releasing.md) | [Development checks](guide.md#development), artifact-specific publication approval |
+| Inspect optional graph/model behavior | [CLI reference](reference/graph-cli.md) | [Runtime/data continuity](adr/0013-domain-modules-and-execution-integrations.md); sources still determine meaning |
+| Investigate a replaced behavior | [History catalogue](archive/README.md) | The original dated record and its current replacement |
+
+A document's status alone does not settle its scope. Check conditions, exceptions, later replacements and the exact source version. Expand with available documentation and tools; ask the owner only if they cannot resolve a consequential question. Keep one current authority per topic and put each relationship next to the rule it qualifies.
+
+[Archived sources](archive/README.md) are declared by `hivex.json` and remain available for focused reading. The former cohort/admission workflow and migration stages are history, not current runtime instructions. Existing graph snapshots and local work remain preserved with their actual uncertainty and failures; they do not certify this Markdown base.

@@ -5,7 +5,7 @@ description: Establish or maintain project purpose, domain language, decisions, 
 
 # Give knowledge an authoritative home
 
-Read the documentation map, relevant sources and current owner decisions. Update the document that owns the topic and scope; create another only for a distinct purpose. Markdown records intent and reasons; Hivex retrieves derived knowledge.
+Read the documentation map, relevant sources and current owner decisions. Update the document that owns the topic and scope; create another only for a distinct purpose. Markdown records intent and reasons; the authority map and explicit relationships guide focused source retrieval.
 
 For adoption, use the installed `hivex init` when available and read its report. Complete missing meaning from evidence and the owner, keeping unresolved content provisional. Do not invent vision, requirements or vocabulary, or index empty scaffolding. The [foundation templates](../hivex/assets/project/docs/README.md) are starting material.
 
@@ -13,7 +13,7 @@ For adoption, relevant Hivex guidance updates or a change of project languages, 
 
 When adopting or updating the foundation, establish its [knowledge-before-merge requirements](../hivex/assets/project/docs/guidelines/engineering.md#knowledge-before-merge) in the project's existing engineering or knowledge authority, linked from its Git procedure. `init` preserves existing files; package installation alone does not update their policy. Preserve explicit owner decisions and surface a genuine conflict instead of silently replacing them.
 
-Prefer migration to the standard when reasonably possible. Preserve useful content, links, history and monorepo/package/module authority. Reuse shared rules rather than duplicating them; keep product, stack and host details in the adopting project. Inspect source selection before moving documents and use `hivex snapshot relocate` before normal incremental maintenance.
+Prefer migration to the standard when reasonably possible. Preserve useful content, links, history and monorepo/package/module authority. Reuse shared rules rather than duplicating them; keep product, stack and host details in the adopting project. Inspect source selection before moving documents and preserve archive links and provenance. Before any later optional graph maintenance, follow its relocation and unfinished-work safeguards.
 
 ## Keep documents useful
 
@@ -27,4 +27,4 @@ Preserve conditions, exceptions and partial replacements. Keep proposed, current
 
 Use a short [AGENTS.md entrypoint](../hivex/assets/project/AGENTS.md): orientation, development/verification guidance and indispensable project constraints. Explain when linked authorities matter; do not duplicate them or require every document on every task.
 
-Check affected links and source selection. Maintain changed knowledge and export its snapshot using Hivex's installed capabilities, preserving work, history and accounting.
+Check affected links, source selection and the current authority against the change. An optional graph export is not required for the Markdown base; existing graph work, history and accounting remain preserved.

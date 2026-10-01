@@ -22,4 +22,4 @@ The owner reserves the final merge decision for each PR. Agents prepare reviewed
 
 Preserve shared history and clean up the local/remote branches and worktrees belonging to finished work. Implementation changes must be integrated; completed research, evidence or prototypes must have their useful results and required history retained before cleanup. Keep unfinished or uncertain work intact, regardless of branch age or whether it has a PR. Do not discard unmerged work without an established disposition and the applicable owner authorization.
 
-Record durable decisions in the appropriate Markdown authority and export changed Hivex knowledge with its sources. A tracker discussion is useful evidence but does not replace maintained project documentation.
+Record durable decisions in the appropriate Markdown authority and maintain their explicit relationships under the [knowledge-before-merge policy](../guidelines/engineering.md#knowledge-before-merge). Optional graph exports keep their existing safety rules; they are not required for every delivery. A tracker discussion is useful evidence but does not replace maintained project documentation.

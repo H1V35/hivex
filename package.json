@@ -14,11 +14,6 @@
     "docs/guidelines/engineering.md",
     "docs/guidelines/rust-quality.md",
     "docs/procedures/self-hosted-runner.md",
-    "docs/adr/0003-independent-bun-installation.md",
-    "docs/adr/0010-practical-knowledge-assistance.md",
-    "docs/adr/0011-shared-knowledge-and-selective-history.md",
-    "docs/adr/0012-project-foundation-and-workflow.md",
-    "docs/adr/0013-domain-modules-and-execution-integrations.md",
     "docs/guidelines/triage-labels.md",
     "docs/procedures/issue-tracker.md",
     "docs/procedures/releasing.md",
@@ -26,7 +21,10 @@
     "templates/",
     "README.md",
     "LICENSE",
-    "THIRD-PARTY-NOTICES.txt"
+    "THIRD-PARTY-NOTICES.txt",
+    "docs/reference/graph-cli.md",
+    "docs/archive/",
+    "docs/adr/"
   ],
   "repository": {
     "type": "git",

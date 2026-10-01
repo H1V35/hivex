@@ -14,9 +14,9 @@ An author may move replaced decision text into a clearly historical Markdown arc
 
 `docs/archive/adr/` is one valid convention, not a required layout for every project. Historical sources remain explicitly available for bounded retrieval when needed. They do not become the normal ingestion backlog or enter every consultation simply because they are accessible. Hivex must respect the project's declared source scope and report unavailable necessary evidence rather than silently omitting a dependency or treating an old rule as current. The author performs documentary compaction; Hivex does not rewrite project decisions automatically.
 
-## Share derived knowledge, keep execution state local
+## Optional shared knowledge, local execution state
 
-The shared artifact is `.hivex/graph.json`: a portable knowledge snapshot suitable for Git, containing the reusable graph, source versions, evidence, provenance and coverage/uncertainty information. It allows inspection of what changed and reuse in another clone without regenerating an identical model output. Preserve known provenance and identify unavailable legacy metadata; do not invent it.
+For the optional inferred graph, the shared artifact is `.hivex/graph.json`: a portable knowledge snapshot suitable for Git, containing the reusable graph, source versions, evidence, provenance and coverage/uncertainty information. It allows inspection of what changed and reuse in another clone without regenerating an identical model output. Preserve known provenance and identify unavailable legacy metadata; do not invent it.
 
 `.hivex/knowledge.sqlite` remains the local working store for queries, incremental work, attempts, budgets and caches. `.hivex/knowledge.lock` remains local. The shared artifact does not carry process identities, locks, pending invocations or the model-response cache. Loading it must not overwrite unfinished work, erase failed attempts or reset an existing work budget.
 
@@ -29,3 +29,9 @@ Delivery is tracked by [#53](https://github.com/H1V35/hivex/issues/53) (shared g
 ## Source relocation — 2026-09-13 (#64)
 
 An explicit source relocation keeps knowledge usable when documentation changes location. It preserves decision and relationship identities, source versions, uncertainty and existing work history. An identical move can reuse ingestion coverage without a model call. Changed content or consolidation requires the normal update/check at the destination; relocation does not approve that interpretation or make mismatched evidence current. Refuse relocation while local work is unfinished, preserve original work and model answers, and record the source/destination and versions in the operation report. Commit the exported graph with the corresponding source changes so their history remains auditable.
+
+## Relationships
+
+- Depends on [versioned source authority](0001-versioned-project-knowledge.md) to distinguish historical evidence from current decisions.
+- Applied by [the Markdown convention](../../skills/hivex/references/markdown.md#compact-an-adr-without-losing-its-history) and [history catalogue](../archive/README.md).
+- Qualified by [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md): committing the source base is required; inferred graph maintenance and export are optional. Existing snapshot and local-store safety remain intact.

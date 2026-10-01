@@ -1,15 +1,10 @@
 ---
 title: Source-bound graph snapshots before admission
-status: accepted
-date: 2026-09-08
+status: historical
 ---
 
 # Source-bound graph snapshots before admission
 
-Build graph snapshots from a complete, verified ingestion cohort. Keep source declarations, claims, relationships and extraction evidence distinct. Claims and edges have content-derived identities; serialization order and model-local IDs never establish precedence. Preserve literal citations and their original source revision. Neither a successful extraction nor assembly establishes currentness or admits a graph.
+This decision describes a replaced implementation. Its [original text, dates and reasons](../archive/adr/0005-source-bound-graph-snapshots.md) remain available for historical questions. It does not prescribe the current CLI, storage format, language or admission process.
 
-Assembly is deterministic and model-free. Its default response is a bounded summary; an explicit export emits the complete candidate snapshot for inspection or later admission. It does not replace the accepted graph. Candidate snapshots carry a versioned format and an integrity hash; readers reject altered, unsupported or incomplete data before presenting it as graph content.
-
-Freshness compares declared source and processing inputs, independently of unrelated code commits. A source or configuration change remains visible as stale evidence. Historical provenance is not rewritten to make a candidate look current. A later admission operation must bind its checks to the exact snapshot and preserve the previous accepted graph on failure.
-
-Full reconstruction with Luna/max, semantic evaluation, admission and implementation grounding remain requirements of the graph-admission workflow. This decision defines the projection they operate on; it does not declare those gates delivered.
+Current applicable contracts are in [the maintained authority](0011-shared-knowledge-and-selective-history.md) and [the Markdown-first decision](0014-reliable-markdown-and-explicit-relationships.md). Consult [the documentation map](../README.md) for the authority relevant to a task.
