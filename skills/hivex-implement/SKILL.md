@@ -7,6 +7,8 @@ description: Implement a defined change, diagnose a bug or refactor code with us
 
 Recover the request, owning issue and relevant project decisions through local Hivex evidence as needed. Apply settled scope, domain language and module boundaries. Ask only when evidence leaves a consequential decision open.
 
+Before implementing against a retrieved rule, recover its governing context and relevant qualifications under the [shared context-reading method](../hivex/references/markdown.md#recover-enough-context-to-apply-a-rule). Check how the proposed behavior respects its scope, conditions, exceptions and replacements; a search passage alone may omit them. Reuse already inspected current sources rather than repeating retrieval.
+
 Prefer existing capabilities or a direct solution over speculative layers and dependencies. For a difficult bug, reproduce the failure, use a falsifiable hypothesis and observe what distinguishes causes before changing code; remove temporary diagnostics when finished.
 
 ## Verify for value

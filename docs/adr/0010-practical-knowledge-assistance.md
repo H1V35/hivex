@@ -14,6 +14,8 @@ This decision owns Hivex's retrieval/runtime and distribution choices. The [prod
 
 The Rust CLI uses deterministic source discovery, lexical passage search, authored relationship navigation and exact reading. SQLite FTS5/BM25 runs in memory per search and remains useful without a persistent knowledge database. No command invokes a model, requires a provider profile or depends on a shared graph. Keep results bounded and report omitted sources, unread continuation and historical scope honestly. Lexical relevance and valid links do not establish semantic applicability.
 
+Keep lexical ranking units separate from context recovery. Whole-section indexing changed the ordering adversely in a bounded repository sample; retaining the original windows preserves discovery while structural expansion recovers qualifications beyond a window boundary. An expanded range contains its original match and can cover adjacent sections. Limit automatic expansion, expose larger ranges for focused reading and reuse overlapping evidence. Structural completeness of that range does not establish semantic completeness of a task.
+
 Retired graph/model operations return a migration diagnostic rather than executing. Version 0.8.0 deliberately changes the `search` result contract and removes those operations. Preserve historical SQLite/snapshot files, failed candidates, attempts, receipts, uncertainty and consumption unchanged. The [retired command record](../archive/runtime/graph-cli-0.7.8.md) and [original decision](../archive/adr/0010-practical-knowledge-assistance.md) retain their prior meaning; do not carry the old engine into the current package solely to interpret history.
 
 ## Distribution and verification

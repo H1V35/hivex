@@ -19,7 +19,8 @@ fn search_returns_reproducible_source_passages_without_legacy_state() {
   assert_eq!(result["modelCalls"], 0);
   let hit = &result["matches"][0];
   assert_eq!(hit["document"], "authority.md");
-  assert_eq!(hit["lineStart"], 33);
+  assert_eq!(hit["lineStart"], 1);
+  assert_eq!(hit["context"]["complete"], true);
   assert!(hit["text"].as_str().unwrap().contains("Exception:"));
   let from = hit["lineStart"].to_string();
   let to = hit["lineEnd"].to_string();
@@ -66,6 +67,11 @@ fn source_search_pages_bind_options_versions_and_json_byte_budget() {
   p.write("b.md", "# B\nAmber policy.\n");
   let first = p.ok(&["search", "amber", "--limit", "1"]);
   let cursor = first["continuation"].as_str().unwrap();
+  let old_cursor = cursor.replacen("q2.", "q1.", 1);
+  assert_eq!(
+    p.error(&["search", "amber", "--limit", "1", "--cursor", &old_cursor])["error"]["code"],
+    "INVALID_CURSOR"
+  );
   let second = p.ok(&["search", "amber", "--limit", "1", "--cursor", cursor]);
   assert_ne!(
     first["matches"][0]["document"],
@@ -95,6 +101,10 @@ fn source_search_pages_bind_options_versions_and_json_byte_budget() {
     p.error(&["search", "amber", "--limit", "1", "--cursor", cursor])["error"]["code"],
     "INVALID_CURSOR"
   );
+  p.write("c.md", format!("# C\n{}", "Amber policy.\n".repeat(100)));
+  let expanded = p.ok(&["search", "amber", "--source", "c.md"]);
+  assert_eq!(expanded["totalMatches"], 1);
+  assert_eq!(expanded["matches"][0]["context"]["complete"], true);
 }
 
 #[test]
@@ -107,6 +117,27 @@ fn many_short_or_blank_lines_use_bounded_search_windows() {
     p.error(&["search", "amber"])["error"]["code"],
     "SEARCH_LIMIT"
   );
+  p.write(
+    "blank.md",
+    format!(
+      "# {}\n{}",
+      "x".repeat(512 * 1024),
+      "Ordinary text without a match.\n".repeat(70000)
+    ),
+  );
+  assert_eq!(p.ok(&["search", "quasarexclusive"])["totalMatches"], 0);
+  let bounded = p.ok(&[
+    "search",
+    "ordinary",
+    "--limit",
+    "64",
+    "--max-bytes",
+    "65536",
+  ]);
+  assert_ne!(
+    bounded["matches"].as_array().unwrap().as_slice(),
+    &[] as &[serde_json::Value]
+  );
 }
 
 #[test]
@@ -116,7 +147,7 @@ fn a_document_title_does_not_make_every_window_a_match() {
     "title.md",
     format!(
       "---\ntitle: Retention\n---\n{}",
-      "Other unrelated prose.\n".repeat(130)
+      "## Unrelated\nOther unrelated prose.\n".repeat(130)
     ),
   );
   let result = p.ok(&["search", "retention"]);
@@ -126,5 +157,96 @@ fn a_document_title_does_not_make_every_window_a_match() {
       .as_str()
       .unwrap()
       .contains("Retention")
+  );
+  p.write(
+    "preamble.md",
+    format!(
+      "---\ntitle: preambleneedle\n---\n{}## Unrelated\nDifferent rule.\n",
+      "Unheaded context.\n".repeat(40)
+    ),
+  );
+  let preamble = p.ok(&["search", "preambleneedle"]);
+  assert_eq!(preamble["matches"][0]["context"]["lineEnd"], 43);
+  assert!(
+    preamble["matches"][0]["context"]["complete"]
+      .as_bool()
+      .unwrap()
+  );
+  assert!(
+    !preamble["matches"][0]["text"]
+      .as_str()
+      .unwrap()
+      .contains("Unrelated")
+  );
+}
+
+#[test]
+fn a_short_section_crossing_old_windows_keeps_its_final_qualification() {
+  let p = Project::new();
+  let section = format!(
+    "## Display currency\r\nKeep original amounts.\r\n{}Billing histories keep their own retention.\r\n\r\n",
+    "Keep the selected reference.\r\n".repeat(17)
+  );
+  p.write(
+    "money.md",
+    format!(
+      "# Finance\r\n{}{section}## Other\r\nUnrelated rule.\r\n",
+      "Other prose.\r\n".repeat(111)
+    ),
+  );
+  let result = p.ok(&["search", "currency"]);
+  assert_eq!(result["totalMatches"], 1);
+  let hit = &result["matches"][0];
+  assert_eq!(hit["lineStart"], 1);
+  assert_eq!(hit["lineEnd"], 135);
+  assert_eq!(hit["context"]["complete"], true);
+  assert!(
+    hit["text"]
+      .as_str()
+      .unwrap()
+      .contains("Billing histories keep their own retention.")
+  );
+  let read = p.ok(&["read", "money.md", "--from", "1", "--to", "135"]);
+  assert_eq!(hit["text"], read["text"]);
+}
+
+#[test]
+fn large_sections_expose_expansion_ranges_and_ignore_code_or_quoted_headings() {
+  let p = Project::new();
+  p.write("policy.md", format!("---\ntitle: Policy\n---\n## Actual rule\n{}needle is scoped.\n```md\n## Code heading\n```\n> ## Quoted heading\n{}Final qualification remains applicable.\n## Next\nOther scope.\n", "Unrelated long line for the policy.\n".repeat(200), "More unrelated long line for the policy.\n".repeat(100)));
+  let result = p.ok(&["search", "needle"]);
+  assert_eq!(result["totalMatches"], 1);
+  let hit = &result["matches"][0];
+  assert_eq!(hit["context"]["complete"], false);
+  assert_eq!(hit["context"]["lineStart"], 4);
+  let from = hit["context"]["lineStart"].to_string();
+  let to = hit["context"]["lineEnd"].to_string();
+  let full = p.ok(&["read", "policy.md", "--from", &from, "--to", &to]);
+  assert!(
+    full["text"]
+      .as_str()
+      .unwrap()
+      .contains("Final qualification remains applicable.")
+  );
+  assert!(!full["text"].as_str().unwrap().contains("Other scope."));
+}
+
+#[test]
+fn a_parent_rule_includes_child_qualifications_absent_from_the_lexical_match() {
+  let p = Project::new();
+  p.write("policy.md", "# Policy\n## Retention\nKeep records seven days.\n### Revocation\nRemove private records when access is lost.\n## Other\nDifferent rule.\n");
+  let result = p.ok(&["search", "retention"]);
+  let hit = &result["matches"][0];
+  assert_eq!(hit["lineStart"], 1);
+  assert_eq!(hit["lineEnd"], 7);
+  assert_eq!(hit["context"]["lineEnd"], 7);
+  assert_eq!(hit["context"]["complete"], true);
+  let full = p.ok(&["read", "policy.md", "--from", "1", "--to", "7"]);
+  assert_eq!(hit["text"], full["text"]);
+  assert!(
+    full["text"]
+      .as_str()
+      .unwrap()
+      .contains("when access is lost")
   );
 }
