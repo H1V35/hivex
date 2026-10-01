@@ -226,12 +226,12 @@ fn ignored_html_end(html: &str, ending: &str) -> Option<usize> {
   html.match_indices(ending).find_map(|(index, _)| {
     let boundary = html[index + ending.len()..].chars().next();
     if ending == "-->" {
-      Some(index + ending.len())
-    } else if boundary.is_some_and(|value| value.is_whitespace() || ['>', '/'].contains(&value)) {
-      html_tag_end(&html[index..]).map(|end| index + end + 1)
-    } else {
-      None
+      return Some(index + ending.len());
     }
+    if !boundary.is_some_and(|value| value.is_whitespace() || ['>', '/'].contains(&value)) {
+      return None;
+    }
+    html_tag_end(&html[index..]).map(|end| index + end + 1)
   })
 }
 
