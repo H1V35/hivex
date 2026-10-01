@@ -134,7 +134,7 @@ fn many_short_or_blank_lines_use_bounded_search_windows() {
     "--max-bytes",
     "65536",
   ]);
-  assert!(!bounded["matches"].as_array().unwrap().is_empty());
+  assert_ne!(bounded["matches"].as_array().unwrap().as_slice(), []);
 }
 
 #[test]
