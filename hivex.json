@@ -1,8 +1,10 @@
 {
   "include": [
+    "AGENTS.md",
     "README.md",
     "docs/**/*.md",
-    "skills/hivex/references/markdown.md"
+    "skills/**/*.md",
+    "templates/**/*.md"
   ],
   "archive": [
     "docs/archive/**/*.md"

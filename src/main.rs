@@ -16,7 +16,7 @@ fn main() {
       } else {
         i32::from(matches!(
           result.get("status").and_then(Value::as_str),
-          Some("failed" | "blocked")
+          Some("failed")
         ))
       }
     }

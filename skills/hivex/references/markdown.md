@@ -46,7 +46,7 @@ Use an ADR when the choice is consequential, reflects a real trade-off and would
 
 ## Make relationships explicit
 
-The authored relationship contract v1 is a single root `## Relationships` block per document. Its entries use one exact literal, one plain inline Markdown target and a nonempty plain-text explanation on one unindented hyphen bullet line (`- `). Blank lines are allowed; unknown labels, aliases, bold labels, free prose, multiple links, duplicate declarations or another Relationships block are diagnostics, not inferred relationships. Ordinary prose and links outside the block remain ordinary Markdown.
+The authored relationship contract v1 is a single root `## Relationships` block per document. That exact heading is reserved for formal document connections; rename a domain-language section with the same heading and preserve its prior anchor when needed. Its entries use one exact literal, one plain inline Markdown target and a nonempty plain-text explanation on one unindented hyphen bullet line (`- `). Blank lines are allowed; unknown labels, aliases, bold labels, free prose, multiple links, duplicate declarations or another Relationships block are diagnostics, not inferred relationships. Ordinary prose and links outside the block remain ordinary Markdown.
 
 | Exact literal | Authored direction |
 |---|---|
@@ -67,15 +67,15 @@ Use only relevant entries, not every type in each document:
 
 `Replaces`, `Extended by` and `Applied by` are not authored aliases. Express replacement with `Supersedes` and put `Extends`/`Implements` in the authority that owns the extension or procedure. Incoming navigation computes the inverse without storing a duplicate statement. Preserve the meaning and condition when normalizing existing prose; do not turn an extension into a dependency.
 
-Targets are selected relative Markdown sources, optionally with an exact heading or explicit ID fragment; same-document `#anchor` links are valid. The CLI resolves the target range and current source version. It rejects missing or ambiguous anchors, out-of-project/excluded sources and malformed formal entries instead of guessing. A relationship source is the document; its declaration coordinates identify the entry. An anchor destination does not invent a section-specific source entity.
+Targets are selected relative Markdown sources without a query component, optionally with an exact heading or explicit ID fragment (a question mark after `#` is fragment data); same-document `#anchor` links are valid. The CLI resolves the target range and current source version. It rejects missing or ambiguous anchors, out-of-project/excluded sources and malformed formal entries instead of guessing. A relationship source is the document; its declaration coordinates identify the entry. An anchor destination does not invent a section-specific source entity.
 
 Heading IDs lowercase the rendered heading text, remove ASCII punctuation except hyphen/underscore, and replace whitespace with hyphens. Repeated IDs receive `-1`, `-2` and subsequent available suffixes in document order. For a stable ID independent of heading text, use `<a id="identifier"></a>`; IDs are exact and must not collide with another explicit or generated ID. Fenced code and quoted headings/anchors are not targets. A heading range ends before the next heading of the same or higher level; an explicit ID starts at its marker and includes the nearest following heading's section (or the preceding section if no heading follows). This supported anchor convention is deterministic; do not assume every external Markdown renderer uses the same slug algorithm.
 
-HTML comments and raw-text elements such as `script`, `style` and `textarea` do not create anchors. Navigation validates at most 2048 declarations across its scanned sources; excess returns `RELATION_LIMIT`, without truncating validation or reporting a complete result.
+HTML comments and raw-text elements such as `script`, `style` and `textarea` do not create anchors. Navigation validates at most 2048 declarations across its scanned sources; excess returns `RELATION_LIMIT`, without truncating validation or reporting a complete result. Documents support at most 32768 heading/explicit anchor records; excess returns `ANCHOR_LIMIT`. A query retains at most 65536 target anchor records in memory; excess is explicit and can be avoided by narrowing source selection.
 
 `relations <document>` returns direct authored connections and incoming connections from ordinary sources, with the declared `from`/`to` unchanged. It reads historical declarations only when that source is queried explicitly; historical destinations remain reachable. Pagination binds its cursor to the source snapshot and query options, counts the complete serialized UTF-8 response and never cuts a relation. Explicit coverage limits remain visible. Navigation does not infer relationships, recurse automatically or certify semantic truth.
 
-Authors and reviewers judge meaning, reason and conditions. A deterministic reader/checker verifies syntax, direction encoding, selected targets and anchors. Follow relevant links, including indirect dependencies, by querying the next document and reading the cited destination range. Update relationship entries and callers when a target or scope changes.
+Authors and reviewers judge meaning, reason and conditions. A deterministic reader/checker verifies syntax, direction encoding, selected targets and anchors. Follow relevant links, including indirect dependencies, by querying the next document and reading the cited destination range. Reuse visited versions/ranges instead of repeatedly traversing cycles. A known authority can be read directly; queries are capabilities, not mandatory phases. Update relationship entries and callers when a target or scope changes.
 
 ## Compact an ADR without losing its history
 
@@ -100,3 +100,9 @@ The public [AGENTS.md convention](https://agents.md/) is ordinary Markdown witho
 ## Relationships
 
 - Implements [Selective history](../../../docs/adr/0011-shared-knowledge-and-selective-history.md): authors preserve dates and provenance while keeping live authorities concise.
+
+## Validate affected knowledge
+
+Run `check --source <document>` for the affected authorities and callers, or `check` for ordinary selected sources. It validates formal relationship grammar and selected local Markdown targets/anchors without a model. Archived declarations are checked only through explicit source selection or `--historical`; a historical destination remains readable without validating all of its old prose. Unknown or excluded references are located findings, not silently skipped evidence.
+
+Review every finding against its source/scope. An incomplete source load is `partial`; invalid references or declarations produce `failed`, with paginated findings and source-bound continuation. A `ready` report confirms only the stated structural scope. It cannot find an undeclared relationship, establish a unique semantic authority, verify implementation/permission or resolve contradictory rules. Authors and independent reviewers perform those checks against the actual task and source/code versions.

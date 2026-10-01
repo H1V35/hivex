@@ -1,10 +1,9 @@
-pub(crate) use markdown::{
-  hash, is_markdown_path, line_content, raw_line_ranges, raw_markdown_lines,
-};
+pub(crate) use markdown::{hash, is_markdown_path, line_content, raw_line_ranges};
 mod markdown;
 mod navigation;
 mod relations;
 mod search;
+mod validation;
 use crate::error::{HivexError, Result};
 use globset::{GlobBuilder, GlobMatcher};
 #[cfg(not(target_os = "macos"))]
@@ -20,6 +19,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 #[cfg(not(target_os = "macos"))]
 use std::sync::OnceLock;
+pub(crate) use validation::validate_sources;
 
 const DEFAULT_INCLUDE: [&str; 3] = ["**/*.md", "**/*.markdown", "**/*.mdown"];
 const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
@@ -27,7 +27,7 @@ const MAX_CORPUS_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_DOCUMENTS: usize = 2_048;
 const MAX_PATTERNS: usize = 64;
 const PROTECTED_DIRECTORIES: [&str; 3] = [".git", ".hivex", "node_modules"];
-const EXCLUDED_DIRECTORIES: [&str; 3] = ["vendor", "dist", "build"];
+const EXCLUDED_DIRECTORIES: [&str; 4] = ["vendor", "dist", "build", "target"];
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Warning {
@@ -429,7 +429,7 @@ fn pattern_matches(path: &str, patterns: &[String]) -> bool {
   })
 }
 
-fn is_excluded_name(name: &str, config: &Config) -> bool {
+fn is_excluded_name(name: &str, path: &str, config: &Config) -> bool {
   if PROTECTED_DIRECTORIES.contains(&name) {
     return true;
   }
@@ -441,7 +441,22 @@ fn is_excluded_name(name: &str, config: &Config) -> bool {
     .include
     .iter()
     .chain(config.archive.iter())
-    .all(|pattern| !pattern.split('/').any(|segment| segment == name))
+    .all(|pattern| !explicit_directory(pattern, name, path))
+}
+
+fn explicit_directory(pattern: &str, name: &str, path: &str) -> bool {
+  if pattern.bytes().take_while(|byte| *byte == b'!').count() % 2 == 1 {
+    return false;
+  }
+  let pattern = pattern.trim_start_matches('!');
+  let segments: Vec<_> = pattern.split('/').collect();
+  segments
+    .iter()
+    .enumerate()
+    .filter(|(_, segment)| **segment == name)
+    .any(|(index, _)| {
+      compile_glob(&segments[..=index].join("/")).is_some_and(|glob| glob.is_match(path))
+    })
 }
 
 fn is_excluded_subtree(path: &str, config: &Config) -> bool {
@@ -486,11 +501,11 @@ fn collect_candidates(
   let mut candidates = Vec::new();
   for entry in entries {
     let name = entry.file_name().to_string_lossy().into_owned();
-    if is_excluded_name(&name, config) {
-      continue;
-    }
     let absolute_path = current.join(&name);
     let path = path_for(root, &absolute_path);
+    if is_excluded_name(&name, &path, config) {
+      continue;
+    }
     let Ok(file_type) = entry.file_type() else {
       continue;
     };

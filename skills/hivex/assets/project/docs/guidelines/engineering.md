@@ -42,7 +42,7 @@ Use familiar language and concrete explanations. Briefly explain a technical ter
 
 ## Knowledge before merge
 
-Before integration, maintain Markdown that adds durable value in the authority that owns the topic. Record behavior, constraints, verification and deferred capabilities without duplicating implementation details. Link explicit dependencies, exceptions and replacements in ordinary Markdown, with their scope; follow relevant links when reviewing a change.
+Before integration, maintain Markdown that adds durable value in the authority that owns the topic. Record behavior, constraints, verification and deferred capabilities without duplicating implementation details. Link explicit dependencies, exceptions and replacements under the shared formal Relationships contract; follow relevant links when reviewing a change. Run `check --source <document>` for affected authorities and callers, inspect coverage/findings and preserve current source versions. The structural checker does not certify meaning or permission.
 
 Review the affected authorities, their current conditions and history links, and the changed implementation at a defined revision. Resolve demonstrated contradictions, missing decisions needed by supported behavior, broken references and actionable defects. Treat a model finding as a claim to verify against those sources and code. Keep follow-up finite and scoped to the evidence that changed; do not repeatedly certify the whole corpus or chase a globally green result. A real current defect or unresolved policy decision that affects supported behavior blocks integration. When evidence cannot resolve a consequential question, preserve it as unresolved and ask the owner with the sources, impact and a recommendation.
 

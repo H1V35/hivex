@@ -1,12 +1,13 @@
-use super::{is_markdown_path, line_content, raw_markdown_lines};
+use super::{is_markdown_path, line_content, raw_line_ranges};
 use crate::error::{HivexError, Result};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ops::Range;
 use url::Url;
 
 pub const MAX_RELATIONS: usize = 2_048;
+const MAX_ANCHORS: usize = 32_768;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -71,9 +72,18 @@ struct MarkdownScan {
   headings: Vec<Heading>,
   explicit_anchors: Vec<ExplicitAnchor>,
   ignored_html_until: Option<&'static str>,
+  anchor_limit: bool,
 }
 
 impl MarkdownScan {
+  fn anchor_slot(&mut self) -> bool {
+    if self.headings.len() + self.explicit_anchors.len() < MAX_ANCHORS {
+      return true;
+    }
+    self.anchor_limit = true;
+    false
+  }
+
   fn accept(&mut self, event: Event<'_>, range: Range<usize>) {
     match event {
       Event::Start(Tag::BlockQuote(_)) => self.blockquote_depth += 1,
@@ -93,7 +103,7 @@ impl MarkdownScan {
         });
       }
       Event::End(TagEnd::Heading(_)) => {
-        if let Some(heading) = self.heading.take() {
+        if let Some(heading) = self.heading.take().filter(|_| self.anchor_slot()) {
           self.headings.push(heading);
         }
       }
@@ -109,6 +119,9 @@ impl MarkdownScan {
       }
       Event::Html(html) | Event::InlineHtml(html) if self.blockquote_depth == 0 => {
         for (id, offset) in explicit_ids(&html, &mut self.ignored_html_until) {
+          if !self.anchor_slot() {
+            return;
+          }
           self.explicit_anchors.push(ExplicitAnchor {
             id,
             offset: self.body_offset + range.start + offset,
@@ -137,11 +150,11 @@ fn is_frontmatter_fence(line: &str) -> bool {
 }
 
 fn source_body(text: &str) -> (usize, &str) {
-  let lines = raw_markdown_lines(text);
-  let Some(first) = lines.first() else {
+  let mut lines = raw_line_ranges(text);
+  let Some(first) = lines.next() else {
     return (0, text);
   };
-  let first_content = line_content(first).trim_end_matches([' ', '\t']);
+  let first_content = line_content(&text[first]).trim_end_matches([' ', '\t']);
   if first_content
     .strip_prefix('\u{feff}')
     .unwrap_or(first_content)
@@ -149,11 +162,9 @@ fn source_body(text: &str) -> (usize, &str) {
   {
     return (0, text);
   }
-  let mut offset = lines[0].len();
-  for line in lines.iter().skip(1) {
-    offset += line.len();
-    if is_frontmatter_fence(line) {
-      return (offset, &text[offset..]);
+  for range in lines {
+    if is_frontmatter_fence(&text[range.clone()]) {
+      return (range.end, &text[range.end..]);
     }
   }
   (0, text)
@@ -175,7 +186,7 @@ fn explicit_ids(html: &str, ignored_until: &mut Option<&'static str>) -> Vec<(St
   let lower = html.to_ascii_lowercase();
   let mut cursor = 0;
   let mut result = Vec::new();
-  while cursor < html.len() {
+  while cursor < html.len() && result.len() <= MAX_ANCHORS {
     if let Some(ending) = *ignored_until {
       let Some(end) = ignored_html_end(&lower[cursor..], ending) else {
         break;
@@ -270,7 +281,7 @@ fn raw_text_ending(tag: &str) -> Option<&'static str> {
   })
 }
 
-fn scan_markdown(text: &str) -> MarkdownScan {
+fn scan_markdown(text: &str) -> Result<MarkdownScan> {
   let (body_offset, body) = source_body(text);
   let mut scan = MarkdownScan {
     body_offset,
@@ -289,37 +300,43 @@ fn scan_markdown(text: &str) -> MarkdownScan {
         range.end = events.next().expect("peeked event").1.end;
       }
       scan.accept(Event::Html(body[range.clone()].into()), range);
-      continue;
+    } else {
+      scan.accept(event, range);
     }
-    scan.accept(event, range);
+    if scan.anchor_limit {
+      return Err(HivexError::new(
+        "ANCHOR_LIMIT",
+        "At most 32768 headings and explicit anchors are supported per document",
+      ));
+    }
   }
-  scan
+  Ok(scan)
 }
 
-fn line_starts(lines: &[String]) -> Vec<usize> {
-  let mut starts = Vec::with_capacity(lines.len());
-  let mut offset = 0;
-  for line in lines {
-    starts.push(offset);
-    offset += line.len();
+fn line_positions(text: &str, scan: &MarkdownScan) -> (BTreeMap<usize, usize>, usize) {
+  let offsets: BTreeSet<_> = scan
+    .headings
+    .iter()
+    .flat_map(|heading| [heading.start, heading.end])
+    .chain(scan.explicit_anchors.iter().map(|anchor| anchor.offset))
+    .collect();
+  let mut offsets = offsets.into_iter().peekable();
+  let mut positions = BTreeMap::new();
+  let mut count = 0;
+  for (line, range) in raw_line_ranges(text).enumerate() {
+    count = line + 1;
+    while offsets.peek().is_some_and(|offset| *offset < range.end) {
+      positions.insert(offsets.next().expect("peeked offset"), count);
+    }
   }
-  starts
+  for offset in offsets {
+    positions.insert(offset, count);
+  }
+  (positions, count)
 }
 
-fn line_number(starts: &[usize], offset: usize) -> usize {
-  starts
-    .partition_point(|start| *start <= offset)
-    .saturating_sub(1)
-    + 1
-}
-
-fn first_line_after(starts: &[usize], offset: usize) -> usize {
-  let line = line_number(starts, offset);
-  if starts.get(line - 1) == Some(&offset) {
-    line
-  } else {
-    line + 1
-  }
+fn line_number(positions: &BTreeMap<usize, usize>, offset: usize) -> usize {
+  positions[&offset]
 }
 
 fn relation_error(line: usize, cause: &'static str) -> HivexError {
@@ -383,7 +400,7 @@ fn valid_target(target: &str) -> bool {
     .map_or((target, None), |(path, anchor)| (path, Some(anchor)));
   (!path.is_empty() || anchor.is_some())
     && anchor.is_none_or(|id| !id.is_empty() && !id.contains('#'))
-    && !target.contains('?')
+    && !path.contains('?')
     && !path.starts_with('/')
     && !path.starts_with('\\')
     && !path.contains('\\')
@@ -458,56 +475,56 @@ fn parse_relation_line(line: &str, line_number: usize) -> Result<DraftRelation> 
 /// Every nonblank line in the section must be a formal relation entry; errors
 /// identify its one-based source line and cause instead of dropping it.
 pub fn parse(text: &str) -> Result<Vec<DraftRelation>> {
-  let scan = scan_markdown(text);
-  let lines = raw_markdown_lines(text);
-  let starts = line_starts(&lines);
+  let scan = scan_markdown(text)?;
   let blocks: Vec<_> = scan
     .headings
     .iter()
     .enumerate()
     .filter(|(_, heading)| heading.level == 2 && heading.text.trim() == "Relationships")
     .collect();
-  if blocks.len() > 1 {
-    let line = line_number(&starts, blocks[1].1.start);
-    return Err(relation_error(
-      line,
-      "document has more than one H2 Relationships section",
-    ));
-  }
   let Some((index, heading)) = blocks.first().copied() else {
     return Ok(Vec::new());
   };
-  let heading_line = line_number(&starts, heading.start);
-  if line_content(&lines[heading_line - 1]) != "## Relationships" {
-    return Err(relation_error(
-      heading_line,
-      "expected exact '## Relationships' heading",
-    ));
-  }
-  let start_line = first_line_after(&starts, heading.end);
-  let end_line = scan
+  let mut relations = Vec::new();
+  let end = scan
     .headings
     .iter()
     .skip(index + 1)
     .find(|next| next.level <= 2)
-    .map_or(lines.len(), |next| {
-      line_number(&starts, next.start).saturating_sub(1)
-    });
-  let mut relations = Vec::new();
-  for number in start_line..=end_line {
-    let line = line_content(&lines[number - 1]);
-    if !line.trim().is_empty() {
-      if relations.len() == MAX_RELATIONS {
-        return Err(
-          HivexError::new(
-            "RELATION_LIMIT",
-            "At most 2048 authored declarations are supported per query",
-          )
-          .with_details(json!({"line":number,"limit":MAX_RELATIONS})),
-        );
-      }
-      relations.push(parse_relation_line(line, number)?);
+    .map_or(text.len(), |next| next.start);
+  for (index, range) in raw_line_ranges(text).enumerate() {
+    if range.start <= heading.start
+      && heading.start < range.end
+      && line_content(&text[range.clone()]) != "## Relationships"
+    {
+      return Err(relation_error(
+        index + 1,
+        "expected exact '## Relationships' heading",
+      ));
     }
+    if blocks.len() > 1 && range.start <= blocks[1].1.start && blocks[1].1.start < range.end {
+      return Err(relation_error(
+        index + 1,
+        "document has more than one H2 Relationships section",
+      ));
+    }
+    if range.start < heading.end || range.start >= end {
+      continue;
+    }
+    let line = line_content(&text[range]);
+    if line.trim().is_empty() {
+      continue;
+    }
+    if relations.len() == MAX_RELATIONS {
+      return Err(
+        HivexError::new(
+          "RELATION_LIMIT",
+          "At most 2048 authored declarations are supported per query",
+        )
+        .with_details(json!({"line":index+1,"limit":MAX_RELATIONS})),
+      );
+    }
+    relations.push(parse_relation_line(line, index + 1)?);
   }
   Ok(relations)
 }
@@ -544,7 +561,12 @@ fn unique_heading_slug(
   }
 }
 
-fn section_end(headings: &[Heading], index: usize, starts: &[usize], line_count: usize) -> usize {
+fn section_end(
+  headings: &[Heading],
+  index: usize,
+  starts: &BTreeMap<usize, usize>,
+  line_count: usize,
+) -> usize {
   let heading = &headings[index];
   headings
     .iter()
@@ -555,7 +577,12 @@ fn section_end(headings: &[Heading], index: usize, starts: &[usize], line_count:
     })
 }
 
-fn explicit_end(scan: &MarkdownScan, offset: usize, starts: &[usize], line_count: usize) -> usize {
+fn explicit_end(
+  scan: &MarkdownScan,
+  offset: usize,
+  starts: &BTreeMap<usize, usize>,
+  line_count: usize,
+) -> usize {
   let heading_index = scan
     .headings
     .iter()
@@ -597,9 +624,11 @@ fn ambiguous_anchor(id: &str, first_line: usize, line: usize) -> HivexError {
 /// An explicit ID starts at its marker and ends with its nearest following
 /// heading's section, or the preceding section when no heading follows.
 pub fn anchors(text: &str) -> Result<Vec<Anchor>> {
-  let scan = scan_markdown(text);
-  let lines = raw_markdown_lines(text);
-  let starts = line_starts(&lines);
+  let scan = scan_markdown(text)?;
+  if scan.headings.is_empty() && scan.explicit_anchors.is_empty() {
+    return Ok(Vec::new());
+  }
+  let (starts, line_count) = line_positions(text, &scan);
   let mut counts = HashMap::new();
   let mut used = HashSet::new();
   let mut anchors = Vec::new();
@@ -609,7 +638,7 @@ pub fn anchors(text: &str) -> Result<Vec<Anchor>> {
       anchors.push(Anchor {
         id: unique_heading_slug(&base, &mut counts, &mut used),
         line_start: line_number(&starts, heading.start),
-        line_end: section_end(&scan.headings, index, &starts, lines.len()),
+        line_end: section_end(&scan.headings, index, &starts, line_count),
       });
     }
   }
@@ -618,7 +647,7 @@ pub fn anchors(text: &str) -> Result<Vec<Anchor>> {
     anchors.push(Anchor {
       id: marker.id.clone(),
       line_start: line,
-      line_end: explicit_end(&scan, marker.offset, &starts, lines.len()),
+      line_end: explicit_end(&scan, marker.offset, &starts, line_count),
     });
   }
   anchors.sort_by_key(|anchor| (anchor.line_start, anchor.line_end));

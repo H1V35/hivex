@@ -27,6 +27,12 @@
       "modelCalls": 0,
       "name": "init",
       "usage": "init [--root <project>]"
+    },
+    {
+      "modelCalls": 0,
+      "name": "check",
+      "usage": "check [--source <document>] [--historical] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
+      "maxLocalReferences": 32768
     }
   ],
   "configuration": "Optional hivex.json with include/exclude/archive relative Markdown globs; archived sources are focused evidence.",

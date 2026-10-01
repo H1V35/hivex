@@ -226,6 +226,16 @@ fn source_range_boundaries_preserve_separators_and_unicode() {
 }
 
 #[test]
+fn bounded_read_does_not_materialize_millions_of_blank_lines() {
+  let p = Project::new();
+  p.write("blank.md", "\n".repeat(16 * 1024 * 1024));
+  let read = p.ok(&["read", "blank.md", "--max-bytes", "16384"]);
+  assert!(read["truncated"].as_bool().unwrap());
+  assert!(read["text"].as_str().unwrap().len() <= 16384);
+  assert!(read["continuation"]["from"].as_u64().unwrap() > 16000);
+}
+
+#[test]
 fn glob_matrix_keeps_explicit_hidden_and_vendor_selection() {
   let p = Project::new();
   for name in [
@@ -276,6 +286,36 @@ fn glob_matrix_keeps_explicit_hidden_and_vendor_selection() {
     p.json("hivex.json", &config);
     assert_eq!(paths(&p.ok(&["sources"])), expected, "{config}");
   }
+}
+
+#[test]
+fn generated_rust_outputs_are_skipped_unless_explicitly_selected() {
+  let p = Project::new();
+  p.write("docs/current.md", "# Current\n");
+  p.write("target/generated.md", "# Generated\n");
+  assert_eq!(paths(&p.ok(&["sources"])), ["docs/current.md"]);
+  p.json("hivex.json", &json!({"include":["target/**/*.md"]}));
+  assert_eq!(paths(&p.ok(&["sources"])), ["target/generated.md"]);
+  p.json("hivex.json", &json!({"include":["!!target/**/*.md"]}));
+  assert_eq!(paths(&p.ok(&["sources"])), ["target/generated.md"]);
+}
+
+#[test]
+fn selecting_nested_generated_docs_does_not_open_a_root_build_tree() {
+  let p = Project::new();
+  p.write("docs/target/decision.md", "# Selected\n");
+  p.write("target/unselected.md", "# Build output\n");
+  symlink("missing", p.path("target/unselected-link.md")).unwrap();
+  p.json("hivex.json", &json!({"include":["docs/target/**/*.md"]}));
+  let sources = p.ok(&["sources"]);
+  assert_eq!(paths(&sources), ["docs/target/decision.md"]);
+  assert_eq!(sources["warnings"].as_array().unwrap().len(), 0);
+  symlink("missing", p.path("docs/target/excluded-link.md")).unwrap();
+  p.write("other.md", "# Ordinary\n");
+  p.json("hivex.json", &json!({"include":["!docs/target/**/*.md"]}));
+  let excluded = p.ok(&["sources"]);
+  assert_eq!(paths(&excluded), ["other.md"]);
+  assert_eq!(excluded["warnings"].as_array().unwrap().len(), 0);
 }
 
 #[test]

@@ -1,4 +1,5 @@
 mod arguments;
+mod check;
 mod commands;
 mod documents;
 mod relations;
@@ -14,6 +15,7 @@ pub fn run(args: &[String]) -> Result<Value> {
     "sources" | "read" => documents::command(args),
     "search" => search::command(args),
     "relations" => relations::command(args),
+    "check" => check::command(args),
     "init" => commands::initialize(args),
     "update" | "ask" | "neighbors" | "review" | "warnings" | "snapshot" | "recover" | "prune"
     | "status" => Err(HivexError::new(

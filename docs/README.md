@@ -8,12 +8,14 @@ Hivex supplies a reusable workflow and reliable project knowledge to people and 
 |---|---|---|
 | Understand product purpose or retrieval | [Product contract](adr/0010-practical-knowledge-assistance.md) | [Source authority](adr/0001-versioned-project-knowledge.md), [reliable Markdown](adr/0014-reliable-markdown-and-explicit-relationships.md) |
 | Find a project decision without a model | [Source-reading guide](guide.md#recover-context) | The result's current passage and its explicit relationships |
+| Validate affected knowledge | [Structural checks](guide.md#validate-structure) | Source and code review still judge meaning, scope and permission |
 | Write, replace or archive knowledge | [Markdown convention](../skills/hivex/references/markdown.md) | [Archival contract](adr/0011-shared-knowledge-and-selective-history.md), [history catalogue](archive/README.md) |
 | Implement or review a change | [Engineering policy](guidelines/engineering.md) | [Module/execution boundaries](adr/0013-domain-modules-and-execution-integrations.md), [Rust quality](guidelines/rust-quality.md), [domain language](CONTEXT.md) |
 | Adopt Hivex or update workflow skills | [Project foundation](adr/0012-project-foundation-and-workflow.md) | [Initialization](guide.md#initialize-a-project), [language templates](../templates/README.md) |
 | Manage an issue, PR or merge | [Tracker procedure](procedures/issue-tracker.md) | [Triage labels](guidelines/triage-labels.md), [knowledge before merge](guidelines/engineering.md#knowledge-before-merge) |
 | Run development checks or CI | [Development guide](guide.md#development) | [Rust quality](guidelines/rust-quality.md), [hosted CI](procedures/self-hosted-runner.md) |
 | Prepare or publish a native package | [Release procedure](procedures/releasing.md) | [Development checks](guide.md#development), artifact-specific publication approval |
+| Assess source-workflow evidence and cost | [Dated validation record](archive/validation/source-workflow-2026-10-01.md) | Local observed measurements and explicit limits, not semantic certification |
 | Migrate the retired graph runtime | [Migration guide](guide.md#migrate-from-the-inferred-graph-runtime) | [Historical command record](archive/runtime/graph-cli-0.7.8.md); preserve evidence and accounting |
 | Investigate a replaced behavior | [History catalogue](archive/README.md) | The original dated record and its current replacement |
 

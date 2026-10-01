@@ -27,6 +27,7 @@ npx hivex init
 npx hivex search "cache policy"
 npx hivex relations docs/policy.md
 npx hivex read docs/policy.md --from 20 --to 45
+npx hivex check --source docs/policy.md
 npx hivex --help
 ```
 
