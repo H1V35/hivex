@@ -495,6 +495,7 @@ fn verify_source_contract(binary: &Path, project: &Path, source: &str) -> Result
     || cli(binary, project, &["sources"])?["totalDocuments"] != 1
     || cli(binary, project, &["search", "budget"])?["totalMatches"] != 1
     || cli(binary, project, &["relations", "notes.md"])?["totalRelations"] != 0
+    || cli(binary, project, &["check"])?["status"] != "ready"
   {
     return Err("Source-only retrieval contract changed".into());
   }

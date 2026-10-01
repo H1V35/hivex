@@ -3,7 +3,7 @@ use std::fmt;
 
 pub type Result<T> = std::result::Result<T, HivexError>;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct HivexError {
   pub code: String,
   pub message: String,

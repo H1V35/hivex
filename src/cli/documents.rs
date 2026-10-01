@@ -150,42 +150,45 @@ fn warnings_value(warnings: &[Warning]) -> Value {
   )
 }
 
-fn bounded_lines(
-  lines: &[String],
-  start: usize,
-  end: usize,
+fn bounded_text(
+  text: &str,
+  bounds: (usize, usize),
   max_bytes: usize,
+  line_count: usize,
 ) -> Result<(usize, String)> {
-  let mut text = String::new();
-  let mut prefix = String::new();
+  let (start, end) = bounds;
+  let mut output = String::new();
+  let mut visible_end = 0;
   let mut line_end = start - 1;
-  for line in start..=end {
-    let raw = lines.get(line - 1).map_or("", String::as_str);
-    let current = if line == lines.len() {
+  for (index, range) in markdown::raw_line_ranges(text)
+    .enumerate()
+    .skip(start - 1)
+    .take(end - start + 1)
+  {
+    let line = index + 1;
+    let raw = &text[range];
+    let current = if line == line_count {
       raw
     } else {
       markdown::line_content(raw)
     };
-    let next = format!("{prefix}{current}");
-    if next.len() > max_bytes {
+    let required = output.len() + current.len();
+    if required > max_bytes {
       if line_end < start {
         return Err(details(
           "OUTPUT_LIMIT",
           "The first requested line exceeds --max-bytes",
-          json!({
-              "line": line,
-              "maxBytes": max_bytes,
-              "requiredBytes": next.len()
-          }),
+          json!({"line":line,"maxBytes":max_bytes,"requiredBytes":required}),
         ));
       }
-      return Ok((line_end, text));
+      break;
     }
-    text = next;
-    prefix.push_str(raw);
+    visible_end = required;
+    output.push_str(raw);
     line_end = line;
   }
-  Ok((line_end, text))
+  output.truncate(visible_end);
+  Ok((line_end, output))
 }
 
 fn continuation_value(
@@ -213,18 +216,23 @@ fn read_command(project: &Project, id: &str, options: &CommandOptions) -> Result
       json!({"id": id}),
     ));
   };
-  let lines = markdown::raw_markdown_lines(&source.text);
+  let line_count = markdown::raw_line_ranges(&source.text).count();
   let start = options.from.unwrap_or(1);
-  let requested_end = options.to.unwrap_or(lines.len());
-  if start > lines.len() || requested_end > lines.len() || start > requested_end {
+  let requested_end = options.to.unwrap_or(line_count);
+  if start > line_count || requested_end > line_count || start > requested_end {
     return Err(details(
       "INVALID_RANGE",
       format!("Line range {start}-{requested_end} is outside the source"),
-      json!({"id": id, "lineCount": lines.len()}),
+      json!({"id": id, "lineCount": line_count}),
     ));
   }
-  let (line_end, text) = bounded_lines(&lines, start, requested_end, options.max_bytes)?;
-  let continuation = continuation_value(line_end, options.max_bytes, requested_end, lines.len());
+  let (line_end, text) = bounded_text(
+    &source.text,
+    (start, requested_end),
+    options.max_bytes,
+    line_count,
+  )?;
+  let continuation = continuation_value(line_end, options.max_bytes, requested_end, line_count);
   let mut response = Map::new();
   response.insert("command".to_owned(), Value::String("read".to_owned()));
   response.insert("continuation".to_owned(), continuation.clone());

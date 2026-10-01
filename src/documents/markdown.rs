@@ -76,13 +76,6 @@ pub fn raw_line_ranges(text: &str) -> impl Iterator<Item = Range<usize>> + '_ {
   })
 }
 
-/// Split source text without normalizing line endings.
-pub fn raw_markdown_lines(text: &str) -> Vec<String> {
-  raw_line_ranges(text)
-    .map(|range| text[range].to_owned())
-    .collect()
-}
-
 pub fn line_content(line: &str) -> &str {
   line_without_ending(line)
 }
@@ -433,7 +426,7 @@ fn parse_yaml_metadata(yaml: &str) -> Option<(Option<String>, Option<String>)> {
   ))
 }
 
-fn heading_text(events: impl IntoIterator<Item = Event<'static>>) -> Option<String> {
+fn heading_text<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Option<String> {
   let mut depth = 0usize;
   let mut active = false;
   let mut text = String::new();
@@ -462,19 +455,19 @@ fn heading_text(events: impl IntoIterator<Item = Event<'static>>) -> Option<Stri
   None
 }
 
-fn parse_body(body: &str) -> (Option<String>, Vec<String>) {
+fn markdown_options() -> Options {
   let mut options = Options::empty();
   options.insert(Options::ENABLE_TABLES);
   options.insert(Options::ENABLE_STRIKETHROUGH);
   options.insert(Options::ENABLE_TASKLISTS);
   options.insert(Options::ENABLE_FOOTNOTES);
   options.insert(Options::ENABLE_GFM);
-  let events: Vec<Event<'static>> = Parser::new_ext(body, options)
-    .map(Event::into_static)
-    .collect();
-  let title = heading_text(events.clone());
-  let links = events
-    .into_iter()
+  options
+}
+
+fn parse_body(body: &str) -> (Option<String>, Vec<String>) {
+  let title = heading_text(Parser::new_ext(body, markdown_options()));
+  let links = Parser::new_ext(body, markdown_options())
     .filter_map(|event| match event {
       Event::Start(MarkdownTag::Link { dest_url, .. }) if !dest_url.is_empty() => {
         Some(dest_url.into_string())
@@ -483,6 +476,28 @@ fn parse_body(body: &str) -> (Option<String>, Vec<String>) {
     })
     .collect();
   (title, links)
+}
+
+pub fn markdown_references(text: &str) -> impl Iterator<Item = (String, usize)> + '_ {
+  let body = frontmatter(text).map_or(text, |front| front.body);
+  let offset = text.len() - body.len();
+  let mut lines = raw_line_ranges(text).enumerate().peekable();
+  Parser::new_ext(body, markdown_options())
+    .into_offset_iter()
+    .filter_map(move |(event, range)| {
+      let Event::Start(MarkdownTag::Link { dest_url, .. }) = event else {
+        return None;
+      };
+      let start = offset + range.start;
+      while lines
+        .peek()
+        .is_some_and(|(_, line)| line.end <= start && line.start != line.end)
+      {
+        lines.next();
+      }
+      let line = lines.peek().map_or(1, |(line, _)| line + 1);
+      Some((dest_url.into_string(), line))
+    })
 }
 
 pub fn describe_markdown(path: &str, content: &str) -> MarkdownDescription {

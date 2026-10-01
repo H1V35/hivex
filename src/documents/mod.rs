@@ -1,10 +1,9 @@
-pub(crate) use markdown::{
-  hash, is_markdown_path, line_content, raw_line_ranges, raw_markdown_lines,
-};
+pub(crate) use markdown::{hash, is_markdown_path, line_content, raw_line_ranges};
 mod markdown;
 mod navigation;
 mod relations;
 mod search;
+mod validation;
 use crate::error::{HivexError, Result};
 use globset::{GlobBuilder, GlobMatcher};
 #[cfg(not(target_os = "macos"))]
@@ -20,6 +19,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 #[cfg(not(target_os = "macos"))]
 use std::sync::OnceLock;
+pub(crate) use validation::validate_sources;
 
 const DEFAULT_INCLUDE: [&str; 3] = ["**/*.md", "**/*.markdown", "**/*.mdown"];
 const MAX_SOURCE_BYTES: usize = 32 * 1024 * 1024;
@@ -27,7 +27,7 @@ const MAX_CORPUS_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_DOCUMENTS: usize = 2_048;
 const MAX_PATTERNS: usize = 64;
 const PROTECTED_DIRECTORIES: [&str; 3] = [".git", ".hivex", "node_modules"];
-const EXCLUDED_DIRECTORIES: [&str; 3] = ["vendor", "dist", "build"];
+const EXCLUDED_DIRECTORIES: [&str; 4] = ["vendor", "dist", "build", "target"];
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Warning {

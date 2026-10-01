@@ -33,7 +33,7 @@ Documents need no Git repository or committed revision. Keep them at their real 
 }
 ```
 
-Without configuration, Hivex selects Markdown under the project. Dependencies, Git metadata, private dot directories and its own retained state are skipped. Explicit documentation directories can be selected; symlinks, protected directories and scope escapes are rejected. `exclude` wins over `archive`. The old `history` configuration field remains compatible; specifying both `history` and `archive` is invalid. Legacy `collections` configuration requires migration. Archive membership marks history explicitly rather than changing what its original status meant.
+Without configuration, Hivex selects Markdown under the project. Dependencies, Git metadata, generated directories (`vendor`, `dist`, `build`, Rust `target`), private dot directories and retained state are skipped. Explicit include/archive patterns can name generated documentation directories when that scope is intended. Explicit documentation directories can be selected; symlinks, protected directories and scope escapes are rejected. `exclude` wins over `archive`. The old `history` configuration field remains compatible; specifying both `history` and `archive` is invalid. Legacy `collections` configuration requires migration. Archive membership marks history explicitly rather than changing what its original status meant.
 
 ## Recover context
 
@@ -46,7 +46,7 @@ npx hivex relations docs/policy.md --direction both
 npx hivex read docs/policy.md --from 20 --to 45
 ```
 
-All operations use current working-copy sources without model calls or graph/SQLite-state access. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
+All operations use current working-copy sources without model calls or graph/SQLite-state access. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles; read a known authority directly instead of invoking every command by ceremony. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
 
 ### Search source passages
 
@@ -70,9 +70,17 @@ The [authored relationship contract v1](../skills/hivex/references/markdown.md#m
 
 `sources` lists source metadata with `--limit`, `--max-bytes` and snapshot-bound `--cursor`. `read <document> --from <line> --to <line>` returns exact source text and version. Read's `--max-bytes` bounds the text payload on complete line boundaries; metadata remains additional. Inspect `truncated` and `continuation`, and continue when needed. Reading an archived document explicitly preserves its historical flag.
 
+## Validate structure
+
+`check` validates ordinary selected sources. Repeated `--source <document>` restricts the checked authorities/callers; `--historical` includes selected archives explicitly. Historical targets can be validated without adding their declarations to the ordinary backlog. Checks reuse the relationship parser and target/anchor resolver, plus source-coordinate Markdown links; external (including protocol-relative) and non-Markdown links remain outside this scope. Ordinary local links may contain a query, which is ignored when resolving their path/fragment; formal relationship targets retain their stricter query-free grammar. Missing or excluded Markdown targets, escapes and missing/ambiguous anchors are findings. Reserved `## Relationships` blocks must follow the shared grammar; rename a domain section with that heading while preserving its old anchor.
+
+A report contains `checkedDocuments`, `totalFindings`, source versions, located findings, warnings and explicit coverage. `ready` means no findings in its structural scope; `failed` exits with code 1 and JSON on stdout; argument/configuration errors use stderr. Source omissions produce `partial` rather than a certificate of completeness. The checker does not infer relationships, semantic authority, contradiction, implementation or permission.
+
+`--limit` defaults to 20, maximum 2048; `--max-bytes` defaults to 16384, maximum 65536, including the whole serialized JSON. Follow `continuation` with the same options and snapshot; a stale cursor fails. Findings are never cut to fit. A query supports at most 32768 local Markdown references and 2048 findings; excess returns `CHECK_LIMIT` for narrowed validation. Each document supports at most 32768 heading/explicit anchor records; excess returns `ANCHOR_LIMIT` without claiming valid navigation. Query-local reuse retains at most 65536 target anchors across documents; excess also returns `ANCHOR_LIMIT` for narrower source selection.
+
 ## Maintain project knowledge
 
-Before writing, inspect the map and search existing current and relevant historical authorities. Update the existing home for the topic/scope. Keep acceptance, delivery, verification and permission distinct under the [state catalogue](../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Maintain affected Markdown, authored relationships and callers alongside code changes. Check references and supported behavior before integration; independent review judges semantic correctness against a defined source/code revision.
+Before writing, inspect the map and search existing current and relevant historical authorities. Update the existing home for the topic/scope. Keep acceptance, delivery, verification and permission distinct under the [state catalogue](../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Maintain affected Markdown, authored relationships and callers alongside code changes. Validate affected sources with `check --source`, inspect omissions and continuations, and check supported behavior before integration; independent review judges semantic correctness against a defined source/code revision.
 
 <a id="update-and-repair-knowledge"></a>
 ## Migrate from the inferred graph runtime

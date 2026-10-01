@@ -226,6 +226,16 @@ fn source_range_boundaries_preserve_separators_and_unicode() {
 }
 
 #[test]
+fn bounded_read_does_not_materialize_millions_of_blank_lines() {
+  let p = Project::new();
+  p.write("blank.md", "\n".repeat(16 * 1024 * 1024));
+  let read = p.ok(&["read", "blank.md", "--max-bytes", "16384"]);
+  assert!(read["truncated"].as_bool().unwrap());
+  assert!(read["text"].as_str().unwrap().len() <= 16384);
+  assert!(read["continuation"]["from"].as_u64().unwrap() > 16000);
+}
+
+#[test]
 fn glob_matrix_keeps_explicit_hidden_and_vendor_selection() {
   let p = Project::new();
   for name in [
@@ -276,6 +286,16 @@ fn glob_matrix_keeps_explicit_hidden_and_vendor_selection() {
     p.json("hivex.json", &config);
     assert_eq!(paths(&p.ok(&["sources"])), expected, "{config}");
   }
+}
+
+#[test]
+fn generated_rust_outputs_are_skipped_unless_explicitly_selected() {
+  let p = Project::new();
+  p.write("docs/current.md", "# Current\n");
+  p.write("target/generated.md", "# Generated\n");
+  assert_eq!(paths(&p.ok(&["sources"])), ["docs/current.md"]);
+  p.json("hivex.json", &json!({"include":["target/**/*.md"]}));
+  assert_eq!(paths(&p.ok(&["sources"])), ["target/generated.md"]);
 }
 
 #[test]
