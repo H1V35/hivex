@@ -1,5 +1,6 @@
 use crate::support::Project;
 use serde_json::json;
+use std::fmt::Write;
 use std::fs;
 
 fn connected() -> Project {
@@ -263,5 +264,74 @@ fn omitted_sources_and_symlinks_never_claim_complete_navigation() {
   assert_eq!(
     p.error(&["relations", "a.md", "--direction", "outgoing"])["error"]["code"],
     "INVALID_RELATION"
+  );
+}
+
+#[test]
+fn comments_and_raw_html_text_do_not_create_destination_anchors() {
+  let p = connected();
+  p.write(
+    "a.md",
+    "## Relationships\n- Depends on [B](b.md#phantom): reason\n",
+  );
+  for hidden in [
+    "<!-- <a id=\"phantom\"></a> -->",
+    "<script>\n<a id=\"phantom\"></a>\n</script>",
+    "<style>\n<a id=\"phantom\"></a>\n</style>",
+    "<textarea><a id=\"phantom\"></a></textarea>",
+    "<div title='<fake> <a id=\"phantom\"></a>'></div>",
+  ] {
+    p.write("b.md", format!("# B\n{hidden}\n\n<a id=\"real\"></a>\n"));
+    assert_eq!(
+      p.error(&["relations", "a.md", "--direction", "outgoing"])["error"]["code"],
+      "INVALID_RELATION"
+    );
+    p.write(
+      "a.md",
+      "## Relationships\n- Depends on [B](b.md#real): reason\n",
+    );
+    assert_eq!(
+      p.ok(&["relations", "a.md", "--direction", "outgoing"])["relations"][0]["to"]["anchor"],
+      "real"
+    );
+    p.write(
+      "a.md",
+      "## Relationships\n- Depends on [B](b.md#phantom): reason\n",
+    );
+  }
+}
+
+#[test]
+fn excessive_declarations_fail_explicitly_before_result_materialization() {
+  let p = connected();
+  let mut entries = String::new();
+  for i in 0..2049 {
+    writeln!(entries, "- Depends on [B](b.md): scope {i}").unwrap();
+  }
+  p.write("a.md", format!("## Relationships\n{entries}"));
+  let error = p.error(&[
+    "relations",
+    "a.md",
+    "--direction",
+    "outgoing",
+    "--limit",
+    "1",
+  ]);
+  assert_eq!(error["error"]["code"], "RELATION_LIMIT");
+  assert_eq!(error["error"]["details"]["line"], 2050);
+  let first = entries.lines().take(1025).collect::<Vec<_>>().join("\n");
+  let second = entries.lines().skip(1025).collect::<Vec<_>>().join("\n");
+  p.write("a.md", format!("## Relationships\n{first}\n"));
+  p.write("c.md", format!("## Relationships\n{second}\n"));
+  assert_eq!(
+    p.error(&[
+      "relations",
+      "b.md",
+      "--direction",
+      "incoming",
+      "--limit",
+      "1"
+    ])["error"]["code"],
+    "RELATION_LIMIT"
   );
 }

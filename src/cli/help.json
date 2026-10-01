@@ -14,6 +14,7 @@
     {
       "modelCalls": 0,
       "name": "relations",
+      "maxScannedDeclarations": 2048,
       "usage": "relations <document> [--direction outgoing|incoming|both] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]"
     },
     {

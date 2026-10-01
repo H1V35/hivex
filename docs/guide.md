@@ -94,6 +94,8 @@ The [shared relationship contract](../skills/hivex/references/markdown.md#make-r
 
 `--limit` defaults to 20 (maximum 2048), and `--max-bytes` defaults to 16384 (maximum 65536). The byte limit covers the complete serialized UTF-8 JSON response; no relation is cut. Follow a non-null `continuation` with `--cursor` and the same query options. Changed sources or options return `INVALID_CURSOR`; a complete next entry that cannot fit returns `OUTPUT_LIMIT`. Source-discovery warnings produce `status: partial` and `coverage: partial`; inspect those warnings before treating navigation as complete. Otherwise coverage is `selected-sources`, not every file in the repository. Structural validation does not certify the meaning of an authored relationship.
 
+A query validates at most 2048 authored declarations across the sources it scans. Exceeding that limit returns `RELATION_LIMIT` with a source line, even if the requested page is small; the CLI never silently drops excess declarations or claims complete coverage. Narrow selected sources or use outgoing navigation for one document when a larger repository reaches this bound.
+
 ### Current sources and accessible history
 
 Declare replaced history separately from ordinary source selection:

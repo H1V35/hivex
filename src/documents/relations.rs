@@ -6,6 +6,8 @@ use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use url::Url;
 
+pub const MAX_RELATIONS: usize = 2_048;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RelationKind {
@@ -68,6 +70,7 @@ struct MarkdownScan {
   heading: Option<Heading>,
   headings: Vec<Heading>,
   explicit_anchors: Vec<ExplicitAnchor>,
+  ignored_html_until: Option<&'static str>,
 }
 
 impl MarkdownScan {
@@ -105,7 +108,7 @@ impl MarkdownScan {
         }
       }
       Event::Html(html) | Event::InlineHtml(html) if self.blockquote_depth == 0 => {
-        for (id, offset) in explicit_ids(&html) {
+        for (id, offset) in explicit_ids(&html, &mut self.ignored_html_until) {
           self.explicit_anchors.push(ExplicitAnchor {
             id,
             offset: self.body_offset + range.start + offset,
@@ -166,18 +169,89 @@ fn markdown_options() -> Options {
   options
 }
 
-fn explicit_ids(html: &str) -> Vec<(String, usize)> {
+fn explicit_ids(html: &str, ignored_until: &mut Option<&'static str>) -> Vec<(String, usize)> {
   const PREFIX: &str = "<a id=\"";
   const SUFFIX: &str = "\">";
-  html
-    .match_indices(PREFIX)
-    .filter_map(|(start, _)| {
-      let id_start = start + PREFIX.len();
-      let suffix_start = id_start + html[id_start..].find(SUFFIX)?;
-      let id = &html[id_start..suffix_start];
-      (!id.is_empty() && !id.chars().any(char::is_whitespace)).then(|| (id.to_owned(), start))
-    })
-    .collect()
+  let lower = html.to_ascii_lowercase();
+  let mut cursor = 0;
+  let mut result = Vec::new();
+  while cursor < html.len() {
+    if let Some(ending) = *ignored_until {
+      let Some(end) = lower[cursor..].find(ending) else {
+        break;
+      };
+      cursor += end + ending.len();
+      *ignored_until = None;
+      continue;
+    }
+    let Some(start) = html[cursor..].find('<') else {
+      break;
+    };
+    let start = cursor + start;
+    if lower[start..].starts_with("<!--") {
+      *ignored_until = Some("-->");
+      cursor = start + 4;
+      continue;
+    }
+    let Some(end) = html_tag_end(&html[start..]) else {
+      break;
+    };
+    cursor = start + end + 1;
+    let tag = &lower[start..cursor];
+    if let Some(ending) = raw_text_ending(tag) {
+      *ignored_until = Some(ending);
+      continue;
+    }
+    let Some(id) = html[start..cursor]
+      .strip_prefix(PREFIX)
+      .and_then(|tag| tag.strip_suffix(SUFFIX))
+    else {
+      continue;
+    };
+    if !id.is_empty()
+      && !id
+        .chars()
+        .any(|value| value.is_whitespace() || ['"', '<', '>', '&'].contains(&value))
+    {
+      result.push((id.to_owned(), start));
+    }
+  }
+  result
+}
+
+fn html_tag_end(tag: &str) -> Option<usize> {
+  let mut quote = None;
+  for (index, character) in tag.char_indices() {
+    match (quote, character) {
+      (Some(expected), actual) if expected == actual => quote = None,
+      (None, '\'' | '"') => quote = Some(character),
+      (None, '>') => return Some(index),
+      _ => {}
+    }
+  }
+  None
+}
+
+fn raw_text_ending(tag: &str) -> Option<&'static str> {
+  [
+    ("script", "</script"),
+    ("style", "</style"),
+    ("textarea", "</textarea"),
+    ("title", "</title"),
+    ("xmp", "</xmp"),
+    ("iframe", "</iframe"),
+    ("noembed", "</noembed"),
+    ("noframes", "</noframes"),
+    ("plaintext", "\0"),
+  ]
+  .into_iter()
+  .find_map(|(name, ending)| {
+    tag
+      .strip_prefix('<')
+      .and_then(|tag| tag.strip_prefix(name))
+      .filter(|suffix| suffix.starts_with('>') || suffix.starts_with(char::is_whitespace))
+      .map(|_| ending)
+  })
 }
 
 fn scan_markdown(text: &str) -> MarkdownScan {
@@ -393,6 +467,15 @@ pub fn parse(text: &str) -> Result<Vec<DraftRelation>> {
   for number in start_line..=end_line {
     let line = line_content(&lines[number - 1]);
     if !line.trim().is_empty() {
+      if relations.len() == MAX_RELATIONS {
+        return Err(
+          HivexError::new(
+            "RELATION_LIMIT",
+            "At most 2048 authored declarations are supported per query",
+          )
+          .with_details(json!({"line":number,"limit":MAX_RELATIONS})),
+        );
+      }
       relations.push(parse_relation_line(line, number)?);
     }
   }

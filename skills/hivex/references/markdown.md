@@ -46,7 +46,7 @@ Use an ADR when the choice is consequential, reflects a real trade-off and would
 
 ## Make relationships explicit
 
-The authored relationship contract v1 is a single root `## Relationships` block per document. Its entries use one exact literal, one inline Markdown target and a nonempty explanation on one unordered bullet line. Blank lines are allowed; unknown labels, aliases, bold labels, free prose, multiple links, duplicate declarations or another Relationships block are diagnostics, not inferred relationships. Ordinary prose and links outside the block remain ordinary Markdown.
+The authored relationship contract v1 is a single root `## Relationships` block per document. Its entries use one exact literal, one plain inline Markdown target and a nonempty plain-text explanation on one unindented hyphen bullet line (`- `). Blank lines are allowed; unknown labels, aliases, bold labels, free prose, multiple links, duplicate declarations or another Relationships block are diagnostics, not inferred relationships. Ordinary prose and links outside the block remain ordinary Markdown.
 
 | Exact literal | Authored direction |
 |---|---|
@@ -70,6 +70,8 @@ Use only relevant entries, not every type in each document:
 Targets are selected relative Markdown sources, optionally with an exact heading or explicit ID fragment; same-document `#anchor` links are valid. The CLI resolves the target range and current source version. It rejects missing or ambiguous anchors, out-of-project/excluded sources and malformed formal entries instead of guessing. A relationship source is the document; its declaration coordinates identify the entry. An anchor destination does not invent a section-specific source entity.
 
 Heading IDs lowercase the rendered heading text, remove ASCII punctuation except hyphen/underscore, and replace whitespace with hyphens. Repeated IDs receive `-1`, `-2` and subsequent available suffixes in document order. For a stable ID independent of heading text, use `<a id="identifier"></a>`; IDs are exact and must not collide with another explicit or generated ID. Fenced code and quoted headings/anchors are not targets. A heading range ends before the next heading of the same or higher level; an explicit ID starts at its marker and includes the nearest following heading's section (or the preceding section if no heading follows). This supported anchor convention is deterministic; do not assume every external Markdown renderer uses the same slug algorithm.
+
+HTML comments and raw-text elements such as `script`, `style` and `textarea` do not create anchors. Navigation validates at most 2048 declarations across its scanned sources; excess returns `RELATION_LIMIT`, without truncating validation or reporting a complete result.
 
 `relations <document>` returns direct authored connections and incoming connections from ordinary sources, with the declared `from`/`to` unchanged. It reads historical declarations only when that source is queried explicitly; historical destinations remain reachable. Pagination binds its cursor to the source snapshot and query options, counts the complete serialized UTF-8 response and never cuts a relation. Explicit coverage limits remain visible. Navigation does not infer relationships, recurse automatically or certify semantic truth.
 

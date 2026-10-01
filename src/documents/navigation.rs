@@ -1,4 +1,4 @@
-use super::relations::{DraftRelation, RelationKind, anchors, parse};
+use super::relations::{DraftRelation, MAX_RELATIONS, RelationKind, anchors, parse};
 use super::{
   Document, Project, has_uri_scheme, normalize_path, percent_decode, raw_markdown_lines,
 };
@@ -180,6 +180,7 @@ pub fn relations(project: &Project, id: &str, direction: &str) -> Result<Vec<Aut
   });
   let mut result = Vec::new();
   let mut seen = HashSet::new();
+  let mut count = 0;
   for source in sources {
     let declarations = parse(&source.text).map_err(|mut error| {
       error.details.get_or_insert(serde_json::json!({}))["document"] = serde_json::json!(source.id);
@@ -187,6 +188,11 @@ pub fn relations(project: &Project, id: &str, direction: &str) -> Result<Vec<Aut
       error
     })?;
     for relation in declarations {
+      count += 1;
+      if count > MAX_RELATIONS {
+        return Err(HivexError::new("RELATION_LIMIT", "At most 2048 authored declarations are supported per query")
+          .with_details(serde_json::json!({"document":source.id,"line":relation.line_start,"limit":MAX_RELATIONS})));
+      }
       let resolved = resolve(project, source, relation)?;
       let identity = serde_json::to_string(&(
         &resolved.literal,
