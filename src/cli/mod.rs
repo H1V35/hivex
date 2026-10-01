@@ -2,6 +2,7 @@ mod arguments;
 mod commands;
 mod documents;
 mod options;
+mod relations;
 mod snapshot;
 use crate::error::Result;
 #[cfg(test)]
@@ -13,6 +14,7 @@ pub fn run(args: &[String]) -> Result<Value> {
   }
   match args[0].as_str() {
     "sources" | "read" => documents::command(args),
+    "relations" => relations::command(args),
     "init" => commands::initialize(args),
     "recover" | "prune" => commands::maintenance(args),
     "snapshot" => snapshot::command(args),

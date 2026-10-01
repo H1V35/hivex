@@ -1,11 +1,14 @@
 pub(crate) use markdown::{hash, is_markdown_path, line_content, raw_markdown_lines, source_range};
 mod markdown;
+mod navigation;
+mod relations;
 use crate::error::{HivexError, Result};
 use globset::{GlobBuilder, GlobMatcher};
 #[cfg(not(target_os = "macos"))]
 use icu_collator::{Collator, options::CollatorOptions};
 #[cfg(not(target_os = "macos"))]
 use icu_locale_core::locale;
+pub(crate) use navigation::relations as authored_relations;
 use serde_json::{Map, Value, json};
 use std::cmp::Ordering;
 use std::collections::HashSet;

@@ -46,25 +46,36 @@ Use an ADR when the choice is consequential, reflects a real trade-off and would
 
 ## Make relationships explicit
 
-Put the relationship next to the rule that owns it. Use an ordinary Markdown link to the relevant decision or stable section, and a short explanation of why it matters. Keep conditions and exceptions with the rule; no separate relation database or mandatory frontmatter schema is needed.
+The authored relationship contract v1 is a single root `## Relationships` block per document. Its entries use one exact literal, one plain inline Markdown target and a nonempty plain-text explanation on one unindented hyphen bullet line (`- `). Blank lines are allowed; unknown labels, aliases, bold labels, free prose, multiple links, duplicate declarations or another Relationships block are diagnostics, not inferred relationships. Ordinary prose and links outside the block remain ordinary Markdown.
 
-- **Depends on** points from a rule to its prerequisite. State the condition if it applies only in a particular case.
-- **Exception to** points from the scoped exception to the base rule it qualifies.
-- **Supersedes** points from the current replacement to preserved history; name any scope that remains applicable.
-- **Applied by** points from a policy to the procedure that carries it out. A procedure can link back with **Implements**.
+| Exact literal | Authored direction |
+|---|---|
+| `Depends on` | Dependent decision → prerequisite |
+| `Exception to` | Scoped exception → base rule |
+| `Supersedes` | Current replacement → prior decision; name any live part of a partial replacement |
+| `Implements` | Procedure or rule → policy it carries out |
+| `Extends` | Added scope → base decision; extension does not imply a prerequisite |
 
-For example:
+Use only relevant entries, not every type in each document:
 
 ```markdown
 ## Relationships
 
-- Depends on [retention policy](../guidelines/retention.md#work-records): unfinished attempts must survive cleanup.
-- Exception to [default cleanup](../procedures/cleanup.md#completed-work): referenced replacement work remains protected.
+- Depends on [Retention policy](../guidelines/retention.md#work-records): unfinished attempts must survive cleanup.
+- Exception to [Default cleanup](../procedures/cleanup.md#completed-work): referenced replacement work remains protected.
 ```
 
-These directions describe meaning, not execution order. Do not declare a prerequisite merely because two topics are related. Authors and reviewers judge the relationship; a link checker verifies the target exists but cannot certify its truth.
+`Replaces`, `Extended by` and `Applied by` are not authored aliases. Express replacement with `Supersedes` and put `Extends`/`Implements` in the authority that owns the extension or procedure. Incoming navigation computes the inverse without storing a duplicate statement. Preserve the meaning and condition when normalizing existing prose; do not turn an extension into a dependency.
 
-Use the authority map to choose the initial source, then follow relevant links, including indirect dependencies. Read enough of each target to recover its conditions, exceptions and replacements. A compact map can save repeated reading without claiming the repository is semantically complete. Update both the relationship and its callers when a target or scope changes.
+Targets are selected relative Markdown sources, optionally with an exact heading or explicit ID fragment; same-document `#anchor` links are valid. The CLI resolves the target range and current source version. It rejects missing or ambiguous anchors, out-of-project/excluded sources and malformed formal entries instead of guessing. A relationship source is the document; its declaration coordinates identify the entry. An anchor destination does not invent a section-specific source entity.
+
+Heading IDs lowercase the rendered heading text, remove ASCII punctuation except hyphen/underscore, and replace whitespace with hyphens. Repeated IDs receive `-1`, `-2` and subsequent available suffixes in document order. For a stable ID independent of heading text, use `<a id="identifier"></a>`; IDs are exact and must not collide with another explicit or generated ID. Fenced code and quoted headings/anchors are not targets. A heading range ends before the next heading of the same or higher level; an explicit ID starts at its marker and includes the nearest following heading's section (or the preceding section if no heading follows). This supported anchor convention is deterministic; do not assume every external Markdown renderer uses the same slug algorithm.
+
+HTML comments and raw-text elements such as `script`, `style` and `textarea` do not create anchors. Navigation validates at most 2048 declarations across its scanned sources; excess returns `RELATION_LIMIT`, without truncating validation or reporting a complete result.
+
+`relations <document>` returns direct authored connections and incoming connections from ordinary sources, with the declared `from`/`to` unchanged. It reads historical declarations only when that source is queried explicitly; historical destinations remain reachable. Pagination binds its cursor to the source snapshot and query options, counts the complete serialized UTF-8 response and never cuts a relation. Explicit coverage limits remain visible. Navigation does not infer relationships, recurse automatically or certify semantic truth.
+
+Authors and reviewers judge meaning, reason and conditions. A deterministic reader/checker verifies syntax, direction encoding, selected targets and anchors. Follow relevant links, including indirect dependencies, by querying the next document and reading the cited destination range. Update relationship entries and callers when a target or scope changes.
 
 ## Compact an ADR without losing its history
 
@@ -85,3 +96,7 @@ Before changing behavior, recover the existing authority and follow its relevant
 Use a short `AGENTS.md` with orientation and knowledge pointers, development/verification guidance and project-specific constraints only where needed. Link the relevant authority with enough context to know when it matters. Do not duplicate the PRD, glossary or guidelines, or require every document on every task.
 
 The public [AGENTS.md convention](https://agents.md/) is ordinary Markdown without required fields. The foundation supplies a consistent starting shape rather than another schema or a line-count gate.
+
+## Relationships
+
+- Implements [Selective history](../../../docs/adr/0011-shared-knowledge-and-selective-history.md): authors preserve dates and provenance while keeping live authorities concise.

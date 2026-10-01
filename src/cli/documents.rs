@@ -22,7 +22,11 @@ fn error(code: &str, message: impl Into<String>) -> HivexError {
 fn details(code: &str, message: impl Into<String>, value: Value) -> HivexError {
   error(code, message).with_details(value)
 }
-fn positive_integer(value: Option<&String>, label: &str, fallback: Option<usize>) -> Result<usize> {
+pub(super) fn positive_integer(
+  value: Option<&String>,
+  label: &str,
+  fallback: Option<usize>,
+) -> Result<usize> {
   let Some(value) = value else {
     return fallback.ok_or_else(|| error("INVALID_ARGUMENT", format!("{label} is required")));
   };

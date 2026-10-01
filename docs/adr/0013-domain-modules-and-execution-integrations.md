@@ -27,10 +27,12 @@ Keep tests at observable boundaries: domain invariants, persisted v1 data, failu
 
 ## Relationships
 
-- **Preserves** the source-first product scope and optional graph status in [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md).
-- **Depends on** [ADR 0010](0010-practical-knowledge-assistance.md) for the current optional model-assisted runtime and its work/data guarantees.
-- **Implemented in** the Rust CLI and verified under the [Guide's development procedure](../guide.md#development).
-- **Historical rationale and delivery dates** remain in the [original ADR 0013 record](../archive/adr/0013-domain-modules-and-execution-integrations.md).
+- Depends on [Product runtime contract](0010-practical-knowledge-assistance.md): optional model work preserves its accounting and data guarantees.
+- Extends [Reliable Markdown](0014-reliable-markdown-and-explicit-relationships.md): records runtime and execution boundaries without requiring graph use.
+
+## History and verification
+
+The Rust CLI is verified under the [development procedure](../guide.md#development). Historical rationale and delivery dates remain in the [original ADR 0013 record](../archive/adr/0013-domain-modules-and-execution-integrations.md).
 
 <a id="explicit-profile-continuity-148"></a>
 ## Explicit profile continuity

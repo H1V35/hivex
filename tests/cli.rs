@@ -1,5 +1,6 @@
 mod support;
 mod contracts {
+  pub mod authored_relations;
   pub mod codex;
   pub mod documents;
   pub mod incremental_reuse;

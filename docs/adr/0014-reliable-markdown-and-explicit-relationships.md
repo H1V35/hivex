@@ -16,6 +16,8 @@ The owner approved prioritizing a reliable Markdown base, archived history and e
 
 Maintain one current authority for each meaningful topic. The documentation map directs a task to the relevant sources. Authors state dependencies, exceptions and replacements as ordinary Markdown links with their relationship and scope, rather than relying on inferred edges. Follow those links, including indirect dependencies, only as far as the task requires.
 
+The [shared authored relationship contract v1](../../skills/hivex/references/markdown.md#make-relationships-explicit) fixes five literals, their direction and an exact `## Relationships` block. Deterministic CLI navigation resolves selected targets and cited ranges, reports incomplete coverage and rejects malformed or ambiguous declarations. Authors and reviewers remain responsible for semantic correctness; no model guesses the relationship type or reverses its meaning.
+
 Before writing, the agent checks the map and searches existing current and relevant historical knowledge for that topic. Read likely matches and their replacements; update the existing authority for the same scope. Create another document only after establishing a distinct useful responsibility. This prevents parallel sources of truth from diverging.
 
 Use the [shared decision/delivery state catalogue](../../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Approval, implementation, verification and permission are separate claims: an accepted future decision is not an implemented feature or an implementation GO. Missing state is unknown; current applicability still depends on scope, conditions and replacements.
@@ -38,7 +40,13 @@ Preserve existing graph snapshots, SQLite records, failed candidates, attempts, 
 
 ## Relationships
 
-- Depends on [versioned source authority](0001-versioned-project-knowledge.md), [selective archival](0011-shared-knowledge-and-selective-history.md) and [the project foundation](0012-project-foundation-and-workflow.md).
-- Supersedes the mandatory inferred-graph requirement in [the prior product contract](../archive/adr/0010-practical-knowledge-assistance.md) and the graph-completeness/zero-warning merge gate in [the former foundation policy](../archive/adr/0012-project-foundation-and-workflow.md#knowledge-before-merge-2026-09-18).
-- Preserves [runtime, data and execution compatibility](0013-domain-modules-and-execution-integrations.md); no runtime migration or model selection is implied.
-- Implemented in the [source-reading guide](../guide.md#recover-context) and [engineering policy](../guidelines/engineering.md#knowledge-before-merge). Choosing the future retrieval accelerator requires separate evidence.
+- Depends on [Versioned source authority](0001-versioned-project-knowledge.md): exact sources and their conditions govern current work.
+- Depends on [Selective archival](0011-shared-knowledge-and-selective-history.md): replaced reasoning remains available without ordinary ingestion.
+- Depends on [Project foundation](0012-project-foundation-and-workflow.md): reusable capabilities support the source-reading workflow.
+- Implements [Versioned source authority](0001-versioned-project-knowledge.md): the reliable Markdown workflow applies source authority through focused reading and explicit references.
+- Supersedes [Prior mandatory graph contract](../archive/adr/0010-practical-knowledge-assistance.md): replaces the mandatory inferred-graph requirement only; runtime/data safety stays applicable.
+- Supersedes [Former graph merge gate](../archive/adr/0012-project-foundation-and-workflow.md#knowledge-before-merge-2026-09-18): whole-graph completeness and globally zero warnings are no longer integration prerequisites; applicable source/code defects still block.
+
+## Preserved contracts and application
+
+[Runtime, data and execution compatibility](0013-domain-modules-and-execution-integrations.md) remain unchanged. The [source-reading guide](../guide.md#recover-context) and [engineering policy](../guidelines/engineering.md#knowledge-before-merge) apply this decision. Choosing a future retrieval accelerator requires separate evidence.

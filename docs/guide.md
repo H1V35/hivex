@@ -74,14 +74,27 @@ Start with [the documentation map](README.md), choose the task's current authori
 ```sh
 npx hivex sources --limit 20
 npx hivex search "cache access revocation"
+npx hivex relations docs/policy.md --direction both
 npx hivex read docs/policy.md --from 20 --to 45
 ```
 
-`sources`, `search` and `read` make no model calls. Search returns source matches as well as available derived decisions; verify a result against its current Markdown. A preview, status label or graph entry does not settle applicability. Read the complete condition and exception, and follow authored dependencies, qualifications and replacements, including indirect ones.
+`sources`, `search`, `relations` and `read` make no model calls. Search returns source matches as well as available derived decisions; verify a result against its current Markdown. A preview, status label or graph entry does not settle applicability. Read the complete condition and exception, and follow authored dependencies, qualifications and replacements, including indirect ones.
 
 The [relationship convention](../skills/hivex/references/markdown.md#make-relationships-explicit) uses ordinary Markdown links with a reason and scope. Choose the source by the relationship's meaning rather than loading every document. Record the source version and any unread continuation; do not infer a missing decision from a partial excerpt.
 
 Apply settled decisions autonomously. Expand with available documentation and tools when the first passage is insufficient. Ask the owner only after those routes cannot resolve a consequential question, with the evidence, impact and a recommendation.
+
+### Navigate authored relationships
+
+`relations <document>` reads the current selected Markdown directly, without a graph, SQLite store or model. The document is an exact source ID from `sources`; it does not accept a fragment. Use `--direction outgoing`, `incoming` or `both` (default) to choose direct connections. Incoming navigation scans ordinary sources and the queried source; other archived declarations are excluded. Historical destinations remain reachable, and querying an archived source explicitly reads its own declarations.
+
+Each result preserves the authored `kind`, exact `literal`, `from`, `to` and `reason`. `navigation` is `outgoing`, `incoming` or `self`; it never reverses the written statement. References include the document, optional destination anchor, current version, historical flag and one-based `lineStart`/`lineEnd`. Read the destination range with `read`, then query that document to follow relevant indirect dependencies. Navigation does not recursively load the corpus.
+
+The [shared relationship contract](../skills/hivex/references/markdown.md#make-relationships-explicit) defines the five literals and one-line entries under exact `## Relationships`. Missing targets, malformed entries, duplicate declarations and missing or ambiguous anchors return errors with source coordinates. Ordinary links outside this block are not formal relationships. An empty result means no declared connections within the reported source coverage, not proof that no relevant decision exists; use the map, search and reading to expand the evidence.
+
+`--limit` defaults to 20 (maximum 2048), and `--max-bytes` defaults to 16384 (maximum 65536). The byte limit covers the complete serialized UTF-8 JSON response; no relation is cut. Follow a non-null `continuation` with `--cursor` and the same query options. Changed sources or options return `INVALID_CURSOR`; a complete next entry that cannot fit returns `OUTPUT_LIMIT`. Source-discovery warnings produce `status: partial` and `coverage: partial`; inspect those warnings before treating navigation as complete. Otherwise coverage is `selected-sources`, not every file in the repository. Structural validation does not certify the meaning of an authored relationship.
+
+A query validates at most 2048 authored declarations across the sources it scans. Exceeding that limit returns `RELATION_LIMIT` with a source line, even if the requested page is small; the CLI never silently drops excess declarations or claims complete coverage. Narrow selected sources or use outgoing navigation for one document when a larger repository reaches this bound.
 
 ### Current sources and accessible history
 
@@ -161,3 +174,7 @@ Commit maintained Markdown, explicit relationships and preserved history togethe
 ## Support an implementation review
 
 Read the task's sources and explicit relationships, then independently assess scope, correctness and standards. Optional model-assisted review and zero-call saved-report checks are documented in [the CLI reference](reference/graph-cli.md#support-an-implementation-review). Assistance is not implementation approval.
+
+## Relationships
+
+- Implements [Reliable Markdown workflow](adr/0014-reliable-markdown-and-explicit-relationships.md#decision): focused reading and authored navigation apply the source-first policy.

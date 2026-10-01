@@ -17,7 +17,7 @@ For adoption, `init` prepares missing documents and configuration without model 
 
 ## Recover sources before deciding
 
-Choose the current authority from the task route in the documentation map. Start with focused `search` and `read`; both are deterministic and make no model calls. Inspect the exact passage and source version, including conditions, exceptions and replacements. A search preview or accepted label does not establish applicability.
+Choose the current authority from the task route in the documentation map. Start with focused `search`, `relations` and `read`; they are deterministic and make no model calls. `relations <document>` preserves authored direction and resolves destination ranges; inspect its coverage, warnings and continuation. Read the exact passage and source version, including conditions, exceptions and replacements. A search preview, empty relationship result or accepted label does not establish applicability.
 
 Follow authored dependencies and qualifications, including indirect relationships, until the task has enough evidence. Read archive material only when it explains a relevant history, replacement or unresolved condition. Reuse current context rather than repeating queries per file or reading every document.
 
