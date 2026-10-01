@@ -282,7 +282,9 @@ fn scan_markdown(text: &str) -> MarkdownScan {
   while let Some((event, mut range)) = events.next() {
     if matches!(event, Event::Html(_) | Event::InlineHtml(_)) {
       while events.peek().is_some_and(|(next, next_range)| {
-        matches!(next, Event::Html(_) | Event::InlineHtml(_)) && next_range.start == range.end
+        matches!(next, Event::Html(_) | Event::InlineHtml(_))
+          && next_range.start >= range.end
+          && body[range.end..next_range.start].trim().is_empty()
       }) {
         range.end = events.next().expect("peeked event").1.end;
       }
