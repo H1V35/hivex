@@ -67,8 +67,11 @@ fn empty_project_initialization_creates_the_complete_foundation() {
       .split_once("\n---\n")
       .unwrap()
       .0;
-    assert!(header.lines().any(|line| line.starts_with("title: ")));
-    assert!(header.lines().any(|line| line.starts_with("status: ")));
+    let keys: Vec<_> = header
+      .lines()
+      .filter_map(|line| line.split_once(':').map(|(key, _)| key))
+      .collect();
+    assert_eq!(keys, ["title", "status", "created_at", "tags"]);
     assert!(!text.contains("updated_at:"));
     assert!(!text.contains("archived_at:"));
   }

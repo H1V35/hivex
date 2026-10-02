@@ -2,7 +2,8 @@
 title: "Engineering"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-01
+updated_at: 2026-10-02
+tags: [engineering, quality, workflow]
 ---
 
 # Engineering
@@ -57,4 +58,4 @@ Start with the documentation map and relevant Markdown authorities, using determ
 
 Keep the source and implementation revisions reviewed identifiable. Close the review when its concrete findings are resolved or an owner decision is needed. A bounded evidence update may resolve a concrete finding; a changed source or implementation requires review of the affected scope again. This policy complements independent implementation review, relevant behavioral checks and the project's existing merge authorization in the [tracker procedure](../procedures/issue-tracker.md).
 
-Keep decision approval separate from implementation and verification under the project decision/delivery catalogue. Reconcile affected authorities alongside code changes to prevent invented rules and contradictions.
+Keep decision approval separate from implementation and verification under the project decision/implementation catalogue. Reconcile affected authorities alongside code changes to prevent invented rules and contradictions.

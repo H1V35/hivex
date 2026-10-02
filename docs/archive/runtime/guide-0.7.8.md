@@ -2,10 +2,10 @@
 title: "Hivex guide"
 status: historical
 created_at: 2026-09-17
+updated_at: 2026-10-02
 archived_at: 2026-10-01
-source_path: docs/guide.md
-source_revision: 180ea2750e0da9253494b02e7bbbb25938720758
-updated_at: 2026-10-01
+tags: [history, cli, retrieval]
+source: https://github.com/H1V35/hivex/blob/180ea2750e0da9253494b02e7bbbb25938720758/docs/guide.md
 ---
 
 # Hivex guide

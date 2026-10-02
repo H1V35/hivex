@@ -2,7 +2,8 @@
 title: "Swift standard"
 status: draft
 created_at: 2026-09-28
-updated_at: 2026-09-28
+updated_at: 2026-10-02
+tags: [swift, quality]
 ---
 
 # Swift standard

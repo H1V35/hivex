@@ -2,10 +2,10 @@
 title: Independent Bun installation
 status: accepted
 created_at: 2026-09-07
+updated_at: 2026-10-02
 archived_at: 2026-10-01
-source_path: docs/adr/0003-independent-bun-installation.md
-source_revision: 1e3768f65f901522a63e00bde51069020049e123
-updated_at: 2026-10-01
+tags: [adr, installation, history]
+source: https://github.com/H1V35/hivex/blob/1e3768f65f901522a63e00bde51069020049e123/docs/adr/0003-independent-bun-installation.md
 ---
 
 # Independent Bun installation

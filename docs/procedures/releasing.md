@@ -2,7 +2,8 @@
 title: "Native package release"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-01
+updated_at: 2026-10-02
+tags: [release, distribution]
 ---
 
 # Native package release

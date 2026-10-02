@@ -82,7 +82,8 @@ pub fn line_content(line: &str) -> &str {
 
 pub(super) struct Frontmatter<'a> {
   pub(super) body: &'a str,
-  yaml: &'a str,
+  pub(super) yaml: &'a str,
+  pub(super) yaml_offset: usize,
 }
 
 pub(super) fn frontmatter(text: &str) -> Option<Frontmatter<'_>> {
@@ -102,6 +103,7 @@ pub(super) fn frontmatter(text: &str) -> Option<Frontmatter<'_>> {
       return Some(Frontmatter {
         body: &opening[end..],
         yaml: &opening[yaml_start..cursor],
+        yaml_offset: text.len() - opening.len() + yaml_start,
       });
     }
     cursor = end;
@@ -233,6 +235,16 @@ fn scalar_value(value: &str, style: ScalarStyle, tag: Option<&Tag>) -> Option<No
     Some("null" | "str" | _) => Some(Node::String(value.to_owned())),
     None if style != ScalarStyle::Plain => Some(Node::String(value.to_owned())),
     None => Some(plain_scalar(value)),
+  }
+}
+
+pub(super) fn metadata_text(value: &str, style: ScalarStyle, tag: Option<&Tag>) -> Option<String> {
+  if tag.is_some() && explicit_tag_name(tag).as_deref() != Some("str") {
+    return None;
+  }
+  match scalar_value(value, style, tag)? {
+    Node::String(text) => Some(text),
+    _ => None,
   }
 }
 

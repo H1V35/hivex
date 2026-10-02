@@ -2,7 +2,8 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-01
+updated_at: 2026-10-02
+tags: [adr, workflow, adoption]
 ---
 
 # Project foundation and adaptive workflow

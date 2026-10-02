@@ -2,10 +2,10 @@
 title: Native knowledge candidates before graph admission
 status: accepted
 created_at: 2026-09-07
+updated_at: 2026-10-02
 archived_at: 2026-10-01
-source_path: docs/adr/0002-native-knowledge-candidates.md
-source_revision: 1e3768f65f901522a63e00bde51069020049e123
-updated_at: 2026-10-01
+tags: [adr, history, runtime]
+source: https://github.com/H1V35/hivex/blob/1e3768f65f901522a63e00bde51069020049e123/docs/adr/0002-native-knowledge-candidates.md
 ---
 
 # Native knowledge candidates before graph admission
