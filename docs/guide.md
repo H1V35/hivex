@@ -94,7 +94,7 @@ A report contains `checkedDocuments`, `totalFindings`, source versions, located 
 
 ## Maintain project knowledge
 
-Before writing, inspect the map and search existing current and relevant historical authorities. Update the existing home for the topic/scope. Keep acceptance, delivery, verification and permission distinct under the [state catalogue](../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Maintain affected Markdown, authored relationships and callers alongside code changes. Validate affected sources with `check --source`, inspect omissions and continuations, and check supported behavior before integration; independent review judges semantic correctness against a defined source/code revision.
+Before writing, inspect the map and search existing current and relevant historical authorities. Update the existing home for the topic/scope. Keep acceptance, implementation, verification and permission distinct under the [state catalogue](../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Maintain affected Markdown, authored relationships and callers alongside code changes. Validate affected sources with `check --source`, inspect omissions and continuations, and check supported behavior before integration; independent review judges semantic correctness against a defined source/code revision.
 
 <a id="update-and-repair-knowledge"></a>
 ## Migrate from the inferred graph runtime
