@@ -73,6 +73,8 @@ Use an ADR when the choice is consequential, reflects a real trade-off and would
 
 The authored relationship contract v1 is a single root `## Relationships` block per document. That exact heading is reserved for formal document connections; rename a domain-language section with the same heading and preserve its prior anchor when needed. Its entries use one exact literal, one plain inline Markdown target and a nonempty plain-text explanation on one unindented hyphen bullet line (`- `). Blank lines are allowed; unknown labels, aliases, bold labels, free prose, multiple links, duplicate declarations or another Relationships block are diagnostics, not inferred relationships. Ordinary prose and links outside the block remain ordinary Markdown.
 
+Formal relationships live in this block rather than a parallel `related` or `supersedes` frontmatter list. Avoid repeating the same relationship and scope with a reworded reason; structural validation cannot establish whether two differently worded declarations mean the same thing.
+
 | Exact literal | Authored direction |
 |---|---|
 | `Depends on` | Dependent decision → prerequisite |
