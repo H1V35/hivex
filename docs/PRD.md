@@ -2,7 +2,7 @@
 title: Hivex purpose and product scope
 status: accepted
 created_at: 2026-10-01
-updated_at: 2026-10-01
+updated_at: 2026-10-02
 ---
 
 # Hivex product brief
@@ -48,7 +48,7 @@ Repository Markdown and Git retain durable knowledge. Compatible existing docume
 
 The verified native distribution currently supports macOS ARM64. Its human interface is CLI JSON and readable Markdown. Additional platforms, presentation changes or retrieval accelerators require a useful need and appropriate verification; this brief grants no implementation or publication authorization for them.
 
-The source workflow is implemented and behavior-tested. The 0.8.0 package is prepared; npm publication has not occurred. Installing a new version does not silently replace an adopting project's owner policy, and Compi migration is deferred until the owner chooses the next steps. Publication and adoption follow their own reviewed scope.
+The source workflow is implemented and behavior-tested. Version 0.8.0 was published on 2026-10-02; the [release record](https://github.com/H1V35/hivex/releases/tag/v0.8.0) identifies the exact verified artifact and its npm distribution. Installing a new version does not silently replace an adopting project's owner policy, and Compi migration is deferred until the owner chooses the next steps. Publication and adoption follow their own reviewed scope.
 
 The [dated validation record](archive/validation/source-workflow-2026-10-01.md) provides bounded evidence-exposure cases and local measurements. Evaluation of complete agent tasks across projects and models remains distinct from those checks; no universal token-saving or semantic-quality claim is made.
 
