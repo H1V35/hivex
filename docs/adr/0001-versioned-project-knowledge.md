@@ -2,8 +2,8 @@
 title: Versioned sources before generated knowledge
 status: accepted
 created_at: 2026-09-05
-tags: [adr, source-authority]
 updated_at: 2026-10-02
+tags: [adr, source-authority]
 ---
 
 # Versioned sources before generated knowledge

@@ -2,8 +2,8 @@
 title: Practical project knowledge through deterministic sources
 status: accepted
 created_at: 2026-09-09
-tags: [adr, retrieval, runtime]
 updated_at: 2026-10-02
+tags: [adr, retrieval, runtime]
 ---
 
 # Practical project knowledge through deterministic sources

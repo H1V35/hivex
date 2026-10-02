@@ -2,8 +2,8 @@
 title: "Triage labels"
 status: draft
 created_at: 2026-09-13
-tags: [workflow, issues]
 updated_at: 2026-10-02
+tags: [workflow, issues]
 ---
 
 # Triage labels

@@ -291,7 +291,11 @@ fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
     })
     .map(str::to_owned)
     .collect::<Vec<_>>();
-  metadata.push(format!("created_at: {created_at}"));
+  let date_position = metadata
+    .iter()
+    .position(|line| line.starts_with("tags:") || line.starts_with("source:"))
+    .unwrap_or(metadata.len());
+  metadata.insert(date_position, format!("created_at: {created_at}"));
   format!("---\n{}\n---\n{body}", metadata.join("\n")).into_bytes()
 }
 

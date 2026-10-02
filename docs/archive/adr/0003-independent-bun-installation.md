@@ -2,11 +2,11 @@
 title: Independent Bun installation
 status: accepted
 created_at: 2026-09-07
-tags: [adr, installation, history]
+updated_at: 2026-10-02
 archived_at: 2026-10-01
+tags: [adr, installation, history]
 source_path: docs/adr/0003-independent-bun-installation.md
 source_revision: 1e3768f65f901522a63e00bde51069020049e123
-updated_at: 2026-10-02
 ---
 
 # Independent Bun installation

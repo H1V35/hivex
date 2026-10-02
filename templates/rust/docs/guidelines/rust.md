@@ -2,8 +2,8 @@
 title: "Rust standard"
 status: draft
 created_at: 2026-09-23
-tags: [rust, quality]
 updated_at: 2026-10-02
+tags: [rust, quality]
 ---
 
 # Rust standard

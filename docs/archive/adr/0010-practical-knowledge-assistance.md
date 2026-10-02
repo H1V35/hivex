@@ -2,11 +2,11 @@
 title: Practical knowledge assistance with bounded work
 status: accepted
 created_at: 2026-09-09
-tags: [adr, retrieval, runtime]
+updated_at: 2026-10-02
 archived_at: 2026-10-01
+tags: [adr, retrieval, runtime]
 source_path: docs/adr/0010-practical-knowledge-assistance.md
 source_revision: 1e3768f65f901522a63e00bde51069020049e123
-updated_at: 2026-10-02
 ---
 
 # Practical knowledge assistance with bounded work

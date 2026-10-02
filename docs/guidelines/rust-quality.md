@@ -2,8 +2,8 @@
 title: Rust quality and readability
 status: accepted
 created_at: 2026-09-17
-tags: [rust, quality]
 updated_at: 2026-10-02
+tags: [rust, quality]
 ---
 
 # Rust quality and readability

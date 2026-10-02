@@ -2,11 +2,11 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-tags: [adr, workflow, adoption]
+updated_at: 2026-10-02
 archived_at: 2026-10-01
+tags: [adr, workflow, adoption]
 source_path: docs/adr/0012-project-foundation-and-workflow.md
 source_revision: 1e3768f65f901522a63e00bde51069020049e123
-updated_at: 2026-10-02
 ---
 
 # Project foundation and adaptive workflow

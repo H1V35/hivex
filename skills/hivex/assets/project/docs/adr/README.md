@@ -2,8 +2,8 @@
 title: "Architectural and domain decisions"
 status: draft
 created_at: 2026-09-13
-tags: [adr, documentation]
 updated_at: 2026-10-02
+tags: [adr, documentation]
 ---
 
 # Architectural and domain decisions
@@ -14,7 +14,9 @@ Before writing, consult the authority map and search current and relevant histor
 
 Preserve the distinction between proposed, current and replaced decisions. When changing a decision, record what changed and link its predecessor and replacement. Keep useful history without turning the current document into an unbounded transcript.
 
-## Decision and delivery states
+<a id="decision-and-delivery-states"></a>
+
+## Decision and implementation states
 
 Use the exact lowercase state literals below in maintained metadata. Normalize legacy labels during adoption while preserving their scope and qualifications in the body; immutable historical bodies retain their original wording. Documentation inside `docs/` has frontmatter with `title`, truthful `status`, `created_at` and topic `tags`, optional `updated_at` after changes, and `archived_at` on archived records. Decision status, delivery and permission remain separate. Existing source layouts stay readable while adopting this convention.
 
@@ -27,15 +29,14 @@ Use the exact lowercase state literals below in maintained metadata. Normalize l
 | `superseded` | A linked replacement governs the identified scope; explicitly retain any live part of a partial replacement. |
 | `historical` | A dated record of prior reasoning or behavior; read its scope and current replacement before applying it. Archival location alone does not retire a live condition. |
 
-Describe delivery independently when a decision has executable consequences:
+Use optional `implementation` metadata when a decision describes executable consequences. It records the implementation of that stated scope independently of acceptance:
 
-| Delivery state | Meaning |
+| Implementation state | Meaning |
 |---|---|
 | `not-started` | Implementation has not started for this capability. |
 | `in-progress` | Work is partial; name what is implemented and what remains. |
 | `implemented` | The named behavior exists in the stated code revision; verification is a separate claim. |
-| `verified` | The named behavior has supporting checks/evidence at an identified revision and scope; it does not certify every capability or every future revision. |
 
-For example, an accepted target architecture can have delivery `not-started` and still require an implementation GO. An implemented feature may remain unverified. Do not attach delivery state to a purely documentary rule when it adds no meaning. Missing state or evidence remains unknown, not an inferred acceptance or completion.
+For example, an accepted target architecture can have `implementation: not-started` and still require an implementation GO. An implemented feature may remain unverified. Verification belongs in the body with its evidence, revision and scope; it is not another implementation literal. Omit the field for indexes, glossaries and documentary guidance where it adds no meaning. Missing state or evidence remains unknown, not an inferred acceptance or completion. Normalize legacy `delivery` during adoption without dropping its qualifications or verification evidence.
 
 Maintain the decision, applicable relationships, delivery scope and verification evidence alongside the code change. Review them together before integration to prevent stale intent, invented rules and contradictory implementation. Preserve prior decisions and evidence when scope changes.

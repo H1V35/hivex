@@ -2,11 +2,11 @@
 title: Domain modules and replaceable execution integrations
 status: accepted
 created_at: 2026-09-17
-tags: [history, architecture, runtime]
+updated_at: 2026-10-02
 archived_at: 2026-10-01
+tags: [history, architecture, runtime]
 source_path: docs/adr/0013-domain-modules-and-execution-integrations.md
 source_revision: 180ea2750e0da9253494b02e7bbbb25938720758
-updated_at: 2026-10-02
 ---
 
 

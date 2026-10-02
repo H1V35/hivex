@@ -2,8 +2,8 @@
 title: "TypeScript standard"
 status: draft
 created_at: 2026-09-14
-tags: [typescript, quality]
 updated_at: 2026-10-02
+tags: [typescript, quality]
 ---
 
 # TypeScript standard

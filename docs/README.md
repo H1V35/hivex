@@ -2,8 +2,8 @@
 title: "Documentation map"
 status: accepted
 created_at: 2026-09-07
-tags: [documentation, navigation]
 updated_at: 2026-10-02
+tags: [documentation, navigation]
 ---
 
 # Documentation map

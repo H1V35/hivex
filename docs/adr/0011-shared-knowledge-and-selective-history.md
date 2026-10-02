@@ -2,8 +2,8 @@
 title: Selective documentary history and preserved evidence
 status: accepted
 created_at: 2026-09-11
-tags: [adr, documentation, history]
 updated_at: 2026-10-02
+tags: [adr, documentation, history]
 ---
 
 # Selective documentary history and preserved evidence

@@ -2,9 +2,9 @@
 title: "Historical records"
 status: accepted
 created_at: 2026-10-01
-tags: [documentation, history]
-archived_at: 2026-10-01
 updated_at: 2026-10-02
+archived_at: 2026-10-01
+tags: [documentation, history]
 ---
 
 # Historical records

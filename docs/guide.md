@@ -2,8 +2,8 @@
 title: "Hivex guide"
 status: accepted
 created_at: 2026-09-17
-tags: [cli, retrieval, adoption]
 updated_at: 2026-10-02
+tags: [cli, retrieval, adoption]
 ---
 
 # Hivex guide

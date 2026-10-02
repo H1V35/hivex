@@ -2,11 +2,11 @@
 title: Resumable candidate ingestion in a bounded local store
 status: accepted
 created_at: 2026-09-08
-tags: [adr, history, storage]
+updated_at: 2026-10-02
 archived_at: 2026-10-01
+tags: [adr, history, storage]
 source_path: docs/adr/0004-resumable-ingestion-store.md
 source_revision: 1e3768f65f901522a63e00bde51069020049e123
-updated_at: 2026-10-02
 ---
 
 # Resumable candidate ingestion in a bounded local store

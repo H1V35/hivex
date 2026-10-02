@@ -2,8 +2,8 @@
 title: "Issues, triage and pull requests"
 status: draft
 created_at: 2026-09-13
-tags: [workflow, issues, review]
 updated_at: 2026-10-02
+tags: [workflow, issues, review]
 ---
 
 # Issues, triage and pull requests

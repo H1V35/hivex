@@ -2,8 +2,8 @@
 title: "Hivex domain language"
 status: accepted
 created_at: 2026-09-05
-tags: [domain, project-knowledge]
 updated_at: 2026-10-02
+tags: [domain, project-knowledge]
 ---
 
 # Hivex domain language
