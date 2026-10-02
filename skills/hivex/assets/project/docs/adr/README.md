@@ -2,7 +2,8 @@
 title: "Architectural and domain decisions"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-01
+tags: [adr, documentation]
+updated_at: 2026-10-02
 ---
 
 # Architectural and domain decisions
@@ -15,7 +16,7 @@ Preserve the distinction between proposed, current and replaced decisions. When 
 
 ## Decision and delivery states
 
-Use these shared meanings for new documentation. Compatible existing project labels remain valid; document their mapping rather than silently rewriting them. Documentation inside `docs/` has frontmatter with `title`, truthful `status` and `created_at`, optional `updated_at` after changes, and `archived_at` on archived records. Decision status, delivery and permission remain separate. Existing source layouts stay readable while adopting this convention.
+Use the exact lowercase state literals below in maintained metadata. Normalize legacy labels during adoption while preserving their scope and qualifications in the body; immutable historical bodies retain their original wording. Documentation inside `docs/` has frontmatter with `title`, truthful `status`, `created_at` and topic `tags`, optional `updated_at` after changes, and `archived_at` on archived records. Decision status, delivery and permission remain separate. Existing source layouts stay readable while adopting this convention.
 
 | Decision state | Meaning |
 |---|---|

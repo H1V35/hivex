@@ -2,6 +2,7 @@
 title: Hivex purpose and product scope
 status: accepted
 created_at: 2026-10-01
+tags: [product, scope]
 updated_at: 2026-10-02
 ---
 

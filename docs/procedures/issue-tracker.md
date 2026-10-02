@@ -2,7 +2,8 @@
 title: "Issues, triage and pull requests"
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-01
+tags: [workflow, issues, review]
+updated_at: 2026-10-02
 ---
 
 # Issues, triage and pull requests

@@ -2,7 +2,8 @@
 title: "Hivex guide"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-01
+tags: [cli, retrieval, adoption]
+updated_at: 2026-10-02
 ---
 
 # Hivex guide
@@ -66,6 +67,8 @@ Before applying a match, read its complete relevant section and governing docume
 Each `matches` entry retains `document`, `version`, `historical`, `lineStart`, `lineEnd` and exact `text`, reproducible with `read`. Its `context` adds `lineStart`, `lineEnd` and `complete` for the structural range. False means read that range when needed; true confirms only that its source text is present, not that all applicable rules are known. No unbounded heading label is copied into each match. Ordinary searches exclude archives. Use `--historical` to include selected history or repeated `--source <document>` to restrict the search to specified selected documents, including archives. Invalid or excluded explicit sources are errors.
 
 `--limit` defaults to 6, maximum 64. `--max-bytes` defaults to 16384, maximum 65536, and bounds the complete serialized UTF-8 JSON. Passages are never cut to fit. Follow `continuation` with `--cursor` and identical sources/options; changed versions or options return `INVALID_CURSOR`. Cursors from the prior unexpanded search contract are also invalid. If the next complete passage cannot fit, `OUTPUT_LIMIT` cites its document/range for focused `read`. Indexing more than 32768 nonblank passages returns `SEARCH_LIMIT`; narrow source selection instead of accepting silent omissions. Source-discovery warnings mark `status` and `coverage` as `partial`. The shared parser also bounds each document to 32768 heading/explicit-anchor records; excess returns `ANCHOR_LIMIT` for narrower source selection. A complete empty lexical result proves only absence of matching terms within the declared scope.
+
+The shared metadata convention requires topic `tags` in documentation under `docs/`. Their frontmatter text is already searchable, so `search "data-retention"` can find that keyword even when it occurs only in tags. Tags neither select authority nor imply a relationship; this is ordinary lexical search, without a tag-only filter or a separate index.
 
 ### Navigate authored relationships
 

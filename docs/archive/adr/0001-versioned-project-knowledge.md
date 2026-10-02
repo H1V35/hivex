@@ -2,10 +2,11 @@
 title: Versioned sources before generated knowledge
 status: accepted
 created_at: 2026-09-05
+tags: [adr, source-authority]
 archived_at: 2026-10-01
 source_path: docs/adr/0001-versioned-project-knowledge.md
 source_revision: 1e3768f65f901522a63e00bde51069020049e123
-updated_at: 2026-10-01
+updated_at: 2026-10-02
 ---
 
 # Versioned sources before generated knowledge

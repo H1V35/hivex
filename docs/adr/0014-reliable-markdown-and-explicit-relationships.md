@@ -2,7 +2,8 @@
 title: Reliable Markdown and explicit relationships before inferred graphs
 status: accepted
 created_at: 2026-10-01
-updated_at: 2026-10-01
+tags: [adr, documentation, relationships]
+updated_at: 2026-10-02
 ---
 
 # Reliable Markdown and explicit relationships before inferred graphs
@@ -22,6 +23,8 @@ The [shared authored relationship contract v1](../../skills/hivex/references/mar
 Before writing, the agent checks the map and searches existing current and relevant historical knowledge for that topic. Read likely matches and their replacements; update the existing authority for the same scope. Create another document only after establishing a distinct useful responsibility. This prevents parallel sources of truth from diverging.
 
 Use the [shared decision/delivery state catalogue](../../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Approval, implementation, verification and permission are separate claims: an accepted future decision is not an implemented feature or an implementation GO. Missing state is unknown; current applicability still depends on scope, conditions and replacements.
+
+The shared Markdown convention requires topic tags and exact lowercase documentary states in maintained metadata. Legacy sources remain readable; adoption normalizes their labels without losing scope, provenance or historical bodies. Tags use the existing lexical search rather than another index or inferred relationships. Corpus migration inventories and reads the intended sources; navigation and evidence links remain ordinary links when no formal relationship applies.
 
 Separate replaced material into a declared Markdown archive while preserving original text, dates, provenance and reachable history. Keep applicable guarantees in their current authority; age alone does not retire them. A partially replaced decision keeps its live conditions and identifies the replaced scope.
 

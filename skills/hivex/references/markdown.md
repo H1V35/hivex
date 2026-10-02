@@ -28,9 +28,13 @@ For example, a project may use `docs/README.md`, `docs/CONTEXT.md`, `docs/adr/`,
 
 ## Document dates
 
-Markdown documentation inside a `docs/` directory, including nested project/module docs and documentation templates, has YAML frontmatter with nonempty `title`, `status` and `created_at`. Root entrypoints such as `AGENTS.md`, `CLAUDE.md` and `README.md`, skills and other Markdown outside `docs/` do not require this documentary metadata. Keep metadata required by their own tools, such as skill `name` and `description`.
+Markdown documentation inside a `docs/` directory, including nested project/module docs and documentation templates, has YAML frontmatter with nonempty `title`, `status`, `created_at` and `tags`. Root entrypoints such as `AGENTS.md`, `CLAUDE.md` and `README.md`, skills and other Markdown outside `docs/` do not require this documentary metadata. Keep metadata required by their own tools, such as skill `name` and `description`.
 
-`title` identifies the document. `status` uses the shared state catalogue: incomplete project templates remain `draft`, maintained approved guidance is `accepted`, and dated evidence or retired runtime material is `historical`. Preserve an original accepted/rejected status in an archived decision when it records the decision at that time; archival scope and provenance distinguish it from present authority. Status never establishes delivery or permission.
+`title` identifies the document. `status` uses exactly one lowercase literal from the shared catalogue: `draft`, `proposed`, `accepted`, `rejected`, `superseded` or `historical`. Incomplete project templates remain `draft`, maintained approved guidance is `accepted`, and dated evidence or retired runtime material is `historical`. Keep scope, partial replacements and delivery evidence in the body rather than appending them to a status literal. Preserve an original accepted/rejected status in an archived decision when it records the decision at that time; archival scope and provenance distinguish it from present authority. Status never establishes delivery or permission.
+
+`tags` is a nonempty YAML sequence of distinct topic keywords, using lowercase kebab-case. Reuse the project's domain terms and existing equivalent tags; avoid synonyms for the same topic, generic filler and copies of every word in the title. Tags aid lexical discovery, not authority, state or formal relationships. The CLI already searches their source text in frontmatter with ordinary `search`; it neither expands them into inferred edges nor provides a tag-only filter.
+
+Existing Markdown remains readable. During adoption, explicitly map legacy states to the catalogue while preserving their qualifications and original evidence; do not introduce another maintained state such as `Living document`. Preserve immutable historical bodies, including their original labels, under their provenance boundary. Extra metadata is allowed for concrete evidence such as source paths, revisions or date provenance; it must not redefine the standard fields or duplicate a narrative already owned by the body.
 
 `created_at` is an ISO calendar date (`YYYY-MM-DD`) recording the document's creation. Preserve a documented creation date across moves; when it is missing, recover the earliest recorded creation from Git or explicit source provenance and state that limit instead of inventing earlier history. The former `date` key is renamed to `created_at`, and `updated` to `updated_at`.
 
@@ -51,6 +55,7 @@ For a consequential architectural trade-off, an ADR might be:
 title: Remove private cached data when access is revoked
 status: proposed
 created_at: 2026-10-01
+tags: [privacy, cache]
 ---
 
 # Remove private cached data when access is revoked
@@ -58,9 +63,9 @@ created_at: 2026-10-01
 Cached private data is removed immediately when access is revoked. The normal cache lifetime still applies while access remains valid. This prevents stale local access after a permission change. See the cache policy for the general retention rule.
 ```
 
-Include the required title, truthful status and creation date in documentation frontmatter. Tags are optional. If a rule is replaced, identify the replacement and whether the change is partial. Keep the historical reasoning readable; do not silently rewrite the past. A missing status in legacy sources means uncertainty to resolve from the content, not permission to assume acceptance.
+Include the required title, truthful status, creation date and topic tags in documentation frontmatter. If a rule is replaced, identify the replacement and whether the change is partial. Keep the historical reasoning readable; do not silently rewrite the past. A missing status in legacy sources means uncertainty to resolve from the content, not permission to assume acceptance.
 
-Keep decision status separate from delivery and verification. The [shared state catalogue](../assets/project/docs/adr/README.md#decision-and-delivery-states), also prepared by `init`, defines draft, proposed, accepted, rejected, superseded and historical decisions. An accepted choice may be unimplemented or only partly delivered. Record implementation scope and verification evidence independently when they apply; preserve compatible project-specific statuses instead of silently reclassifying them.
+Keep decision status separate from delivery and verification. The [shared state catalogue](../assets/project/docs/adr/README.md#decision-and-delivery-states), also prepared by `init`, defines draft, proposed, accepted, rejected, superseded and historical decisions. An accepted choice may be unimplemented or only partly delivered. Record implementation scope and verification evidence independently when they apply; normalize legacy labels without discarding their conditions or inferring delivery.
 
 Use an ADR when the choice is consequential, reflects a real trade-off and would be surprising without its rationale. Do not create one for every routine edit or dependency. Sequential names such as `0001-short-decision.md` are convenient if the project adopts that convention.
 
@@ -96,6 +101,8 @@ HTML comments and raw-text elements such as `script`, `style` and `textarea` do 
 `relations <document>` returns direct authored connections and incoming connections from ordinary sources, with the declared `from`/`to` unchanged. It reads historical declarations only when that source is queried explicitly; historical destinations remain reachable. Pagination binds its cursor to the source snapshot and query options, counts the complete serialized UTF-8 response and never cuts a relation. Explicit coverage limits remain visible. Navigation does not infer relationships, recurse automatically or certify semantic truth.
 
 Authors and reviewers judge meaning, reason and conditions. A deterministic reader/checker verifies syntax, direction encoding, selected targets and anchors. Follow relevant links, including indirect dependencies, by querying the next document and reading the cited destination range. Reuse visited versions/ranges instead of repeatedly traversing cycles. A known authority can be read directly; queries are capabilities, not mandatory phases. Update relationship entries and callers when a target or scope changes.
+
+When migrating documentation, inventory the project-owned sources, including unselected notes and relevant history. Read each maintained document and the governing context of its destinations to find justified connections, including those expressed without a link. Classify legacy `Related` lists and wikilinks by meaning; normalize useful maintained navigation to relative Markdown links. Indices, citations and provenance stay ordinary links when none of the five relationship types applies. Do not manufacture dependencies, inverse duplicates or empty blocks to satisfy a count. Preserve immutable archive bodies; declare later replacements in their current authority and keep historical notation accessible through provenance. Record the reviewed scope and unresolved gaps in the existing task/review; structural success cannot establish that no declaration is missing.
 
 ## Recover enough context to apply a rule
 

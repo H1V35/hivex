@@ -2,7 +2,8 @@
 title: "Documentation map"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-01
+tags: [documentation, navigation]
+updated_at: 2026-10-02
 ---
 
 # Documentation map
@@ -23,6 +24,8 @@ Keep documents at the monorepo, package or module they describe. Link shared rul
 Use `docs/archive/` when replaced detail needs preserving outside a concise current document. Leave an explicit replacement/history link in the current authority; historical material does not silently regain force. Declare archive paths in the source configuration so history stays available for focused reading without ordinary ingestion.
 
 Maintain the owning document as part of a change. Do not leave durable decisions only in chats, tracker comments, model output or vendor-private memory.
+
+Documentation under `docs/` uses `title`, a canonical lowercase `status`, `created_at` and a nonempty list of topic `tags`; maintain update/archive dates when applicable. The installed Markdown reference and decision catalogue own their exact meanings. Tags help ordinary lexical search; they do not establish authority or create relationships.
 
 ## Task routes and explicit relationships
 
