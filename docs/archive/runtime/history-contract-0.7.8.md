@@ -5,8 +5,7 @@ created_at: 2026-09-11
 updated_at: 2026-10-02
 archived_at: 2026-10-01
 tags: [history, documentation]
-source_path: docs/adr/0011-shared-knowledge-and-selective-history.md
-source_revision: 180ea2750e0da9253494b02e7bbbb25938720758
+source: https://github.com/H1V35/hivex/blob/180ea2750e0da9253494b02e7bbbb25938720758/docs/adr/0011-shared-knowledge-and-selective-history.md
 ---
 
 

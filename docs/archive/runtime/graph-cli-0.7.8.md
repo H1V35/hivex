@@ -5,8 +5,7 @@ created_at: 2026-10-01
 updated_at: 2026-10-02
 archived_at: 2026-10-01
 tags: [history, cli, runtime]
-source_path: docs/reference/graph-cli.md
-source_revision: 180ea2750e0da9253494b02e7bbbb25938720758
+source: https://github.com/H1V35/hivex/blob/180ea2750e0da9253494b02e7bbbb25938720758/docs/reference/graph-cli.md
 ---
 
 # Optional graph and model-assisted CLI reference
