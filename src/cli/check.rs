@@ -50,8 +50,9 @@ pub fn command(args: &[String]) -> Result<Value> {
   let metadata = json!({"command":"check","modelCalls":0,"origin":"current-worktree","snapshot":project.snapshot,
     "status":status,
     "coverage":if project.warnings.is_empty(){"selected-sources"}else{"partial"},"sources":sources,"historical":historical,
-    "checkedDocuments":validation.checked,"totalFindings":total,"warnings":project.warnings,
-    "scope":"authored relation syntax and selected local Markdown references; no semantic certification"});
+    "checkedDocuments":validation.checked,"checkedMetadataDocuments":validation.checked_metadata,
+    "checkedReferenceDocuments":validation.checked_references,"totalFindings":total,"warnings":project.warnings,
+    "scope":"outer metadata under docs, authored relation syntax and selected local Markdown references; historical bodies require explicit selection; no semantic certification"});
   bounded_page(
     metadata,
     &validation.findings,
@@ -71,7 +72,7 @@ fn cursor_offset(cursor: Option<&String>, key: &str) -> Result<usize> {
     )
   };
   let (identity, start) = cursor
-    .strip_prefix("v1.")
+    .strip_prefix("v2.")
     .and_then(|value| value.split_once('.'))
     .ok_or_else(invalid)?;
   if identity != key || start.is_empty() || !start.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -93,7 +94,7 @@ fn bounded_page(
     records.push(record.clone());
     metadata["findings"] = json!(records);
     metadata["continuation"] = if start + records.len() < findings.len() {
-      json!(format!("v1.{key}.{}", start + records.len()))
+      json!(format!("v2.{key}.{}", start + records.len()))
     } else {
       Value::Null
     };
@@ -111,7 +112,7 @@ fn bounded_page(
   }
   metadata["findings"] = json!(records);
   metadata["continuation"] = if start + records.len() < findings.len() {
-    json!(format!("v1.{key}.{}", start + records.len()))
+    json!(format!("v2.{key}.{}", start + records.len()))
   } else {
     Value::Null
   };

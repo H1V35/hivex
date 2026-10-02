@@ -151,3 +151,140 @@ fn query_components_and_question_marks_in_fragments_have_distinct_meanings() {
     "foo?bar"
   );
 }
+
+#[test]
+fn metadata_scope_preserves_native_headers_and_frozen_historical_bodies() {
+  let p = Project::new();
+  p.write("AGENTS.md", "# Agent entrypoint\n");
+  p.write(
+    "skills/example/SKILL.md",
+    "---\nname: example\ndescription: Native skill\n---\n",
+  );
+  p.write("module/docs/current.md", "\u{feff}---\r\n\"title\": &name Policy\r\nstatus: accepted # current\r\nimplementation: not-started\r\ncreated_at: 2024-02-29\r\ntags:\r\n  - &topic policy\r\n  - source-reading\r\nsource: *name\r\n---\r\n# Policy\r\n");
+  let historical = "---\ntitle: Original\nstatus: historical\ncreated_at: 2020-01-01\narchived_at: 2026-10-02\ntags: [history]\n---\n# Capture\n\n---\nold_field: preserved\n---\n[Old reference](missing.md)\n## Relationships\nUnsupported original prose.\n";
+  p.write("docs/archive/capture.md", historical);
+  p.json("hivex.json", &json!({"archive":["docs/archive/*.md"]}));
+  let result = p.ok(&["check"]);
+  assert_eq!(result["checkedMetadataDocuments"], 2);
+  assert_eq!(result["checkedReferenceDocuments"], 3);
+  assert_eq!(result["checkedDocuments"], 4);
+  assert_eq!(report(&p, &["check", "--historical"]).1["status"], "failed");
+  assert_eq!(
+    fs::read_to_string(p.path("docs/archive/capture.md")).unwrap(),
+    historical
+  );
+  p.write(
+    "docs/archive/capture.md",
+    historical.replace("status: historical", "status: Historical"),
+  );
+  let (_, result) = report(&p, &["check"]);
+  assert_eq!(result["findings"][0]["field"], "status");
+  p.write(
+    "AGENTS.md",
+    "## Relationships\n- Requires [Policy](module/docs/current.md): invalid literal.\n",
+  );
+  assert_eq!(
+    report(&p, &["check", "--source", "AGENTS.md"]).1["status"],
+    "failed"
+  );
+}
+
+#[test]
+fn metadata_reports_schema_errors_without_disabling_legacy_reading() {
+  let p = Project::new();
+  let valid = "title: Policy\nstatus: accepted\nimplementation: implemented\ncreated_at: 2024-02-29\nupdated_at: 2026-10-02\ntags: [policy, source-reading]\nsource: https://example.test/original\n";
+  for (old, new, field) in [
+    ("title: Policy", "title: 42", "title"),
+    ("status: accepted", "status: Accepted", "status"),
+    (
+      "implementation: implemented",
+      "implementation: complete",
+      "implementation",
+    ),
+    (
+      "created_at: 2024-02-29",
+      "created_at: 2023-02-29",
+      "created_at",
+    ),
+    (
+      "updated_at: 2026-10-02",
+      "updated_at: 2026-13-01",
+      "updated_at",
+    ),
+    ("tags: [policy, source-reading]", "tags: []", "tags"),
+    (
+      "tags: [policy, source-reading]",
+      "tags: [policy, policy]",
+      "tags",
+    ),
+    (
+      "tags: [policy, source-reading]",
+      "tags: [Policy, source_reading]",
+      "tags",
+    ),
+    (
+      "source: https://example.test/original",
+      "source: true",
+      "source",
+    ),
+    (
+      "status: accepted",
+      "status: accepted\nstatus: draft",
+      "status",
+    ),
+    (
+      "title: Policy\nstatus: accepted",
+      "status: accepted\ntitle: Policy",
+      "title",
+    ),
+    ("created_at: 2024-02-29\n", "", "created_at"),
+  ] {
+    p.write(
+      "docs/policy.md",
+      format!("---\n{}---\n# Policy\n", valid.replace(old, new)),
+    );
+    let (code, result) = report(&p, &["check"]);
+    assert_eq!(code, 1, "{new}");
+    assert_eq!(result["findings"][0]["code"], "INVALID_METADATA");
+    assert_eq!(result["findings"][0]["field"], field, "{new}");
+    assert_eq!(
+      p.ok(&["read", "docs/policy.md"])["source"]["id"],
+      "docs/policy.md"
+    );
+  }
+  for header in [
+    "",
+    "---\ntitle: [\n---\n",
+    "---\ndelivery: implemented\n---\n",
+    "---\ntags: [[policy]]\n---\n",
+  ] {
+    p.write("docs/policy.md", format!("{header}# Policy\n"));
+    assert_eq!(report(&p, &["check"]).1["status"], "failed");
+  }
+}
+
+#[test]
+fn metadata_findings_are_located_bounded_and_snapshot_paginated() {
+  let p = Project::new();
+  p.write("docs/policy.md", "\u{feff}---\r\ntitle: Policy\r\nstatus: Accepted\r\ncreated_at: 2024-02-30\r\ntags: [Policy]\r\n---\r\n# Policy\r\n");
+  let (_, first) = report(&p, &["check", "--limit", "1"]);
+  assert_eq!(first["totalFindings"], 3);
+  assert_eq!(first["findings"][0]["line"], 3);
+  assert_eq!(first["findings"][0]["column"], 1);
+  let cursor = first["continuation"].as_str().unwrap();
+  let (_, second) = report(&p, &["check", "--limit", "1", "--cursor", cursor]);
+  assert_eq!(second["findings"][0]["field"], "created_at");
+  let old_cursor = cursor.replacen("v2.", "v1.", 1);
+  assert_eq!(
+    p.error(&["check", "--limit", "1", "--cursor", &old_cursor])["error"]["code"],
+    "INVALID_CURSOR"
+  );
+  p.write(
+    "docs/policy.md",
+    format!("---\n# {}\n---\n", "x".repeat(65536)),
+  );
+  assert_eq!(
+    report(&p, &["check"]).1["findings"][0]["message"],
+    "Outer metadata exceeds 65536 bytes"
+  );
+}

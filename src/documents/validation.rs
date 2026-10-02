@@ -1,4 +1,5 @@
 use super::markdown::markdown_references;
+use super::metadata;
 use super::navigation::Resolver;
 use super::{Document, Project, has_uri_scheme, is_markdown_path, percent_decode};
 use crate::error::{HivexError, Result};
@@ -9,6 +10,8 @@ const MAX_REFERENCES: usize = 32_768;
 pub struct Validation {
   pub findings: Vec<Value>,
   pub checked: usize,
+  pub checked_metadata: usize,
+  pub checked_references: usize,
 }
 
 pub fn validate_sources(
@@ -34,6 +37,8 @@ pub fn validate_sources(
   let mut result = Validation {
     findings: Vec::new(),
     checked: 0,
+    checked_metadata: 0,
+    checked_references: 0,
   };
   let mut references = 0;
   let mut resolver = Resolver::new(project);
@@ -41,9 +46,18 @@ pub fn validate_sources(
     if !sources.is_empty() {
       return sources.contains(&document.id);
     }
-    historical || !document.historical
+    historical || !document.historical || metadata::is_documentation(document)
   }) {
     result.checked += 1;
+    if metadata::is_documentation(source) {
+      result.checked_metadata += 1;
+      result.findings.extend(metadata::findings(source));
+    }
+    if source.historical && !historical && sources.is_empty() {
+      check_finding_limit(&result.findings)?;
+      continue;
+    }
+    result.checked_references += 1;
     if let Err(error) = resolver.relations(&source.id, "outgoing") {
       result.findings.push(json!({"document":source.id,"version":source.hash,"code":error.code,"message":error.message,"details":error.details}));
     }
@@ -56,14 +70,19 @@ pub fn validate_sources(
       ));
     }
     result.findings.extend(findings);
-    if result.findings.len() > 2048 {
-      return Err(HivexError::new(
-        "CHECK_LIMIT",
-        "Validation exceeds 2048 findings; narrow source selection",
-      ));
-    }
+    check_finding_limit(&result.findings)?;
   }
   Ok(result)
+}
+
+fn check_finding_limit(findings: &[Value]) -> Result<()> {
+  if findings.len() > 2048 {
+    return Err(HivexError::new(
+      "CHECK_LIMIT",
+      "Validation exceeds 2048 findings; narrow source selection",
+    ));
+  }
+  Ok(())
 }
 
 fn reference_findings(

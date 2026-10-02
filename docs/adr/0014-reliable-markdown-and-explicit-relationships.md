@@ -42,7 +42,7 @@ Evaluate retrieval against correct evidence recovered, agent context, query late
 
 ## Knowledge before integration
 
-Maintain valuable Markdown and its explicit relationships before merging. Deterministic `check` validates affected references and formal entries; authors/reviewers establish meaning and uniqueness of authority. The reviewer checks the affected authorities, current conditions, exceptions, history links and code together. Repair demonstrated contradictions, missing decisions needed by supported behavior, broken references and easy actionable defects. Do not leave durable decisions only in chats or tracker comments.
+Maintain valuable Markdown and its explicit relationships before merging. Deterministic `check` validates affected outer documentary metadata, references and formal entries; authors/reviewers establish meaning and uniqueness of authority. The reviewer checks the affected authorities, current conditions, exceptions, history links and code together. Repair demonstrated contradictions, missing decisions needed by supported behavior, broken references and easy actionable defects. Do not leave durable decisions only in chats or tracker comments.
 
 Recover settled rules before implementation and reconcile the affected authority during the same change. Keep delivery and evidence aligned with the actual code revision. This shared methodology applies to Hivex and its adopting-project foundation to prevent hallucinated rules and contradictions; installing an updated package does not silently replace an existing project's explicit owner policy.
 

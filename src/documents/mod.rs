@@ -1,6 +1,7 @@
 use crate::compatibility::normalize_path;
 pub(crate) use markdown::{hash, is_markdown_path, line_content, raw_line_ranges};
 mod markdown;
+mod metadata;
 mod navigation;
 mod relations;
 mod search;
