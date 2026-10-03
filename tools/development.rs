@@ -418,7 +418,7 @@ fn verify_archive(manifest: &Value, archive: &Path, report: &Value) -> Result<BT
     "bin/hivex",
     "README.md",
     "docs/guide.md",
-    "skills/hivex/assets/project/CLAUDE.md",
+    "skills/hivex/assets/project/AGENTS.md",
     "LICENSE",
   ] {
     if !files.contains(file) {
@@ -433,8 +433,8 @@ fn verify_initialization(binary: &Path, package: &Path, temporary: &Path) -> Res
   fs::create_dir_all(initialized.join("node_modules/@h1v35"))?;
   std::os::unix::fs::symlink(package, initialized.join("node_modules/@h1v35/hivex"))?;
   cli(binary, &initialized, &["init"])?;
-  if fs::read_to_string(initialized.join("CLAUDE.md"))? != "@AGENTS.md\n" {
-    return Err("Missing shared agent instructions".into());
+  if !initialized.join("AGENTS.md").is_file() || initialized.join("CLAUDE.md").exists() {
+    return Err("Unexpected agent instructions".into());
   }
   for skill in [
     "hivex",

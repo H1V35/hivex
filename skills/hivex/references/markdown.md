@@ -48,7 +48,7 @@ Existing Markdown remains readable. During adoption, explicitly map legacy state
 
 An archived Markdown record also has `archived_at` for its first archival event. Retain its original `created_at`; later additions or repairs update `updated_at` and leave `archived_at` unchanged. Optional `source` identifies the original or preserved capture when needed. Fully archived ADRs live only in the archive: repair necessary callers rather than retaining duplicate current-path stubs.
 
-Documentation templates carry their own source dates. `init` dates newly created project Markdown files under `docs/`, copies other bundled files unchanged with their UTC creation day and removes template update/archive dates, retaining their title and provisional status. It copies plain `AGENTS.md` and `CLAUDE.md` entrypoints and preserves all existing files byte-for-byte. Apply the same dating convention when an agent creates or maintains documentation. Implementation states and tags remain purpose-specific; dates do not grant authority, establish implementation or imply permission.
+Documentation templates carry their own source dates. `init` dates newly created project Markdown files under `docs/`, copies other bundled files unchanged with their UTC creation day and removes template update/archive dates, retaining their title and provisional status. It copies the plain `AGENTS.md` entrypoint, creates no `CLAUDE.md` and preserves all existing files byte-for-byte. Apply the same dating convention when an agent creates or maintains documentation. Implementation states and tags remain purpose-specific; dates do not grant authority, establish implementation or imply permission.
 
 ## Write decisions for the next reader
 
