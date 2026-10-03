@@ -6,8 +6,8 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-const IGNORE_RULES: [&str; 1] = ["/.hivex/"];
-const IGNORE_BLOCK: &str = "/.hivex/\n";
+// Managed rules stay last so earlier project rules cannot re-include their paths.
+const IGNORE_RULES: [&str; 2] = ["/.hivex/", "/.reviews/"];
 const SKILLS: [&str; 6] = [
   "hivex",
   "hivex-design",
@@ -48,6 +48,18 @@ static TEMPLATE_FILES: &[(&str, &[u8])] = &[
   (
     "docs/procedures/issue-tracker.md",
     include_bytes!("../skills/hivex/assets/project/docs/procedures/issue-tracker.md"),
+  ),
+  (
+    "docs/procedures/independent-review.md",
+    include_bytes!("../skills/hivex/assets/project/docs/procedures/independent-review.md"),
+  ),
+  (
+    "docs/procedures/independent-review.schema.json",
+    include_bytes!("../skills/hivex/assets/project/docs/procedures/independent-review.schema.json"),
+  ),
+  (
+    "docs/procedures/self-hosted-runners.md",
+    include_bytes!("../skills/hivex/assets/project/docs/procedures/self-hosted-runners.md"),
   ),
   (
     "docs/README.md",
@@ -194,37 +206,37 @@ fn validate_nested_ignore(root: &Path) -> Result<()> {
   Ok(())
 }
 
-fn has_final_ignore_rules(text: &str) -> bool {
+fn missing_ignore_rules(text: &str) -> Vec<&'static str> {
   let mut lines: Vec<_> = split_crlf_lines(text).collect();
   while lines.last() == Some(&"") {
     lines.pop();
   }
-  let Some(start) = lines.len().checked_sub(IGNORE_RULES.len()) else {
-    return false;
-  };
-  lines[start..]
+  let managed = lines
     .iter()
-    .zip(IGNORE_RULES)
-    .all(|(line, rule)| *line == rule)
+    .rev()
+    .take_while(|line| IGNORE_RULES.contains(line))
+    .collect::<Vec<_>>();
+  IGNORE_RULES
+    .into_iter()
+    .filter(|rule| !managed.contains(&rule))
+    .collect()
 }
 
 fn ignore_update(existing: Option<&[u8]>) -> Option<Vec<u8>> {
-  let Some(existing) = existing else {
-    return Some(IGNORE_BLOCK.as_bytes().to_vec());
-  };
-  let text = String::from_utf8_lossy(existing);
-  if has_final_ignore_rules(&text) {
+  let text = existing.map(String::from_utf8_lossy).unwrap_or_default();
+  let missing = missing_ignore_rules(&text);
+  if missing.is_empty() {
     return None;
   }
-  let separator = if existing.is_empty() || text.ends_with('\n') {
-    ""
-  } else {
-    "\n"
-  };
-  let mut bytes = Vec::with_capacity(existing.len() + separator.len() + IGNORE_BLOCK.len());
-  bytes.extend_from_slice(existing);
-  bytes.extend_from_slice(separator.as_bytes());
-  bytes.extend_from_slice(IGNORE_BLOCK.as_bytes());
+  let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+  let mut bytes = existing.unwrap_or_default().to_vec();
+  if !text.is_empty() && !text.ends_with('\n') {
+    bytes.extend_from_slice(newline.as_bytes());
+  }
+  for rule in missing {
+    bytes.extend_from_slice(rule.as_bytes());
+    bytes.extend_from_slice(newline.as_bytes());
+  }
   Some(bytes)
 }
 
@@ -236,11 +248,18 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
       let target = destination(root, path, DestinationKind::File)?;
       Ok(FileOperation {
         absolute_path: target.absolute_path,
-        content: FileContent::Bytes(if !target.exists && path.starts_with("docs/") {
-          dated_template(bytes, &created_at)
-        } else {
-          bytes.to_vec()
-        }),
+        content: FileContent::Bytes(
+          if !target.exists
+            && path.starts_with("docs/")
+            && Path::new(path)
+              .extension()
+              .is_some_and(|extension| extension == "md")
+          {
+            dated_template(bytes, &created_at)
+          } else {
+            bytes.to_vec()
+          },
+        ),
         path: (*path).to_owned(),
         state: if target.exists {
           OperationState::Preserved

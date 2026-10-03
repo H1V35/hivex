@@ -2,7 +2,7 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-02
+updated_at: 2026-10-03
 tags: [adr, workflow, adoption]
 ---
 
@@ -26,7 +26,7 @@ Skills provide task knowledge and criteria. The host harness coordinates agents,
 
 Use mature engineering and documentation practices. Prefer domain-driven design and meaningful module responsibilities without imposing hexagonal architecture or speculative abstractions. Keep product, stack and host details in the adopting project. Work uses the checks that add value; no planning stage, extra ticket or testing ritual is required by itself.
 
-Choose tests by value and risk, including critical flows, stable rules and regressions. TDD is optional and reserved for sufficiently defined critical behavior. Use one independent review by default; add another only when concrete risk or findings justify it. The reviewer uses the implementation agent's model and effort. The principal reviewer verifies conflicts with relevant decisions, dependencies and exceptions. CLI retrieval supports the responsible agent and is separate from independent implementation review.
+Choose tests by value and risk, including critical flows, stable rules and regressions. TDD is optional and reserved for sufficiently defined critical behavior. Use one independent review by default; add another only when concrete risk or findings justify it. The reviewer uses a different model vendor than the implementation agent, as amended on 2026-10-03 below. The principal reviewer verifies conflicts with relevant decisions, dependencies and exceptions. CLI retrieval supports the responsible agent and is separate from independent implementation review.
 
 Keep `AGENTS.md` a concise entrypoint with orientation, development and verification guidance, and indispensable project constraints. Links explain when an authority applies; they do not require every source on every task. Use the shared creation/update/archive date convention. Other metadata remains purpose-specific; the foundation imposes no proprietary knowledge schema or line-count limit. Skills use focused descriptions and conditional references, preserving the user's scope and existing authorization.
 
@@ -37,6 +37,14 @@ Keep `AGENTS.md` a concise entrypoint with orientation, development and verifica
 The inferred graph runtime is retired, and its historical status is not an integration gate. Preserve graph snapshots and local work history, including failed results, quality marks, uncertainty and consumption. Do not reset accounting, erase evidence or relabel a historical/native result as success to clear a warning. A stale graph or unrelated warning alone does not block integration; a real current defect or unresolved decision affecting supported behavior does.
 
 The former graph-completeness and zero-warning gate is retained in the [historical foundation decision](../archive/adr/0012-project-foundation-and-workflow.md#knowledge-before-merge-2026-09-18). ADR 0014 supersedes that gate while preserving project-specific owner decisions and existing merge authorization.
+
+## Amendment (2026-10-03): cross-vendor review and runner pools
+
+The owner replaced the same-model reviewer rule. A reviewer from a different model vendor surfaces defects a same-vendor review misses; in Compi it caught defects the same-model review had approved. Implementation currently runs on Claude Code, so the foundation's initial reviewer is `gpt-6.1-sol` with `xhigh` effort, read-only through Codex, following `hivex-review`. Projects record their reviewer profile in their engineering guideline and may change it while keeping a different vendor. The foundation ships the [independent review procedure](../../skills/hivex/assets/project/docs/procedures/independent-review.md) with its report schema.
+
+The foundation also ships the [self-hosted runner pool procedure](../../skills/hivex/assets/project/docs/procedures/self-hosted-runners.md) for private projects running CI on their own machines: a pool of single-job runners, each with a private `HOME` so setup actions do not replace the owner's toolchain or each other's binaries. Hivex itself is public and keeps its GitHub-hosted runners under the [execution procedure](../procedures/self-hosted-runner.md).
+
+`init` creates these files only when absent. Existing projects adopt them deliberately when updating Hivex.
 
 ## Relationships
 

@@ -4,6 +4,18 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::process::Command;
 
+const DATED_TEMPLATES: [&str; 9] = [
+  "docs/README.md",
+  "docs/PRD.md",
+  "docs/CONTEXT.md",
+  "docs/adr/README.md",
+  "docs/guidelines/engineering.md",
+  "docs/guidelines/triage-labels.md",
+  "docs/procedures/issue-tracker.md",
+  "docs/procedures/independent-review.md",
+  "docs/procedures/self-hosted-runners.md",
+];
+
 #[test]
 fn empty_project_initialization_creates_the_complete_foundation() {
   let p = Project::new();
@@ -25,14 +37,11 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     "CLAUDE.md",
     "hivex.json",
     ".gitignore",
-    "docs/README.md",
-    "docs/PRD.md",
-    "docs/CONTEXT.md",
-    "docs/adr/README.md",
-    "docs/guidelines/engineering.md",
-    "docs/guidelines/triage-labels.md",
-    "docs/procedures/issue-tracker.md",
-  ] {
+    "docs/procedures/independent-review.schema.json",
+  ]
+  .into_iter()
+  .chain(DATED_TEMPLATES)
+  {
     assert!(list(&result, "created").contains(&json!(file)));
     assert_ne!(fs::read(p.path(file)).unwrap().len(), 0);
   }
@@ -50,15 +59,7 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     .find_map(|line| line.strip_prefix("created_at: "))
     .unwrap();
   assert!(created == before.trim() || created == today.trim());
-  for file in [
-    "docs/README.md",
-    "docs/PRD.md",
-    "docs/CONTEXT.md",
-    "docs/adr/README.md",
-    "docs/guidelines/engineering.md",
-    "docs/guidelines/triage-labels.md",
-    "docs/procedures/issue-tracker.md",
-  ] {
+  for file in DATED_TEMPLATES {
     let text = fs::read_to_string(p.path(file)).unwrap();
     assert!(text.contains(&format!("created_at: {created}")));
     let header = text
@@ -75,6 +76,7 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     assert!(!text.contains("updated_at:"));
     assert!(!text.contains("archived_at:"));
   }
+
   assert_eq!(
     fs::read_to_string(p.path("CLAUDE.md")).unwrap(),
     "@AGENTS.md\n"
@@ -106,6 +108,22 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     );
   }
   assert!(!p.path(".hivex/knowledge.sqlite").exists());
+}
+
+#[test]
+fn initialization_copies_bundled_non_markdown_templates_and_ignores_local_state() {
+  let p = Project::new();
+  p.ok(&["init"]);
+  assert_eq!(
+    fs::read_to_string(p.path(".gitignore")).unwrap(),
+    "/.hivex/\n/.reviews/\n"
+  );
+  assert_eq!(
+    fs::read(p.path("docs/procedures/independent-review.schema.json")).unwrap(),
+    include_bytes!(
+      "../../skills/hivex/assets/project/docs/procedures/independent-review.schema.json"
+    ),
+  );
 }
 
 #[test]
@@ -559,9 +577,14 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
     p.write(".hivex/.gitignore", format!("# Local rules\r\n{rule}\r\n"));
     p.write(".hivex/knowledge.sqlite", [0, 255, 127, 1]);
     p.ok(&["init"]);
-    for (file, text) in files {
-      assert_eq!(fs::read_to_string(p.path(file)).unwrap(), text);
+    for (file, text) in &files[1..] {
+      assert_eq!(fs::read_to_string(p.path(file)).unwrap(), *text);
     }
+    assert_eq!(
+      fs::read_to_string(p.path(".gitignore")).unwrap(),
+      "/.hivex/\r\n/.reviews/\r\n"
+    );
+    subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
     assert_eq!(
       fs::read(p.path(".hivex/knowledge.sqlite")).unwrap(),
       [0, 255, 127, 1]
