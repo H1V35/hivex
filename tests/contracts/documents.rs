@@ -111,9 +111,13 @@ fn empty_project_initialization_creates_the_complete_foundation() {
 }
 
 #[test]
-fn initialization_copies_bundled_non_markdown_templates_unchanged() {
+fn initialization_copies_bundled_non_markdown_templates_and_ignores_local_state() {
   let p = Project::new();
   p.ok(&["init"]);
+  assert_eq!(
+    fs::read_to_string(p.path(".gitignore")).unwrap(),
+    "/.hivex/\n/.reviews/\n"
+  );
   assert_eq!(
     fs::read(p.path("docs/procedures/independent-review.schema.json")).unwrap(),
     include_bytes!(
@@ -573,9 +577,14 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
     p.write(".hivex/.gitignore", format!("# Local rules\r\n{rule}\r\n"));
     p.write(".hivex/knowledge.sqlite", [0, 255, 127, 1]);
     p.ok(&["init"]);
-    for (file, text) in files {
-      assert_eq!(fs::read_to_string(p.path(file)).unwrap(), text);
+    for (file, text) in &files[1..] {
+      assert_eq!(fs::read_to_string(p.path(file)).unwrap(), *text);
     }
+    assert_eq!(
+      fs::read_to_string(p.path(".gitignore")).unwrap(),
+      "/.hivex/\r\n/.reviews/\r\n"
+    );
+    subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
     assert_eq!(
       fs::read(p.path(".hivex/knowledge.sqlite")).unwrap(),
       [0, 255, 127, 1]

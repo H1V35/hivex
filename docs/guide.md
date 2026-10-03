@@ -2,7 +2,7 @@
 title: "Hivex guide"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-02
+updated_at: 2026-10-03
 tags: [cli, retrieval, adoption]
 ---
 
@@ -27,7 +27,7 @@ In Bun projects use `bun add -d -E @h1v35/hivex`, then `bun hivex init`. The sco
 
 Initialization is a starting point. The responsible agent completes the project's purpose, vocabulary and scope from evidence and owner decisions, maps current authorities and preserves useful history. The [Markdown foundation](../skills/hivex/references/markdown.md) and [language-template catalogue](../templates/README.md) guide adoption. Installing a package does not replace an existing project's owner policy.
 
-New installations ignore `.hivex/` as retained local state. Previously tracked graph files remain tracked until the project deliberately preserves and retires them; `init` neither deletes nor untracks them. Existing nested ignore files are preserved.
+New installations ignore `.hivex/` as retained local state and `.reviews/` for local review traces; `init` appends whichever of these final rules is missing, matching the file's line endings. Previously tracked graph files remain tracked until the project deliberately preserves and retires them; `init` neither deletes nor untracks them. Existing nested ignore files are preserved.
 
 ## Select sources
 

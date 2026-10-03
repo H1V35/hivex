@@ -13,7 +13,7 @@ Run the independent review defined in [engineering](../guidelines/engineering.md
 
 - The branch is pushed and its issue (and pull request, when open) states the intended outcome. The reviewer reads intent from those sources; the implementer does not summarise it.
 - `codex`, `jq` and an authenticated `gh` are available, and Codex is authenticated.
-- `/.reviews/` is listed in `.gitignore`; it holds local review traces.
+- `/.reviews/` stays ignored; `init` adds it to `.gitignore` for local review traces.
 
 ## Run the review
 
