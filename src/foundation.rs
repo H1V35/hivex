@@ -22,10 +22,6 @@ static TEMPLATE_FILES: &[(&str, &[u8])] = &[
     include_bytes!("../skills/hivex/assets/project/AGENTS.md"),
   ),
   (
-    "CLAUDE.md",
-    include_bytes!("../skills/hivex/assets/project/CLAUDE.md"),
-  ),
-  (
     "docs/adr/README.md",
     include_bytes!("../skills/hivex/assets/project/docs/adr/README.md"),
   ),

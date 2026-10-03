@@ -34,7 +34,6 @@ fn empty_project_initialization_creates_the_complete_foundation() {
   );
   for file in [
     "AGENTS.md",
-    "CLAUDE.md",
     "hivex.json",
     ".gitignore",
     "docs/procedures/independent-review.schema.json",
@@ -77,10 +76,8 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     assert!(!text.contains("archived_at:"));
   }
 
-  assert_eq!(
-    fs::read_to_string(p.path("CLAUDE.md")).unwrap(),
-    "@AGENTS.md\n"
-  );
+  // Claude Code reads AGENTS.md natively; init no longer adds a CLAUDE.md import.
+  assert!(!p.path("CLAUDE.md").exists());
   assert!(
     !fs::read_to_string(p.path("AGENTS.md"))
       .unwrap()
