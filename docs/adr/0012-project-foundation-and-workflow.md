@@ -48,7 +48,7 @@ The foundation also ships the [self-hosted runner pool procedure](../../skills/h
 
 ## Amendment (2026-10-03): native `AGENTS.md`
 
-`init` no longer prepares the `CLAUDE.md` import of `AGENTS.md` described above. Claude Code 2.1.277 and later reads `AGENTS.md` as project instructions when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists, so the import only duplicated the entrypoint and reappeared in projects that had removed it. An existing project `CLAUDE.md` remains project-owned and is preserved.
+`init` no longer prepares the `CLAUDE.md` import of `AGENTS.md` described above. Claude Code 2.1.277 and later reads `AGENTS.md` as project instructions when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working directory or above it, so the import only duplicated the entrypoint and reappeared in projects that had removed it. Sessions where that support is [unavailable](https://code.claude.com/docs/en/memory#when-agents-md-support-is-unavailable), such as Amazon Bedrock or disabled telemetry before 2.1.281, still need a project-owned `CLAUDE.md` importing `AGENTS.md`. An existing project `CLAUDE.md` remains project-owned and is preserved.
 
 ## Relationships
 
