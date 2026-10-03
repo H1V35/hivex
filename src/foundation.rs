@@ -50,6 +50,18 @@ static TEMPLATE_FILES: &[(&str, &[u8])] = &[
     include_bytes!("../skills/hivex/assets/project/docs/procedures/issue-tracker.md"),
   ),
   (
+    "docs/procedures/independent-review.md",
+    include_bytes!("../skills/hivex/assets/project/docs/procedures/independent-review.md"),
+  ),
+  (
+    "docs/procedures/independent-review.schema.json",
+    include_bytes!("../skills/hivex/assets/project/docs/procedures/independent-review.schema.json"),
+  ),
+  (
+    "docs/procedures/self-hosted-runners.md",
+    include_bytes!("../skills/hivex/assets/project/docs/procedures/self-hosted-runners.md"),
+  ),
+  (
     "docs/README.md",
     include_bytes!("../skills/hivex/assets/project/docs/README.md"),
   ),
@@ -236,11 +248,18 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
       let target = destination(root, path, DestinationKind::File)?;
       Ok(FileOperation {
         absolute_path: target.absolute_path,
-        content: FileContent::Bytes(if !target.exists && path.starts_with("docs/") {
-          dated_template(bytes, &created_at)
-        } else {
-          bytes.to_vec()
-        }),
+        content: FileContent::Bytes(
+          if !target.exists
+            && path.starts_with("docs/")
+            && Path::new(path)
+              .extension()
+              .is_some_and(|extension| extension == "md")
+          {
+            dated_template(bytes, &created_at)
+          } else {
+            bytes.to_vec()
+          },
+        ),
         path: (*path).to_owned(),
         state: if target.exists {
           OperationState::Preserved

@@ -2,7 +2,7 @@
 title: "Engineering"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-02
+updated_at: 2026-10-03
 tags: [engineering, quality, workflow]
 ---
 
@@ -36,7 +36,7 @@ Run the relevant checks for the affected surfaces. Documentation and configurati
 
 ## Independent review
 
-Use one independent review by default, covering scope, correctness and project standards. Add another when concrete risk or findings justify it. The reviewer uses the implementing agent's model and reasoning effort. Hivex retrieval does not choose or invoke a model.
+Use one independent review by default, covering scope, correctness and project standards. Add another when concrete risk or findings justify it. The reviewer uses a different model vendor than the implementing agent, so the review does not share its blind spots. Record the reviewer's model and reasoning effort here; the initial profile is `gpt-6.1-sol` with `xhigh` effort, read-only through Codex, following `hivex-review` under the [independent review procedure](../procedures/independent-review.md). Hivex retrieval does not choose or invoke a model.
 
 The principal reviewer verifies possible conflicts with relevant decisions, dependencies and exceptions. Hivex assists that review. Start with local recovery of evidence; the reviewer reasons about actual applicability. Structural validation does not approve an implementation.
 

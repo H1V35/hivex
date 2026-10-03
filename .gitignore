@@ -11,3 +11,6 @@
 !.env.sample
 .npmrc
 .DS_Store
+
+# Local cross-vendor review traces; the pull request keeps the durable report.
+/.reviews/
