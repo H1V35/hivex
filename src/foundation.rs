@@ -203,18 +203,15 @@ fn validate_nested_ignore(root: &Path) -> Result<()> {
 }
 
 fn missing_ignore_rules(text: &str) -> Vec<&'static str> {
-  let mut lines: Vec<_> = split_crlf_lines(text).collect();
-  while lines.last() == Some(&"") {
-    lines.pop();
-  }
-  let managed = lines
+  let lines: Vec<_> = split_crlf_lines(text).collect();
+  // The last matching rule wins, so a later negation could re-include local state.
+  let effective = lines
     .iter()
-    .rev()
-    .take_while(|line| IGNORE_RULES.contains(line))
-    .collect::<Vec<_>>();
+    .rposition(|line| line.starts_with('!'))
+    .map_or(&lines[..], |negation| &lines[negation + 1..]);
   IGNORE_RULES
     .into_iter()
-    .filter(|rule| !managed.contains(&rule))
+    .filter(|rule| !effective.contains(rule))
     .collect()
 }
 

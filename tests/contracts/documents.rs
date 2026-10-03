@@ -124,6 +124,32 @@ fn initialization_copies_bundled_non_markdown_templates_and_ignores_local_state(
 }
 
 #[test]
+fn initialization_keeps_existing_ignore_rules_unless_a_later_negation_follows() {
+  for newline in ["\n", "\r\n"] {
+    let p = Project::new();
+    let ignore =
+      format!("node_modules{newline}!.env.example{newline}/.hivex/{newline}.env*.local{newline}");
+    p.write(".gitignore", &ignore);
+    p.ok(&["init"]);
+    assert_eq!(
+      fs::read_to_string(p.path(".gitignore")).unwrap(),
+      format!("{ignore}/.reviews/{newline}")
+    );
+    subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
+
+    let p = Project::new();
+    let ignore = format!("/.hivex/{newline}/.reviews/{newline}!.env.example{newline}");
+    p.write(".gitignore", &ignore);
+    p.ok(&["init"]);
+    assert_eq!(
+      fs::read_to_string(p.path(".gitignore")).unwrap(),
+      format!("{ignore}/.hivex/{newline}/.reviews/{newline}")
+    );
+    subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
+  }
+}
+
+#[test]
 fn cjk_source_order_and_page_boundaries_remain_compatible() {
   let p = Project::new();
   for (name, text) in [
