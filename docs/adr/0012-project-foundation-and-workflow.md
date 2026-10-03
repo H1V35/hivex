@@ -46,6 +46,10 @@ The foundation also ships the [self-hosted runner pool procedure](../../skills/h
 
 `init` creates these files only when absent. Existing projects adopt them deliberately when updating Hivex.
 
+## Amendment (2026-10-03): native `AGENTS.md`
+
+`init` no longer prepares the `CLAUDE.md` import of `AGENTS.md` described above. Claude Code 2.1.277 and later reads `AGENTS.md` as project instructions when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists, so the import only duplicated the entrypoint and reappeared in projects that had removed it. An existing project `CLAUDE.md` remains project-owned and is preserved.
+
 ## Relationships
 
 - Extends [Product contract](0010-practical-knowledge-assistance.md): adds the project foundation and independent capabilities without making every phase mandatory.
