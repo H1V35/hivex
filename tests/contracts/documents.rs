@@ -554,6 +554,23 @@ fn initialization_is_repeatable_preserves_owned_bytes_and_git_visibility() {
 }
 
 #[test]
+fn initialization_reports_an_unreadable_root_in_its_message() {
+  let p = Project::new();
+  let missing = p.path("missing");
+  let mut command = p.command(&[]);
+  command.arg("init").arg("--root").arg(&missing);
+  let output = crate::support::bounded(command);
+  assert_eq!(output.status.code(), Some(1));
+  let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+  assert_eq!(
+    error,
+    json!({"error":{"code":"INVALID_ROOT",
+      "message":"Project root is not readable: No such file or directory (os error 2)",
+      "messageTruncated":false}})
+  );
+}
+
+#[test]
 fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
   for relative in [
     "docs",

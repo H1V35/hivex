@@ -84,8 +84,18 @@ fn error(code: &str, message: impl Into<String>) -> HivexError {
 }
 
 fn project_root(requested: &str) -> Result<PathBuf> {
-  fs::canonicalize(project_directory(requested)?)
-    .map_err(|read_error| error("INVALID_ROOT", read_error.to_string()))
+  let directory = project_directory(requested).map_err(|mut root_error| {
+    // init has always reported the reason in its message, without details.
+    let details = root_error.details.take();
+    if let Some(reason) = details
+      .as_ref()
+      .and_then(|details| details["reason"].as_str())
+    {
+      root_error.message = format!("{}: {reason}", root_error.message);
+    }
+    root_error
+  })?;
+  fs::canonicalize(directory).map_err(|read_error| error("INVALID_ROOT", read_error.to_string()))
 }
 
 fn destination(root: &Path, relative_path: &str, kind: DestinationKind) -> Result<Destination> {
