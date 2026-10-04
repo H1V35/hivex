@@ -49,6 +49,41 @@ fn navigation_preserves_direction_ranges_and_works_without_graph_or_model() {
 }
 
 #[test]
+fn explicit_anchors_take_the_following_section_wherever_they_sit_in_a_section() {
+  let p = Project::new();
+  p.write(
+    "a.md",
+    "# Guide\n\n## Child <a id=\"inline\"></a>\n<a id=\"right-after\"></a>\ntext\n\n<a id=\"after-text\"></a>\nmore\n\n## Next\nend\n",
+  );
+  p.write(
+    "b.md",
+    "# B\n\n## Relationships\n- Depends on [A](a.md#inline): inside the heading\n- Depends on [A](a.md#right-after): directly under the heading\n- Depends on [A](a.md#after-text): later in the section\n",
+  );
+  let output = p.ok(&["relations", "b.md", "--direction", "outgoing"]);
+  let ranges: Vec<_> = output["relations"]
+    .as_array()
+    .unwrap()
+    .iter()
+    .map(|relation| {
+      let to = &relation["to"];
+      (
+        to["anchor"].clone(),
+        to["lineStart"].clone(),
+        to["lineEnd"].clone(),
+      )
+    })
+    .collect();
+  assert_eq!(
+    ranges,
+    [
+      (json!("inline"), json!(3), json!(9)),
+      (json!("right-after"), json!(4), json!(11)),
+      (json!("after-text"), json!(7), json!(11)),
+    ]
+  );
+}
+
+#[test]
 fn malformed_declarations_and_ambiguous_anchors_are_diagnostics() {
   let p = connected();
   for entry in [
