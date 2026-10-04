@@ -2,8 +2,37 @@ use super::relations::{Anchor, DraftRelation, MAX_RELATIONS, RelationKind, ancho
 use super::{Document, Project, has_uri_scheme, normalize_path, percent_decode, raw_line_ranges};
 use crate::error::{HivexError, Result};
 use serde::Serialize;
+use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+
+/// Which declarations of the queried document `relations` returns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+  Outgoing,
+  Incoming,
+  Both,
+}
+
+impl Direction {
+  pub fn parse(value: &str) -> Option<Self> {
+    match value {
+      "outgoing" => Some(Self::Outgoing),
+      "incoming" => Some(Self::Incoming),
+      "both" => Some(Self::Both),
+      _ => None,
+    }
+  }
+
+  fn includes(self, outgoing: bool, incoming: bool) -> bool {
+    match self {
+      Self::Outgoing => outgoing,
+      Self::Incoming => incoming,
+      Self::Both => outgoing || incoming,
+    }
+  }
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,7 +56,7 @@ pub struct AuthoredRelation {
 }
 
 fn invalid(source: &Document, line: usize, message: &str) -> HivexError {
-  HivexError::new("INVALID_RELATION", message).with_details(serde_json::json!({
+  HivexError::new("INVALID_RELATION", message).with_details(json!({
     "document":source.id,"line":line,"version":source.hash
   }))
 }
@@ -78,32 +107,24 @@ fn target_document<'a>(
       "Relations require a relative Markdown target",
     ));
   }
+  let source_path = project.root.join(&source.id);
   let absolute = if decoded.is_empty() {
-    project.root.join(&source.path)
+    source_path
   } else {
-    project
-      .root
-      .join(&source.path)
-      .parent()
-      .expect("source has root")
-      .join(decoded)
+    source_path.parent().expect("source has root").join(decoded)
   };
   let normalized = normalize_path(&absolute);
   let relative = normalized
     .strip_prefix(&project.root)
     .map_err(|_| invalid(source, line, "Relation target escapes the project"))?;
   let id = relative.to_string_lossy().replace('\\', "/");
-  project
-    .documents
-    .iter()
-    .find(|document| document.id == id)
-    .ok_or_else(|| {
-      invalid(
-        source,
-        line,
-        "Relation target is not a selected Markdown source",
-      )
-    })
+  project.document(&id).ok_or_else(|| {
+    invalid(
+      source,
+      line,
+      "Relation target is not a selected Markdown source",
+    )
+  })
 }
 
 struct SourceIndex {
@@ -195,7 +216,7 @@ impl<'a> Resolver<'a> {
     from.line_start = relation.line_start;
     from.line_end = relation.line_end;
     let to = self.reference(target, anchor).map_err(|mut error| {
-      error.details = Some(serde_json::json!({
+      error.details = Some(json!({
         "document":source.id,"line":relation.line_start,
         "target":relation.target,"targetDetails":error.details
       }));
@@ -210,48 +231,50 @@ impl<'a> Resolver<'a> {
     })
   }
 
-  pub(super) fn relations(&mut self, id: &str, direction: &str) -> Result<Vec<AuthoredRelation>> {
+  pub(super) fn relations(
+    &mut self,
+    id: &str,
+    direction: Direction,
+  ) -> Result<Vec<AuthoredRelation>> {
     let project = self.project;
-    let selected = project
+    if project.document(id).is_none() {
+      return Err(HivexError::new(
+        "SOURCE_NOT_FOUND",
+        "Relations require a selected document ID",
+      ));
+    }
+    // Incoming declarations come from ordinary sources; an archived document
+    // is scanned only when it is the one queried.
+    let sources = project
       .documents
       .iter()
-      .find(|source| source.id == id)
-      .ok_or_else(|| {
-        HivexError::new(
-          "SOURCE_NOT_FOUND",
-          "Relations require a selected document ID",
-        )
-      })?;
-    let sources = project.documents.iter().filter(|source| {
-      if direction == "outgoing" {
-        return source.id == id;
-      }
-      !source.historical || source.id == selected.id
-    });
+      .filter(|source| source.id == id || (direction != Direction::Outgoing && !source.historical));
     let mut result = Vec::new();
     let mut seen = HashSet::new();
     let mut count = 0;
     for source in sources {
-      let declarations = parse(&source.text).map_err(|mut error| {
-        error.details.get_or_insert(serde_json::json!({}))["document"] =
-          serde_json::json!(source.id);
-        error.details.as_mut().expect("details set")["version"] = serde_json::json!(source.hash);
-        error
-      })?;
+      let declarations = parse(&source.text).map_err(|error| located(error, source))?;
       for relation in declarations {
         count += 1;
         if count > MAX_RELATIONS {
-          return Err(HivexError::new("RELATION_LIMIT", "At most 2048 authored declarations are supported per query")
-          .with_details(serde_json::json!({"document":source.id,"line":relation.line_start,"limit":MAX_RELATIONS})));
+          return Err(
+            HivexError::new(
+              "RELATION_LIMIT",
+              "At most 2048 authored declarations are supported per query",
+            )
+            .with_details(
+              json!({"document":source.id,"line":relation.line_start,"limit":MAX_RELATIONS}),
+            ),
+          );
         }
         let resolved = self.resolve(source, relation)?;
-        let identity = serde_json::to_string(&(
-          &resolved.literal,
-          &resolved.from.document,
-          &resolved.to.document,
-          &resolved.to.anchor,
-          &resolved.reason,
-        ))?;
+        let identity = (
+          resolved.literal,
+          resolved.from.document.clone(),
+          resolved.to.document.clone(),
+          resolved.to.anchor.clone(),
+          resolved.reason.clone(),
+        );
         if !seen.insert(identity) {
           return Err(invalid(
             source,
@@ -259,31 +282,37 @@ impl<'a> Resolver<'a> {
             "Duplicate authored relationship declaration",
           ));
         }
-        let outgoing = resolved.from.document == id;
-        let incoming = resolved.to.document == id;
-        if outgoing && direction != "incoming" || incoming && direction != "outgoing" {
+        if direction.includes(resolved.from.document == id, resolved.to.document == id) {
           result.push(resolved);
         }
       }
     }
-    result.sort_by(|left, right| {
-      (
-        &left.from.document,
-        left.from.line_start,
-        &left.to.document,
-        &left.to.anchor,
-      )
-        .cmp(&(
-          &right.from.document,
-          right.from.line_start,
-          &right.to.document,
-          &right.to.anchor,
-        ))
-    });
+    result.sort_by(|left, right| order(left).cmp(&order(right)));
     Ok(result)
   }
 }
 
-pub fn relations(project: &Project, id: &str, direction: &str) -> Result<Vec<AuthoredRelation>> {
+fn order(relation: &AuthoredRelation) -> (&str, usize, &str, Option<&str>) {
+  (
+    &relation.from.document,
+    relation.from.line_start,
+    &relation.to.document,
+    relation.to.anchor.as_deref(),
+  )
+}
+
+/// Attach the declaring document's identity to a parse error.
+fn located(mut error: HivexError, source: &Document) -> HivexError {
+  let details = error.details.get_or_insert_with(|| json!({}));
+  details["document"] = json!(source.id);
+  details["version"] = json!(source.hash);
+  error
+}
+
+pub fn relations(
+  project: &Project,
+  id: &str,
+  direction: Direction,
+) -> Result<Vec<AuthoredRelation>> {
   Resolver::new(project).relations(id, direction)
 }

@@ -2,7 +2,7 @@ use granit_parser::{
   Event as YamlEvent, Options as YamlOptions, Parser as YamlParser, ScalarStyle, Tag,
 };
 use num_traits::ToPrimitive;
-use pulldown_cmark::{Event, Options, Parser, Tag as MarkdownTag, TagEnd};
+use pulldown_cmark::{Event, Options, Parser, Tag as MarkdownTag};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -22,9 +22,11 @@ pub fn hash(text: &str) -> String {
   format!("{digest:x}")
 }
 
+pub const MARKDOWN_EXTENSIONS: [&str; 3] = [".md", ".markdown", ".mdown"];
+
 pub fn is_markdown_path(path: &str) -> bool {
   let lower = path.to_ascii_lowercase();
-  [".md", ".markdown", ".mdown"]
+  MARKDOWN_EXTENSIONS
     .iter()
     .any(|extension| lower.ends_with(extension))
 }
@@ -352,35 +354,6 @@ fn parse_yaml_metadata(yaml: &str) -> Option<(Option<String>, Option<String>)> {
   ))
 }
 
-fn heading_text<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Option<String> {
-  let mut depth = 0usize;
-  let mut active = false;
-  let mut text = String::new();
-  for event in events {
-    match event {
-      Event::Start(MarkdownTag::Heading { .. }) => {
-        if depth == 0 && !active {
-          active = true;
-        }
-        depth += 1;
-      }
-      Event::End(TagEnd::Heading(_)) => {
-        depth = depth.saturating_sub(1);
-        if active && depth == 0 {
-          return Some(text);
-        }
-      }
-      Event::Start(_) => depth += 1,
-      Event::End(_) => depth = depth.saturating_sub(1),
-      Event::Text(value) | Event::Code(value) if active => text.push_str(&value),
-      Event::InlineHtml(value) if active => text.push_str(&value),
-      Event::SoftBreak | Event::HardBreak if active => text.push('\n'),
-      _ => {}
-    }
-  }
-  None
-}
-
 pub(super) fn markdown_options() -> Options {
   let mut options = Options::empty();
   options.insert(Options::ENABLE_TABLES);
@@ -391,16 +364,39 @@ pub(super) fn markdown_options() -> Options {
   options
 }
 
+/// The first top-level heading's text and every non-empty link destination.
 fn parse_body(body: &str) -> (Option<String>, Vec<String>) {
-  let title = heading_text(Parser::new_ext(body, markdown_options()));
-  let links = Parser::new_ext(body, markdown_options())
-    .filter_map(|event| match event {
-      Event::Start(MarkdownTag::Link { dest_url, .. }) if !dest_url.is_empty() => {
-        Some(dest_url.into_string())
+  let mut depth = 0usize;
+  let mut heading: Option<String> = None;
+  let mut title = None;
+  let mut links = Vec::new();
+  for event in Parser::new_ext(body, markdown_options()) {
+    match (event, heading.as_mut()) {
+      (Event::Start(tag), _) => {
+        if let MarkdownTag::Link { dest_url, .. } = &tag
+          && !dest_url.is_empty()
+        {
+          links.push(dest_url.to_string());
+        }
+        let first_heading = matches!(tag, MarkdownTag::Heading { .. }) && title.is_none();
+        if depth == 0 && first_heading {
+          heading = Some(String::new());
+        }
+        depth += 1;
       }
-      _ => None,
-    })
-    .collect();
+      (Event::End(_), _) => {
+        depth = depth.saturating_sub(1);
+        if depth == 0 && heading.is_some() {
+          title = heading.take();
+        }
+      }
+      (Event::Text(text) | Event::Code(text) | Event::InlineHtml(text), Some(heading)) => {
+        heading.push_str(&text);
+      }
+      (Event::SoftBreak | Event::HardBreak, Some(heading)) => heading.push('\n'),
+      _ => {}
+    }
+  }
   (title, links)
 }
 
@@ -426,7 +422,7 @@ pub fn markdown_references(text: &str) -> impl Iterator<Item = (String, usize)> 
     })
 }
 
-pub fn describe_markdown(path: &str, content: &str) -> MarkdownDescription {
+pub fn describe(path: &str, content: &str) -> MarkdownDescription {
   let (yaml, body) =
     frontmatter(content).map_or((None, content), |front| (Some(front.yaml), front.body));
   let (status, front_title) = yaml.and_then(parse_yaml_metadata).unwrap_or((None, None));
@@ -575,7 +571,7 @@ mod tests {
       ("status: [reviewed, adopted]", "Fallback", Value::Null),
     ];
     for (metadata, title, status) in cases {
-      let parsed = describe_markdown("fixture.md", &format!("---\n{metadata}\n---\n# Fallback\n"));
+      let parsed = describe("fixture.md", &format!("---\n{metadata}\n---\n# Fallback\n"));
       assert_eq!(parsed.title, title);
       assert_eq!(json!(parsed.status), status);
     }
@@ -590,7 +586,7 @@ mod tests {
         "  ".repeat(depth + 1)
       )
       .unwrap();
-      let parsed = describe_markdown("deep.md", &text);
+      let parsed = describe("deep.md", &text);
       assert_eq!(parsed.title, "Deep metadata");
       assert_eq!(parsed.status.as_deref(), Some("accepted"));
     }
@@ -599,6 +595,6 @@ mod tests {
       "[".repeat(1000),
       "]".repeat(1000)
     );
-    assert_eq!(describe_markdown("flow.md", &flow).title, "Flow metadata");
+    assert_eq!(describe("flow.md", &flow).title, "Flow metadata");
   }
 }

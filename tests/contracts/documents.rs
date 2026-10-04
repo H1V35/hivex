@@ -184,10 +184,10 @@ fn help_errors_and_bounded_diagnostics() {
   assert_eq!(p.ok(&["--help"])["application"], "hivex");
   for (args, code) in [
     (vec!["unknown"], "INVALID_ARGUMENT"),
-    (vec!["--unknown"], "READ_FAILED"),
-    (vec!["-x"], "READ_FAILED"),
-    (vec!["-abc"], "READ_FAILED"),
-    (vec!["unknown", "--unknown"], "READ_FAILED"),
+    (vec!["--unknown"], "INVALID_ARGUMENT"),
+    (vec!["-x"], "INVALID_ARGUMENT"),
+    (vec!["-abc"], "INVALID_ARGUMENT"),
+    (vec!["unknown", "--unknown"], "INVALID_ARGUMENT"),
     (vec!["sources", "--unknown"], "INVALID_ARGUMENT"),
     (vec!["sources", "--root"], "INVALID_ARGUMENT"),
     (vec!["sources", "--root", "--unknown"], "INVALID_ARGUMENT"),

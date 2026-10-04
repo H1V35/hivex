@@ -3,8 +3,9 @@ use crate::error::{HivexError, Result};
 use serde_json::{Map, Value};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
+use std::os::unix::fs::{OpenOptionsExt, symlink};
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // Managed rules stay last so earlier project rules cannot re-include their paths.
 const IGNORE_RULES: [&str; 2] = ["/.hivex/", "/.reviews/"];
@@ -264,28 +265,27 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
     .collect()
 }
 
+/// Today's UTC date as `YYYY-MM-DD`.
 fn creation_date() -> Result<String> {
-  let output = Command::new("/bin/date")
-    .env("LC_ALL", "C")
-    .args(["-u", "+%Y-%m-%d"])
-    .output()
-    .map_err(|failure| error("INIT_DATE_FAILED", failure.to_string()))?;
-  let value = String::from_utf8(output.stdout)
-    .map_err(|failure| error("INIT_DATE_FAILED", failure.to_string()))?;
-  let day = value.trim();
-  if !output.status.success()
-    || day.len() != 10
-    || !day.bytes().enumerate().all(|(index, byte)| match index {
-      4 | 7 => byte == b'-',
-      _ => byte.is_ascii_digit(),
-    })
-  {
-    return Err(error(
-      "INIT_DATE_FAILED",
-      "Unable to determine the UTC creation date",
-    ));
-  }
-  Ok(day.to_owned())
+  let elapsed = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map_err(|_| error("INIT_DATE_FAILED", "The system clock is before 1970"))?;
+  Ok(civil_date(elapsed.as_secs() / 86_400))
+}
+
+/// Proleptic Gregorian date of a day count since 1970-01-01 (Hinnant's `civil_from_days`).
+fn civil_date(days: u64) -> String {
+  let shifted = days + 719_468;
+  let era = shifted / 146_097;
+  let day_of_era = shifted % 146_097;
+  let year_of_era =
+    (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+  let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+  let month_index = (5 * day_of_year + 2) / 153;
+  let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+  let month = (month_index + 2) % 12 + 1;
+  let year = era * 400 + year_of_era + u64::from(month <= 2);
+  format!("{year:04}-{month:02}-{day:02}")
 }
 
 fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
@@ -402,7 +402,13 @@ fn skill_operations(root: &Path) -> Result<Vec<FileOperation>> {
       } else {
         root.join(".agents/skills").join(name)
       };
-      let link = relative_link(target.absolute_path.parent().unwrap(), &source);
+      let link = relative_link(
+        target
+          .absolute_path
+          .parent()
+          .expect("skill link has a parent"),
+        &source,
+      );
       operations.push(FileOperation {
         absolute_path: target.absolute_path,
         content: FileContent::Link(link),
@@ -420,61 +426,36 @@ fn skill_operations(root: &Path) -> Result<Vec<FileOperation>> {
 
 fn write_operations(operations: &[FileOperation]) -> Result<()> {
   for operation in operations {
-    if matches!(operation.state, OperationState::Preserved) {
-      continue;
-    }
-    if let Some(parent) = operation.absolute_path.parent() {
-      fs::create_dir_all(parent).map_err(|write_error| {
+    if operation.state != OperationState::Preserved {
+      write_operation(operation).map_err(|write_error| {
         error(
-          "READ_FAILED",
-          format!("Unable to create initialization directory: {write_error}"),
-        )
-      })?;
-    }
-    let bytes = match &operation.content {
-      FileContent::Link(target) => {
-        std::os::unix::fs::symlink(target, &operation.absolute_path).map_err(|write_error| {
-          error(
-            "READ_FAILED",
-            format!("Unable to link {}: {write_error}", operation.path),
-          )
-        })?;
-        continue;
-      }
-      FileContent::Bytes(bytes) => bytes,
-    };
-    if matches!(operation.state, OperationState::Created) {
-      let mut options = OpenOptions::new();
-      options.write(true).create_new(true);
-      #[cfg(unix)]
-      {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o644);
-      }
-      let mut file = options
-        .open(&operation.absolute_path)
-        .map_err(|write_error| {
-          error(
-            "READ_FAILED",
-            format!("Unable to create {}: {write_error}", operation.path),
-          )
-        })?;
-      file.write_all(bytes).map_err(|write_error| {
-        error(
-          "READ_FAILED",
-          format!("Unable to write {}: {write_error}", operation.path),
-        )
-      })?;
-    } else {
-      fs::write(&operation.absolute_path, bytes).map_err(|write_error| {
-        error(
-          "READ_FAILED",
+          "INIT_WRITE_FAILED",
           format!("Unable to write {}: {write_error}", operation.path),
         )
       })?;
     }
   }
   Ok(())
+}
+
+fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
+  if let Some(parent) = operation.absolute_path.parent() {
+    fs::create_dir_all(parent)?;
+  }
+  let bytes = match &operation.content {
+    FileContent::Link(target) => return symlink(target, &operation.absolute_path),
+    FileContent::Bytes(bytes) => bytes,
+  };
+  if operation.state == OperationState::Updated {
+    return fs::write(&operation.absolute_path, bytes);
+  }
+  // Never replace a file that appeared after planning.
+  OpenOptions::new()
+    .write(true)
+    .create_new(true)
+    .mode(0o644)
+    .open(&operation.absolute_path)?
+    .write_all(bytes)
 }
 
 fn sort_paths(paths: &mut [String]) {
@@ -505,18 +486,10 @@ fn report(operations: &[FileOperation]) -> Value {
   Value::Object(report)
 }
 
-pub fn initialize(requested: Option<&str>) -> Result<Value> {
-  let root = if let Some(requested) = requested {
-    project_root(requested)?
-  } else {
-    let current = std::env::current_dir().map_err(|read_error| {
-      error(
-        "INVALID_ROOT",
-        format!("Project root is not readable: {read_error}"),
-      )
-    })?;
-    project_root(&current.to_string_lossy())?
-  };
+/// Prepare the missing foundation files, skill links and ignore rules of the
+/// project at `root`, preserving everything that already exists.
+pub fn initialize(root: &str) -> Result<Value> {
+  let root = project_root(root)?;
   validate_nested_ignore(&root)?;
   let mut operations = template_operations(&root)?;
   operations.extend(skill_operations(&root)?);
@@ -550,4 +523,22 @@ fn validate_destination_component(
     ));
   }
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::civil_date;
+
+  #[test]
+  fn civil_dates_follow_gregorian_leap_rules() {
+    for (days, date) in [
+      (0, "1970-01-01"),
+      (11_016, "2000-02-29"),
+      (19_782, "2024-02-29"),
+      (20_730, "2026-10-04"),
+      (47_541, "2100-03-01"),
+    ] {
+      assert_eq!(civil_date(days), date);
+    }
+  }
 }

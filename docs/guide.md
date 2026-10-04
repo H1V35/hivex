@@ -2,7 +2,7 @@
 title: "Hivex guide"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-03
+updated_at: 2026-10-04
 tags: [cli, retrieval, adoption]
 ---
 
@@ -54,7 +54,7 @@ npx hivex relations docs/policy.md --direction both
 npx hivex read docs/policy.md --from 20 --to 45
 ```
 
-All operations use current working-copy sources without model calls or graph/SQLite-state access. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles; read a known authority directly instead of invoking every command by ceremony. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
+All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles; read a known authority directly instead of invoking every command by ceremony. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
 
 ### Search source passages
 

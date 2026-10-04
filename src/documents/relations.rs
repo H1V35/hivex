@@ -1,5 +1,6 @@
+use super::markdown::is_markdown_path;
 use super::markdown::{frontmatter, markdown_options};
-use super::{is_markdown_path, line_content, raw_line_ranges};
+use super::{line_content, raw_line_ranges};
 use crate::error::{HivexError, Result};
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 use serde_json::json;
