@@ -1,6 +1,6 @@
-use crate::compatibility::{normalize_path, trim_js_whitespace};
+use crate::compatibility::{normalize_path, project_directory};
 use crate::error::{HivexError, Result};
-use serde_json::{Map, Value};
+use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, symlink};
@@ -17,55 +17,26 @@ const SKILLS: [&str; 6] = [
   "hivex-review",
   "hivex-git",
 ];
-static TEMPLATE_FILES: &[(&str, &[u8])] = &[
-  (
-    "AGENTS.md",
-    include_bytes!("../skills/hivex/assets/project/AGENTS.md"),
-  ),
-  (
-    "docs/adr/README.md",
-    include_bytes!("../skills/hivex/assets/project/docs/adr/README.md"),
-  ),
-  (
-    "docs/CONTEXT.md",
-    include_bytes!("../skills/hivex/assets/project/docs/CONTEXT.md"),
-  ),
-  (
-    "docs/guidelines/engineering.md",
-    include_bytes!("../skills/hivex/assets/project/docs/guidelines/engineering.md"),
-  ),
-  (
-    "docs/guidelines/triage-labels.md",
-    include_bytes!("../skills/hivex/assets/project/docs/guidelines/triage-labels.md"),
-  ),
-  (
-    "docs/PRD.md",
-    include_bytes!("../skills/hivex/assets/project/docs/PRD.md"),
-  ),
-  (
-    "docs/procedures/issue-tracker.md",
-    include_bytes!("../skills/hivex/assets/project/docs/procedures/issue-tracker.md"),
-  ),
-  (
-    "docs/procedures/independent-review.md",
-    include_bytes!("../skills/hivex/assets/project/docs/procedures/independent-review.md"),
-  ),
-  (
-    "docs/procedures/independent-review.schema.json",
-    include_bytes!("../skills/hivex/assets/project/docs/procedures/independent-review.schema.json"),
-  ),
-  (
-    "docs/procedures/self-hosted-runners.md",
-    include_bytes!("../skills/hivex/assets/project/docs/procedures/self-hosted-runners.md"),
-  ),
-  (
-    "docs/README.md",
-    include_bytes!("../skills/hivex/assets/project/docs/README.md"),
-  ),
-  (
-    "hivex.json",
-    include_bytes!("../skills/hivex/assets/project/hivex.json"),
-  ),
+/// Bundled `skills/hivex/assets/project` files, by their project-relative path.
+macro_rules! templates {
+  ($($path:literal),* $(,)?) => {
+    &[$(($path, include_bytes!(concat!("../skills/hivex/assets/project/", $path)))),*]
+  };
+}
+
+static TEMPLATE_FILES: &[(&str, &[u8])] = templates![
+  "AGENTS.md",
+  "docs/adr/README.md",
+  "docs/CONTEXT.md",
+  "docs/guidelines/engineering.md",
+  "docs/guidelines/triage-labels.md",
+  "docs/PRD.md",
+  "docs/procedures/issue-tracker.md",
+  "docs/procedures/independent-review.md",
+  "docs/procedures/independent-review.schema.json",
+  "docs/procedures/self-hosted-runners.md",
+  "docs/README.md",
+  "hivex.json",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -73,6 +44,16 @@ enum OperationState {
   Created,
   Preserved,
   Updated,
+}
+
+impl OperationState {
+  const fn planned(exists: bool) -> Self {
+    if exists {
+      Self::Preserved
+    } else {
+      Self::Created
+    }
+  }
 }
 
 struct FileOperation {
@@ -102,41 +83,9 @@ fn error(code: &str, message: impl Into<String>) -> HivexError {
   HivexError::new(code, message)
 }
 
-fn resolve_path(path: &Path) -> std::io::Result<PathBuf> {
-  if path.is_absolute() {
-    Ok(normalize_path(path))
-  } else {
-    Ok(normalize_path(&std::env::current_dir()?.join(path)))
-  }
-}
-
 fn project_root(requested: &str) -> Result<PathBuf> {
-  if trim_js_whitespace(requested).is_empty() {
-    return Err(error(
-      "INVALID_ROOT",
-      "Project root must be a non-empty path",
-    ));
-  }
-
-  let root = resolve_path(Path::new(requested)).map_err(|read_error| {
-    error(
-      "INVALID_ROOT",
-      format!("Project root is not readable: {read_error}"),
-    )
-  })?;
-  let metadata = fs::symlink_metadata(&root).map_err(|read_error| {
-    error(
-      "INVALID_ROOT",
-      format!("Project root is not readable: {read_error}"),
-    )
-  })?;
-  if metadata.file_type().is_symlink() {
-    return Err(error("INVALID_ROOT", "Project root must not be a symlink"));
-  }
-  if !metadata.is_dir() {
-    return Err(error("INVALID_ROOT", "Project root must be a directory"));
-  }
-  fs::canonicalize(root).map_err(|read_error| error("INVALID_ROOT", read_error.to_string()))
+  fs::canonicalize(project_directory(requested)?)
+    .map_err(|read_error| error("INVALID_ROOT", read_error.to_string()))
 }
 
 fn destination(root: &Path, relative_path: &str, kind: DestinationKind) -> Result<Destination> {
@@ -198,11 +147,6 @@ fn split_crlf_lines(text: &str) -> impl Iterator<Item = &str> {
     .map(|line| line.strip_suffix('\r').unwrap_or(line))
 }
 
-fn validate_nested_ignore(root: &Path) -> Result<()> {
-  destination(root, ".hivex/.gitignore", DestinationKind::File)?;
-  Ok(())
-}
-
 fn missing_ignore_rules(text: &str) -> Vec<&'static str> {
   let lines: Vec<_> = split_crlf_lines(text).collect();
   // The last matching rule wins, so a later negation could re-include local state.
@@ -242,27 +186,24 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
       let target = destination(root, path, DestinationKind::File)?;
       Ok(FileOperation {
         absolute_path: target.absolute_path,
-        content: FileContent::Bytes(
-          if !target.exists
-            && path.starts_with("docs/")
-            && Path::new(path)
-              .extension()
-              .is_some_and(|extension| extension == "md")
-          {
-            dated_template(bytes, &created_at)
-          } else {
-            bytes.to_vec()
-          },
-        ),
-        path: (*path).to_owned(),
-        state: if target.exists {
-          OperationState::Preserved
+        content: FileContent::Bytes(if !target.exists && is_dated(path) {
+          dated_template(bytes, &created_at)
         } else {
-          OperationState::Created
-        },
+          bytes.to_vec()
+        }),
+        path: (*path).to_owned(),
+        state: OperationState::planned(target.exists),
       })
     })
     .collect()
+}
+
+/// New Markdown under `docs/` records its creation day.
+fn is_dated(path: &str) -> bool {
+  path.starts_with("docs/")
+    && Path::new(path)
+      .extension()
+      .is_some_and(|extension| extension == "md")
 }
 
 /// Today's UTC date as `YYYY-MM-DD`.
@@ -413,11 +354,7 @@ fn skill_operations(root: &Path) -> Result<Vec<FileOperation>> {
         absolute_path: target.absolute_path,
         content: FileContent::Link(link),
         path,
-        state: if target.exists {
-          OperationState::Preserved
-        } else {
-          OperationState::Created
-        },
+        state: OperationState::planned(target.exists),
       });
     }
   }
@@ -458,39 +395,33 @@ fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
     .write_all(bytes)
 }
 
-fn sort_paths(paths: &mut [String]) {
-  paths.sort_by(|left, right| {
-    left
-      .to_ascii_lowercase()
-      .cmp(&right.to_ascii_lowercase())
-      .then_with(|| left.cmp(right))
-  });
-}
-
 fn report(operations: &[FileOperation]) -> Value {
   let paths = |state| {
     let mut paths: Vec<_> = operations
       .iter()
       .filter(|operation| operation.state == state)
-      .map(|operation| operation.path.clone())
+      .map(|operation| operation.path.as_str())
       .collect();
-    sort_paths(&mut paths);
-    Value::Array(paths.into_iter().map(Value::String).collect())
+    paths.sort_by(|left, right| {
+      (left.to_ascii_lowercase(), left).cmp(&(right.to_ascii_lowercase(), right))
+    });
+    paths
   };
-  let mut report = Map::new();
-  report.insert("command".to_owned(), Value::String("init".to_owned()));
-  report.insert("created".to_owned(), paths(OperationState::Created));
-  report.insert("modelCalls".to_owned(), Value::from(0));
-  report.insert("preserved".to_owned(), paths(OperationState::Preserved));
-  report.insert("updated".to_owned(), paths(OperationState::Updated));
-  Value::Object(report)
+  json!({
+    "command": "init",
+    "created": paths(OperationState::Created),
+    "modelCalls": 0,
+    "preserved": paths(OperationState::Preserved),
+    "updated": paths(OperationState::Updated),
+  })
 }
 
 /// Prepare the missing foundation files, skill links and ignore rules of the
 /// project at `root`, preserving everything that already exists.
 pub fn initialize(root: &str) -> Result<Value> {
   let root = project_root(root)?;
-  validate_nested_ignore(&root)?;
+  // Retained state must not hide a symlink or a conflicting `.hivex` entry.
+  destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
   let mut operations = template_operations(&root)?;
   operations.extend(skill_operations(&root)?);
   operations.push(ignore_operation(&root)?);

@@ -12,7 +12,7 @@ pub(crate) use navigation::{AuthoredRelation, Direction, relations as authored_r
 pub(crate) use search::{Match, Query, search as search_sources};
 pub(crate) use validation::validate_sources;
 
-use crate::compatibility::{normalize_path, trim_js_whitespace};
+use crate::compatibility::{normalize_path, project_directory};
 use crate::error::{HivexError, Result};
 use collation::{compare_paths, compare_serialized};
 use markdown::MARKDOWN_EXTENSIONS;
@@ -76,7 +76,7 @@ fn failure(code: &str, message: impl Into<String>, details: serde_json::Value) -
 
 /// Load the selected Markdown of the project at `root` from the working copy.
 pub fn load_project(root: &str) -> Result<Project> {
-  let root = absolute_root(root)?;
+  let root = project_directory(root)?;
   let config = Config::load(&root)?;
   let mut warnings = Vec::new();
   let candidates = selection::discover(&root, &config, &mut warnings);
@@ -112,35 +112,6 @@ pub fn load_project(root: &str) -> Result<Project> {
     documents,
     warnings,
   })
-}
-
-fn absolute_root(root: &str) -> Result<PathBuf> {
-  let invalid = |message: &str| HivexError::new("INVALID_ROOT", message);
-  if trim_js_whitespace(root).is_empty() {
-    return Err(invalid("Project root must be a non-empty path"));
-  }
-  let requested = Path::new(root);
-  let absolute = if requested.is_absolute() {
-    normalize_path(requested)
-  } else {
-    let current = std::env::current_dir()
-      .map_err(|error| invalid(&format!("Project root is not readable: {error}")))?;
-    normalize_path(&current.join(requested))
-  };
-  let metadata = fs::symlink_metadata(&absolute).map_err(|error| {
-    failure(
-      "INVALID_ROOT",
-      "Project root is not readable",
-      json!({"reason": error.to_string(), "root": absolute.to_string_lossy()}),
-    )
-  })?;
-  if metadata.file_type().is_symlink() {
-    return Err(invalid("Project root must not be a symlink"));
-  }
-  if !metadata.is_dir() {
-    return Err(invalid("Project root must be a directory"));
-  }
-  Ok(absolute)
 }
 
 fn read_document(root: &Path, candidate: &Candidate, budget: usize) -> Result<Document> {
