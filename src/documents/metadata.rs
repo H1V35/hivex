@@ -1,22 +1,61 @@
+//! Validation of the outer YAML metadata header of documentation under `docs/`.
 use super::Document;
 use super::markdown::{frontmatter, metadata_text, raw_line_ranges};
-use granit_parser::{Event, Options, Parser, Span, StrInput};
+use granit_parser::{Event, Marker, Options, Parser, Span, StrInput};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-const FIELDS: [&str; 8] = [
-  "title",
-  "status",
-  "implementation",
-  "created_at",
-  "updated_at",
-  "archived_at",
-  "tags",
-  "source",
-];
-const REQUIRED: [usize; 4] = [0, 1, 3, 6];
 const MAX_HEADER_BYTES: usize = 65_536;
+const STATUSES: [&str; 6] = [
+  "draft",
+  "proposed",
+  "accepted",
+  "rejected",
+  "superseded",
+  "historical",
+];
+const IMPLEMENTATION_STATES: [&str; 4] = ["not-started", "in-progress", "implemented", "removed"];
+
+/// The allowed fields, declared in their required order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Field {
+  Title,
+  Status,
+  Implementation,
+  CreatedAt,
+  UpdatedAt,
+  ArchivedAt,
+  Tags,
+  Source,
+}
+
+impl Field {
+  const ALL: [Self; 8] = [
+    Self::Title,
+    Self::Status,
+    Self::Implementation,
+    Self::CreatedAt,
+    Self::UpdatedAt,
+    Self::ArchivedAt,
+    Self::Tags,
+    Self::Source,
+  ];
+  const REQUIRED: [Self; 4] = [Self::Title, Self::Status, Self::CreatedAt, Self::Tags];
+
+  const fn name(self) -> &'static str {
+    match self {
+      Self::Title => "title",
+      Self::Status => "status",
+      Self::Implementation => "implementation",
+      Self::CreatedAt => "created_at",
+      Self::UpdatedAt => "updated_at",
+      Self::ArchivedAt => "archived_at",
+      Self::Tags => "tags",
+      Self::Source => "source",
+    }
+  }
+}
 
 enum MetadataValue {
   Text(String),
@@ -24,17 +63,42 @@ enum MetadataValue {
   Other,
 }
 
-struct Field {
-  index: usize,
+struct Entry {
+  field: Field,
   span: Span,
   value: Rc<MetadataValue>,
 }
 
 #[derive(Clone, Copy)]
 struct Problem {
+  /// One-based line and column within the YAML header.
   location: Option<(usize, usize)>,
-  field: Option<&'static str>,
+  field: Option<Field>,
   message: &'static str,
+}
+
+impl Problem {
+  const fn new(message: &'static str) -> Self {
+    Self {
+      location: None,
+      field: None,
+      message,
+    }
+  }
+
+  fn at(marker: Marker, message: &'static str) -> Self {
+    Self {
+      location: Some((marker.line(), marker.col() + 1)),
+      ..Self::new(message)
+    }
+  }
+
+  const fn of(self, field: Field) -> Self {
+    Self {
+      field: Some(field),
+      ..self
+    }
+  }
 }
 
 type Yaml<'a> = Parser<'a, StrInput<'a>>;
@@ -45,75 +109,52 @@ pub(super) fn is_documentation(source: &Document) -> bool {
 
 pub(super) fn findings(source: &Document) -> Vec<Value> {
   let Some(front) = frontmatter(&source.text) else {
-    return vec![finding(source, 0, missing_header())];
+    let missing = "Documentation under docs requires a closed outer YAML metadata header";
+    return vec![finding(source, 0, Problem::new(missing))];
   };
   let offset = raw_line_ranges(&source.text[..front.yaml_offset]).count();
   if front.yaml.len() > MAX_HEADER_BYTES {
-    return vec![finding(
-      source,
-      offset,
-      Problem {
-        location: None,
-        field: None,
-        message: "Outer metadata exceeds 65536 bytes",
-      },
-    )];
+    let oversized = Problem::new("Outer metadata exceeds 65536 bytes");
+    return vec![finding(source, offset, oversized)];
   }
-  match parse_fields(front.yaml) {
-    Ok(fields) => validate_fields(&fields)
-      .into_iter()
-      .map(|problem| finding(source, offset, problem))
-      .collect(),
-    Err(problem) => vec![finding(source, offset, problem)],
-  }
-}
-
-fn missing_header() -> Problem {
-  Problem {
-    location: None,
-    field: None,
-    message: "Documentation under docs requires a closed outer YAML metadata header",
-  }
+  let problems =
+    parse_entries(front.yaml).map_or_else(|problem| vec![problem], |entries| check(&entries));
+  problems
+    .into_iter()
+    .map(|problem| finding(source, offset, problem))
+    .collect()
 }
 
 fn finding(source: &Document, offset: usize, problem: Problem) -> Value {
+  let (line, column) = problem.location.unwrap_or((1, 1));
   json!({"document":source.id,"version":source.hash,"code":"INVALID_METADATA",
-    "line":offset + problem.location.map_or(1, |(line, _)| line),
-    "column":problem.location.map_or(1, |(_, column)| column),
-    "field":problem.field,"message":problem.message})
+    "line":offset + line,"column":column,
+    "field":problem.field.map(Field::name),"message":problem.message})
 }
 
 fn next<'a>(parser: &mut Yaml<'a>) -> Result<(Event<'a>, Span), Problem> {
   parser
     .next()
     .transpose()
-    .map_err(|error| Problem {
-      location: Some((error.marker().line(), error.marker().col() + 1)),
-      field: None,
-      message: "Outer metadata contains invalid YAML",
-    })?
-    .ok_or(Problem {
-      location: None,
-      field: None,
-      message: "Outer metadata contains incomplete YAML",
-    })
+    .map_err(|error| Problem::at(*error.marker(), "Outer metadata contains invalid YAML"))?
+    .ok_or(Problem::new("Outer metadata contains incomplete YAML"))
 }
 
-fn parse_fields(yaml: &str) -> Result<Vec<Field>, Problem> {
+/// Read the header as one untagged mapping of distinct allowed fields.
+fn parse_entries(yaml: &str) -> Result<Vec<Entry>, Problem> {
   let mut options = Options::default();
   options.emit_comments = false;
   let mut parser = Parser::new_from_str_with_options(yaml, options);
-  next(&mut parser)?;
-  next(&mut parser)?;
+  next(&mut parser)?; // stream start
+  next(&mut parser)?; // document start
   let (root, span) = next(&mut parser)?;
   if !matches!(root, Event::MappingStart(_, _, None)) {
-    return Err(Problem {
-      location: Some((span.start.line(), span.start.col() + 1)),
-      field: None,
-      message: "Outer metadata must be one untagged YAML mapping",
-    });
+    return Err(Problem::at(
+      span.start,
+      "Outer metadata must be one untagged YAML mapping",
+    ));
   }
-  let mut fields = Vec::new();
+  let mut entries: Vec<Entry> = Vec::new();
   let mut anchors = HashMap::new();
   loop {
     let (key, span) = next(&mut parser)?;
@@ -121,75 +162,66 @@ fn parse_fields(yaml: &str) -> Result<Vec<Field>, Problem> {
       break;
     }
     let key = value(&mut parser, (key, span), &mut anchors)?;
-    let index = field_index(&key, span)?;
-    if fields.iter().any(|field: &Field| field.index == index) {
-      return Err(Problem {
-        location: Some((span.start.line(), span.start.col() + 1)),
-        field: Some(FIELDS[index]),
-        message: "Metadata field is duplicated",
-      });
+    let field = field(&key).ok_or_else(|| {
+      Problem::at(
+        span.start,
+        "Use only title, status, implementation, created_at, updated_at, archived_at, tags and source",
+      )
+    })?;
+    if entries.iter().any(|entry| entry.field == field) {
+      return Err(Problem::at(span.start, "Metadata field is duplicated").of(field));
     }
     let event = next(&mut parser)?;
-    fields.push(Field {
-      index,
-      span,
-      value: value(&mut parser, event, &mut anchors)?,
-    });
+    let value = value(&mut parser, event, &mut anchors)?;
+    entries.push(Entry { field, span, value });
   }
   let (end, span) = next(&mut parser)?;
   let (stream, _) = next(&mut parser)?;
   if !matches!(end, Event::DocumentEnd) || !matches!(stream, Event::StreamEnd) {
-    return Err(Problem {
-      location: Some((span.start.line(), span.start.col() + 1)),
-      field: None,
-      message: "Outer metadata must contain one YAML document",
-    });
+    return Err(Problem::at(
+      span.start,
+      "Outer metadata must contain one YAML document",
+    ));
   }
-  Ok(fields)
+  Ok(entries)
 }
 
-fn field_index(key: &MetadataValue, span: Span) -> Result<usize, Problem> {
-  if let MetadataValue::Text(key) = key
-    && let Some(index) = FIELDS.iter().position(|field| key == field)
-  {
-    return Ok(index);
-  }
-  Err(Problem {
-    location: Some((span.start.line(), span.start.col() + 1)),
-    field: None,
-    message: "Use only title, status, implementation, created_at, updated_at, archived_at, tags and source",
-  })
+fn field(key: &MetadataValue) -> Option<Field> {
+  let MetadataValue::Text(key) = key else {
+    return None;
+  };
+  Field::ALL.into_iter().find(|field| field.name() == key)
 }
 
+/// A scalar, a flat sequence of scalars or an alias to an earlier one.
 fn value<'a>(
   parser: &mut Yaml<'a>,
-  event: (Event<'a>, Span),
+  (event, span): (Event<'a>, Span),
   anchors: &mut HashMap<usize, Rc<MetadataValue>>,
 ) -> Result<Rc<MetadataValue>, Problem> {
-  let (event, span) = event;
   let (anchor, parsed) = match event {
-    Event::Scalar(text, style, anchor, tag) => (
-      anchor,
-      Rc::new(
-        metadata_text(&text, style, tag.as_deref())
-          .map_or(MetadataValue::Other, MetadataValue::Text),
-      ),
-    ),
+    Event::Scalar(text, style, anchor, tag) => {
+      let text = metadata_text(&text, style, tag.as_deref());
+      (
+        anchor,
+        Rc::new(text.map_or(MetadataValue::Other, MetadataValue::Text)),
+      )
+    }
     Event::SequenceStart(_, anchor, None) => (anchor, tags(parser, anchors)?),
-    Event::Alias(anchor) => (
-      0,
-      anchors.get(&anchor).cloned().ok_or(Problem {
-        location: Some((span.start.line(), span.start.col() + 1)),
-        field: None,
-        message: "Metadata aliases must reference an earlier scalar or flat sequence",
-      })?,
-    ),
+    Event::Alias(anchor) => {
+      let aliased = anchors.get(&anchor).cloned().ok_or_else(|| {
+        Problem::at(
+          span.start,
+          "Metadata aliases must reference an earlier scalar or flat sequence",
+        )
+      })?;
+      return Ok(aliased);
+    }
     _ => {
-      return Err(Problem {
-        location: Some((span.start.line(), span.start.col() + 1)),
-        field: None,
-        message: "Metadata values must be text or a flat sequence of text tags",
-      });
+      return Err(Problem::at(
+        span.start,
+        "Metadata values must be text or a flat sequence of text tags",
+      ));
     }
   };
   if anchor != 0 {
@@ -204,81 +236,58 @@ fn tags(
 ) -> Result<Rc<MetadataValue>, Problem> {
   let mut items = Vec::new();
   loop {
-    let event = next(parser)?;
-    if matches!(event.0, Event::SequenceEnd) {
+    let (event, span) = next(parser)?;
+    if matches!(event, Event::SequenceEnd) {
       return Ok(Rc::new(MetadataValue::Tags(items)));
     }
-    if !matches!(event.0, Event::Scalar(..) | Event::Alias(_)) {
-      return Err(Problem {
-        location: Some((event.1.start.line(), event.1.start.col() + 1)),
-        field: Some("tags"),
-        message: "Tags must be a flat sequence of text",
-      });
+    if !matches!(event, Event::Scalar(..) | Event::Alias(_)) {
+      let problem = Problem::at(span.start, "Tags must be a flat sequence of text");
+      return Err(problem.of(Field::Tags));
     }
-    items.push(value(parser, event, anchors)?);
+    items.push(value(parser, (event, span), anchors)?);
   }
 }
 
-fn validate_fields(fields: &[Field]) -> Vec<Problem> {
+fn check(entries: &[Entry]) -> Vec<Problem> {
   let mut problems = Vec::new();
   let mut previous = None;
-  for field in fields {
-    if previous.is_some_and(|index| index > field.index) {
-      problems.push(Problem {
-        location: Some((field.span.start.line(), field.span.start.col() + 1)),
-        field: Some(FIELDS[field.index]),
-        message: "Metadata fields must follow the standard field order",
-      });
+  for entry in entries {
+    let at = |message| Problem::at(entry.span.start, message).of(entry.field);
+    if previous > Some(entry.field) {
+      problems.push(at("Metadata fields must follow the standard field order"));
     }
-    previous = Some(field.index);
-    if let Some(message) = field_problem(field) {
-      problems.push(Problem {
-        location: Some((field.span.start.line(), field.span.start.col() + 1)),
-        field: Some(FIELDS[field.index]),
-        message,
-      });
+    previous = Some(entry.field);
+    if let Some(message) = value_problem(entry) {
+      problems.push(at(message));
     }
   }
-  for index in REQUIRED {
-    if fields.iter().all(|field| field.index != index) {
-      problems.push(Problem {
-        location: None,
-        field: Some(FIELDS[index]),
-        message: "Required metadata field is missing",
-      });
+  for field in Field::REQUIRED {
+    if entries.iter().all(|entry| entry.field != field) {
+      problems.push(Problem::new("Required metadata field is missing").of(field));
     }
   }
   problems
 }
 
-fn field_problem(field: &Field) -> Option<&'static str> {
-  if field.index == 6 {
-    return (!valid_tags(&field.value))
+fn value_problem(entry: &Entry) -> Option<&'static str> {
+  if entry.field == Field::Tags {
+    return (!valid_tags(&entry.value))
       .then_some("Tags must be nonempty, distinct lowercase kebab-case text keywords");
   }
-  let MetadataValue::Text(text) = field.value.as_ref() else {
+  let MetadataValue::Text(text) = entry.value.as_ref() else {
     return Some("Metadata field must be text");
   };
   if text.trim().is_empty() {
     return Some("Metadata field must be nonempty text");
   }
-  match field.index {
-    1 if ![
-      "draft",
-      "proposed",
-      "accepted",
-      "rejected",
-      "superseded",
-      "historical",
-    ]
-    .contains(&text.as_str()) =>
-    {
-      Some("Unknown documentary status")
-    }
-    2 if !["not-started", "in-progress", "implemented", "removed"].contains(&text.as_str()) => {
+  match entry.field {
+    Field::Status if !STATUSES.contains(&text.as_str()) => Some("Unknown documentary status"),
+    Field::Implementation if !IMPLEMENTATION_STATES.contains(&text.as_str()) => {
       Some("Unknown implementation state")
     }
-    3..=5 if !valid_date(text) => Some("Date must be a real calendar date in YYYY-MM-DD format"),
+    Field::CreatedAt | Field::UpdatedAt | Field::ArchivedAt if !valid_date(text) => {
+      Some("Date must be a real calendar date in YYYY-MM-DD format")
+    }
     _ => None,
   }
 }
@@ -301,36 +310,27 @@ fn valid_tags(value: &MetadataValue) -> bool {
     })
 }
 
+/// A real proleptic Gregorian `YYYY-MM-DD` date after year 0.
 fn valid_date(text: &str) -> bool {
-  let bytes = text.as_bytes();
-  if bytes.len() != 10
-    || bytes[4] != b'-'
-    || bytes[7] != b'-'
-    || !bytes
-      .iter()
-      .enumerate()
-      .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
-  {
+  let number = |range: std::ops::Range<usize>| {
+    let digits = text.get(range)?;
+    digits
+      .bytes()
+      .all(|byte| byte.is_ascii_digit())
+      .then(|| digits.parse::<u32>().ok())?
+  };
+  if text.len() != 10 || text.get(4..5) != Some("-") || text.get(7..8) != Some("-") {
     return false;
   }
-  let year = text[..4].parse::<u16>().unwrap_or(0);
-  let month = text[5..7].parse::<usize>().unwrap_or(0);
-  let day = text[8..].parse::<u8>().unwrap_or(0);
+  let (Some(year), Some(month), Some(day)) = (number(0..4), number(5..7), number(8..10)) else {
+    return false;
+  };
   let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
-  let days = [
-    0,
-    31,
-    28 + u8::from(leap),
-    31,
-    30,
-    31,
-    30,
-    31,
-    31,
-    30,
-    31,
-    30,
-    31,
-  ];
-  year > 0 && day > 0 && days.get(month).is_some_and(|maximum| day <= *maximum)
+  let days = match month {
+    1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+    4 | 6 | 9 | 11 => 30,
+    2 => 28 + u32::from(leap),
+    _ => 0,
+  };
+  year > 0 && (1..=days).contains(&day)
 }

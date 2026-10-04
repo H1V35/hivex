@@ -11,6 +11,14 @@ use std::process::Command;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const TARGET: &str = "aarch64-apple-darwin";
+const SKILLS: [&str; 6] = [
+  "hivex",
+  "hivex-design",
+  "hivex-document",
+  "hivex-implement",
+  "hivex-review",
+  "hivex-git",
+];
 
 struct Temporary(PathBuf);
 impl Temporary {
@@ -343,7 +351,7 @@ fn build_native(root: &Path, metadata: &Value) -> Result<()> {
   flags.push(format!("--remap-path-prefix={}=hivex", root.display()));
   let registries: BTreeSet<_> = metadata["packages"]
     .as_array()
-    .unwrap()
+    .ok_or("Missing packages")?
     .iter()
     .filter(|package| !package["source"].is_null())
     .filter_map(|package| {
@@ -400,14 +408,7 @@ fn verify_archive(manifest: &Value, archive: &Path, report: &Value) -> Result<BT
     return Err("Archive contains links or special files".into());
   }
   verify_allowlist(manifest, &files)?;
-  for skill in [
-    "hivex",
-    "hivex-design",
-    "hivex-document",
-    "hivex-implement",
-    "hivex-review",
-    "hivex-git",
-  ] {
+  for skill in SKILLS {
     if !files.contains(&format!("skills/{skill}/SKILL.md")) {
       return Err("Missing skill".into());
     }
@@ -436,14 +437,7 @@ fn verify_initialization(binary: &Path, package: &Path, temporary: &Path) -> Res
   if !initialized.join("AGENTS.md").is_file() || initialized.join("CLAUDE.md").exists() {
     return Err("Unexpected agent instructions".into());
   }
-  for skill in [
-    "hivex",
-    "hivex-design",
-    "hivex-document",
-    "hivex-implement",
-    "hivex-review",
-    "hivex-git",
-  ] {
+  for skill in SKILLS {
     for family in [".agents", ".claude"] {
       let linked = initialized.join(family).join("skills").join(skill);
       if family == ".agents"

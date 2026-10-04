@@ -287,54 +287,55 @@ pub(super) struct Section {
   pub context_end: usize,
 }
 
-/// Bound heading scopes and byte ends without storing every source line.
+/// Split a document into a preamble and one section per root heading.
+///
+/// A section's bytes run to the next heading of any level, while its lines
+/// extend through its subsections; `context_end` is the byte end of that last
+/// line. Only the needed line boundaries are retained, never every line.
 pub(super) fn sections(text: &str) -> Result<Vec<Section>> {
   let scan = scan_markdown(text)?;
   let (positions, line_count) = line_positions(text, &scan);
-  let mut headings = scan.headings.iter().enumerate().peekable();
-  let mut sections = Vec::new();
-  let mut is_heading = false;
-  let mut start = (1, 0);
-  let mut end = line_count;
-  let needed: BTreeSet<_> = positions
-    .values()
-    .map(|line| line.saturating_sub(1))
-    .chain([line_count])
+  let heading_lines: Vec<_> = scan
+    .headings
+    .iter()
+    .map(|heading| positions[&heading.start])
     .collect();
-  let mut ends = BTreeMap::new();
-  for (index, line) in raw_line_ranges(text).enumerate() {
-    if needed.contains(&(index + 1)) {
-      ends.insert(index + 1, line.end);
+  let starts: Vec<_> = std::iter::once(1)
+    .chain(heading_lines.iter().copied())
+    .collect();
+  let preamble_end = heading_lines.first().map_or(line_count, |line| line - 1);
+  let ends: Vec<_> = std::iter::once(preamble_end)
+    .chain(
+      (0..scan.headings.len())
+        .map(|index| section_end(&scan.headings, index, &positions, line_count)),
+    )
+    .collect();
+  let bounds = line_bounds(text, &starts.iter().chain(&ends).copied().collect());
+  let mut sections = Vec::new();
+  for (index, (&line_start, &line_end)) in starts.iter().zip(&ends).enumerate() {
+    let first_byte = bounds[&line_start].start;
+    let next = starts.get(index + 1);
+    let next_byte = next.map_or(text.len(), |line| bounds[line].start);
+    // An empty preamble before a first-line heading is not a section.
+    if first_byte < next_byte || next.is_none() {
+      sections.push(Section {
+        line_start,
+        line_end,
+        bytes: first_byte..next_byte,
+        context_end: bounds[&line_end].end,
+      });
     }
-    if headings
-      .peek()
-      .is_some_and(|(_, heading)| heading.start < line.end)
-    {
-      let line_end = if is_heading { end } else { index };
-      if line.start > start.1 {
-        sections.push(Section {
-          line_start: start.0,
-          line_end,
-          bytes: start.1..line.start,
-          context_end: 0,
-        });
-      }
-      let (heading_index, _) = headings.next().expect("peeked heading");
-      is_heading = true;
-      end = section_end(&scan.headings, heading_index, &positions, line_count);
-      start = (index + 1, line.start);
-    }
-  }
-  sections.push(Section {
-    line_start: start.0,
-    line_end: end,
-    bytes: start.1..text.len(),
-    context_end: 0,
-  });
-  for section in &mut sections {
-    section.context_end = ends[&section.line_end];
   }
   Ok(sections)
+}
+
+/// Byte ranges, with line endings, of the requested one-based lines.
+fn line_bounds(text: &str, lines: &HashSet<usize>) -> HashMap<usize, Range<usize>> {
+  raw_line_ranges(text)
+    .enumerate()
+    .map(|(index, range)| (index + 1, range))
+    .filter(|(line, _)| lines.contains(line))
+    .collect()
 }
 
 fn line_positions(text: &str, scan: &MarkdownScan) -> (BTreeMap<usize, usize>, usize) {
@@ -357,10 +358,6 @@ fn line_positions(text: &str, scan: &MarkdownScan) -> (BTreeMap<usize, usize>, u
     positions.insert(offset, count);
   }
   (positions, count)
-}
-
-fn line_number(positions: &BTreeMap<usize, usize>, offset: usize) -> usize {
-  positions[&offset]
 }
 
 fn relation_error(line: usize, cause: &'static str) -> HivexError {
@@ -500,43 +497,39 @@ fn parse_relation_line(line: &str, line_number: usize) -> Result<DraftRelation> 
 /// identify its one-based source line and cause instead of dropping it.
 pub fn parse(text: &str) -> Result<Vec<DraftRelation>> {
   let scan = scan_markdown(text)?;
-  let blocks: Vec<_> = scan
+  let mut blocks = scan
     .headings
     .iter()
     .enumerate()
-    .filter(|(_, heading)| heading.level == 2 && heading.text.trim() == "Relationships")
-    .collect();
-  let Some((index, heading)) = blocks.first().copied() else {
+    .filter(|(_, heading)| heading.level == 2 && heading.text.trim() == "Relationships");
+  let Some((index, heading)) = blocks.next() else {
     return Ok(Vec::new());
   };
+  let duplicate = blocks.next().map(|(_, duplicate)| duplicate.start);
+  let block = heading.end
+    ..scan
+      .headings
+      .iter()
+      .skip(index + 1)
+      .find(|next| next.level <= 2)
+      .map_or(text.len(), |next| next.start);
   let mut relations = Vec::new();
-  let end = scan
-    .headings
-    .iter()
-    .skip(index + 1)
-    .find(|next| next.level <= 2)
-    .map_or(text.len(), |next| next.start);
   for (index, range) in raw_line_ranges(text).enumerate() {
-    if range.start <= heading.start
-      && heading.start < range.end
-      && line_content(&text[range.clone()]) != "## Relationships"
-    {
+    let line_number = index + 1;
+    let line = line_content(&text[range.clone()]);
+    if range.contains(&heading.start) && line != "## Relationships" {
       return Err(relation_error(
-        index + 1,
+        line_number,
         "expected exact '## Relationships' heading",
       ));
     }
-    if blocks.len() > 1 && range.start <= blocks[1].1.start && blocks[1].1.start < range.end {
+    if duplicate.is_some_and(|start| range.contains(&start)) {
       return Err(relation_error(
-        index + 1,
+        line_number,
         "document has more than one H2 Relationships section",
       ));
     }
-    if range.start < heading.end || range.start >= end {
-      continue;
-    }
-    let line = line_content(&text[range]);
-    if line.trim().is_empty() {
+    if !block.contains(&range.start) || line.trim().is_empty() {
       continue;
     }
     if relations.len() == MAX_RELATIONS {
@@ -545,10 +538,10 @@ pub fn parse(text: &str) -> Result<Vec<DraftRelation>> {
           "RELATION_LIMIT",
           "At most 2048 authored declarations are supported per query",
         )
-        .with_details(json!({"line":index+1,"limit":MAX_RELATIONS})),
+        .with_details(json!({"line": line_number, "limit": MAX_RELATIONS})),
       );
     }
-    relations.push(parse_relation_line(line, index + 1)?);
+    relations.push(parse_relation_line(line, line_number)?);
   }
   Ok(relations)
 }
@@ -596,41 +589,24 @@ fn section_end(
     .iter()
     .skip(index + 1)
     .find(|next| next.level <= heading.level)
-    .map_or(line_count, |next| {
-      line_number(starts, next.start).saturating_sub(1)
-    })
+    .map_or(line_count, |next| starts[&next.start].saturating_sub(1))
 }
 
+/// An explicit anchor's section is the one of the heading containing or
+/// following its marker, or of the last heading when none follows.
 fn explicit_end(
-  scan: &MarkdownScan,
+  headings: &[Heading],
   offset: usize,
   starts: &BTreeMap<usize, usize>,
   line_count: usize,
 ) -> usize {
-  let heading_index = scan
-    .headings
+  headings
     .iter()
-    .position(|heading| heading.start <= offset && offset <= heading.end)
-    .or_else(|| {
-      scan
-        .headings
-        .iter()
-        .position(|heading| heading.start >= offset)
-    });
-  heading_index.map_or_else(
-    || {
-      scan
-        .headings
-        .iter()
-        .enumerate()
-        .rev()
-        .find(|(_, heading)| heading.start < offset)
-        .map_or(line_count, |(index, _)| {
-          section_end(&scan.headings, index, starts, line_count)
-        })
-    },
-    |index| section_end(&scan.headings, index, starts, line_count),
-  )
+    .position(|heading| offset <= heading.end)
+    .or(headings.len().checked_sub(1))
+    .map_or(line_count, |index| {
+      section_end(headings, index, starts, line_count)
+    })
 }
 
 fn ambiguous_anchor(id: &str, first_line: usize, line: usize) -> HivexError {
@@ -661,17 +637,17 @@ pub fn anchors(text: &str) -> Result<Vec<Anchor>> {
     if !base.is_empty() {
       anchors.push(Anchor {
         id: unique_heading_slug(&base, &mut counts, &mut used),
-        line_start: line_number(&starts, heading.start),
+        line_start: starts[&heading.start],
         line_end: section_end(&scan.headings, index, &starts, line_count),
       });
     }
   }
   for marker in &scan.explicit_anchors {
-    let line = line_number(&starts, marker.offset);
+    let line = starts[&marker.offset];
     anchors.push(Anchor {
       id: marker.id.clone(),
       line_start: line,
-      line_end: explicit_end(&scan, marker.offset, &starts, line_count),
+      line_end: explicit_end(&scan.headings, marker.offset, &starts, line_count),
     });
   }
   anchors.sort_by_key(|anchor| (anchor.line_start, anchor.line_end));
@@ -778,5 +754,26 @@ mod tests {
     );
     assert_eq!((values[0].line_start, values[0].line_end), (10, 11));
     assert_eq!((values[1].line_start, values[1].line_end), (11, 11));
+  }
+
+  #[test]
+  fn explicit_anchors_take_the_section_of_the_following_or_last_heading() {
+    let source = "<a id=\"intro\"></a>\n# Title\ntext\n\n<a id=\"before-next\"></a>\n# Next\nmore\n<a id=\"tail\"></a>\n";
+    let ranges: Vec<_> = anchors(source)
+      .expect("unambiguous anchors")
+      .into_iter()
+      .map(|anchor| (anchor.id, anchor.line_start, anchor.line_end))
+      .collect();
+    let expected = [
+      ("intro", 1, 5),
+      ("title", 2, 5),
+      ("before-next", 5, 8),
+      ("next", 6, 8),
+      ("tail", 8, 8),
+    ];
+    assert_eq!(
+      ranges,
+      expected.map(|(id, start, end)| (id.to_owned(), start, end))
+    );
   }
 }
