@@ -592,8 +592,10 @@ fn section_end(
     .map_or(line_count, |next| starts[&next.start].saturating_sub(1))
 }
 
-/// An explicit anchor's section is the one of the heading containing or
-/// following its marker, or of the last heading when none follows.
+/// An explicit anchor's section is the one of the heading whose text contains
+/// its marker, otherwise of the nearest following heading, or of the last
+/// heading when none follows. A heading's range ends where the next line
+/// starts, so a marker on that line already follows the heading.
 fn explicit_end(
   headings: &[Heading],
   offset: usize,
@@ -602,7 +604,7 @@ fn explicit_end(
 ) -> usize {
   headings
     .iter()
-    .position(|heading| offset <= heading.end)
+    .position(|heading| offset < heading.end)
     .or(headings.len().checked_sub(1))
     .map_or(line_count, |index| {
       section_end(headings, index, starts, line_count)
@@ -770,6 +772,26 @@ mod tests {
       ("before-next", 5, 8),
       ("next", 6, 8),
       ("tail", 8, 8),
+    ];
+    assert_eq!(
+      ranges,
+      expected.map(|(id, start, end)| (id.to_owned(), start, end))
+    );
+  }
+
+  #[test]
+  fn an_anchor_under_a_heading_takes_the_following_section_unless_inside_its_text() {
+    let source = "# Guide\n\n## Child <a id=\"inline\"></a>\n<a id=\"right-after\"></a>\ntext\n\n<a id=\"after-text\"></a>\nmore\n\n## Next\nend\n";
+    let ranges: Vec<_> = anchors(source)
+      .expect("unambiguous anchors")
+      .into_iter()
+      .filter(|anchor| ["right-after", "after-text", "inline"].contains(&anchor.id.as_str()))
+      .map(|anchor| (anchor.id, anchor.line_start, anchor.line_end))
+      .collect();
+    let expected = [
+      ("inline", 3, 9),
+      ("right-after", 4, 11),
+      ("after-text", 7, 11),
     ];
     assert_eq!(
       ranges,
