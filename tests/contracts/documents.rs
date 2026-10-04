@@ -446,6 +446,13 @@ fn excluded_subtrees_symlinks_invalid_utf8_and_history_are_bounded() {
       json!([{"message":"Skipped symbolic link","path":"app/ios/nested/outside.md"}])
     );
   }
+  // Source listing and reading keep their original warning key order.
+  let warning =
+    r#""warnings":[{"message":"Skipped symbolic link","path":"app/ios/nested/outside.md"}]"#;
+  for args in [&["sources"][..], &["read", "app/ios/nested/guide.md"]] {
+    let output = String::from_utf8(p.raw(args).stdout).unwrap();
+    assert!(output.contains(warning), "{args:?}: {output}");
+  }
   p.write("app/invalid.md", [195, 40]);
   p.json("hivex.json", &json!({"include":["app/**/*.md"]}));
   assert!(p.ok(&["sources"])["warnings"].to_string().contains("UTF-8"));

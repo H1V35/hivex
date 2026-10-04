@@ -21,16 +21,31 @@ struct Pattern {
   source: String,
   matcher: GlobMatcher,
   negated: bool,
+  /// Prefix matchers ending at each literal hidden or generated directory
+  /// segment, which opt that directory back into discovery.
+  directories: Vec<(String, GlobMatcher)>,
 }
 
 impl Pattern {
   fn new(source: String) -> std::result::Result<Self, globset::Error> {
     let negated = source.bytes().take_while(|byte| *byte == b'!').count() % 2 == 1;
-    let matcher = glob(source.trim_start_matches('!'))?.compile_matcher();
+    let glob_source = source.trim_start_matches('!');
+    let matcher = glob(glob_source)?.compile_matcher();
+    let segments: Vec<_> = glob_source.split('/').collect();
+    let directories = segments
+      .iter()
+      .enumerate()
+      .filter(|(_, segment)| !negated && is_special_directory(segment))
+      .filter_map(|(index, segment)| {
+        let prefix = glob(&segments[..=index].join("/")).ok()?;
+        Some(((*segment).to_owned(), prefix.compile_matcher()))
+      })
+      .collect();
     Ok(Self {
       source,
       matcher,
       negated,
+      directories,
     })
   }
 
@@ -38,21 +53,17 @@ impl Pattern {
     self.matcher.is_match(path) != self.negated
   }
 
-  /// Whether this pattern names the special directory `name` at `path`, which
-  /// opts that directory back into discovery.
+  /// Whether this pattern names the special directory `name` at `path`.
   fn selects_directory(&self, name: &str, path: &str) -> bool {
-    if self.negated {
-      return false;
-    }
-    let segments: Vec<_> = self.source.trim_start_matches('!').split('/').collect();
-    segments
+    self
+      .directories
       .iter()
-      .enumerate()
-      .filter(|(_, segment)| **segment == name)
-      .any(|(index, _)| {
-        glob(&segments[..=index].join("/")).is_ok_and(|glob| glob.compile_matcher().is_match(path))
-      })
+      .any(|(segment, prefix)| segment == name && prefix.is_match(path))
   }
+}
+
+fn is_special_directory(name: &str) -> bool {
+  GENERATED_DIRECTORIES.contains(&name) || name.starts_with('.')
 }
 
 fn glob(pattern: &str) -> std::result::Result<Glob, globset::Error> {
@@ -205,7 +216,7 @@ impl Config {
     if PROTECTED_DIRECTORIES.contains(&name) {
       return true;
     }
-    if !GENERATED_DIRECTORIES.contains(&name) && !name.starts_with('.') {
+    if !is_special_directory(name) {
       return false;
     }
     !self

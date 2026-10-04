@@ -1,7 +1,9 @@
 use super::ORIGIN;
 use super::arguments::{Arguments, MAX_SAFE_INTEGER, invalid};
 use super::page::{self, Cursor};
-use crate::documents::{Document, MAX_DOCUMENTS, line_content, load_project, raw_line_ranges};
+use crate::documents::{
+  Document, MAX_DOCUMENTS, Project, line_content, load_project, raw_line_ranges,
+};
 use crate::error::{HivexError, Result};
 use serde_json::{Value, json};
 
@@ -15,6 +17,14 @@ fn metadata(document: &Document) -> Value {
     "status": document.status,
     "title": document.title,
   })
+}
+
+/// Warnings as `sources` and `read` have always serialized them.
+fn warnings(project: &Project) -> Vec<Value> {
+  let warnings = project.warnings.iter();
+  warnings
+    .map(|warning| json!({"message": warning.message, "path": warning.path}))
+    .collect()
 }
 
 /// `sources`: page through the selected documents' metadata.
@@ -36,6 +46,7 @@ pub fn sources(args: &[String]) -> Result<Value> {
   let total = project.documents.len();
   page::check_offset(start, total)?;
   let records = project.documents.iter().skip(start).take(limit);
+  let warnings = warnings(&project);
   page::fill(
     records.map(metadata),
     max_bytes,
@@ -47,7 +58,7 @@ pub fn sources(args: &[String]) -> Result<Value> {
         "origin": ORIGIN,
         "snapshot": project.snapshot,
         "totalDocuments": total,
-        "warnings": project.warnings,
+        "warnings": warnings,
       })
     },
     |_| {
@@ -108,7 +119,7 @@ pub fn read(args: &[String]) -> Result<Value> {
     "source": metadata(source),
     "text": text,
     "truncated": truncated,
-    "warnings": project.warnings,
+    "warnings": warnings(&project),
   }))
 }
 
