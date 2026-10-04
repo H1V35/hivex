@@ -40,7 +40,7 @@ struct Problem {
 type Yaml<'a> = Parser<'a, StrInput<'a>>;
 
 pub(super) fn is_documentation(source: &Document) -> bool {
-  source.path.split('/').any(|part| part == "docs")
+  source.id.split('/').any(|part| part == "docs")
 }
 
 pub(super) fn findings(source: &Document) -> Vec<Value> {

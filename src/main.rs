@@ -4,21 +4,23 @@ mod documents;
 mod error;
 mod foundation;
 
-use serde_json::Value;
+use error::HivexError;
+use std::ffi::OsString;
 use std::io::{self, Write};
 
+/// Print the command's JSON to stdout, or its error to stderr. The exit code
+/// is 1 for an error or a `failed` result.
 fn main() {
-  let args: Vec<String> = std::env::args().skip(1).collect();
-  let code = match cli::run(&args) {
-    Ok(result) => {
-      if writeln!(io::stdout().lock(), "{result}").is_err() {
-        1
-      } else {
-        i32::from(matches!(
-          result.get("status").and_then(Value::as_str),
-          Some("failed")
-        ))
-      }
+  let result = std::env::args_os()
+    .skip(1)
+    .map(OsString::into_string)
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(|_| HivexError::new("INVALID_ARGUMENT", "Arguments must be valid UTF-8"))
+    .and_then(|args| cli::run(&args));
+  let code = match result {
+    Ok(output) => {
+      let printed = writeln!(io::stdout().lock(), "{output}").is_ok();
+      i32::from(!printed || output["status"] == "failed")
     }
     Err(error) => {
       let _ = writeln!(io::stderr().lock(), "{}", error.diagnostic());

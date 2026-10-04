@@ -1,389 +1,161 @@
-use super::arguments;
-use crate::documents as markdown;
-use crate::documents::{Document, MAX_DOCUMENTS, Project, Warning, load_project};
+use super::ORIGIN;
+use super::arguments::{Arguments, MAX_SAFE_INTEGER, invalid};
+use super::page::{self, Cursor};
+use crate::documents::{
+  Document, MAX_DOCUMENTS, Project, line_content, load_project, raw_line_ranges,
+};
 use crate::error::{HivexError, Result};
-use serde_json::{Map, Value, json};
-const DEFAULT_MAX_BYTES: usize = 16_384;
-const MAX_OUTPUT_BYTES: usize = 65_536;
-const ORIGIN: &str = "current-worktree";
-const SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
-struct CommandOptions {
-  root: String,
-  max_bytes: usize,
-  from: Option<usize>,
-  to: Option<usize>,
-  limit: usize,
-  cursor: Option<String>,
-}
+use serde_json::{Value, json};
 
-fn error(code: &str, message: impl Into<String>) -> HivexError {
-  HivexError::new(code, message)
-}
-fn details(code: &str, message: impl Into<String>, value: Value) -> HivexError {
-  error(code, message).with_details(value)
-}
-pub(super) fn positive_integer(
-  value: Option<&String>,
-  label: &str,
-  fallback: Option<usize>,
-) -> Result<usize> {
-  let Some(value) = value else {
-    return fallback.ok_or_else(|| error("INVALID_ARGUMENT", format!("{label} is required")));
-  };
-  if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-    return Err(error(
-      "INVALID_ARGUMENT",
-      format!("{label} must be a positive integer"),
-    ));
-  }
-  let number = value.parse::<u64>().map_err(|_| {
-    error(
-      "INVALID_ARGUMENT",
-      format!("{label} must be a positive integer"),
-    )
-  })?;
-  if number == 0 || number > SAFE_INTEGER_MAX {
-    return Err(error(
-      "INVALID_ARGUMENT",
-      format!("{label} must be positive"),
-    ));
-  }
-  usize::try_from(number).map_err(|_| {
-    error(
-      "INVALID_ARGUMENT",
-      format!("{label} exceeds platform limit"),
-    )
-  })
-}
-
-fn optional_positive_integer(value: Option<&String>, label: &str) -> Result<Option<usize>> {
-  value.map_or(Ok(None), |value| {
-    positive_integer(Some(value), label, None).map(Some)
-  })
-}
-
-fn command_options(args: &[String]) -> Result<(String, Option<String>, CommandOptions)> {
-  let parsed = arguments::parse(
-    args,
-    &["cursor", "from", "limit", "max-bytes", "root", "to"],
-    &[],
-  )
-  .map_err(|mut failure| {
-    "INVALID_ARGUMENT".clone_into(&mut failure.code);
-    failure
-  })?;
-  let (command, id) = document_command(&parsed)?;
-  let max_bytes = positive_integer(
-    parsed.values.get("max-bytes"),
-    "--max-bytes",
-    Some(DEFAULT_MAX_BYTES),
-  )?;
-  if max_bytes > MAX_OUTPUT_BYTES {
-    return Err(error(
-      "INVALID_ARGUMENT",
-      format!("--max-bytes must be at most {MAX_OUTPUT_BYTES}"),
-    ));
-  }
-  if command == "sources"
-    && (parsed.values.contains_key("from") || parsed.values.contains_key("to"))
-  {
-    return Err(error(
-      "INVALID_ARGUMENT",
-      "--from and --to are only valid for read",
-    ));
-  }
-  if command == "read"
-    && (parsed.values.contains_key("limit") || parsed.values.contains_key("cursor"))
-  {
-    return Err(error(
-      "INVALID_ARGUMENT",
-      "--limit and --cursor are only valid for sources",
-    ));
-  }
-  let from = optional_positive_integer(parsed.values.get("from"), "--from")?;
-  let to = optional_positive_integer(parsed.values.get("to"), "--to")?;
-  let limit = positive_integer(parsed.values.get("limit"), "--limit", Some(20))?;
-  let root = parsed.values.get("root").cloned().unwrap_or_else(|| {
-    std::env::current_dir().map_or_else(
-      |_| ".".to_owned(),
-      |path| path.to_string_lossy().into_owned(),
-    )
-  });
-  Ok((
-    command,
-    id,
-    CommandOptions {
-      root,
-      max_bytes,
-      from,
-      to,
-      limit,
-      cursor: parsed.values.get("cursor").cloned(),
-    },
-  ))
-}
-
-fn metadata_value(document: &Document) -> Value {
-  let mut value = Map::new();
-  value.insert("hash".to_owned(), Value::String(document.hash.clone()));
-  value.insert("historical".to_owned(), Value::Bool(document.historical));
-  value.insert("id".to_owned(), Value::String(document.id.clone()));
-  value.insert(
-    "links".to_owned(),
-    Value::Array(document.links.iter().cloned().map(Value::String).collect()),
-  );
-  value.insert("path".to_owned(), Value::String(document.path.clone()));
-  value.insert(
-    "status".to_owned(),
-    document.status.clone().map_or(Value::Null, Value::String),
-  );
-  value.insert("title".to_owned(), Value::String(document.title.clone()));
-  Value::Object(value)
-}
-
-fn warnings_value(warnings: &[Warning]) -> Value {
-  Value::Array(
-    warnings
-      .iter()
-      .map(|warning| json!({"message": warning.message, "path": warning.path}))
-      .collect(),
-  )
-}
-
-fn bounded_text(
-  text: &str,
-  bounds: (usize, usize),
-  max_bytes: usize,
-  line_count: usize,
-) -> Result<(usize, String)> {
-  let (start, end) = bounds;
-  let mut output = String::new();
-  let mut visible_end = 0;
-  let mut line_end = start - 1;
-  for (index, range) in markdown::raw_line_ranges(text)
-    .enumerate()
-    .skip(start - 1)
-    .take(end - start + 1)
-  {
-    let line = index + 1;
-    let raw = &text[range];
-    let current = if line == line_count {
-      raw
-    } else {
-      markdown::line_content(raw)
-    };
-    let required = output.len() + current.len();
-    if required > max_bytes {
-      if line_end < start {
-        return Err(details(
-          "OUTPUT_LIMIT",
-          "The first requested line exceeds --max-bytes",
-          json!({"line":line,"maxBytes":max_bytes,"requiredBytes":required}),
-        ));
-      }
-      break;
-    }
-    visible_end = required;
-    output.push_str(raw);
-    line_end = line;
-  }
-  output.truncate(visible_end);
-  Ok((line_end, output))
-}
-
-fn continuation_value(
-  line_end: usize,
-  max_bytes: usize,
-  requested_end: usize,
-  total_lines: usize,
-) -> Value {
-  if line_end >= total_lines {
-    return Value::Null;
-  }
+fn metadata(document: &Document) -> Value {
   json!({
-      "from": line_end + 1,
-      "maxBytes": max_bytes,
-      "reason": if line_end < requested_end { "max-bytes" } else { "range" },
-      "to": total_lines
+    "hash": document.hash,
+    "historical": document.historical,
+    "id": document.id,
+    "links": document.links,
+    "path": document.id,
+    "status": document.status,
+    "title": document.title,
   })
 }
 
-fn read_command(project: &Project, id: &str, options: &CommandOptions) -> Result<Value> {
-  let Some(source) = project.documents.iter().find(|document| document.id == id) else {
-    return Err(details(
+/// Warnings as `sources` and `read` have always serialized them.
+fn warnings(project: &Project) -> Vec<Value> {
+  let warnings = project.warnings.iter();
+  warnings
+    .map(|warning| json!({"message": warning.message, "path": warning.path}))
+    .collect()
+}
+
+/// `sources`: page through the selected documents' metadata.
+pub fn sources(args: &[String]) -> Result<Value> {
+  let arguments = Arguments::parse(args, &["cursor", "limit", "max-bytes", "root"], &[])?;
+  if arguments.positionals().len() != 1 {
+    return Err(invalid("sources does not accept a source id"));
+  }
+  let limit = arguments
+    .count("limit", 20, MAX_SAFE_INTEGER)?
+    .min(MAX_DOCUMENTS);
+  let max_bytes = page::max_bytes(&arguments)?;
+  let project = load_project(arguments.root())?;
+  let cursor = Cursor {
+    version: "s1",
+    key: &project.snapshot,
+  };
+  let start = cursor.offset(arguments.value("cursor"))?;
+  let total = project.documents.len();
+  page::check_offset(start, total)?;
+  let records = project.documents.iter().skip(start).take(limit);
+  let warnings = warnings(&project);
+  page::fill(
+    records.map(metadata),
+    max_bytes,
+    |documents| {
+      json!({
+        "command": "sources",
+        "continuation": cursor.next(start + documents.len(), total),
+        "documents": documents,
+        "origin": ORIGIN,
+        "snapshot": project.snapshot,
+        "totalDocuments": total,
+        "warnings": warnings,
+      })
+    },
+    |_| {
+      HivexError::new(
+        "OUTPUT_LIMIT",
+        "The next source metadata does not fit; increase --max-bytes or narrow the selected sources",
+      )
+    },
+  )
+}
+
+/// `read`: exact source text for a line range, cut on line boundaries to `--max-bytes`.
+pub fn read(args: &[String]) -> Result<Value> {
+  let arguments = Arguments::parse(args, &["from", "max-bytes", "root", "to"], &[])?;
+  let [_, id] = arguments.positionals() else {
+    return Err(invalid("read requires one source id"));
+  };
+  let from = arguments.optional_count("from", MAX_SAFE_INTEGER)?;
+  let to = arguments.optional_count("to", MAX_SAFE_INTEGER)?;
+  let max_bytes = page::max_bytes(&arguments)?;
+  let project = load_project(arguments.root())?;
+  let source = project.document(id).ok_or_else(|| {
+    HivexError::new(
       "SOURCE_NOT_FOUND",
       format!("Markdown source was not selected: {id}"),
-      json!({"id": id}),
-    ));
-  };
-  let line_count = markdown::raw_line_ranges(&source.text).count();
-  let start = options.from.unwrap_or(1);
-  let requested_end = options.to.unwrap_or(line_count);
-  if start > line_count || requested_end > line_count || start > requested_end {
-    return Err(details(
-      "INVALID_RANGE",
-      format!("Line range {start}-{requested_end} is outside the source"),
-      json!({"id": id, "lineCount": line_count}),
-    ));
+    )
+    .with_details(json!({"id": id}))
+  })?;
+  let line_count = raw_line_ranges(&source.text).count();
+  let start = from.unwrap_or(1);
+  let end = to.unwrap_or(line_count);
+  if start > end || end > line_count {
+    return Err(
+      HivexError::new(
+        "INVALID_RANGE",
+        format!("Line range {start}-{end} is outside the source"),
+      )
+      .with_details(json!({"id": id, "lineCount": line_count})),
+    );
   }
-  let (line_end, text) = bounded_text(
-    &source.text,
-    (start, requested_end),
-    options.max_bytes,
-    line_count,
-  )?;
-  let continuation = continuation_value(line_end, options.max_bytes, requested_end, line_count);
-  let mut response = Map::new();
-  response.insert("command".to_owned(), Value::String("read".to_owned()));
-  response.insert("continuation".to_owned(), continuation.clone());
-  response.insert("lineEnd".to_owned(), json!(line_end));
-  response.insert("lineStart".to_owned(), json!(start));
-  response.insert("origin".to_owned(), Value::String(ORIGIN.to_owned()));
-  response.insert(
-    "snapshot".to_owned(),
-    Value::String(project.snapshot.clone()),
-  );
-  response.insert("source".to_owned(), metadata_value(source));
-  response.insert("text".to_owned(), Value::String(text));
-  response.insert("truncated".to_owned(), Value::Bool(!continuation.is_null()));
-  response.insert("warnings".to_owned(), warnings_value(&project.warnings));
-  Ok(Value::Object(response))
+  let (line_end, text) = excerpt(&source.text, (start, end), line_count, max_bytes)?;
+  let continuation = (line_end < line_count).then(|| {
+    json!({
+      "from": line_end + 1,
+      "maxBytes": max_bytes,
+      "reason": if line_end < end { "max-bytes" } else { "range" },
+      "to": line_count,
+    })
+  });
+  let truncated = continuation.is_some();
+  Ok(json!({
+    "command": "read",
+    "continuation": continuation,
+    "lineEnd": line_end,
+    "lineStart": start,
+    "origin": ORIGIN,
+    "snapshot": project.snapshot,
+    "source": metadata(source),
+    "text": text,
+    "truncated": truncated,
+    "warnings": warnings(&project),
+  }))
 }
 
-fn parse_cursor(cursor: &str) -> Option<(&str, usize)> {
-  let value = cursor.strip_prefix("s1.")?;
-  let (snapshot, start) = value.rsplit_once('.')?;
-  if snapshot.len() != 64
-    || !snapshot
-      .bytes()
-      .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-  {
-    return None;
-  }
-  if start.is_empty() || !start.bytes().all(|byte| byte.is_ascii_digit()) {
-    return None;
-  }
-  let parsed = start.parse::<u64>().ok()?;
-  if parsed > SAFE_INTEGER_MAX {
-    return None;
-  }
-  Some((snapshot, usize::try_from(parsed).ok()?))
-}
-
-fn sources_response(project: &Project, documents: &[Value], start: usize) -> Value {
-  let continuation = if start + documents.len() < project.documents.len() {
-    Value::String(format!(
-      "s1.{}.{}",
-      project.snapshot,
-      start + documents.len()
-    ))
-  } else {
-    Value::Null
-  };
-  let mut response = Map::new();
-  response.insert("command".to_owned(), Value::String("sources".to_owned()));
-  response.insert("continuation".to_owned(), continuation);
-  response.insert("documents".to_owned(), Value::Array(documents.to_owned()));
-  response.insert("origin".to_owned(), Value::String(ORIGIN.to_owned()));
-  response.insert(
-    "snapshot".to_owned(),
-    Value::String(project.snapshot.clone()),
-  );
-  response.insert("totalDocuments".to_owned(), json!(project.documents.len()));
-  response.insert("warnings".to_owned(), warnings_value(&project.warnings));
-  Value::Object(response)
-}
-
-fn list_sources(project: &Project, options: &CommandOptions) -> Result<Value> {
-  let start = match options.cursor.as_deref() {
-    None => 0,
-    Some(cursor) => {
-      let Some((snapshot, start)) = parse_cursor(cursor) else {
-        return Err(error(
-          "INVALID_CURSOR",
-          "Source continuation belongs to a different or invalid snapshot",
-        ));
+/// The longest prefix of lines `start..=end` fitting `max_bytes`, as its last
+/// line number and exact source slice. Separators between lines are kept; the
+/// last returned line keeps its ending only when it ends the source.
+fn excerpt(
+  text: &str,
+  (start, end): (usize, usize),
+  line_count: usize,
+  max_bytes: usize,
+) -> Result<(usize, &str)> {
+  let first_byte = raw_line_ranges(text)
+    .nth(start - 1)
+    .map_or(0, |range| range.start);
+  let mut included = None;
+  for (line, range) in (start..=end).zip(raw_line_ranges(text).skip(start - 1)) {
+    let last_byte = if line == line_count {
+      range.end
+    } else {
+      range.start + line_content(&text[range]).len()
+    };
+    let bytes = last_byte - first_byte;
+    if bytes > max_bytes {
+      let Some(included) = included else {
+        return Err(
+          HivexError::new(
+            "OUTPUT_LIMIT",
+            "The first requested line exceeds --max-bytes",
+          )
+          .with_details(json!({"line": line, "maxBytes": max_bytes, "requiredBytes": bytes})),
+        );
       };
-      if snapshot != project.snapshot {
-        return Err(error(
-          "INVALID_CURSOR",
-          "Source continuation belongs to a different or invalid snapshot",
-        ));
-      }
-      if start > 0 && start >= project.documents.len() {
-        return Err(error(
-          "INVALID_CURSOR",
-          "Source continuation is outside this snapshot",
-        ));
-      }
-      start
+      return Ok(included);
     }
-  };
-  let end = start
-    .saturating_add(options.limit.min(MAX_DOCUMENTS))
-    .min(project.documents.len());
-  let mut documents = Vec::new();
-  for document in &project.documents[start..end] {
-    documents.push(metadata_value(document));
-    if serde_json::to_vec(&sources_response(project, &documents, start))?.len() > options.max_bytes
-    {
-      documents.pop();
-      if documents.is_empty() {
-        return Err(error(
-          "OUTPUT_LIMIT",
-          "The next source metadata does not fit; increase --max-bytes or narrow the selected sources",
-        ));
-      }
-      break;
-    }
+    included = Some((line, &text[first_byte..last_byte]));
   }
-  let response = sources_response(project, &documents, start);
-  if serde_json::to_vec(&response)?.len() > options.max_bytes {
-    return Err(error(
-      "OUTPUT_LIMIT",
-      "Source-list metadata exceeds --max-bytes",
-    ));
-  }
-  Ok(response)
-}
-
-pub fn command(args: &[String]) -> Result<Value> {
-  let (command, id, options) = command_options(args)?;
-  let project = load_project(&options.root)?;
-  if command == "sources" {
-    list_sources(&project, &options)
-  } else {
-    read_command(&project, id.as_deref().unwrap_or_default(), &options)
-  }
-}
-
-fn document_command(parsed: &arguments::Parsed) -> Result<(String, Option<String>)> {
-  let command = parsed.positionals.first().cloned();
-  let id = parsed.positionals.get(1).cloned();
-  let extra = parsed.positionals.get(2);
-  let Some(command) = command else {
-    return Err(error(
-      "INVALID_ARGUMENT",
-      "Usage: hivex sources | read <id> [options]",
-    ));
-  };
-  if command != "sources" && command != "read" {
-    return Err(error(
-      "INVALID_ARGUMENT",
-      "Usage: hivex sources | read <id> [options]",
-    ));
-  }
-  if command == "sources" && (id.is_some() || extra.is_some()) {
-    return Err(error(
-      "INVALID_ARGUMENT",
-      "sources does not accept a source id",
-    ));
-  }
-  if command == "read" && id.is_none() {
-    return Err(error("INVALID_ARGUMENT", "read requires a source id"));
-  }
-  if command == "read" && extra.is_some() {
-    return Err(error("INVALID_ARGUMENT", "read accepts one source id"));
-  }
-  Ok((command, id))
+  Ok(included.expect("a valid range has at least one line"))
 }

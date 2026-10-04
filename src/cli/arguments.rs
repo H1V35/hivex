@@ -1,90 +1,126 @@
 use crate::error::{HivexError, Result};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-#[derive(Default)]
-pub struct Parsed {
-  pub positionals: Vec<String>,
-  pub values: HashMap<String, String>,
-  pub flags: HashSet<String>,
-  pub repeated: HashMap<String, Vec<String>>,
+/// Exact JavaScript-safe integers keep options and cursors portable to JSON clients.
+pub const MAX_SAFE_INTEGER: usize = 9_007_199_254_740_991;
+
+pub fn invalid(message: impl Into<String>) -> HivexError {
+  HivexError::new("INVALID_ARGUMENT", message)
 }
 
-pub fn parse(args: &[String], string_options: &[&str], bool_options: &[&str]) -> Result<Parsed> {
-  let mut parsed = Parsed::default();
-  let mut input = args.iter();
-  while let Some(argument) = input.next() {
-    if argument == "--" {
-      parsed.positionals.extend(input.cloned());
-      break;
-    }
-    if !argument.starts_with('-') || argument == "-" {
-      parsed.positionals.push(argument.clone());
-      continue;
-    }
-    let (option, supplied) = argument
-      .split_once('=')
-      .map_or((argument.as_str(), None), |(key, value)| (key, Some(value)));
-    let name = option.strip_prefix("--").unwrap_or(option);
-    if string_options.contains(&name) {
-      let value = string_value(option, supplied, &mut input)?;
-      parsed
-        .repeated
-        .entry(name.to_owned())
-        .or_default()
-        .push(value.clone());
-      parsed.values.insert(name.to_owned(), value);
-      continue;
-    }
-    if bool_options.contains(&name) {
-      if supplied.is_some() {
-        return Err(HivexError::new(
-          "READ_FAILED",
-          format!("Option '{option}' does not take an argument"),
-        ));
+/// Parsed command line: positionals (including the command name), valued
+/// options in order of appearance and boolean flags.
+pub struct Arguments {
+  positionals: Vec<String>,
+  values: HashMap<String, Vec<String>>,
+  flags: Vec<String>,
+}
+
+impl Arguments {
+  /// Accept `--name value`, `--name=value` and `--flag`; `--` ends options.
+  pub fn parse(args: &[String], options: &[&str], flags: &[&str]) -> Result<Self> {
+    let mut parsed = Self {
+      positionals: Vec::new(),
+      values: HashMap::new(),
+      flags: Vec::new(),
+    };
+    let mut input = args.iter();
+    while let Some(argument) = input.next() {
+      if argument == "--" {
+        parsed.positionals.extend(input.cloned());
+        break;
       }
-      parsed.flags.insert(name.to_owned());
-      continue;
+      if !argument.starts_with('-') || argument == "-" {
+        parsed.positionals.push(argument.clone());
+        continue;
+      }
+      let (option, inline) = argument
+        .split_once('=')
+        .map_or((argument.as_str(), None), |(option, value)| {
+          (option, Some(value))
+        });
+      let name = option.strip_prefix("--").unwrap_or(option);
+      if options.contains(&name) {
+        let value = option_value(option, inline, &mut input)?;
+        parsed
+          .values
+          .entry(name.to_owned())
+          .or_default()
+          .push(value);
+        continue;
+      }
+      if !flags.contains(&name) {
+        return Err(invalid(format!("Unknown option '{option}'")));
+      }
+      if inline.is_some() {
+        return Err(invalid(format!("Option '{option}' does not take a value")));
+      }
+      parsed.flags.push(name.to_owned());
     }
-    return Err(unknown_option(option));
+    Ok(parsed)
   }
-  Ok(parsed)
+
+  pub fn positionals(&self) -> &[String] {
+    &self.positionals
+  }
+
+  /// The last value given for `name`.
+  pub fn value(&self, name: &str) -> Option<&str> {
+    self.values.get(name)?.last().map(String::as_str)
+  }
+
+  pub fn flag(&self, name: &str) -> bool {
+    self.flags.iter().any(|flag| flag == name)
+  }
+
+  pub fn root(&self) -> &str {
+    self.value("root").unwrap_or(".")
+  }
+
+  /// Repeated `--source` values, sorted and deduplicated.
+  pub fn sources(&self) -> Vec<String> {
+    let mut sources = self.values.get("source").cloned().unwrap_or_default();
+    sources.sort();
+    sources.dedup();
+    sources
+  }
+
+  /// A positive integer option no greater than `max`.
+  pub fn count(&self, name: &str, default: usize, max: usize) -> Result<usize> {
+    Ok(self.optional_count(name, max)?.unwrap_or(default))
+  }
+
+  pub fn optional_count(&self, name: &str, max: usize) -> Result<Option<usize>> {
+    let Some(value) = self.value(name) else {
+      return Ok(None);
+    };
+    let number = value
+      .bytes()
+      .all(|byte| byte.is_ascii_digit())
+      .then(|| value.parse::<usize>().ok())
+      .flatten()
+      .filter(|number| (1..=MAX_SAFE_INTEGER).contains(number))
+      .ok_or_else(|| invalid(format!("--{name} must be a positive integer")))?;
+    if number > max {
+      return Err(invalid(format!("--{name} must be at most {max}")));
+    }
+    Ok(Some(number))
+  }
 }
 
-fn string_value(
+fn option_value(
   option: &str,
-  supplied: Option<&str>,
+  inline: Option<&str>,
   input: &mut std::slice::Iter<'_, String>,
 ) -> Result<String> {
-  if let Some(value) = supplied {
+  if let Some(value) = inline {
     return Ok(value.to_owned());
   }
-  let value = input.next().ok_or_else(|| {
-    HivexError::new(
-      "READ_FAILED",
-      format!("Option '{option} <value>' argument missing"),
-    )
-  })?;
-  if value.starts_with('-') && value != "-" {
-    return Err(HivexError::new(
-      "READ_FAILED",
-      format!(
-        "Option '{option}' argument is ambiguous.\nDid you forget to specify the option argument for '{option}'?\nTo specify an option argument starting with a dash use '{option}=-XYZ'."
-      ),
-    ));
+  match input.next() {
+    None => Err(invalid(format!("Option '{option}' requires a value"))),
+    Some(value) if value.starts_with('-') && value != "-" => Err(invalid(format!(
+      "Option '{option}' requires a value; write '{option}=-value' for one starting with '-'"
+    ))),
+    Some(value) => Ok(value.clone()),
   }
-  Ok(value.clone())
-}
-
-fn unknown_option(option: &str) -> HivexError {
-  let option = if option.starts_with("--") || option.chars().count() == 2 {
-    option.to_owned()
-  } else {
-    option.chars().skip(1).take(1).collect()
-  };
-  HivexError::new(
-    "READ_FAILED",
-    format!(
-      "Unknown option '{option}'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- \"{option}\""
-    ),
-  )
 }

@@ -184,10 +184,10 @@ fn help_errors_and_bounded_diagnostics() {
   assert_eq!(p.ok(&["--help"])["application"], "hivex");
   for (args, code) in [
     (vec!["unknown"], "INVALID_ARGUMENT"),
-    (vec!["--unknown"], "READ_FAILED"),
-    (vec!["-x"], "READ_FAILED"),
-    (vec!["-abc"], "READ_FAILED"),
-    (vec!["unknown", "--unknown"], "READ_FAILED"),
+    (vec!["--unknown"], "INVALID_ARGUMENT"),
+    (vec!["-x"], "INVALID_ARGUMENT"),
+    (vec!["-abc"], "INVALID_ARGUMENT"),
+    (vec!["unknown", "--unknown"], "INVALID_ARGUMENT"),
     (vec!["sources", "--unknown"], "INVALID_ARGUMENT"),
     (vec!["sources", "--root"], "INVALID_ARGUMENT"),
     (vec!["sources", "--root", "--unknown"], "INVALID_ARGUMENT"),
@@ -445,6 +445,13 @@ fn excluded_subtrees_symlinks_invalid_utf8_and_history_are_bounded() {
       result["warnings"],
       json!([{"message":"Skipped symbolic link","path":"app/ios/nested/outside.md"}])
     );
+  }
+  // Source listing and reading keep their original warning key order.
+  let warning =
+    r#""warnings":[{"message":"Skipped symbolic link","path":"app/ios/nested/outside.md"}]"#;
+  for args in [&["sources"][..], &["read", "app/ios/nested/guide.md"]] {
+    let output = String::from_utf8(p.raw(args).stdout).unwrap();
+    assert!(output.contains(warning), "{args:?}: {output}");
   }
   p.write("app/invalid.md", [195, 40]);
   p.json("hivex.json", &json!({"include":["app/**/*.md"]}));
