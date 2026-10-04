@@ -1,6 +1,6 @@
 {
   "name": "@h1v35/hivex",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "Versioned project knowledge for people and agents.",
   "license": "MIT",
   "bin": {
