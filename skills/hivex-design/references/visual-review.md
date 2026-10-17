@@ -13,6 +13,6 @@ Use these criteria for interface composition or a visual-reference comparison, i
 | White space | Can people scan without losing an action's context? |
 | Unity | Does the screen belong with its neighbours? |
 
-This vocabulary is discussed in [Expo's design-principles article](https://expo.dev/blog/how-to-apply-professional-design-principles-in-ai-app-development). The article is optional background for general critique, not native platform authority or a product specification. Use only criteria that expose a decision or defect; do not produce eight sections or a score for every change.
+Use only criteria that expose a decision or defect; do not produce eight sections or a score for every change. These general criteria do not replace the project's decisions or its platform-specific guidance.
 
 Compare the same task with equivalent content, state and environment. Another screen can suggest a pattern, but is not a before/after of this one. Inspect the rendered result and motion when relevant; passing functional tests alone does not establish fidelity. Diagnose the cause of confusion before adding decoration or shrinking text, and distinguish intentional redesign from regression. A minimal interface still needs discoverable actions and clear states. Keep concrete findings and useful evidence, not a growing report for every iteration.
