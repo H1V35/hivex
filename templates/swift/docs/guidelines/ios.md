@@ -20,24 +20,9 @@ Use [Observation](https://developer.apple.com/documentation/swiftui/managing-mod
 
 ## Visual design from intent to rendered evidence
 
-Start from the task people need to complete, the information they need first and the primary action. Recover the product's current visual rules, existing components and relevant reference screen. Preserve accepted direction; when redesign is authorized, distinguish deliberate changes from regressions. Do not turn a sample application's cards, shadows or palette into product defaults. A minimal interface still needs discoverable actions and clear states.
-
 Use Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) for platform patterns, [Design Resources](https://developer.apple.com/design/resources/) for component references, and [Design foundations from idea to interface](https://developer.apple.com/videos/play/wwdc2025/359/) for structure, navigation and content hierarchy. Consult the specific pattern needed for the screen, not the entire library. Native conventions inform a product's personality; they do not require every screen to look like Settings or justify replacing a project's accepted components.
 
-Use [Expo's visual critique framework](https://expo.dev/blog/how-to-apply-professional-design-principles-in-ai-app-development) to inspect the result, independently of the implementation framework:
-
-| Criterion | Question to resolve in the rendered screen |
-| --- | --- |
-| Contrast | Can people distinguish content, actions and states without unnecessary visual noise? |
-| Hierarchy | Does attention reach the important content and action first? |
-| Alignment | Do related controls share deliberate edges or axes? |
-| Proximity | Does spacing group related information without adding a box around everything? |
-| Repetition | Do equivalent controls use the existing roles, dimensions and behavior? |
-| Balance | Does visual weight support the task rather than crowd one part of the screen? |
-| White space | Is there room to scan, without separating an action from its context? |
-| Unity | Does this screen belong to the same product as its neighbours? |
-
-Use those questions where they reveal a decision or defect; do not produce an eight-part essay for every change. Diagnose the cause of clutter or confusion before adding decoration. More background fills, gradients, shadows or smaller type are not substitutes for deciding what belongs on screen. Values such as brand colours, text-size policy, glass variants and control heights belong to the adopting project's authority, not this reusable guide.
+Values such as brand colours, text-size policy, glass variants and control heights belong to the adopting project's authority, not this reusable guide. Preserve accepted direction; when redesign is authorized, distinguish deliberate changes from regressions. A sample application's cards, shadows or palette do not become product defaults.
 
 For materials and motion, consult Apple's [new design system](https://developer.apple.com/videos/play/wwdc2025/356/) and [Liquid Glass APIs](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views) for the supported target. Ordinary blur materials and Liquid Glass are distinct; do not replace one with the other under the same name. Preserve native semantics and interaction while applying accepted custom styling; a screenshot alone cannot verify focus, hit testing, keyboard behavior or navigation continuity.
 
