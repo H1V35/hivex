@@ -2,7 +2,7 @@
 title: "Native iOS presentation standard"
 status: draft
 created_at: 2026-09-28
-updated_at: 2026-10-02
+updated_at: 2026-10-17
 tags: [ios, ui]
 ---
 
@@ -17,6 +17,18 @@ This initial standard is grounded in accepted presentation and client-authority 
 Record supported Xcode/Swift builds, language mode, SDKs, deployment targets, device families, orientations/windows and capability requirements. Do not copy another project's minimum OS or CI provider. SwiftUI is the default; use UIKit when a demonstrated UX, accessibility, integration or performance requirement makes it useful. UIKit is not obsolete.
 
 Use [Observation](https://developer.apple.com/documentation/swiftui/managing-model-data-in-your-app) as the model-observation baseline where supported: SwiftUI integration is available from iOS/iPadOS 17. If the project's supported OS range needs another approach, document the compatibility decision instead of blindly adopting old `ObservableObject`/Combine or RxSwift recipes. Newer SDK availability is not permission to call new APIs on older supported systems. Liquid Glass and other system materials belong to the project's supported OS/design contract; use native behavior and availability handling, not a universal minimum OS or a hand-built imitation.
+
+## Visual design from intent to rendered evidence
+
+Use Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/) for platform patterns, [Design Resources](https://developer.apple.com/design/resources/) for component references, and [Design foundations from idea to interface](https://developer.apple.com/videos/play/wwdc2025/359/) for structure, navigation and content hierarchy. Consult the specific pattern needed for the screen, not the entire library. Native conventions inform a product's personality; they do not require every screen to look like Settings or justify replacing a project's accepted components.
+
+Values such as brand colours, text-size policy, glass variants and control heights belong to the adopting project's authority, not this reusable guide. Preserve accepted direction; when redesign is authorized, distinguish deliberate changes from regressions. A sample application's cards, shadows or palette do not become product defaults.
+
+For materials and motion, consult Apple's [new design system](https://developer.apple.com/videos/play/wwdc2025/356/) and [Liquid Glass APIs](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views) for the supported target. Ordinary blur materials and Liquid Glass are distinct; do not replace one with the other under the same name. Preserve native semantics and interaction while applying accepted custom styling; a screenshot alone cannot verify focus, hit testing, keyboard behavior or navigation continuity.
+
+Inspect the actual rendered change with representative content and the relevant language, theme, device/window and supported text settings. For reference comparisons, use the same task and equivalent state; label a different screen as pattern inspiration, not a before/after. Inspect motion when timing matters. Exercise loading, empty, denied, failure or retry states when the change affects them, using controlled test responses where needed rather than production delays. Do not invent product screens or enable cloud services to obtain evidence.
+
+If the composition is unresolved, show a small representative result early; once settled, reuse it without reopening every choice. Record concrete deviations, checks and missing evidence alongside the change. Existing code can show implementation and functional tests can protect behavior; neither alone establishes visual quality. Keep the durable rules concise in their current home and retain only the evidence the project needs. Specialist skills may supply targeted implementation help, but their examples do not override project choices or primary platform documentation.
 
 ## Presentation MVVM without empty layers
 

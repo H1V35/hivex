@@ -19,4 +19,6 @@ Each test must protect an important behavior, meaningful invariant or demonstrat
 
 Run applicable repository checks and report actual results and material limits. Repeat or broaden verification only when changes, failures or unresolved concerns warrant it.
 
+For visible interface changes, apply the project's platform/design guide and inspect the rendered result in the affected states. Reuse accepted components and references; a different screen or a passing UI test does not establish visual fidelity. Resolve an open visual direction before expanding it, without requiring a new prototype for a settled design.
+
 Record durable decisions through `hivex-document`. Obtain an independent `hivex-review` under the project's engineering policy. Resolve findings on their merits, then use `hivex-git` to complete commit, PR and CI work under the project's Git procedure.

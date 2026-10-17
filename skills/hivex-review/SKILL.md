@@ -17,4 +17,6 @@ Check the implementer's interpretation of relevant rules against their governing
 
 Check whether verification protects meaningful behavior and covers the change. TDD is optional and reserved for sufficiently defined critical flows; do not require it, a test per edit or assertions shaped around the implementation. Distinguish an unverified outcome from a demonstrated defect.
 
+For visual changes, assess the rendered evidence against the intended screen, its current design rules and relevant platform guidance, using the applicable [visual review criteria](../hivex-design/references/visual-review.md). Compare equivalent content, state and environment, and identify mismatches in references before judging fidelity. Report missing visual evidence as a limit, not proof of a defect; compilation and functional tests do not establish composition or interaction quality.
+
 Report actionable findings with location, impact and evidence, or a clean result with material verification limits. Explain technical details when needed. Review later changes as a delta, reusing conclusions that remain valid. Add another pass only for concrete risk or findings; never repeat reviews to obtain approval. Review does not grant merge or publication permission.
