@@ -16,16 +16,26 @@ thread_local! {
 /// `--max-bytes`, the bound of a complete serialized response, less the room a version warning
 /// for the selected root needs.
 pub fn max_bytes(arguments: &Arguments) -> Result<usize> {
-  let max_bytes = arguments.count("max-bytes", DEFAULT_MAX_BYTES, MAX_BYTES)?;
-  let Some(warning) = crate::foundation::version_warning(Path::new(arguments.root())) else {
-    return Ok(max_bytes);
-  };
-  let reserved = format!(",\"versionWarning\":{warning}").len();
-  VERSION_WARNING.with(|slot| slot.replace(Some(warning)));
+  let max_bytes = text_bytes(arguments)?;
+  let reserved = VERSION_WARNING.with(|slot| {
+    slot
+      .borrow()
+      .as_ref()
+      .map_or(0, |warning| format!(",\"versionWarning\":{warning}").len())
+  });
   Ok(max_bytes.saturating_sub(reserved))
 }
 
-/// The version warning reserved by `max_bytes` for the current response, if any.
+/// `--max-bytes` as a bound on returned text alone, as `read` uses it: the version warning is
+/// added like the rest of the metadata, without reducing the text.
+pub fn text_bytes(arguments: &Arguments) -> Result<usize> {
+  let max_bytes = arguments.count("max-bytes", DEFAULT_MAX_BYTES, MAX_BYTES)?;
+  let warning = crate::foundation::version_warning(Path::new(arguments.root()));
+  VERSION_WARNING.with(|slot| slot.replace(warning));
+  Ok(max_bytes)
+}
+
+/// The version warning recorded for the current response, if any.
 pub fn take_version_warning() -> Option<Value> {
   VERSION_WARNING.with(RefCell::take)
 }

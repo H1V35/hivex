@@ -266,3 +266,17 @@ fn version_pins_are_read_like_the_rest_of_the_configuration() {
   assert_eq!(p.error(&["update"])["error"]["code"], "INVALID_CONFIG");
   assert_eq!(fs::read_to_string(p.path("hivex.json")).unwrap(), "[]");
 }
+
+#[test]
+fn a_version_warning_does_not_shrink_read_text() {
+  let p = Project::new();
+  p.ok(&["init"]);
+  p.write("notes.md", "a line of text\n".repeat(200));
+  let read = |p: &Project| p.ok(&["read", "notes.md", "--max-bytes", "300"]);
+  let pinned = read(&p);
+  p.write("hivex.json", r#"{"version":"0.0.1"}"#);
+  let warned = read(&p);
+  assert!(warned.get("versionWarning").is_some());
+  assert_eq!(warned["text"], pinned["text"]);
+  assert_eq!(warned["continuation"], pinned["continuation"]);
+}
