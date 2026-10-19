@@ -4,6 +4,18 @@ use std::fs;
 use std::path::Path;
 
 #[test]
+fn installed_skills_are_self_contained() {
+  let p = Project::new();
+  p.ok(&["init"]);
+  // Copied skills cannot rely on paths that exist only in the Hivex repository.
+  p.json("hivex.json", &json!({"include":[".agents/skills/**/*.md"]}));
+  subset(
+    &p.ok(&["check"]),
+    &json!({"status":"ready","totalFindings":0}),
+  );
+}
+
+#[test]
 fn update_restores_managed_entries_without_touching_project_files() {
   let p = Project::new();
   p.ok(&["init"]);

@@ -142,9 +142,7 @@ Use a short `AGENTS.md` with orientation and knowledge pointers, development/ver
 
 The public [AGENTS.md convention](https://agents.md/) uses ordinary Markdown. Keep agent entrypoints plain and concise; Hivex's documentary metadata applies inside `docs/`, not to these entrypoints.
 
-## Relationships
-
-- Implements [Selective history](../../../docs/adr/0011-shared-knowledge-and-selective-history.md): authors preserve dates and provenance while keeping live authorities concise.
+This convention carries out Hivex's [selective history decision](https://github.com/H1V35/hivex/blob/main/docs/adr/0011-shared-knowledge-and-selective-history.md): authors preserve dates and provenance while keeping live authorities concise. The link is absolute because this skill is copied into other projects.
 
 ## Validate affected knowledge
 
