@@ -8,7 +8,7 @@ tags: [swift, quality]
 
 # Swift standard
 
-Apply this guide to maintained Swift code in libraries, tools and apps, including tests and development utilities. It does not impose an Apple UI framework or a screen architecture on a CLI or server. The project's existing engineering authority owns DDD, domain responsibilities and the Hivex workflow; link that authority when adopting this guide instead of creating another architecture policy.
+Apply this guide to maintained Swift code in libraries, tools and apps, including tests and development utilities. It does not impose an Apple UI framework or a screen architecture on a CLI or server. The project's existing engineering authority owns DDD, domain responsibilities and the HiveX workflow; link that authority when adopting this guide instead of creating another architecture policy.
 
 This is an initial, evidence-backed baseline. Copying it does not configure a compiler, formatter or linter, or establish that an application meets its quality goals. Preserve accepted project decisions and record genuine conflicts, unsupported checks and deferred work explicitly.
 

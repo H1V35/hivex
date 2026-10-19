@@ -1,2 +1,4 @@
 too-many-arguments-threshold = 4
 excessive-nesting-threshold = 5
+# The product name, written in documentation comments without backticks.
+doc-valid-idents = ["HiveX", ".."]

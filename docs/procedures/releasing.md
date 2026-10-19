@@ -27,7 +27,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-Each build job first fails when the tag differs from the `Cargo.toml` version. It builds the locked release executable for its target, writes the license notices with `cargo run --locked --bin hivex-dev -- notices <target> <output>` and packs `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` for Windows) containing the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, with a `.sha256` checksum file. The notices cover normal and build dependency edges, excluding development-only analyzers. Only when every target has built does the publish job create the release `Hivex X.Y.Z` with generated notes and those eight files, so a failed build publishes nothing. Rerun failed jobs for a transient failure; a correction that changes the repository is published as a new version.
+Each build job first fails when the tag differs from the `Cargo.toml` version. It builds the locked release executable for its target, writes the license notices with `cargo run --locked --bin hivex-dev -- notices <target> <output>` and packs `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` for Windows) containing the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, with a `.sha256` checksum file. The notices cover normal and build dependency edges, excluding development-only analyzers. Only when every target has built does the publish job create the release `HiveX X.Y.Z` with generated notes and those eight files, so a failed build publishes nothing. Rerun failed jobs for a transient failure; a correction that changes the repository is published as a new version.
 
 ## Verify the release
 

@@ -7,7 +7,7 @@ use std::path::Path;
 fn installed_skills_are_self_contained() {
   let p = Project::new();
   p.ok(&["init"]);
-  // Copied skills cannot rely on paths that exist only in the Hivex repository.
+  // Copied skills cannot rely on paths that exist only in the HiveX repository.
   p.json("hivex.json", &json!({"include":[".agents/skills/**/*.md"]}));
   subset(
     &p.ok(&["check"]),

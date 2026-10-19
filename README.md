@@ -1,16 +1,16 @@
-# Hivex
+# HiveX
 
-Project knowledge for people and agents. Hivex combines reusable workflow guidance with reliable Markdown, explicit decision relationships and focused source retrieval.
+Project knowledge for people and agents. HiveX combines reusable workflow guidance with reliable Markdown, explicit decision relationships and focused source retrieval.
 
 [![Latest release](https://img.shields.io/github/v/release/H1V35/hivex)](https://github.com/H1V35/hivex/releases/latest)
 
-[![Support Hivex on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jivssssss)
+[![Support HiveX on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jivssssss)
 
 - Recover project context without reading the whole repository every time.
 - Keep current decisions concise, link their dependencies and exceptions, and retain accessible history.
 - Give agents shared guidance for design, documentation, implementation, review and Git.
 
-Your Markdown remains the authority. Hivex helps the responsible agent interpret it; it does not approve changes or replace human judgment.
+Your Markdown remains the authority. HiveX helps the responsible agent interpret it; it does not approve changes or replace human judgment.
 
 ## Get started
 

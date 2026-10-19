@@ -8,7 +8,7 @@ tags: [ios, ui]
 
 # Native iOS presentation standard
 
-Apply this guide alongside the [Swift standard](swift.md) to Swift iOS/iPadOS app targets and their presentation code. Do not apply its screen, lifecycle or visual rules to a general Swift CLI, server or platform-independent library. DDD, domain responsibilities, testing philosophy and the Hivex workflow remain in the project's existing engineering authority; this guide supplies iOS-specific application of those decisions.
+Apply this guide alongside the [Swift standard](swift.md) to Swift iOS/iPadOS app targets and their presentation code. Do not apply its screen, lifecycle or visual rules to a general Swift CLI, server or platform-independent library. DDD, domain responsibilities, testing philosophy and the HiveX workflow remain in the project's existing engineering authority; this guide supplies iOS-specific application of those decisions.
 
 This initial standard is grounded in accepted presentation and client-authority choices and primary platform guidance. Refine it using the project's real iOS implementation and measurements. It is not a claim that an unbuilt app has been validated, nor an Xcode starter, MVVM framework or component library.
 
@@ -80,7 +80,7 @@ Measure representative startup, frame responsiveness, CPU, memory, battery, bina
 
 Use [Swift Testing](https://developer.apple.com/documentation/testing) for new non-UI logic tests where appropriate, and [XCTest](https://developer.apple.com/documentation/xctest) with XCUIAutomation for important UI/system flows and performance. Do not mix the two APIs in one test or duplicate every scenario across them. Existing valuable Maestro or other tests may remain where they cover a real risk; adoption does not require another harness by symmetry.
 
-Follow Hivex's risk/value approach: TDD is optional for critical behavior sufficiently defined in advance. No test per function, ViewModel, view, button or wrapper; no coverage-percentage target, implementation-shaped mocks, massive snapshots or re-testing library guarantees. Keep a few valuable end-to-end flows. Test shared core rules once and add minimal real bridge/storage/Keychain/lifecycle integration where the client boundary can fail. Mocks alone do not demonstrate an actual race, permission, database transaction or system capability.
+Follow HiveX's risk/value approach: TDD is optional for critical behavior sufficiently defined in advance. No test per function, ViewModel, view, button or wrapper; no coverage-percentage target, implementation-shaped mocks, massive snapshots or re-testing library guarantees. Keep a few valuable end-to-end flows. Test shared core rules once and add minimal real bridge/storage/Keychain/lifecycle integration where the client boundary can fail. Mocks alone do not demonstrate an actual race, permission, database transaction or system capability.
 
 Prioritize relevant scenarios: response loss and duplicates; rapid search/account changes and late errors; revocation; purchase/entitlement uncertainty; pending work across termination; permission denial; expiry, migrations and restoration. Exercise the real boundary for the risk, with synthetic isolated data. Do not enable production services or create a prototype merely to decorate documentation evidence.
 
@@ -94,4 +94,4 @@ xcodebuild -project PROJECT.xcodeproj -scheme SCHEME \
   -destination 'platform=iOS Simulator,id=SIMULATOR_UDID' build test
 ```
 
-Use `-workspace` instead of `-project` when that is the actual build container; do not assume a scheme or install a CI provider. Run the Swift formatting/lint/compiler checks from the language guide as well. A simulator build does not validate device-only entitlements, notifications, background opportunities, FFI behavior or performance. Record what passed and what remains unverified before claiming readiness. Installing Hivex or copying these guides is not applying the checks, migrating an app or authorizing a release.
+Use `-workspace` instead of `-project` when that is the actual build container; do not assume a scheme or install a CI provider. Run the Swift formatting/lint/compiler checks from the language guide as well. A simulator build does not validate device-only entitlements, notifications, background opportunities, FFI behavior or performance. Record what passed and what remains unverified before claiming readiness. Installing HiveX or copying these guides is not applying the checks, migrating an app or authorizing a release.

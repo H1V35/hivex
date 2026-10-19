@@ -1,14 +1,14 @@
 ---
-title: "Hivex domain language"
+title: "HiveX domain language"
 status: accepted
 created_at: 2026-09-05
 updated_at: 2026-10-19
 tags: [domain, project-knowledge]
 ---
 
-# Hivex domain language
+# HiveX domain language
 
-Hivex gives agents and people a reusable project foundation and focused access to reliable Markdown. The agent reasons about applicability; the CLI discovers, searches, validates and reads authored sources.
+HiveX gives agents and people a reusable project foundation and focused access to reliable Markdown. The agent reasons about applicability; the CLI discovers, searches, validates and reads authored sources.
 
 ## Language
 
@@ -20,7 +20,7 @@ Hivex gives agents and people a reusable project foundation and focused access t
 
 **Extension**: A Git repository whose release tags add skills and project files to the bundled foundation, pinned in `hivex.json` and installed by `init`/`update`; see the [guide](guide.md#extensions).
 
-**Pinned release**: The Hivex version a project records in `hivex.json`. Initialization and update enforce it; other commands warn when the installed release differs.
+**Pinned release**: The HiveX version a project records in `hivex.json`. Initialization and update enforce it; other commands warn when the installed release differs.
 
 **Adoption**: Completing the foundation from project evidence, preserving useful knowledge and aligning working practices.
 

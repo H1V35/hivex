@@ -8,7 +8,7 @@ tags: [documentation, navigation]
 
 # Documentation map
 
-Hivex supplies a reusable workflow and reliable project knowledge to people and agents. Markdown owns intent and decisions; authored links expose dependencies, exceptions and replacements. Start with the task route below, then follow relevant relationships instead of loading every document. [ADR 0014](adr/0014-reliable-markdown-and-explicit-relationships.md) owns this approach.
+HiveX supplies a reusable workflow and reliable project knowledge to people and agents. Markdown owns intent and decisions; authored links expose dependencies, exceptions and replacements. Start with the task route below, then follow relevant relationships instead of loading every document. [ADR 0014](adr/0014-reliable-markdown-and-explicit-relationships.md) owns this approach.
 
 ## Choose the authority for the task
 
@@ -20,7 +20,7 @@ Hivex supplies a reusable workflow and reliable project knowledge to people and 
 | Validate affected knowledge | [Structural checks](guide.md#validate-structure) | Source and code review still judge meaning, scope and permission |
 | Write, replace or archive knowledge | [Markdown convention](../skills/hivex/references/markdown.md) | [Archival contract](adr/0011-shared-knowledge-and-selective-history.md), [history catalogue](archive/README.md) |
 | Implement or review a change | [Engineering policy](guidelines/engineering.md) | [Module/execution boundaries](adr/0013-domain-modules-and-execution-integrations.md), [Rust quality](guidelines/rust-quality.md), [domain language](CONTEXT.md) |
-| Adopt Hivex or update workflow skills | [Project foundation](adr/0012-project-foundation-and-workflow.md) | [Initialization](guide.md#initialize-a-project), [pinned release](guide.md#pin-the-release), [npm migration](guide.md#migrate-from-npm), [language templates](../skills/hivex/templates/README.md) |
+| Adopt HiveX or update workflow skills | [Project foundation](adr/0012-project-foundation-and-workflow.md) | [Initialization](guide.md#initialize-a-project), [pinned release](guide.md#pin-the-release), [npm migration](guide.md#migrate-from-npm), [language templates](../skills/hivex/templates/README.md) |
 | Manage an issue, PR or merge | [Tracker procedure](procedures/issue-tracker.md) | [Triage labels](guidelines/triage-labels.md), [knowledge before merge](guidelines/engineering.md#knowledge-before-merge) |
 | Run development checks or CI | [Development guide](guide.md#development) | [Rust quality](guidelines/rust-quality.md), [hosted CI](procedures/self-hosted-runner.md) |
 | Publish a release | [Release procedure](procedures/releasing.md) | [Development checks](guide.md#development), owner approval for that version |

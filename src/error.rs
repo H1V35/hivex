@@ -1,19 +1,19 @@
 use serde_json::{Value, json};
 use std::fmt;
 
-pub type Result<T> = std::result::Result<T, HivexError>;
+pub type Result<T> = std::result::Result<T, HiveXError>;
 
 const MAX_MESSAGE_BYTES: usize = 256;
 const MAX_DETAILS_BYTES: usize = 384;
 
 #[derive(Clone, Debug)]
-pub struct HivexError {
+pub struct HiveXError {
   pub code: String,
   pub message: String,
   pub details: Option<Value>,
 }
 
-impl HivexError {
+impl HiveXError {
   pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
     Self {
       code: code.into(),
@@ -57,27 +57,27 @@ fn truncate_serialized(text: &str, max_bytes: usize) -> &str {
   text
 }
 
-impl fmt::Display for HivexError {
+impl fmt::Display for HiveXError {
   fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
     formatter.write_str(&self.message)
   }
 }
 
-impl std::error::Error for HivexError {}
+impl std::error::Error for HiveXError {}
 
-impl From<std::io::Error> for HivexError {
+impl From<std::io::Error> for HiveXError {
   fn from(error: std::io::Error) -> Self {
     Self::new("READ_FAILED", error.to_string())
   }
 }
 
-impl From<rusqlite::Error> for HivexError {
+impl From<rusqlite::Error> for HiveXError {
   fn from(error: rusqlite::Error) -> Self {
     Self::new("READ_FAILED", error.to_string())
   }
 }
 
-impl From<serde_json::Error> for HivexError {
+impl From<serde_json::Error> for HiveXError {
   fn from(error: serde_json::Error) -> Self {
     Self::new("READ_FAILED", error.to_string())
   }

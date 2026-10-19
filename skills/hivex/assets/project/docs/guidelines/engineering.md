@@ -10,7 +10,7 @@ tags: [engineering, quality, workflow]
 
 ## Understand the change
 
-Use the project's Markdown and Hivex's relevant source passages and authored relationships to recover settled context. Apply the scope, conditions, exceptions and replacements. Ask the owner only when evidence cannot resolve a meaningful decision; give a clear recommendation.
+Use the project's Markdown and HiveX's relevant source passages and authored relationships to recover settled context. Apply the scope, conditions, exceptions and replacements. Ask the owner only when evidence cannot resolve a meaningful decision; give a clear recommendation.
 
 Choose the workflow the task needs. Implement a defined change directly, use a grill for open decisions, and use focused research or a disposable prototype when it answers a real question. Additional specs and tickets should help define or divide work. They are not mandatory stages for every task.
 
@@ -46,9 +46,9 @@ Prefer a reviewer from a different model vendor than the implementing agent, so 
 | Codex or another OpenAI model | Cross-vendor | Claude Code | `claude-opus-5-5` | `xhigh` |
 | Any, when no other vendor is available | Same vendor, isolated | The implementer's tool | Its strongest model | Highest available |
 
-Hivex retrieval does not choose or invoke a model.
+HiveX retrieval does not choose or invoke a model.
 
-The principal reviewer verifies possible conflicts with relevant decisions, dependencies and exceptions. Hivex assists that review. Start with local recovery of evidence; the reviewer reasons about actual applicability. Structural validation does not approve an implementation.
+The principal reviewer verifies possible conflicts with relevant decisions, dependencies and exceptions. HiveX assists that review. Start with local recovery of evidence; the reviewer reasons about actual applicability. Structural validation does not approve an implementation.
 
 Resolve findings on their merits. Do not rerun reviewers or modify doctrine merely to obtain approval. Apply existing owner authorization and the repository's Git procedure to completion.
 
@@ -64,7 +64,7 @@ Before integration, maintain Markdown that adds durable value in the authority t
 
 Review the affected authorities, their current conditions and history links, and the changed implementation at a defined revision. Resolve demonstrated contradictions, missing decisions needed by supported behavior, broken references and actionable defects. Treat a model finding as a claim to verify against those sources and code. Keep follow-up finite and scoped to the evidence that changed; do not repeatedly certify the whole corpus or chase a globally green result. A real current defect or unresolved policy decision that affects supported behavior blocks integration. When evidence cannot resolve a consequential question, preserve it as unresolved and ask the owner with the sources, impact and a recommendation.
 
-Start with the documentation map and relevant Markdown authorities, using deterministic search and following explicit links as the task requires. Hivex's CLI reads authored Markdown and invokes no model. Missing source coverage or unread continuation limits the affected conclusions; expand with documentation and available tools before asking the owner. Historical graph status does not certify the current base or block unrelated work. Preserve necessary old sources, quality marks, uncertainty, failed results, receipts and consumption; do not erase or relabel history to clear a warning. Correct current defects on their merits.
+Start with the documentation map and relevant Markdown authorities, using deterministic search and following explicit links as the task requires. HiveX's CLI reads authored Markdown and invokes no model. Missing source coverage or unread continuation limits the affected conclusions; expand with documentation and available tools before asking the owner. Historical graph status does not certify the current base or block unrelated work. Preserve necessary old sources, quality marks, uncertainty, failed results, receipts and consumption; do not erase or relabel history to clear a warning. Correct current defects on their merits.
 
 Keep the source and implementation revisions reviewed identifiable. Close the review when its concrete findings are resolved or an owner decision is needed. A bounded evidence update may resolve a concrete finding; a changed source or implementation requires review of the affected scope again. This policy complements independent implementation review, relevant behavioral checks and the project's existing merge authorization in the [tracker procedure](../procedures/issue-tracker.md).
 

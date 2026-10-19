@@ -26,7 +26,7 @@ An explicit authored amendment can resolve a difference by replacing or extendin
 
 Consistent scope repeated in a statement and its conditions or exceptions is not an ambiguity by itself. A fidelity objection must identify changed meaning or conflicting applicability in the actual supplied claim; it cannot invent metadata that the claim does not contain.
 
-These clarifications address two observed comparison failures in [Hivex #19](https://github.com/H1V35/hivex/issues/19). They change the comparison request hash. Earlier assessments and consumption remain in their complete archives and cannot be silently relabelled as results of the clarified request. Graph admission retains its existing requirement to reject unresolved contradictions, incomplete coverage and insufficient context.
+These clarifications address two observed comparison failures in [HiveX #19](https://github.com/H1V35/hivex/issues/19). They change the comparison request hash. Earlier assessments and consumption remain in their complete archives and cannot be silently relabelled as results of the clarified request. Graph admission retains its existing requirement to reject unresolved contradictions, incomplete coverage and insufficient context.
 
 Quotes remain byte-for-byte source evidence, including newlines. Prefer separate single-line quotes when spanning Markdown lines. Invalid model output is retained with its hash as untrusted diagnostics, never as a partial comparison. Inspection verifies that hash and its invalid-output status, including previous attempts after recovery. Existing result/history bounds apply; older discarded text cannot be reconstructed from its error message or treated as an assessment.
 
@@ -74,7 +74,7 @@ The FTS5 working database is limited to 128 MiB and is disposed at command compl
 
 ## Reuse compatible comparisons
 
-Under [Hivex #18](https://github.com/H1V35/hivex/issues/18), an explicit transition can reuse a retained comparison when the pair remains selected and its complete model request, source descriptors, claim identities and processing contract remain identical. The request includes both complete sources, their authority, original positions, claims, conditions, exceptions and local relationships. A shared document hash or coincident pair ID is insufficient.
+Under [HiveX #18](https://github.com/H1V35/hivex/issues/18), an explicit transition can reuse a retained comparison when the pair remains selected and its complete model request, source descriptors, claim identities and processing contract remain identical. The request includes both complete sources, their authority, original positions, claims, conditions, exceptions and local relationships. A shared document hash or coincident pair ID is insufficient.
 
 Selection decides which pairs to assess; its global hash, retrieval ranks and neighbor count are not model inputs. Recompute the new selection and retain its complete reasons. A changed selection may reuse an unchanged pair, but never supplies evidence for a newly selected pair. Preserve the old graph and complete comparison export, including its selection, before replacing the working cohort.
 

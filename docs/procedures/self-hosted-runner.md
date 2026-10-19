@@ -22,7 +22,7 @@ Standard GitHub-hosted runners are free for public repositories. While the repos
 
 ## Retiring the personal runner
 
-After the hosted workflow passes, stop and uninstall only Hivex's local runner service, remove its repository registration, and verify that Hivex has no self-hosted runner remaining. Other repositories' runners are outside this change.
+After the hosted workflow passes, stop and uninstall only HiveX's local runner service, remove its repository registration, and verify that HiveX has no self-hosted runner remaining. Other repositories' runners are outside this change.
 
 Preserve needed historical verification privately before deleting old Actions logs containing workstation details. Retain Git history, author attribution and useful decisions. Removing current files or logs does not purge historical commits or already published packages. Changing repository visibility is a separate explicit action.
 

@@ -2,7 +2,7 @@ use super::arguments::{Arguments, invalid};
 use super::page::{self, Cursor};
 use super::{ORIGIN, coverage};
 use crate::documents::{hash, load_project, validate_sources};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde_json::{Value, json};
 
 /// `check`: structural validation of metadata, relationships and local references.
@@ -60,7 +60,7 @@ pub fn command(args: &[String]) -> Result<Value> {
       })
     },
     |_| {
-      HivexError::new(
+      HiveXError::new(
         "OUTPUT_LIMIT",
         "The next complete validation finding exceeds --max-bytes",
       )

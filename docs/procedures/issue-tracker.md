@@ -8,7 +8,7 @@ tags: [workflow, issues, review]
 
 # Issues, triage and pull requests
 
-Hivex uses GitHub issues and pull requests in `H1V35/hivex`, with the `gh` CLI. Work is issue-first, with a coherent branch and PR for each change. Tracker/PR text and commit messages are Spanish; code, branches and repository Markdown are English. Commits and PR titles use an emoji followed by a Conventional Commit type/scope and a Spanish description.
+HiveX uses GitHub issues and pull requests in `H1V35/hivex`, with the `gh` CLI. Work is issue-first, with a coherent branch and PR for each change. Tracker/PR text and commit messages are Spanish; code, branches and repository Markdown are English. Commits and PR titles use an emoji followed by a Conventional Commit type/scope and a Spanish description.
 
 ## Define and select work
 

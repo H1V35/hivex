@@ -1,6 +1,6 @@
 use super::relations::{Section, sections};
 use super::{Document, Project, line_content, raw_line_ranges};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use regex::Regex;
 use rusqlite::{Connection, Row, Statement, params};
 use serde::Serialize;
@@ -121,7 +121,7 @@ pub fn search(
 ) -> Result<SearchResult> {
   if let Some(source) = project.missing(query.sources) {
     return Err(
-      HivexError::new("SOURCE_NOT_FOUND", "Search requires selected source IDs")
+      HiveXError::new("SOURCE_NOT_FOUND", "Search requires selected source IDs")
         .with_details(serde_json::json!({"document":source})),
     );
   }
@@ -232,7 +232,7 @@ fn index_document(
     *count += 1;
     if *count > MAX_PASSAGES {
       return Err(
-        HivexError::new(
+        HiveXError::new(
           "SEARCH_LIMIT",
           "At most 32768 source passages can be indexed; narrow selected sources",
         )

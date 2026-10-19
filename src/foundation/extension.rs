@@ -349,13 +349,13 @@ fn validate(content: &Content, bundled: &[String]) -> Result<()> {
 pub struct Content {
   /// Bundled skills the extension removes.
   replaces: Vec<String>,
-  /// Ignore rules the extension's projects need, managed like Hivex's own.
+  /// Ignore rules the extension's projects need, managed like HiveX's own.
   ignore: Vec<String>,
   skills: Vec<BundleFile>,
   templates: Vec<BundleFile>,
 }
 
-fn invalid(message: impl Into<String>) -> crate::error::HivexError {
+fn invalid(message: impl Into<String>) -> crate::error::HiveXError {
   error("INVALID_EXTENSION", message)
 }
 

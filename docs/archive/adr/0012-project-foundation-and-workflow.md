@@ -10,7 +10,7 @@ source: https://github.com/H1V35/hivex/blob/1e3768f65f901522a63e00bde51069020049
 
 # Project foundation and adaptive workflow
 
-Adopting Hivex should establish a useful base for autonomous project work as well as reusable knowledge. Distribute a small documentation foundation and five independent skills for design, documentation, implementation, review and Git/triage, alongside the knowledge-support skill. This extends the distribution scope of [ADR 0010](0010-practical-knowledge-assistance.md); the CLI does not become a development-session orchestrator or the principal reviewer.
+Adopting HiveX should establish a useful base for autonomous project work as well as reusable knowledge. Distribute a small documentation foundation and five independent skills for design, documentation, implementation, review and Git/triage, alongside the knowledge-support skill. This extends the distribution scope of [ADR 0010](0010-practical-knowledge-assistance.md); the CLI does not become a development-session orchestrator or the principal reviewer.
 
 `init` prepares missing project Markdown, source configuration and Git visibility rules with no model calls. It preserves existing files and local knowledge. The principal agent completes purpose, vision and domain language from actual evidence and owner decisions, and guides migration to the standard where reasonably possible. Preserve useful content, links, history and monorepo/package/module authority. Existing layouts remain valid inputs to knowledge operations.
 
@@ -36,7 +36,7 @@ Apply the same economy to entrypoints and supporting references. Do not recreate
 
 On 2026-09-16, the owner approved separating reusable task guidance from execution mechanics. Skills provide domain knowledge and criteria for their capability. The host agent harness coordinates agents, applies their model/effort configuration and manages execution permissions, processes and session limits. Skills do not implement another orchestration or permission layer.
 
-Project Markdown retains workflow policy, including independent review and matching the responsible implementer's model and effort. The harness must support that policy; removing duplicated skill instructions does not configure it automatically. Hivex's own versioned evidence, persisted work budgets, recovery and uncertainty remain CLI contracts. Its skill retains the conditions needed to use those capabilities correctly and routes advanced mechanics to the existing CLI manual.
+Project Markdown retains workflow policy, including independent review and matching the responsible implementer's model and effort. The harness must support that policy; removing duplicated skill instructions does not configure it automatically. HiveX's own versioned evidence, persisted work budgets, recovery and uncertainty remain CLI contracts. Its skill retains the conditions needed to use those capabilities correctly and routes advanced mechanics to the existing CLI manual.
 
 ## Knowledge before merge (2026-09-18)
 

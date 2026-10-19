@@ -1,11 +1,11 @@
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use std::collections::HashMap;
 
 /// Exact JavaScript-safe integers keep options and cursors portable to JSON clients.
 pub const MAX_SAFE_INTEGER: usize = 9_007_199_254_740_991;
 
-pub fn invalid(message: impl Into<String>) -> HivexError {
-  HivexError::new("INVALID_ARGUMENT", message)
+pub fn invalid(message: impl Into<String>) -> HiveXError {
+  HiveXError::new("INVALID_ARGUMENT", message)
 }
 
 /// Parsed command line: positionals (including the command name), valued

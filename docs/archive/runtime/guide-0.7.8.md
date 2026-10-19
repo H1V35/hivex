@@ -1,5 +1,5 @@
 ---
-title: "Hivex guide"
+title: "HiveX guide"
 status: historical
 created_at: 2026-09-17
 updated_at: 2026-10-02
@@ -8,13 +8,13 @@ tags: [history, cli, retrieval]
 source: https://github.com/H1V35/hivex/blob/180ea2750e0da9253494b02e7bbbb25938720758/docs/guide.md
 ---
 
-# Hivex guide
+# HiveX guide
 
 The primary path is reliable Markdown, explicit relationships and focused source retrieval. See [ADR 0014](../../adr/0014-reliable-markdown-and-explicit-relationships.md). Optional graph/model commands keep their actual compatibility contracts.
 
 ## Project foundation
 
-Hivex combines incremental knowledge, local retrieval, optional model assistance and a small adoption workflow. Its five general skills cover design, documentation, implementation, independent review and Git/triage. Use the capabilities a task needs rather than a compulsory sequence.
+HiveX combines incremental knowledge, local retrieval, optional model assistance and a small adoption workflow. Its five general skills cover design, documentation, implementation, independent review and Git/triage. Use the capabilities a task needs rather than a compulsory sequence.
 
 No installed command approves an implementation. The principal reviewer checks findings, relevant tests and source evidence. The [knowledge decision](../../adr/0010-practical-knowledge-assistance.md) and [foundation decision](../../adr/0012-project-foundation-and-workflow.md) define these responsibilities.
 
@@ -75,7 +75,7 @@ Documents need no Git repository or commit. They can live at monorepo, package o
 }
 ```
 
-Without configuration, Hivex selects Markdown files under the project. It skips dependencies, its own cache, Git metadata and private dot directories; explicitly named documentation directories can be selected. `archive` declares additional Markdown that remains readable evidence while staying out of ordinary update and consultation ingestion. Use `--source <document>` with `ask` or `review` to select it, or let a known relationship bring back the bounded ranges it requires. Historical metadata and evidence carry `historical: true`; an extracted decision from that source remains `historical`, even when the transport suggests another status. An `exclude` glob wins over `archive`. Symlinks are not followed and protected directories and scope escapes remain rejected. The previous experimental `collections` configuration is rejected with a migration message rather than silently reinterpreted. The former `history` field is still read for existing projects; new configuration uses `archive`. Specifying both is an error. Renaming the field preserves snapshots, retained work and caches.
+Without configuration, HiveX selects Markdown files under the project. It skips dependencies, its own cache, Git metadata and private dot directories; explicitly named documentation directories can be selected. `archive` declares additional Markdown that remains readable evidence while staying out of ordinary update and consultation ingestion. Use `--source <document>` with `ask` or `review` to select it, or let a known relationship bring back the bounded ranges it requires. Historical metadata and evidence carry `historical: true`; an extracted decision from that source remains `historical`, even when the transport suggests another status. An `exclude` glob wins over `archive`. Symlinks are not followed and protected directories and scope escapes remain rejected. The previous experimental `collections` configuration is rejected with a migration message rather than silently reinterpreted. The former `history` field is still read for existing projects; new configuration uses `archive`. Specifying both is an error. Renaming the field preserves snapshots, retained work and caches.
 
 ## Recover context
 
@@ -130,7 +130,7 @@ The [optional CLI reference](graph-cli-0.7.8.md) records budgets, profile contin
 
 ## Workflow skills and Markdown practice
 
-The [Hivex skill](../../../skills/hivex/SKILL.md) handles local retrieval, incremental knowledge, uncertainty and accounting. The additional capabilities are [design](../../../skills/hivex-design/SKILL.md), [documentation](../../../skills/hivex-document/SKILL.md), [implementation](../../../skills/hivex-implement/SKILL.md), [review](../../../skills/hivex-review/SKILL.md) and [Git/triage](../../../skills/hivex-git/SKILL.md).
+The [HiveX skill](../../../skills/hivex/SKILL.md) handles local retrieval, incremental knowledge, uncertainty and accounting. The additional capabilities are [design](../../../skills/hivex-design/SKILL.md), [documentation](../../../skills/hivex-document/SKILL.md), [implementation](../../../skills/hivex-implement/SKILL.md), [review](../../../skills/hivex-review/SKILL.md) and [Git/triage](../../../skills/hivex-git/SKILL.md).
 
 The [Markdown foundation](../../../skills/hivex/references/markdown.md) defines the recommended adoption layout, concise agent entrypoint, purpose, glossary, decisions, guidelines and procedures. Knowledge operations continue to accept other Markdown layouts. Preserve a project's useful rules and exceptions when adopting the baseline.
 

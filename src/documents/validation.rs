@@ -2,7 +2,7 @@ use super::markdown::{is_markdown_path, markdown_references};
 use super::metadata;
 use super::navigation::{Direction, Resolver};
 use super::{Document, Project, has_uri_scheme, percent_decode};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde_json::{Value, json};
 
 const MAX_REFERENCES: usize = 32_768;
@@ -24,7 +24,7 @@ pub fn validate_sources(
 ) -> Result<Validation> {
   if let Some(source) = project.missing(sources) {
     return Err(
-      HivexError::new(
+      HiveXError::new(
         "SOURCE_NOT_FOUND",
         "Validation requires selected source IDs",
       )
@@ -73,15 +73,15 @@ pub fn validate_sources(
   Ok(result)
 }
 
-fn reference_limit() -> HivexError {
-  HivexError::new(
+fn reference_limit() -> HiveXError {
+  HiveXError::new(
     "CHECK_LIMIT",
     "At most 32768 local Markdown references can be validated; narrow source selection",
   )
 }
 
-fn finding_limit() -> HivexError {
-  HivexError::new(
+fn finding_limit() -> HiveXError {
+  HiveXError::new(
     "CHECK_LIMIT",
     "Validation exceeds 2048 findings; narrow source selection",
   )

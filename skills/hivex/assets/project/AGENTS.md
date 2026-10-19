@@ -2,7 +2,7 @@
 
 ## Orientation
 
-Use Hivex to recover relevant decisions, dependencies and exceptions before proposing or changing behavior. The [documentation map](docs/README.md) identifies the Markdown authorities; consult the parts relevant to the task.
+Use HiveX to recover relevant decisions, dependencies and exceptions before proposing or changing behavior. The [documentation map](docs/README.md) identifies the Markdown authorities; consult the parts relevant to the task.
 
 ## Development
 

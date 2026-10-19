@@ -1,5 +1,5 @@
 use crate::compatibility::{normalize_path, project_directory};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -14,7 +14,7 @@ const IGNORE_RULES: [&str; 3] = ["/.claude/skills/hivex*", "/.hivex/", "/.review
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CONFIG: &str = "hivex.json";
 const IGNORE_FILE: &str = ".gitignore";
-/// The skill files and Claude links Hivex installed, so `update` can remove what a release drops.
+/// The skill files and Claude links HiveX installed, so `update` can remove what a release drops.
 const MANAGED: &str = ".agents/.hivex-managed.json";
 
 mod extension;
@@ -140,7 +140,7 @@ impl Bundle {
       .into_iter()
       .filter(|name| !name.starts_with("hivex"))
       .map(|name| format!("/.claude/skills/{name}"));
-    // Hivex's own rules come last, so no earlier rule can re-include their paths.
+    // HiveX's own rules come last, so no earlier rule can re-include their paths.
     links
       .chain(self.ignore.iter().cloned())
       .chain(IGNORE_RULES.iter().map(|rule| (*rule).to_owned()))
@@ -237,8 +237,8 @@ struct Destination {
   exists: bool,
 }
 
-fn error(code: &str, message: impl Into<String>) -> HivexError {
-  HivexError::new(code, message)
+fn error(code: &str, message: impl Into<String>) -> HiveXError {
+  HiveXError::new(code, message)
 }
 
 fn project_root(requested: &str) -> Result<PathBuf> {
@@ -470,11 +470,11 @@ pub fn version_warning(root: &Path) -> Option<Value> {
   })
 }
 
-fn version_mismatch(pinned: &str) -> HivexError {
+fn version_mismatch(pinned: &str) -> HiveXError {
   error(
     "VERSION_MISMATCH",
     format!(
-      "This project pins Hivex {pinned}, but {VERSION} is installed. Install it with: {}",
+      "This project pins HiveX {pinned}, but {VERSION} is installed. Install it with: {}",
       install_command(pinned)
     ),
   )

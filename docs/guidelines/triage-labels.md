@@ -36,8 +36,8 @@ Use useful work types such as `bug`, `enhancement`, `documentation`, `refactor`,
 
 Use area or component labels that match this project. Preserve useful existing classification when adopting the standard; do not import another product's area catalogue or add labels that repeat the title. Follow the [tracker procedure](../procedures/issue-tracker.md).
 
-## Hivex catalogue alignment
+## HiveX catalogue alignment
 
 The common catalogue is owned by [the Git skill](../../skills/hivex-git/assets/labels.json). GitHub mirrors those names, colours and meanings. Product-specific area labels belong to each adopting project, so Compi areas are not copied here.
 
-The former Hivex `spec` label on #17 and #80 is retired after preserving their architectural classification with `architecture`; their titles, specification criteria and existing readiness/type labels remain unchanged. Unused default aliases are removed rather than maintaining duplicate roles. Historical issue text is not rewritten.
+The former HiveX `spec` label on #17 and #80 is retired after preserving their architectural classification with `architecture`; their titles, specification criteria and existing readiness/type labels remain unchanged. Unused default aliases are removed rather than maintaining duplicate roles. Historical issue text is not rewritten.
