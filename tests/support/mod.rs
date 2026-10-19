@@ -32,6 +32,8 @@ impl Project {
     let binary = std::env::var_os("HIVEX_TEST_BINARY")
       .map_or_else(|| PathBuf::from(env!("CARGO_BIN_EXE_hivex")), PathBuf::from);
     let mut command = Command::new(binary);
+    // Keep init away from the real Claude and Codex installations of whoever runs the tests.
+    command.env("PATH", std::env::temp_dir().join("hivex-no-hosts"));
     command.args(args);
     if !args.is_empty() {
       command.arg("--root").arg(&self.root);

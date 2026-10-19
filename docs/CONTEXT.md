@@ -2,7 +2,7 @@
 title: "Hivex domain language"
 status: accepted
 created_at: 2026-09-05
-updated_at: 2026-10-02
+updated_at: 2026-10-19
 tags: [domain, project-knowledge]
 ---
 
@@ -14,7 +14,9 @@ Hivex gives agents and people a reusable project foundation and focused access t
 
 **Project foundation**: Recommended starting documents, workflow capabilities and knowledge practices, tailored to the adopting project's purpose and decisions.
 
-**Initialization**: Preparing missing foundation files, configuration and skill links while preserving project-owned files.
+**Initialization**: Preparing missing foundation files, configuration and skill links while preserving project-owned files, and installing the ponytail plugin in Claude Code and Codex.
+
+**Update**: Restoring missing skill links and managed ignore rules and bringing the ponytail plugin to its latest release, without creating or changing project-owned files.
 
 **Adoption**: Completing the foundation from project evidence, preserving useful knowledge and aligning working practices.
 

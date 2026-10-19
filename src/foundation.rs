@@ -5,6 +5,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, symlink};
 use std::path::{Component, Path, PathBuf};
+use std::process::{Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Managed rules stay last so earlier project rules cannot re-include their paths.
@@ -37,6 +38,48 @@ static TEMPLATE_FILES: &[(&str, &[u8])] = templates![
   "docs/procedures/self-hosted-runners.md",
   "docs/README.md",
   "hivex.json",
+];
+
+/// A host CLI and the idempotent steps it runs for the ponytail plugin.
+type HostSteps = (&'static str, &'static [&'static [&'static str]]);
+
+/// `init` installs ponytail only where `plugin list --json` does not show it.
+const PONYTAIL_INSTALL: [HostSteps; 2] = [
+  (
+    "claude",
+    &[
+      &["plugin", "marketplace", "add", "DietrichGebert/ponytail"],
+      &["plugin", "install", "ponytail@ponytail"],
+    ],
+  ),
+  (
+    "codex",
+    &[
+      &["plugin", "marketplace", "add", "DietrichGebert/ponytail"],
+      &["plugin", "add", "ponytail@ponytail"],
+    ],
+  ),
+];
+
+/// `update` also refreshes the marketplace and brings ponytail to its latest release.
+const PONYTAIL_UPDATE: [HostSteps; 2] = [
+  (
+    "claude",
+    &[
+      &["plugin", "marketplace", "add", "DietrichGebert/ponytail"],
+      &["plugin", "marketplace", "update", "ponytail"],
+      &["plugin", "install", "ponytail@ponytail"],
+      &["plugin", "update", "ponytail@ponytail"],
+    ],
+  ),
+  (
+    "codex",
+    &[
+      &["plugin", "marketplace", "add", "DietrichGebert/ponytail"],
+      &["plugin", "marketplace", "upgrade", "ponytail"],
+      &["plugin", "add", "ponytail@ponytail"],
+    ],
+  ),
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -405,7 +448,59 @@ fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
     .write_all(bytes)
 }
 
-fn report(operations: &[FileOperation]) -> Value {
+fn run_host(host: &str, args: &[&str]) -> std::io::Result<Output> {
+  Command::new(host)
+    .args(args)
+    .stdin(Stdio::null())
+    .stderr(Stdio::null())
+    .output()
+}
+
+/// `None` once every step succeeded, otherwise `missing` without the host's CLI or `failed`.
+fn run_steps(host: &str, steps: &[&[&str]]) -> Option<&'static str> {
+  for args in steps {
+    match run_host(host, args) {
+      Ok(output) if output.status.success() => {}
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some("missing"),
+      _ => return Some("failed"),
+    }
+  }
+  None
+}
+
+/// Installing again would replace Codex's copy and re-enable a plugin the owner disabled, so
+/// `init` leaves an installed ponytail alone.
+fn install_status(host: &str, steps: &[&[&str]]) -> &'static str {
+  // shortcut: finds the plugin id in the JSON listing; parse it if a host changes that format.
+  let listed =
+    |output: &Output| String::from_utf8_lossy(&output.stdout).contains("\"ponytail@ponytail\"");
+  match run_host(host, &["plugin", "list", "--json"]) {
+    Ok(output) if output.status.success() && listed(&output) => "current",
+    Ok(output) if output.status.success() => update_status(host, steps),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => "missing",
+    _ => "failed",
+  }
+}
+
+fn update_status(host: &str, steps: &[&[&str]]) -> &'static str {
+  run_steps(host, steps).unwrap_or("current")
+}
+
+type HostStatus = fn(&str, &[&[&str]]) -> &'static str;
+
+fn plugins(hosts: &[HostSteps], status: HostStatus) -> Value {
+  hosts
+    .iter()
+    .map(|(host, steps)| json!({"host": host, "plugin": "ponytail", "status": status(host, steps)}))
+    .collect()
+}
+
+fn report(
+  command: &str,
+  operations: &[FileOperation],
+  hosts: &[HostSteps],
+  status: HostStatus,
+) -> Value {
   let paths = |state| {
     let mut paths: Vec<_> = operations
       .iter()
@@ -418,25 +513,52 @@ fn report(operations: &[FileOperation]) -> Value {
     paths
   };
   json!({
-    "command": "init",
+    "command": command,
     "created": paths(OperationState::Created),
     "modelCalls": 0,
+    "plugins": plugins(hosts, status),
     "preserved": paths(OperationState::Preserved),
     "updated": paths(OperationState::Updated),
   })
 }
 
-/// Prepare the missing foundation files, skill links and ignore rules of the
-/// project at `root`, preserving everything that already exists.
+/// Prepare the missing foundation files, skill links and ignore rules of the project at `root`,
+/// preserving everything that already exists, and install the ponytail plugin in Claude and Codex.
 pub fn initialize(root: &str) -> Result<Value> {
   let root = project_root(root)?;
   // Retained state must not hide a symlink or a conflicting `.hivex` entry.
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
   let mut operations = template_operations(&root)?;
-  operations.extend(skill_operations(&root)?);
-  operations.push(ignore_operation(&root)?);
+  operations.extend(managed_operations(&root)?);
   write_operations(&operations)?;
-  Ok(report(&operations))
+  Ok(report(
+    "init",
+    &operations,
+    &PONYTAIL_INSTALL,
+    install_status,
+  ))
+}
+
+/// Restore the missing skill links and ignore rules of the project at `root` and bring the
+/// ponytail plugin to its latest release. Skills update with the package; project files are
+/// neither created nor changed.
+pub fn update(root: &str) -> Result<Value> {
+  let root = project_root(root)?;
+  destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
+  let operations = managed_operations(&root)?;
+  write_operations(&operations)?;
+  Ok(report(
+    "update",
+    &operations,
+    &PONYTAIL_UPDATE,
+    update_status,
+  ))
+}
+
+fn managed_operations(root: &Path) -> Result<Vec<FileOperation>> {
+  let mut operations = skill_operations(root)?;
+  operations.push(ignore_operation(root)?);
+  Ok(operations)
 }
 
 fn validate_destination_component(
