@@ -2,7 +2,7 @@
 title: Engineering workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-03
+updated_at: 2026-10-19
 tags: [engineering, quality, workflow]
 ---
 
@@ -26,7 +26,7 @@ Choose verification for the affected surfaces. Code changes require typechecking
 
 GitHub Actions runs Quality on an ephemeral GitHub-hosted `macos-15` ARM64 runner. The owner approved retiring the personal Mac runner in preparation for public contributions; the workflow checks the hosted environment and architecture before running the native gates. PRs receive read-only repository permissions and no stored credentials or publishing secrets. Do not reconnect a personal workstation or introduce a `pull_request_target` checkout of untrusted code. A queued, skipped or interrupted run is not a pass. Local verification remains required when CI is unavailable. See the [CI procedure](../procedures/self-hosted-runner.md) for the execution boundary and checks.
 
-Use Cargo with the committed lockfile for the runtime, development tools and tests. The stable toolchain in `rust-toolchain.toml`, two-space rustfmt, Clippy all + pedantic with warnings denied, source-quality and domain-dependency gates, and behavioral checks form the development gate. The [Rust quality standard](rust-quality.md) defines their scope, thresholds and analyzer limits. TypeScript, JavaScript and Bun are retired from Hivex development under the owner's clarification of [#80](https://github.com/H1V35/hivex/issues/80).
+Use Cargo with the committed lockfile for the runtime, development tools and tests. Dependabot proposes grouped weekly Cargo updates and GitHub Actions updates as pull requests; they pass the same `quality` check and remain subject to the owner's merge decision. The stable toolchain in `rust-toolchain.toml`, two-space rustfmt, Clippy all + pedantic with warnings denied, source-quality and domain-dependency gates, and behavioral checks form the development gate. The [Rust quality standard](rust-quality.md) defines their scope, thresholds and analyzer limits. TypeScript, JavaScript and Bun are retired from Hivex development under the owner's clarification of [#80](https://github.com/H1V35/hivex/issues/80).
 
 Follow [ADR 0013](../adr/0013-domain-modules-and-execution-integrations.md) for the modular monolith. Documents own source selection, parsing, coordinates, lexical search and authored relationships; foundation owns safe missing-file preparation; CLI composes those operations and owns argument parsing/output. Documents and foundation cannot import each other or CLI. Shared errors and compatible Markdown utilities remain small. The [Rust quality standard](rust-quality.md#domain-boundaries) records the permitted dependency matrix. Public CLI tests exercise the compiled executable; fixed legacy bytes verify preservation, without retaining graph/model behavior or a synthetic app-server.
 
