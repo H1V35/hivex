@@ -91,8 +91,8 @@ fn init_installs_missing_ponytail_and_update_refreshes_every_host() {
   assert_eq!(
     plugins,
     json!([
-      {"host":"claude","plugin":"ponytail","status":"preserved"},
-      {"host":"codex","plugin":"ponytail","status":"installed"}
+      {"host":"claude","plugin":"ponytail","status":"current"},
+      {"host":"codex","plugin":"ponytail","status":"current"}
     ])
   );
   assert_eq!(

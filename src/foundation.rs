@@ -475,8 +475,8 @@ fn install_status(host: &str, steps: &[&[&str]]) -> &'static str {
   let listed =
     |output: &Output| String::from_utf8_lossy(&output.stdout).contains("\"ponytail@ponytail\"");
   match run_host(host, &["plugin", "list", "--json"]) {
-    Ok(output) if output.status.success() && listed(&output) => "preserved",
-    Ok(output) if output.status.success() => run_steps(host, steps).unwrap_or("installed"),
+    Ok(output) if output.status.success() && listed(&output) => "current",
+    Ok(output) if output.status.success() => update_status(host, steps),
     Err(error) if error.kind() == std::io::ErrorKind::NotFound => "missing",
     _ => "failed",
   }
