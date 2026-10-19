@@ -253,7 +253,24 @@ fn project_root(requested: &str) -> Result<PathBuf> {
     }
     root_error
   })?;
-  fs::canonicalize(directory).map_err(|read_error| error("INVALID_ROOT", read_error.to_string()))
+  fs::canonicalize(directory)
+    .map(without_verbatim_prefix)
+    .map_err(|read_error| error("INVALID_ROOT", read_error.to_string()))
+}
+
+/// `canonicalize` returns `\\?\` paths on Windows, which Git for Windows cannot use; the
+/// standard library adds the prefix back where long paths need it.
+fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+  #[cfg(windows)]
+  if let Some(rest) = path.to_str().and_then(|text| text.strip_prefix(r"\\?\")) {
+    if let Some(share) = rest.strip_prefix(r"UNC\") {
+      return PathBuf::from(format!(r"\\{share}"));
+    }
+    if rest.as_bytes().get(1) == Some(&b':') {
+      return PathBuf::from(rest);
+    }
+  }
+  path
 }
 
 fn destination(root: &Path, relative_path: &str, kind: DestinationKind) -> Result<Destination> {
