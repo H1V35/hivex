@@ -2,7 +2,7 @@
 title: "Documentation map"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-03
+updated_at: 2026-10-19
 tags: [documentation, navigation]
 ---
 
@@ -16,7 +16,7 @@ Markdown records project intent, terminology, rules and reasons. The map and aut
 - [Engineering](guidelines/engineering.md): shared implementation and review principles.
 - [Triage](guidelines/triage-labels.md): the meaning and use of issue labels.
 - [Issue tracker](procedures/issue-tracker.md): how work enters and moves through Git and review.
-- [Independent review](procedures/independent-review.md): how to run, resume and record the cross-vendor review.
+- [Independent review](procedures/independent-review.md): how to choose the reviewer (another vendor, or an isolated session of the same one), run and resume it, confirm its profile and record it.
 - [Self-hosted runners](procedures/self-hosted-runners.md): how to run CI jobs in parallel on a private runner pool, when the project uses one.
 
 Guidelines define ongoing rules; procedures explain how to perform an operation. Folder placement alone does not grant or remove authority. Read the scope, status, conditions and later amendments of each document.
