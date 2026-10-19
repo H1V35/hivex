@@ -571,12 +571,14 @@ fn initialization_reports_an_unreadable_root_in_its_message() {
   let output = crate::support::bounded(command);
   assert_eq!(output.status.code(), Some(1));
   let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-  assert_eq!(
-    error,
-    json!({"error":{"code":"INVALID_ROOT",
-      "message":"Project root is not readable: No such file or directory (os error 2)",
-      "messageTruncated":false}})
+  subset(
+    &error,
+    &json!({"error":{"code":"INVALID_ROOT","messageTruncated":false}}),
   );
+  // The reason comes from the operating system, whose wording differs between platforms.
+  let message = error["error"]["message"].as_str().unwrap();
+  assert!(message.starts_with("Project root is not readable: "));
+  assert!(message.ends_with("(os error 2)"));
 }
 
 // Symbolic links need extra privileges on Windows.
