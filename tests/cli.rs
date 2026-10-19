@@ -5,5 +5,6 @@ mod contracts {
   pub mod retirement;
   pub mod search;
   pub mod source_workflow;
+  pub mod update;
   pub mod validation;
 }

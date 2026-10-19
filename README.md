@@ -21,7 +21,7 @@ npm install -D -E @h1v35/hivex
 npx hivex init
 ```
 
-`init` prepares project documents, agent instructions and the six bundled skills. It preserves existing files and makes no model calls. The dependency stays local and pinned to your project.
+`init` prepares project documents, agent instructions and the six bundled skills, and installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin in Claude Code and Codex when they are installed. It preserves existing files and makes no model calls. The dependency stays local and pinned to your project. After upgrading the package, `npx hivex update` restores missing skill links and brings ponytail to its latest release without changing project files.
 
 ```sh
 npx hivex search "cache policy"
