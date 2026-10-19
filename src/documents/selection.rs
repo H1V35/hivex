@@ -173,13 +173,22 @@ impl Config {
         "hivex.json uses legacy collections; replace it with include and exclude globs",
       ));
     }
-    if let Some(unknown) = object
-      .keys()
-      .find(|key| !matches!(key.as_str(), "exclude" | "archive" | "history" | "include"))
-    {
+    if let Some(unknown) = object.keys().find(|key| {
+      !matches!(
+        key.as_str(),
+        "exclude" | "archive" | "history" | "include" | "version"
+      )
+    }) {
       return Err(invalid(format!(
         "hivex.json has unsupported field: {unknown}"
       )));
+    }
+    // The pinned release belongs to project setup, which validates its format.
+    if object
+      .get("version")
+      .is_some_and(|version| !version.is_string())
+    {
+      return Err(invalid("hivex.json version must be text"));
     }
     if object.contains_key("archive") && object.contains_key("history") {
       return Err(invalid(

@@ -283,6 +283,8 @@ fn pagination_binds_sources_options_and_whole_json_bytes() {
   );
 }
 
+// Symbolic links need extra privileges on Windows.
+#[cfg(unix)]
 #[test]
 fn omitted_sources_and_symlinks_never_claim_complete_navigation() {
   let p = connected();

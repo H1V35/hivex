@@ -1,14 +1,15 @@
 use crate::support::{Project, bounded, list, subset};
 use serde_json::{Value, json};
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 #[test]
 fn update_restores_managed_entries_without_touching_project_files() {
   let p = Project::new();
   p.ok(&["init"]);
   p.write("AGENTS.md", "# My rules\n");
-  fs::remove_file(p.path(".agents/skills/hivex-git")).unwrap();
+  p.write(".agents/skills/hivex-design/SKILL.md", "edited by hand\n");
+  fs::remove_file(p.path(".agents/skills/hivex-git/SKILL.md")).unwrap();
   fs::remove_file(p.path("docs/PRD.md")).unwrap();
   p.write(".gitignore", "*.tmp\n");
   let result = p.ok(&["update"]);
@@ -16,18 +17,17 @@ fn update_restores_managed_entries_without_touching_project_files() {
     &result,
     &json!({
       "command":"update",
-      "created":[".agents/skills/hivex-git"],
+      "created":[".agents/skills/hivex-git/SKILL.md"],
       "plugins":[
         {"host":"claude","plugin":"ponytail","status":"missing"},
         {"host":"codex","plugin":"ponytail","status":"missing"}
       ],
-      "updated":[".gitignore"]
+      "updated":[".agents/skills/hivex-design/SKILL.md", ".gitignore"]
     }),
   );
-  assert!(
-    fs::symlink_metadata(p.path(".agents/skills/hivex-git"))
-      .unwrap()
-      .is_symlink()
+  assert_eq!(
+    fs::read(p.path(".agents/skills/hivex-design/SKILL.md")).unwrap(),
+    include_bytes!("../../skills/hivex-design/SKILL.md")
   );
   assert!(!list(&result, "preserved").contains(&json!("AGENTS.md")));
   assert_eq!(
@@ -38,7 +38,7 @@ fn update_restores_managed_entries_without_touching_project_files() {
   assert!(
     fs::read_to_string(p.path(".gitignore"))
       .unwrap()
-      .starts_with("*.tmp\n/.hivex/\n")
+      .starts_with("*.tmp\n/.claude/skills/hivex*\n")
   );
   assert_eq!(
     p.error(&["update", "extra"])["error"]["code"],
@@ -46,17 +46,97 @@ fn update_restores_managed_entries_without_touching_project_files() {
   );
 }
 
+// Symbolic links need extra privileges on Windows.
+#[cfg(unix)]
+#[test]
+fn update_replaces_former_npm_links_with_copies() {
+  let p = Project::new();
+  let package = Project::new();
+  package.write("hivex/SKILL.md", "# Skill from npm\n");
+  fs::create_dir_all(p.path(".agents/skills")).unwrap();
+  std::os::unix::fs::symlink(package.path("hivex"), p.path(".agents/skills/hivex")).unwrap();
+  // `init` leaves the former link alone.
+  let initialized = p.ok(&["init"]);
+  assert!(list(&initialized, "preserved").contains(&json!(".agents/skills/hivex")));
+  assert!(
+    fs::symlink_metadata(p.path(".agents/skills/hivex"))
+      .unwrap()
+      .is_symlink()
+  );
+  let updated = p.ok(&["update"]);
+  assert!(list(&updated, "updated").contains(&json!(".agents/skills/hivex")));
+  assert!(list(&updated, "created").contains(&json!(".agents/skills/hivex/SKILL.md")));
+  assert!(
+    fs::symlink_metadata(p.path(".agents/skills/hivex"))
+      .unwrap()
+      .is_dir()
+  );
+  assert_eq!(
+    fs::read(p.path(".agents/skills/hivex/SKILL.md")).unwrap(),
+    include_bytes!("../../skills/hivex/SKILL.md")
+  );
+  // The package the link pointed to is untouched.
+  assert_eq!(
+    fs::read_to_string(package.path("hivex/SKILL.md")).unwrap(),
+    "# Skill from npm\n"
+  );
+}
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[test]
+fn the_pinned_release_is_enforced_by_init_and_update_and_reported_elsewhere() {
+  let p = Project::new();
+  p.ok(&["init"]);
+  p.write(
+    "hivex.json",
+    r#"{"include":["docs/**/*.md"],"version":"0.0.1"}"#,
+  );
+  assert_eq!(p.error(&["init"])["error"]["code"], "VERSION_MISMATCH");
+  subset(
+    &p.ok(&["sources"]),
+    &json!({"versionWarning":{"installed":VERSION,"pinned":"0.0.1"}}),
+  );
+  let updated = p.ok(&["update"]);
+  assert!(list(&updated, "updated").contains(&json!("hivex.json")));
+  assert_eq!(
+    p.read_json("hivex.json"),
+    json!({"version": VERSION, "include": ["docs/**/*.md"]})
+  );
+  assert!(p.ok(&["sources"]).get("versionWarning").is_none());
+  p.write("hivex.json", r#"{"version":"99.0.0"}"#);
+  subset(
+    &p.error(&["update"]),
+    &json!({"error":{"code":"VERSION_MISMATCH","details":{"installed":VERSION,"pinned":"99.0.0"}}}),
+  );
+  p.write("hivex.json", r#"{"version":"latest"}"#);
+  assert_eq!(p.error(&["update"])["error"]["code"], "INVALID_CONFIG");
+}
+
 /// A stand-in host CLI that records its arguments, prints `listing` for `plugin list` and exits
 /// with `code`.
-fn fake_host(bin: &Project, name: &str, listing: &str, code: u8) {
-  let script = bin.path(name);
-  let log = bin.path("calls.log");
-  let body = format!(
-    "#!/bin/sh\necho \"{name} $*\" >> '{}'\nif [ \"$2\" = list ]; then echo '{listing}'; fi\nexit {code}\n",
-    log.display()
-  );
-  fs::write(&script, body).unwrap();
-  fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+fn fake_host(bin: &Path, name: &str, listing: &str, code: u8) {
+  let log = bin.join("calls.log");
+  #[cfg(unix)]
+  {
+    use std::os::unix::fs::PermissionsExt;
+    let script = bin.join(name);
+    let body = format!(
+      "#!/bin/sh\necho \"{name} $*\" >> '{}'\nif [ \"$2\" = list ]; then echo '{listing}'; fi\nexit {code}\n",
+      log.display()
+    );
+    fs::write(&script, body).unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+  }
+  #[cfg(windows)]
+  fs::write(
+    bin.join(format!("{name}.cmd")),
+    format!(
+      "@echo {name} %*>>\"{}\"\r\n@if \"%2\"==\"list\" echo {listing}\r\n@exit /b {code}\r\n",
+      log.display()
+    ),
+  )
+  .unwrap();
 }
 
 /// Run `command` with the stand-in hosts in `bin` and return its plugin report and their calls.
@@ -70,7 +150,7 @@ fn with_hosts(p: &Project, bin: &Project, command: &str) -> (Value, Vec<String>)
   let calls = fs::read_to_string(bin.path("calls.log"))
     .unwrap()
     .lines()
-    .map(str::to_owned)
+    .map(|line| line.trim().to_owned())
     .collect();
   (result["plugins"].clone(), calls)
 }
@@ -80,21 +160,19 @@ fn init_installs_missing_ponytail_and_update_refreshes_every_host() {
   let p = Project::new();
   let bin = Project::new();
   fake_host(
-    &bin,
+    &bin.root,
     "claude",
     r#"[{"id":"ponytail@ponytail","enabled":false}]"#,
     0,
   );
-  fake_host(&bin, "codex", r#"{"installed":[]}"#, 0);
+  fake_host(&bin.root, "codex", r#"{"installed":[]}"#, 0);
+  let current = json!([
+    {"host":"claude","plugin":"ponytail","status":"current"},
+    {"host":"codex","plugin":"ponytail","status":"current"}
+  ]);
   // An installed (here disabled) plugin is left alone; a missing one is installed.
   let (plugins, calls) = with_hosts(&p, &bin, "init");
-  assert_eq!(
-    plugins,
-    json!([
-      {"host":"claude","plugin":"ponytail","status":"current"},
-      {"host":"codex","plugin":"ponytail","status":"current"}
-    ])
-  );
+  assert_eq!(plugins, current);
   assert_eq!(
     calls,
     [
@@ -105,13 +183,7 @@ fn init_installs_missing_ponytail_and_update_refreshes_every_host() {
     ]
   );
   let (plugins, calls) = with_hosts(&p, &bin, "update");
-  assert_eq!(
-    plugins,
-    json!([
-      {"host":"claude","plugin":"ponytail","status":"current"},
-      {"host":"codex","plugin":"ponytail","status":"current"}
-    ])
-  );
+  assert_eq!(plugins, current);
   assert_eq!(
     calls,
     [
@@ -130,7 +202,7 @@ fn init_installs_missing_ponytail_and_update_refreshes_every_host() {
 fn a_failing_host_stops_at_its_first_step() {
   let p = Project::new();
   let bin = Project::new();
-  fake_host(&bin, "codex", "", 1);
+  fake_host(&bin.root, "codex", "", 1);
   let failed = json!([
     {"host":"claude","plugin":"ponytail","status":"missing"},
     {"host":"codex","plugin":"ponytail","status":"failed"}

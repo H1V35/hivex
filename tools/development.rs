@@ -1,39 +1,12 @@
-//! Development-only package preparation and verification. Never included in the distribution.
-use rusqlite::Connection;
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
+//! Development-only release support. Never included in the distribution.
+use serde_json::Value;
 use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-const TARGET: &str = "aarch64-apple-darwin";
-const SKILLS: [&str; 6] = [
-  "hivex",
-  "hivex-design",
-  "hivex-document",
-  "hivex-implement",
-  "hivex-review",
-  "hivex-git",
-];
-
-struct Temporary(PathBuf);
-impl Temporary {
-  fn new() -> Result<Self> {
-    let path = std::env::temp_dir().join(format!("hivex-package-{}", uuid::Uuid::new_v4()));
-    fs::create_dir(&path)?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
-    Ok(Self(path))
-  }
-}
-impl Drop for Temporary {
-  fn drop(&mut self) {
-    let _ = fs::remove_dir_all(&self.0);
-  }
-}
 
 fn run(command: &mut Command) -> Result<String> {
   let output = command.output()?;
@@ -43,81 +16,17 @@ fn run(command: &mut Command) -> Result<String> {
   Ok(String::from_utf8(output.stdout)?)
 }
 
-/// Lowercase hexadecimal SHA-256; sha2 0.11 digests no longer implement `LowerHex`.
-fn digest(path: &Path) -> Result<String> {
-  let bytes = Sha256::digest(fs::read(path)?);
-  Ok(
-    bytes
-      .iter()
-      .fold(String::with_capacity(64), |mut hex, byte| {
-        let _ = write!(hex, "{byte:02x}");
-        hex
-      }),
-  )
-}
-
-fn write_json(path: &Path, value: &Value) -> Result<()> {
-  fs::write(path, format!("{}\n", serde_json::to_string_pretty(value)?))?;
-  Ok(())
-}
-
-fn safe_path(text: &str) -> Result<PathBuf> {
-  let path = PathBuf::from(text);
-  if text.is_empty()
-    || path
-      .components()
-      .any(|part| !matches!(part, Component::Normal(_)))
-  {
-    return Err(format!("Unsafe package path: {text}").into());
-  }
-  Ok(path)
-}
-
-fn copy_public(source: &Path, target: &Path) -> Result<()> {
-  let metadata = fs::symlink_metadata(source)?;
-  if metadata.is_symlink() {
-    return Err(format!("Package source is a symlink: {}", source.display()).into());
-  }
-  if metadata.is_dir() {
-    fs::create_dir_all(target)?;
-    for entry in fs::read_dir(source)? {
-      let entry = entry?;
-      copy_public(&entry.path(), &target.join(entry.file_name()))?;
-    }
-    return Ok(());
-  }
-  if metadata.is_file() {
-    fs::create_dir_all(target.parent().ok_or("Missing parent")?)?;
-    fs::copy(source, target)?;
-  } else {
-    return Err(format!("Non-regular package source: {}", source.display()).into());
-  }
-  Ok(())
-}
-
-fn file_list(root: &Path, directory: &Path) -> Result<BTreeSet<String>> {
-  let mut files = BTreeSet::new();
-  for entry in fs::read_dir(directory)? {
-    let entry = entry?;
-    let kind = entry.file_type()?;
-    if kind.is_dir() {
-      files.extend(file_list(root, &entry.path())?);
-      continue;
-    }
-    if kind.is_file() {
-      files.insert(
-        entry
-          .path()
-          .strip_prefix(root)?
-          .to_str()
-          .ok_or("Invalid path")?
-          .into(),
-      );
-    } else {
-      return Err("Non-regular archive content".into());
-    }
-  }
-  Ok(files)
+fn metadata(root: &Path, target: &str) -> Result<Value> {
+  Ok(serde_json::from_str(&run(
+    Command::new("cargo").current_dir(root).args([
+      "metadata",
+      "--locked",
+      "--format-version",
+      "1",
+      "--filter-platform",
+      target,
+    ]),
+  )?)?)
 }
 
 fn licenses(metadata: &Value, package_id: &str) -> Result<String> {
@@ -170,158 +79,6 @@ fn licenses(metadata: &Value, package_id: &str) -> Result<String> {
   Ok(result)
 }
 
-fn metadata(root: &Path) -> Result<Value> {
-  Ok(serde_json::from_str(&run(
-    Command::new("cargo").current_dir(root).args([
-      "metadata",
-      "--locked",
-      "--format-version",
-      "1",
-      "--filter-platform",
-      TARGET,
-    ]),
-  )?)?)
-}
-
-fn pack(root: &Path, manifest: &Value, archive: &Path) -> Result<()> {
-  if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-    return Err("The distribution is validated only on macOS ARM64".into());
-  }
-  if fs::symlink_metadata(archive).is_ok() {
-    return Err(
-      format!(
-        "Refusing to replace an existing artifact: {}",
-        archive.display()
-      )
-      .into(),
-    );
-  }
-  validate_manifest(manifest)?;
-  let metadata = metadata(root)?;
-  let package = metadata["packages"]
-    .as_array()
-    .ok_or("Missing packages")?
-    .iter()
-    .find(|package| package["name"] == "hivex")
-    .ok_or("Missing Hivex package")?;
-  if package["version"] != manifest["version"] {
-    return Err("Cargo/npm versions differ".into());
-  }
-  build_native(root, &metadata)?;
-  let binary = root.join("target").join(TARGET).join("release/hivex");
-  let temporary = stage_package(
-    root,
-    manifest,
-    &metadata,
-    package["id"].as_str().ok_or("Missing id")?,
-  )?;
-  let staged = temporary.0.join("package");
-  fs::create_dir_all(archive.parent().ok_or("Missing archive directory")?)?;
-  run(
-    Command::new("/usr/bin/tar")
-      .env("COPYFILE_DISABLE", "1")
-      .args(["-czf"])
-      .arg(archive)
-      .arg("-C")
-      .arg(&temporary.0)
-      .arg("package"),
-  )?;
-  let report = json!({"archive":archive,"files":file_list(&staged,&staged)?,"nativeSha256":digest(&binary)?,"sha256":digest(archive)?,"target":TARGET,"version":manifest["version"]});
-  write_json(
-    &PathBuf::from(format!("{}.json", archive.display())),
-    &report,
-  )?;
-  println!("{}", serde_json::to_string_pretty(&report)?);
-  Ok(())
-}
-
-fn validate_manifest(manifest: &Value) -> Result<()> {
-  if manifest["name"] != "@h1v35/hivex"
-    || manifest["os"] != json!(["darwin"])
-    || manifest["cpu"] != json!(["arm64"])
-    || manifest["bin"] != json!({"hivex":"bin/hivex"})
-  {
-    return Err("Invalid native package metadata".into());
-  }
-  for field in [
-    "dependencies",
-    "devDependencies",
-    "optionalDependencies",
-    "scripts",
-    "packageManager",
-  ] {
-    if !manifest[field].is_null() {
-      return Err(format!("Unexpected development/runtime dependency metadata: {field}").into());
-    }
-  }
-  Ok(())
-}
-
-fn cli(binary: &Path, root: &Path, arguments: &[&str]) -> Result<Value> {
-  Ok(serde_json::from_str(&run(
-    Command::new(binary)
-      .env("PATH", "/usr/bin:/bin")
-      .args(arguments)
-      .arg("--root")
-      .arg(root),
-  )?)?)
-}
-
-fn verify(root: &Path, manifest: &Value, archive: &Path) -> Result<()> {
-  let report: Value = serde_json::from_slice(&fs::read(format!("{}.json", archive.display()))?)?;
-  if report["sha256"] != digest(archive)? || report["version"] != manifest["version"] {
-    return Err("Archive identity differs from its report/current manifest".into());
-  }
-  let files = verify_archive(manifest, archive, &report)?;
-  let temporary = Temporary::new()?;
-  run(
-    Command::new("/usr/bin/tar")
-      .arg("-xzf")
-      .arg(archive)
-      .arg("-C")
-      .arg(&temporary.0),
-  )?;
-  let package = temporary.0.join("package");
-  let binary = verify_executable(&package, manifest, &report, &files)?;
-  if cli(&binary, &temporary.0, &["--help"])?["application"] != "hivex" {
-    return Err("Invalid help".into());
-  }
-  verify_initialization(&binary, &package, &temporary.0)?;
-  verify_retained_contract(root, &binary, &temporary.0)?;
-  let verification = json!({"archive":archive,"sha256":report["sha256"],"nativeSha256":report["nativeSha256"],"target":TARGET,"checks":["public-allowlist-six-skills","extracted-native-executable","no-runtime-or-development-js-dependencies","no-bun-node-in-path","installed-init-and-skills","retained-v1-bytes","source-only-search-relations-read"]});
-  write_json(
-    &PathBuf::from(format!("{}.verification.json", archive.display())),
-    &verification,
-  )?;
-  println!("{}", serde_json::to_string_pretty(&verification)?);
-  Ok(())
-}
-
-fn main() -> Result<()> {
-  let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-  let manifest: Value = serde_json::from_slice(&fs::read(root.join("package.json"))?)?;
-  let arguments: Vec<String> = std::env::args().collect();
-  let archive = arguments.get(2).map_or_else(
-    || {
-      root.join(format!(
-        "dist/h1v35-hivex-{}.tgz",
-        manifest["version"].as_str().unwrap_or_default()
-      ))
-    },
-    PathBuf::from,
-  );
-  let archive = if archive.is_absolute() {
-    archive
-  } else {
-    std::env::current_dir()?.join(archive)
-  };
-  match arguments.get(1).map(String::as_str) {
-    Some("pack") => pack(&root, &manifest, &archive),
-    Some("verify") => verify(&root, &manifest, &archive),
-    _ => Err("Usage: cargo run --bin hivex-dev -- <pack|verify> [archive.tgz]".into()),
-  }
-}
-
 fn license_texts(package: &Value) -> Result<Vec<String>> {
   let manifest = Path::new(
     package["manifest_path"]
@@ -348,247 +105,36 @@ fn license_texts(package: &Value) -> Result<Vec<String>> {
   Ok(texts)
 }
 
-fn build_native(root: &Path, metadata: &Value) -> Result<()> {
-  let mut flags: Vec<String> = match std::env::var("CARGO_ENCODED_RUSTFLAGS") {
-    Ok(value) => value.split('\u{1f}').map(str::to_owned).collect(),
-    Err(_) => std::env::var("RUSTFLAGS")
-      .unwrap_or_default()
-      .split_whitespace()
-      .map(str::to_owned)
-      .collect(),
+/// Write the third-party license notices that ship with the release binary for a target.
+fn main() -> Result<()> {
+  let arguments: Vec<String> = std::env::args().collect();
+  let (Some("notices"), Some(target), Some(output)) = (
+    arguments.get(1).map(String::as_str),
+    arguments.get(2),
+    arguments.get(3),
+  ) else {
+    return Err("Usage: cargo run --bin hivex-dev -- notices <target> <output>".into());
   };
-  flags.push(format!("--remap-path-prefix={}=hivex", root.display()));
-  let registries: BTreeSet<_> = metadata["packages"]
-    .as_array()
-    .ok_or("Missing packages")?
-    .iter()
-    .filter(|package| !package["source"].is_null())
-    .filter_map(|package| {
-      Path::new(package["manifest_path"].as_str()?)
-        .parent()?
-        .parent()
-    })
-    .collect();
-  for directory in registries {
-    flags.push(format!(
-      "--remap-path-prefix={}=crates",
-      directory.display()
-    ));
-  }
-  run(
-    Command::new("cargo")
-      .current_dir(root)
-      .args([
-        "build",
-        "--bin",
-        "hivex",
-        "--release",
-        "--locked",
-        "--target",
-        TARGET,
-        "--target-dir",
-      ])
-      .arg(root.join("target"))
-      .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\u{1f}")),
-  )?;
+  let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  let metadata = metadata(&root, target)?;
+  let package = metadata["resolve"]["root"]
+    .as_str()
+    .ok_or("Missing root package")?;
+  fs::write(output, licenses(&metadata, package)?)?;
   Ok(())
-}
-
-fn verify_archive(manifest: &Value, archive: &Path, report: &Value) -> Result<BTreeSet<String>> {
-  let listing = run(Command::new("/usr/bin/tar").arg("-tzf").arg(archive))?;
-  let mut files = BTreeSet::new();
-  for entry in listing.lines() {
-    let path = safe_path(entry.trim_end_matches('/'))?;
-    let relative = path.strip_prefix("package")?;
-    if !entry.ends_with('/') && !files.insert(relative.to_str().ok_or("Invalid path")?.to_owned()) {
-      return Err("Duplicate archive entry".into());
-    }
-  }
-  let expected: BTreeSet<String> = serde_json::from_value(report["files"].clone())?;
-  if files != expected {
-    return Err("Archive file list differs from its report".into());
-  }
-  // Reject links and special files before extracting an archive.
-  let details = run(Command::new("/usr/bin/tar").arg("-tvzf").arg(archive))?;
-  if details
-    .lines()
-    .any(|line| !line.starts_with('-') && !line.starts_with('d'))
-  {
-    return Err("Archive contains links or special files".into());
-  }
-  verify_allowlist(manifest, &files)?;
-  for skill in SKILLS {
-    if !files.contains(&format!("skills/{skill}/SKILL.md")) {
-      return Err("Missing skill".into());
-    }
-  }
-  for file in [
-    "THIRD-PARTY-NOTICES.txt",
-    "templates/README.md",
-    "bin/hivex",
-    "README.md",
-    "docs/guide.md",
-    "skills/hivex/assets/project/AGENTS.md",
-    "LICENSE",
-  ] {
-    if !files.contains(file) {
-      return Err(format!("Missing package file: {file}").into());
-    }
-  }
-  Ok(files)
-}
-
-fn verify_initialization(binary: &Path, package: &Path, temporary: &Path) -> Result<()> {
-  let initialized = temporary.join("initialized");
-  fs::create_dir_all(initialized.join("node_modules/@h1v35"))?;
-  std::os::unix::fs::symlink(package, initialized.join("node_modules/@h1v35/hivex"))?;
-  cli(binary, &initialized, &["init"])?;
-  if !initialized.join("AGENTS.md").is_file() || initialized.join("CLAUDE.md").exists() {
-    return Err("Unexpected agent instructions".into());
-  }
-  for skill in SKILLS {
-    for family in [".agents", ".claude"] {
-      let linked = initialized.join(family).join("skills").join(skill);
-      if family == ".agents"
-        && fs::read_link(&linked)?
-          != Path::new(&format!("../../node_modules/@h1v35/hivex/skills/{skill}"))
-      {
-        return Err("Skill link bypasses the project dependency".into());
-      }
-      if fs::read_link(&linked)?.is_absolute()
-        || fs::canonicalize(linked)? != fs::canonicalize(package.join("skills").join(skill))?
-      {
-        return Err("Invalid installed skill link".into());
-      }
-    }
-  }
-  if cli(binary, &initialized, &["init"])?["created"] != json!([]) {
-    return Err("Initialization is not repeatable".into());
-  }
-  Ok(())
-}
-
-fn verify_retained_contract(root: &Path, binary: &Path, temporary: &Path) -> Result<()> {
-  let project = temporary.join("project");
-  fs::create_dir_all(project.join(".hivex"))?;
-  let source = "# Policy\nUse bounded work.\nPreserve the budget.\n";
-  fs::write(project.join("notes.md"), source)?;
-  let database_path = project.join(".hivex/knowledge.sqlite");
-  let database = Connection::open(&database_path)?;
-  database.execute_batch(&fs::read_to_string(
-    root.join("tests/fixtures/knowledge-cache-v1.sql"),
-  )?)?;
-  drop(database);
-  let database_before = fs::read(&database_path)?;
-  let snapshot = project.join(".hivex/graph.json");
-  fs::write(
-    &snapshot,
-    "retained snapshot is intentionally not valid JSON",
-  )?;
-  let snapshot_before = fs::read(&snapshot)?;
-  verify_source_contract(binary, &project, source)?;
-  if fs::read(&database_path)? != database_before || fs::read(&snapshot)? != snapshot_before {
-    return Err("Retained legacy state changed during source retrieval".into());
-  }
-  Ok(())
-}
-
-fn verify_source_contract(binary: &Path, project: &Path, source: &str) -> Result<()> {
-  if cli(binary, project, &["read", "notes.md"])?["text"] != source
-    || cli(binary, project, &["sources"])?["totalDocuments"] != 1
-    || cli(binary, project, &["search", "budget"])?["totalMatches"] != 1
-    || cli(binary, project, &["relations", "notes.md"])?["totalRelations"] != 0
-    || cli(binary, project, &["check"])?["status"] != "ready"
-  {
-    return Err("Source-only retrieval contract changed".into());
-  }
-  Ok(())
-}
-
-fn verify_allowlist(manifest: &Value, files: &BTreeSet<String>) -> Result<()> {
-  for file in files {
-    let allowed = file == "package.json"
-      || manifest["files"]
-        .as_array()
-        .ok_or("Missing allowlist")?
-        .iter()
-        .any(|value| {
-          let entry = value.as_str().unwrap_or_default();
-          file == entry || (entry.ends_with('/') && file.starts_with(entry))
-        });
-    if !allowed
-      || file
-        .split('/')
-        .any(|part| [".hivex", "node_modules", "evidence", "target"].contains(&part))
-      || file.contains(".sqlite")
-    {
-      return Err(format!("Unexpected archive file: {file}").into());
-    }
-  }
-  Ok(())
-}
-
-fn stage_package(
-  root: &Path,
-  manifest: &Value,
-  metadata: &Value,
-  package_id: &str,
-) -> Result<Temporary> {
-  let binary = root.join("target").join(TARGET).join("release/hivex");
-  let temporary = Temporary::new()?;
-  let staged = temporary.0.join("package");
-  fs::create_dir_all(staged.join("bin"))?;
-  fs::copy(&binary, staged.join("bin/hivex"))?;
-  fs::set_permissions(staged.join("bin/hivex"), fs::Permissions::from_mode(0o755))?;
-  fs::write(
-    staged.join("THIRD-PARTY-NOTICES.txt"),
-    licenses(metadata, package_id)?,
-  )?;
-  for file in manifest["files"]
-    .as_array()
-    .ok_or("Missing public allowlist")?
-  {
-    let file = file.as_str().ok_or("Invalid public path")?;
-    if ["bin/hivex", "THIRD-PARTY-NOTICES.txt"].contains(&file) {
-      continue;
-    }
-    let relative = safe_path(file.trim_end_matches('/'))?;
-    copy_public(&root.join(&relative), &staged.join(&relative))?;
-  }
-  write_json(&staged.join("package.json"), manifest)?;
-  Ok(temporary)
-}
-
-fn verify_executable(
-  package: &Path,
-  manifest: &Value,
-  report: &Value,
-  files: &BTreeSet<String>,
-) -> Result<PathBuf> {
-  let installed: Value = serde_json::from_slice(&fs::read(package.join("package.json"))?)?;
-  validate_manifest(&installed)?;
-  if installed != *manifest || file_list(package, package)? != *files {
-    return Err("Extracted package differs".into());
-  }
-  let binary = package.join("bin/hivex");
-  if fs::metadata(&binary)?.permissions().mode() & 0o111 == 0
-    || report["nativeSha256"] != digest(&binary)?
-  {
-    return Err("Invalid executable".into());
-  }
-  Ok(binary)
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::os::unix::fs::symlink;
+  use serde_json::json;
 
   #[test]
   fn notices_include_shipped_dependencies_and_exclude_analyzers() {
-    let temporary = Temporary::new().unwrap();
+    let temporary = std::env::temp_dir().join(format!("hivex-notices-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&temporary).unwrap();
     for name in ["runtime", "build"] {
-      let directory = temporary.0.join(name);
+      let directory = temporary.join(name);
       fs::create_dir(&directory).unwrap();
       fs::write(directory.join("LICENSE"), format!("{name} license")).unwrap();
     }
@@ -597,7 +143,7 @@ mod tests {
       .map(|name| {
         json!({
           "id": name, "name": name, "version": "1.0", "license": "MIT", "source": "registry",
-          "manifest_path": temporary.0.join(name).join("Cargo.toml"),
+          "manifest_path": temporary.join(name).join("Cargo.toml"),
         })
       })
       .collect();
@@ -613,33 +159,6 @@ mod tests {
     assert!(notices.contains("runtime license"));
     assert!(notices.contains("build license"));
     assert!(!notices.contains("analyzer"));
-  }
-
-  #[test]
-  fn package_preparation_preserves_existing_artifacts_and_dangling_links() {
-    if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-      return;
-    }
-    let temporary = Temporary::new().unwrap();
-    let archive = temporary.0.join("approved.tgz");
-    fs::write(&archive, b"approved artifact").unwrap();
-    assert!(
-      pack(&temporary.0, &Value::Null, &archive)
-        .unwrap_err()
-        .to_string()
-        .contains("Refusing to replace")
-    );
-    assert_eq!(fs::read(&archive).unwrap(), b"approved artifact");
-    let link = temporary.0.join("dangling.tgz");
-    let target = temporary.0.join("unintended.tgz");
-    symlink(&target, &link).unwrap();
-    assert!(
-      pack(&temporary.0, &Value::Null, &link)
-        .unwrap_err()
-        .to_string()
-        .contains("Refusing to replace")
-    );
-    assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
-    assert!(!target.exists());
+    fs::remove_dir_all(temporary).unwrap();
   }
 }
