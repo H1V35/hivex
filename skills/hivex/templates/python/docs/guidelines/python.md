@@ -54,7 +54,7 @@ Refactor nonconforming code rather than adding `# noqa`, per-file ignores or rai
 
 ## Agreed preferences
 
-- Maximum parameters: four per function or method (`PLR0913`). Ruff does not count `self` or `cls`, so a method may take four parameters besides its receiver, one more than the Rust standard allows; keep methods within that limit rather than adding a second check.
+- Maximum parameters: four per function or method, including `self` or `cls`, as in the Rust standard. `PLR0913` enforces it for functions, but Ruff does not count the receiver, so it lets a method take four parameters besides `self`; review methods for this limit.
 - Maximum nesting: three nested blocks inside a function (`PLR1702`).
 - Maximum McCabe complexity: 10 per function (`C90`), with Ruff's default limits on branches and returns (`PLR0912`, `PLR0911`). Python has no Ruff cognitive-complexity rule; keep the Rust standard's intent of readable, shallow flow.
 - Prefer early returns and `match` over long `if`/`elif` chains; an ordinary `if`/`else` remains useful for two-way choices.
@@ -63,7 +63,7 @@ Refactor nonconforming code rather than adding `# noqa`, per-file ignores or rai
 
 ## Tests
 
-Test with [pytest](https://docs.pytest.org/), run through uv: `uv run pytest` in a package, or `uv run --with pytest --with-requirements <script>.py pytest` for a standalone script, so its inline dependencies are installed with the interpreter its `requires-python` allows. Each test protects an important behavior, a business rule or a demonstrated regression, using observable interfaces and independent expected results. TDD is optional and reserved for critical flows whose intended behavior is sufficiently defined. Keep fixtures small and free of real personal data.
+Test with [pytest](https://docs.pytest.org/), run through uv: `uv run pytest` in a package, or `uv run --python '>=3.11' --with pytest --with-requirements <script>.py pytest` for a standalone script. `--with-requirements` installs the script's inline dependencies but not its interpreter constraint, so give `--python` the script's `requires-python` value. Each test protects an important behavior, a business rule or a demonstrated regression, using observable interfaces and independent expected results. TDD is optional and reserved for critical flows whose intended behavior is sufficiently defined. Keep fixtures small and free of real personal data.
 
 ## Adoption and verification
 
