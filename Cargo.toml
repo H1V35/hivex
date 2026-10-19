@@ -17,6 +17,8 @@ path = "tools/development.rs"
 
 [dependencies]
 globset = "0.4"
+icu_collator = "2.3"
+icu_locale_core = "2.3"
 granit-parser = "2.0"
 num-traits = "0.2"
 pulldown-cmark = "0.13"
@@ -28,9 +30,6 @@ serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.11"
 url = "2.5"
 
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-icu_collator = "2.3"
-icu_locale_core = "2.3"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

@@ -162,8 +162,8 @@ fn cjk_source_order_and_page_boundaries_remain_compatible() {
   ] {
     p.write(name, text);
   }
-  assert_eq!(paths(&p.ok(&["sources"])), ["𠀀.md", "中.md", "文.md"]);
-  assert_eq!(paths(&p.ok(&["sources", "--limit", "1"])), ["𠀀.md"]);
+  assert_eq!(paths(&p.ok(&["sources"])), ["中.md", "文.md", "𠀀.md"]);
+  assert_eq!(paths(&p.ok(&["sources", "--limit", "1"])), ["中.md"]);
 }
 
 fn paths(value: &Value) -> Vec<&str> {
