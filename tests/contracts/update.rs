@@ -46,12 +46,13 @@ fn update_restores_managed_entries_without_touching_project_files() {
   );
 }
 
-/// A stand-in host CLI that records its arguments and exits with `code`.
-fn fake_host(bin: &Project, name: &str, code: u8) {
+/// A stand-in host CLI that records its arguments, prints `listing` for `plugin list` and exits
+/// with `code`.
+fn fake_host(bin: &Project, name: &str, listing: &str, code: u8) {
   let script = bin.path(name);
   let log = bin.path("calls.log");
   let body = format!(
-    "#!/bin/sh\necho \"{name} $*\" >> '{}'\nexit {code}\n",
+    "#!/bin/sh\necho \"{name} $*\" >> '{}'\nif [ \"$2\" = list ]; then echo '{listing}'; fi\nexit {code}\n",
     log.display()
   );
   fs::write(&script, body).unwrap();
@@ -75,28 +76,42 @@ fn with_hosts(p: &Project, bin: &Project, command: &str) -> (Value, Vec<String>)
 }
 
 #[test]
-fn init_installs_and_update_refreshes_ponytail_in_each_host() {
+fn init_installs_missing_ponytail_and_update_refreshes_every_host() {
   let p = Project::new();
   let bin = Project::new();
-  fake_host(&bin, "claude", 0);
-  fake_host(&bin, "codex", 1);
-  let report = json!([
-    {"host":"claude","plugin":"ponytail","status":"current"},
-    {"host":"codex","plugin":"ponytail","status":"failed"}
-  ]);
-  // Claude runs every step; Codex stops at its first failure.
+  fake_host(
+    &bin,
+    "claude",
+    r#"[{"id":"ponytail@ponytail","enabled":false}]"#,
+    0,
+  );
+  fake_host(&bin, "codex", r#"{"installed":[]}"#, 0);
+  // An installed (here disabled) plugin is left alone; a missing one is installed.
   let (plugins, calls) = with_hosts(&p, &bin, "init");
-  assert_eq!(plugins, report);
+  assert_eq!(
+    plugins,
+    json!([
+      {"host":"claude","plugin":"ponytail","status":"preserved"},
+      {"host":"codex","plugin":"ponytail","status":"installed"}
+    ])
+  );
   assert_eq!(
     calls,
     [
-      "claude plugin marketplace add DietrichGebert/ponytail",
-      "claude plugin install ponytail@ponytail",
+      "claude plugin list --json",
+      "codex plugin list --json",
       "codex plugin marketplace add DietrichGebert/ponytail",
+      "codex plugin add ponytail@ponytail",
     ]
   );
   let (plugins, calls) = with_hosts(&p, &bin, "update");
-  assert_eq!(plugins, report);
+  assert_eq!(
+    plugins,
+    json!([
+      {"host":"claude","plugin":"ponytail","status":"current"},
+      {"host":"codex","plugin":"ponytail","status":"current"}
+    ])
+  );
   assert_eq!(
     calls,
     [
@@ -105,6 +120,28 @@ fn init_installs_and_update_refreshes_ponytail_in_each_host() {
       "claude plugin install ponytail@ponytail",
       "claude plugin update ponytail@ponytail",
       "codex plugin marketplace add DietrichGebert/ponytail",
+      "codex plugin marketplace upgrade ponytail",
+      "codex plugin add ponytail@ponytail",
     ]
+  );
+}
+
+#[test]
+fn a_failing_host_stops_at_its_first_step() {
+  let p = Project::new();
+  let bin = Project::new();
+  fake_host(&bin, "codex", "", 1);
+  let failed = json!([
+    {"host":"claude","plugin":"ponytail","status":"missing"},
+    {"host":"codex","plugin":"ponytail","status":"failed"}
+  ]);
+  let (plugins, calls) = with_hosts(&p, &bin, "init");
+  assert_eq!(plugins, failed);
+  assert_eq!(calls, ["codex plugin list --json"]);
+  let (plugins, calls) = with_hosts(&p, &bin, "update");
+  assert_eq!(plugins, failed);
+  assert_eq!(
+    calls,
+    ["codex plugin marketplace add DietrichGebert/ponytail"]
   );
 }

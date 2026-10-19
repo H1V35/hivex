@@ -5,7 +5,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, symlink};
 use std::path::{Component, Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Managed rules stay last so earlier project rules cannot re-include their paths.
@@ -43,7 +43,7 @@ static TEMPLATE_FILES: &[(&str, &[u8])] = templates![
 /// A host CLI and the idempotent steps it runs for the ponytail plugin.
 type HostSteps = (&'static str, &'static [&'static [&'static str]]);
 
-/// `init` installs ponytail where it is missing and leaves an installed version as it is.
+/// `init` installs ponytail only where `plugin list --json` does not show it.
 const PONYTAIL_INSTALL: [HostSteps; 2] = [
   (
     "claude",
@@ -448,35 +448,59 @@ fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
     .write_all(bytes)
 }
 
-fn run_host(host: &str, args: &[&str]) -> std::io::Result<ExitStatus> {
+fn run_host(host: &str, args: &[&str]) -> std::io::Result<Output> {
   Command::new(host)
     .args(args)
     .stdin(Stdio::null())
-    .stdout(Stdio::null())
     .stderr(Stdio::null())
-    .status()
+    .output()
 }
 
-/// `current` after every step succeeds, `missing` without the host's CLI, `failed` otherwise.
-fn plugin_status(host: &str, steps: &[&[&str]]) -> &'static str {
+/// `None` once every step succeeded, otherwise `missing` without the host's CLI or `failed`.
+fn run_steps(host: &str, steps: &[&[&str]]) -> Option<&'static str> {
   for args in steps {
     match run_host(host, args) {
-      Ok(status) if status.success() => {}
-      Err(error) if error.kind() == std::io::ErrorKind::NotFound => return "missing",
-      _ => return "failed",
+      Ok(output) if output.status.success() => {}
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Some("missing"),
+      _ => return Some("failed"),
     }
   }
-  "current"
+  None
 }
 
-fn plugins(hosts: &[HostSteps]) -> Value {
+/// Installing again would replace Codex's copy and re-enable a plugin the owner disabled, so
+/// `init` leaves an installed ponytail alone.
+fn install_status(host: &str, steps: &[&[&str]]) -> &'static str {
+  // shortcut: finds the plugin id in the JSON listing; parse it if a host changes that format.
+  let listed =
+    |output: &Output| String::from_utf8_lossy(&output.stdout).contains("\"ponytail@ponytail\"");
+  match run_host(host, &["plugin", "list", "--json"]) {
+    Ok(output) if output.status.success() && listed(&output) => "preserved",
+    Ok(output) if output.status.success() => run_steps(host, steps).unwrap_or("installed"),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => "missing",
+    _ => "failed",
+  }
+}
+
+fn update_status(host: &str, steps: &[&[&str]]) -> &'static str {
+  run_steps(host, steps).unwrap_or("current")
+}
+
+type HostStatus = fn(&str, &[&[&str]]) -> &'static str;
+
+fn plugins(hosts: &[HostSteps], status: HostStatus) -> Value {
   hosts
     .iter()
-    .map(|(host, steps)| json!({"host": host, "plugin": "ponytail", "status": plugin_status(host, steps)}))
+    .map(|(host, steps)| json!({"host": host, "plugin": "ponytail", "status": status(host, steps)}))
     .collect()
 }
 
-fn report(command: &str, operations: &[FileOperation], hosts: &[HostSteps]) -> Value {
+fn report(
+  command: &str,
+  operations: &[FileOperation],
+  hosts: &[HostSteps],
+  status: HostStatus,
+) -> Value {
   let paths = |state| {
     let mut paths: Vec<_> = operations
       .iter()
@@ -492,7 +516,7 @@ fn report(command: &str, operations: &[FileOperation], hosts: &[HostSteps]) -> V
     "command": command,
     "created": paths(OperationState::Created),
     "modelCalls": 0,
-    "plugins": plugins(hosts),
+    "plugins": plugins(hosts, status),
     "preserved": paths(OperationState::Preserved),
     "updated": paths(OperationState::Updated),
   })
@@ -507,7 +531,12 @@ pub fn initialize(root: &str) -> Result<Value> {
   let mut operations = template_operations(&root)?;
   operations.extend(managed_operations(&root)?);
   write_operations(&operations)?;
-  Ok(report("init", &operations, &PONYTAIL_INSTALL))
+  Ok(report(
+    "init",
+    &operations,
+    &PONYTAIL_INSTALL,
+    install_status,
+  ))
 }
 
 /// Restore the missing skill links and ignore rules of the project at `root` and bring the
@@ -518,7 +547,12 @@ pub fn update(root: &str) -> Result<Value> {
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
   let operations = managed_operations(&root)?;
   write_operations(&operations)?;
-  Ok(report("update", &operations, &PONYTAIL_UPDATE))
+  Ok(report(
+    "update",
+    &operations,
+    &PONYTAIL_UPDATE,
+    update_status,
+  ))
 }
 
 fn managed_operations(root: &Path) -> Result<Vec<FileOperation>> {
