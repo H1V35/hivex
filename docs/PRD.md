@@ -2,7 +2,7 @@
 title: Hivex purpose and product scope
 status: accepted
 created_at: 2026-10-01
-updated_at: 2026-10-02
+updated_at: 2026-10-19
 tags: [product, scope]
 ---
 
@@ -47,9 +47,9 @@ The inferred graph and internal model-execution runtime are retired. Current ret
 
 Repository Markdown and Git retain durable knowledge. Compatible existing documentation layouts remain usable; recommended conventions and templates guide adoption without overwriting useful project-owned files or reclassifying historical decisions silently. Relationship syntax is deterministic, while authors and reviewers remain responsible for meaning and applicability.
 
-The verified native distribution currently supports macOS ARM64. Its human interface is CLI JSON and readable Markdown. Additional platforms, presentation changes or retrieval accelerators require a useful need and appropriate verification; this brief grants no implementation or publication authorization for them.
+Release executables currently support macOS (ARM64 and x86_64), Linux x86_64 and Windows x86_64. Its human interface is CLI JSON and readable Markdown. Additional platforms, presentation changes or retrieval accelerators require a useful need and appropriate verification; this brief grants no implementation or publication authorization for them.
 
-The source workflow is implemented and behavior-tested. Version 0.8.0 was published on 2026-10-02; the [release record](https://github.com/H1V35/hivex/releases/tag/v0.8.0) identifies the exact verified artifact and its npm distribution. Installing a new version does not silently replace an adopting project's owner policy, and Compi migration is deferred until the owner chooses the next steps. Publication and adoption follow their own reviewed scope.
+The source workflow is implemented and behavior-tested. Version 0.8.0 was published on 2026-10-02; the [release record](https://github.com/H1V35/hivex/releases/tag/v0.8.0) identifies the exact verified artifact and its npm distribution. Version 0.12.0 replaces that npm package with prebuilt executables on GitHub Releases and a release pinned in each project's `hivex.json`. Installing a new version does not silently replace an adopting project's owner policy, and Compi migration is deferred until the owner chooses the next steps. Publication and adoption follow their own reviewed scope.
 
 The [dated validation record](archive/validation/source-workflow-2026-10-01.md) provides bounded evidence-exposure cases and local measurements. Evaluation of complete agent tasks across projects and models remains distinct from those checks; no universal token-saving or semantic-quality claim is made.
 

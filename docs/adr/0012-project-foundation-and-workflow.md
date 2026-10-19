@@ -2,7 +2,7 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-03
+updated_at: 2026-10-19
 tags: [adr, workflow, adoption]
 ---
 
@@ -49,6 +49,10 @@ The foundation also ships the [self-hosted runner pool procedure](../../skills/h
 ## Amendment (2026-10-03): native `AGENTS.md`
 
 `init` no longer prepares the `CLAUDE.md` import of `AGENTS.md` described above. Claude Code 2.1.277 and later reads `AGENTS.md` as project instructions when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working directory or above it, so the import only duplicated the entrypoint and reappeared in projects that had removed it. Sessions where that support is [unavailable](https://code.claude.com/docs/en/memory#when-agents-md-support-is-unavailable), such as Amazon Bedrock or disabled telemetry before 2.1.281, still need a project-owned `CLAUDE.md` importing `AGENTS.md`. An existing project `CLAUDE.md` remains project-owned and is preserved.
+
+## Amendment (2026-10-19): copied skills and pinned release
+
+`init` no longer links the skills into the installed package. It copies the six skills, with their references, assets and language templates, from the executable into `.agents/skills/` and links each from `.claude/skills/`; Git ignores those per-machine links. A standalone executable therefore installs the skills. `hivex.json` pins the release, and `update` refreshes the copies and moves the pin forward. The [guide](../guide.md#initialize-a-project) describes the current behavior.
 
 ## Relationships
 

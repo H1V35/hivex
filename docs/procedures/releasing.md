@@ -1,43 +1,44 @@
 ---
-title: "Native package release"
+title: "Release publication"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-02
+updated_at: 2026-10-19
 tags: [release, distribution]
 ---
 
-# Native package release
+# Release publication
 
-The npm package is `@h1v35/hivex`; its command is `hivex`. Prepare a release from the reviewed Git revision on the admitted macOS ARM64 runner. The native package declares `os: darwin` and `cpu: arm64`; do not add another target before its runtime behavior and package have been tested.
+A release is a Git tag `vX.Y.Z` on `main` whose version equals the one in `Cargo.toml`. Pushing the tag runs the `Release` workflow (`.github/workflows/release.yml`), which builds the `hivex` executable for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc` and publishes it as a GitHub release. Nothing is published to npm or another registry; the npm package `@h1v35/hivex` is deprecated after 0.11.1.
 
-Keep `Cargo.toml` and `package.json` versions aligned. Run the checks in [development guide](../guide.md#development), then prepare the native archive:
+## Prepare the version
 
-```sh
-cargo run --locked --bin hivex-dev -- pack
-```
+1. Set the new version in `Cargo.toml` and run `cargo update --workspace` so `Cargo.lock` records it.
+2. Update the release-specific examples in `README.md` and the [guide](../guide.md#install-the-cli), and the documents whose content changes with the release.
+3. Merge the change into `main` through a reviewed pull request whose `quality` check passed, under the [tracker procedure](issue-tracker.md).
 
-This builds only the locked `hivex` release target, stages the public allowlist with distribution metadata and invokes system `tar` from Rust. `dist/` receives the npm-compatible `.tgz` and a JSON report with its file list, native binary hash and archive SHA-256. No publication occurs and no JavaScript package manager runs. Existing archives are never overwritten; supply an explicit different archive path for a new verification build.
+Pushing the tag publishes the release, so it requires the owner's approval for that version and revision. Approval of another version or revision does not carry over.
 
-Inspect the exact archive. It must contain the executable, package metadata, public documentation, six skills, language templates and license notices. Cargo dependency license texts are included in `THIRD-PARTY-NOTICES.txt`. Exclude project evidence, SQLite state, credentials, development sources, test fixtures and build caches. Inspect and scan the extracted content for secrets and unintended private material, and record what was checked together with the archive hash. A changed archive requires a fresh inspection.
-
-Run `cargo run --locked --bin hivex-dev -- verify [archive.tgz]` against that exact archive. It checks the hash and public allowlist, rejects unsafe paths and links, extracts to a clean temporary project and exercises the native executable with a PATH that excludes Bun and Node.js. Synthetic Markdown and fixed legacy SQLite bytes verify executable mode, source search/navigation/reading and exact preservation of historical state. No model transport or graph runtime is included. CI also runs the CLI contract suite against the release executable. A successful source build alone is insufficient.
-
-Before registry publication, additionally install the exact archive with npm in a clean temporary prefix, with `--ignore-scripts --no-audit --no-fund`, and verify the installed command and metadata. This release-only compatibility check uses the registry client's Node.js installation; source development, tests and artifact preparation do not require it.
-
-Obtain the publication approval applicable to the concrete archive. Earlier version approval does not authorize another artifact. Confirm an npm account authorized for the scope, then publish the same checked tarball:
+## Tag and publish
 
 ```sh
-npm publish /absolute/path/to/h1v35-hivex-VERSION.tgz --access public --registry https://registry.npmjs.org
+git switch main
+git pull --ff-only
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
-Record the published version, exact artifact hash and registry result. Do not rebuild or repack between approval and publication. Keep the artifact until publication and any required verification complete. Git integration and completed branch cleanup follow the [tracker procedure](issue-tracker.md).
+Each build job first fails when the tag differs from the `Cargo.toml` version. It builds the locked release executable for its target, writes the license notices with `cargo run --locked --bin hivex-dev -- notices <target> <output>` and packs `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` for Windows) containing the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, with a `.sha256` checksum file. The notices cover normal and build dependency edges, excluding development-only analyzers. Only when every target has built does the publish job create the release `Hivex X.Y.Z` with generated notes and those eight files, so a failed build publishes nothing. Rerun failed jobs for a transient failure; a correction that changes the repository is published as a new version.
 
-## GitHub release and linked package
+## Verify the release
 
-After the owner approves integration and the exact archive is published on npm, create a new `vVERSION` tag on the reviewed release revision and publish its GitHub release. Never move an existing release tag. Link the notes to the exact npm version and record the archive hash.
+Check that the release lists the four archives and their four checksum files, and verify a download:
 
-The `Publish GitHub Package` workflow mirrors that stable npm version into GitHub Packages so it appears in the repository's Packages section. It runs only for owner-triggered published releases or an explicit dispatch for an existing release. The workflow uses a repository-scoped `GITHUB_TOKEN`, checks package identity and SHA-512, and publishes the same archive without extracting executable code, rebuilding it or running installation scripts. An existing mirror must have identical integrity; a mismatched or unauthorized registry response fails instead of being silently replaced.
+```sh
+gh release view vX.Y.Z --repo H1V35/hivex
+gh release download vX.Y.Z --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
+shasum -a 256 -c hivex-vX.Y.Z-aarch64-apple-darwin.tar.gz.sha256
+```
 
-Node/npm is used only as the registry client in this publication job. Rust still owns development, package preparation and verification. The pinned npm client honors the explicit GitHub registry flag over the archive's default npmjs publish configuration; the primary archive is not rewritten. npmjs.org remains the normal installation source for consuming projects.
+Run the extracted `hivex --help` and `hivex init` in a temporary project, and check that `cargo install --git https://github.com/H1V35/hivex --tag vX.Y.Z --locked hivex --force` installs the same version. The Quality workflow tests the CLI contracts on macOS ARM64, Linux x86_64 and Windows x86_64; the `x86_64-apple-darwin` executable is built on the ARM64 runner without running them.
 
-On the first GitHub Packages publication, verify its repository association and visibility. GitHub packages start private even when linked to a public repository; set this package public in its settings before claiming that visitors can see it. GitHub's npm registry still requires authentication to download public packages. npmjs.org installation remains available without that requirement.
+Never move, delete or recreate the tag of a published release, and never replace its archives with a local build. Publish a correction as a new version.

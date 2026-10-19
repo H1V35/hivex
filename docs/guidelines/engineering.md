@@ -24,7 +24,7 @@ Use one independent review by default, covering scope, correctness and standards
 
 Choose verification for the affected surfaces. Code changes require typechecking, lint, formatting and relevant behavior tests; documentation-only changes need formatting and checks of affected references or declared sources. Record the exact revision and the checks actually completed. A later change invalidates the affected results. Do not claim an omitted, interrupted or truncated check passed.
 
-GitHub Actions runs Quality on an ephemeral GitHub-hosted `macos-15` ARM64 runner. The owner approved retiring the personal Mac runner in preparation for public contributions; the workflow checks the hosted environment and architecture before running the native gates. PRs receive read-only repository permissions and no stored credentials or publishing secrets. Do not reconnect a personal workstation or introduce a `pull_request_target` checkout of untrusted code. A queued, skipped or interrupted run is not a pass. Local verification remains required when CI is unavailable. See the [CI procedure](../procedures/self-hosted-runner.md) for the execution boundary and checks.
+GitHub Actions runs Quality on ephemeral GitHub-hosted `macos-15`, `ubuntu-latest` and `windows-latest` runners; a final `quality` job, which the `main` ruleset requires, passes only when every platform passed. The owner approved retiring the personal Mac runner in preparation for public contributions. PRs receive read-only repository permissions and no stored credentials or publishing secrets. Do not reconnect a personal workstation or introduce a `pull_request_target` checkout of untrusted code. A queued, skipped or interrupted run is not a pass. Local verification remains required when CI is unavailable. See the [CI procedure](../procedures/self-hosted-runner.md) for the execution boundary and checks.
 
 Use Cargo with the committed lockfile for the runtime, development tools and tests. Dependabot proposes grouped weekly Cargo updates and GitHub Actions updates as pull requests; they pass the same `quality` check and remain subject to the owner's merge decision. The stable toolchain in `rust-toolchain.toml`, two-space rustfmt, Clippy all + pedantic with warnings denied, source-quality and domain-dependency gates, and behavioral checks form the development gate. The [Rust quality standard](rust-quality.md) defines their scope, thresholds and analyzer limits. TypeScript, JavaScript and Bun are retired from Hivex development under the owner's clarification of [#80](https://github.com/H1V35/hivex/issues/80).
 
@@ -32,7 +32,7 @@ Follow [ADR 0013](../adr/0013-domain-modules-and-execution-integrations.md) for 
 
 The owner-approved [Rust quality standard](rust-quality.md), adopted under [#115](https://github.com/H1V35/hivex/issues/115), replaces the earlier instruction against adopting Rust thresholds. It uses maintained Rust tools and explicit project preferences, without claiming equivalence to ESLint or to the TypeScript template. The optional TypeScript documentation template remains applicable to adopting TypeScript projects; it does not configure Hivex development. Repository Markdown remains human-maintained authority. Check changed links, commands and scope without retaining a JavaScript formatter solely for documentation.
 
-Package preparation and verification use the Rust development utility and system `tar`; npm remains the distribution channel. Registry installation and publication are separate release checks, not prerequisites for building or testing from source.
+The tag-triggered Release workflow builds and publishes the release archives; the Rust development utility only writes their license notices. Publication is a separate release step, not a prerequisite for building or testing from source.
 
 ## Tests protect behavior
 
@@ -72,11 +72,11 @@ A replacement workflow can be used before every historical artifact is retired w
 
 ## Distribution
 
-The owner selected `@h1v35/hivex` for the npm package on 2026-09-08, retaining `hivex` as the installed command, and approved the MIT license. The scoped name avoids the unrelated existing unscoped npm package. Use an authenticated account authorized for that scope; do not infer npm ownership from a matching GitHub name. Release preparation must verify the packed contents and exclude private project evidence and runtime stores. Project integration follows the normal release process after the complete cycle is validated; this decision alone does not mean a package has been published.
+The installed command is `hivex` and the owner approved the MIT license. Since 0.12.0 ([#206](https://github.com/H1V35/hivex/issues/206)), Hivex is distributed as Git tags `vX.Y.Z` with prebuilt executables on GitHub Releases, which embed the six skills, the project foundation and the language templates; `cargo install` from a tag is the alternative. The npm package `@h1v35/hivex`, selected by the owner on 2026-09-08, is deprecated after 0.11.1 and receives no further versions. Adopting projects pin their release in `hivex.json`, as the [guide](../guide.md#pin-the-release) describes.
 
-The first native package is restricted to macOS ARM64, the target validated by the project runner. Keep the scoped package and installed command unchanged. Do not ship another target on compilation evidence alone. Package preparation follows the [release procedure](../procedures/releasing.md).
+Releases ship `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc` executables. Quality tests the CLI contracts on macOS ARM64, Linux x86_64 and Windows x86_64; the Intel macOS executable is built on the ARM64 runner without running them. Add another target only with its own build and verification. Publication follows the [release procedure](../procedures/releasing.md).
 
-Before publication, inspect and scan the exact package archive for secrets and unintended private content. Record its hash and the completed scan result; a repack requires a fresh check. Publish the same verified artifact, not an unchecked reconstruction from a changed working tree.
+Release archives contain only the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`. The executable embeds the bundled skill files, so review changes to them for secrets, private project evidence and runtime stores before tagging. Publish only the archives the Release workflow built from the tag, never a local reconstruction.
 
 ## Shared project foundation
 

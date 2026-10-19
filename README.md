@@ -2,7 +2,7 @@
 
 Project knowledge for people and agents. Hivex combines reusable workflow guidance with reliable Markdown, explicit decision relationships and focused source retrieval.
 
-[![npm version](https://img.shields.io/npm/v/%40h1v35%2Fhivex)](https://www.npmjs.com/package/@h1v35/hivex)
+[![Latest release](https://img.shields.io/github/v/release/H1V35/hivex)](https://github.com/H1V35/hivex/releases/latest)
 
 [![Support Hivex on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/jivssssss)
 
@@ -14,32 +14,35 @@ Your Markdown remains the authority. Hivex helps the responsible agent interpret
 
 ## Get started
 
-Install in your project, then initialize it:
+Download the archive for your platform from [GitHub Releases](https://github.com/H1V35/hivex/releases) and put `hivex` (`hivex.exe` on Windows) on your `PATH`. Prebuilt binaries cover macOS (Apple silicon and Intel), Linux x86_64 and Windows x86_64. Alternatively, build a release with Cargo:
 
 ```sh
-npm install -D -E @h1v35/hivex
-npx hivex init
+cargo install --git https://github.com/H1V35/hivex --tag v0.12.0 --locked hivex --force
 ```
 
-`init` prepares project documents, agent instructions and the six bundled skills, and installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin in Claude Code and Codex when they are installed. It preserves existing files and makes no model calls. The dependency stays local and pinned to your project. After upgrading the package, `npx hivex update` restores missing skill links and brings ponytail to its latest release without changing project files.
+Then initialize your project from its root:
 
 ```sh
-npx hivex search "cache policy"
-npx hivex relations docs/policy.md
-npx hivex read docs/policy.md --from 20 --to 45
-npx hivex check --source docs/policy.md
-npx hivex --help
+hivex init
 ```
 
-Run these commands from the project root. In Bun projects, use `bun hivex …` instead.
+`init` prepares project documents, agent instructions and the six bundled skills, and installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin in Claude Code and Codex when they are installed. It preserves existing files and makes no model calls. The skills are copied into `.agents/skills/` and linked from `.claude/skills/`, and `hivex.json` pins the installed release so collaborators use the same version. After installing a newer release, `hivex update` refreshes the skill copies, moves the pin forward and brings ponytail to its latest release; it changes no other project file.
 
-The native package supports **macOS ARM64**. All current CLI commands use Markdown directly without model calls or a persistent knowledge store. Version 0.8 retires the inferred graph runtime; the [migration guide](docs/guide.md#migrate-from-the-inferred-graph-runtime) explains the changed command contract and preservation of historical data.
+```sh
+hivex search "cache policy"
+hivex relations docs/policy.md
+hivex read docs/policy.md --from 20 --to 45
+hivex check --source docs/policy.md
+hivex --help
+```
+
+Run these commands from the project root. All current CLI commands use Markdown directly without model calls or a persistent knowledge store. The executable needs no Node.js or other runtime. Version 0.8 retires the inferred graph runtime; the [migration guide](docs/guide.md#migrate-from-the-inferred-graph-runtime) explains the changed command contract and preservation of historical data. Version 0.12 replaces the npm package; existing projects follow [Migrate from npm](docs/guide.md#migrate-from-npm).
 
 ## Documentation
 
 - [Product brief](docs/PRD.md): purpose, users, intended outcomes and scope.
 - [CLI guide](docs/guide.md): configuration, source retrieval, authored navigation and migration.
-- [Development](docs/guide.md#development): build, tests and package verification with Rust.
+- [Development](docs/guide.md#development): build, tests and CI with Rust.
 - [Project decisions](docs/README.md): architecture and engineering conventions.
 
 ## License

@@ -4,7 +4,7 @@ Use this foundation when adopting Hivex. Prefer migration to its standard struct
 
 The foundation combines a clear authority map, project purpose, domain language and maintainable decisions. The bundled documentation skill guides adoption and completion; no retired planning framework or external skill set is required.
 
-When establishing engineering guidance, read `templates/README.md` in the installed Hivex package and apply only the matching language-specific project template. Those standards belong in the adopting project's documentation, not in the common foundation or general skills. The template catalogue is part of the CLI package, not a directory copied with standalone skills.
+When establishing engineering guidance, read the [language-template catalogue](../templates/README.md) installed with this skill and apply only the matching language-specific project template. Those standards belong in the adopting project's documentation, not in the common foundation or general skills. `hivex init` copies the catalogue with the skill, under `.agents/skills/hivex/templates/`.
 
 ## Give knowledge one authoritative home
 
