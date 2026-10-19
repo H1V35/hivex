@@ -65,13 +65,15 @@ An extension adds skills and project files to the bundled foundation for a parti
 - `skills/<name>/…`: complete skills. A skill with the name of a bundled skill replaces it entirely.
 - `assets/project/…`: project files. A file at the same path as a bundled foundation file replaces it; others are added. Markdown under `docs/` receives the creation date like bundled files. A replacing file keeps the headings or explicit anchors that bundled documents and skills link to; verify an extension by running `hivex init --extension <path>` in an empty folder and `hivex check` there.
 
-Install an extension in a new project with `hivex init --extension <repository>`, where `<repository>` is `OWNER/REPO` on GitHub or any Git URL or path. Hivex needs `git`; private repositories need Git credentials, for example `gh auth setup-git`. `init` pins the newest release in `hivex.json`:
+Install an extension in a new project with `hivex init --extension <repository>`, where `<repository>` is `OWNER/REPO` on GitHub, a Git URL, an absolute path or a path starting with `./` or `../`, resolved from the project root. Hivex needs `git`; private repositories need Git credentials, for example `gh auth setup-git`. `init` pins the newest release in `hivex.json`:
 
 ```json
 {"version": "0.13.0", "extensions": [{"repository": "OWNER/REPO", "version": "1.2.0"}]}
 ```
 
-A project that already has `hivex.json` lists extensions there instead; `init --extension` refuses to change an existing configuration. `init` installs each pinned release, so every machine gets the same files, and `update` moves each extension to its newest release, rewrites its skills and records the new versions. Project files keep the rule of every project file: created when missing, never changed afterwards. Releases are cached in the ignored `.hivex/extensions/`.
+A project that already has `hivex.json` lists extensions there instead; `init --extension` refuses to change an existing configuration. `init` installs each pinned release, so every machine gets the same files, and `update` moves each extension to its newest release, rewrites its skills and records the new versions. Project files keep the rule of every project file: created when missing, never changed afterwards; an extension's `.gitignore` only starts a missing one, to which the managed rules are appended. Hivex fetches exactly the `refs/tags/vX.Y.Z` tag, without line-ending conversion, validates it before caching it in the ignored `.hivex/extensions/` (a real directory, never a link) under a name derived from the repository, and keeps only the pinned release of each repository there. Extension files keep their Unix execute permission; symbolic links inside an extension are skipped, and linked source directories or names that could leave the tree make it invalid.
+
+`.agents/.hivex-managed.json` records the skill files and Claude links Hivex installed. `update` removes those a newer release no longer provides, listing them under `removed`; in projects initialized before the inventory existed, it treats the bundled `hivex*` skill directories as managed.
 
 The init and update reports list the installed `extensions`. A missing `git`, an unreachable repository or a repository without release tags fails with `EXTENSION_UNAVAILABLE`; an invalid manifest, or one that replaces an unknown skill, fails with `INVALID_EXTENSION`. Nothing is written in either case.
 

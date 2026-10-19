@@ -174,3 +174,152 @@ fn extension_failures_are_reported_without_writing() {
   );
   assert!(!invalid.path("AGENTS.md").exists());
 }
+
+#[test]
+fn extension_ignore_templates_and_tags_are_honoured() {
+  let extension = extension();
+  extension.write("assets/project/.gitignore", "custom\n");
+  release(&extension, "0.2.0");
+  // A branch with the release's name must not shadow its tag.
+  extension.write("skills/demo-git/SKILL.md", "# From a branch\n");
+  git(&extension, &["commit", "-q", "-am", "branch"]);
+  git(&extension, &["branch", "v0.2.0"]);
+  let repository = extension.root.to_str().unwrap();
+  let p = Project::new();
+  run(&p, &["init", "--extension", repository]);
+  assert_eq!(
+    read(&p, ".agents/skills/demo-git/SKILL.md"),
+    "# Demo git 1\n"
+  );
+  let ignore = read(&p, ".gitignore");
+  assert!(
+    ignore.starts_with("custom\n/.claude/skills/hivex*\n"),
+    "{ignore}"
+  );
+  assert!(ignore.contains("/work/\n"));
+}
+
+#[test]
+fn update_removes_what_a_release_retires_and_old_caches() {
+  let extension = extension();
+  extension.write("skills/demo-old/SKILL.md", "# Old\n");
+  extension.write("skills/demo-git/extra.md", "# Extra\n");
+  release(&extension, "0.2.0");
+  let repository = extension.root.to_str().unwrap();
+  let p = Project::new();
+  run(&p, &["init", "--extension", repository]);
+  assert!(p.path(".agents/skills/demo-old/SKILL.md").is_file());
+  fs::remove_dir_all(extension.path("skills/demo-old")).unwrap();
+  fs::remove_file(extension.path("skills/demo-git/extra.md")).unwrap();
+  release(&extension, "0.3.0");
+  let updated = run(&p, &["update"]);
+  let removed = list(&updated, "removed");
+  for path in [
+    ".agents/skills/demo-old/SKILL.md",
+    ".agents/skills/demo-git/extra.md",
+    ".claude/skills/demo-old",
+  ] {
+    assert!(removed.contains(&json!(path)), "{path}");
+  }
+  assert!(!p.path(".agents/skills/demo-old").exists());
+  assert!(!p.path(".claude/skills/demo-old").exists());
+  assert!(p.path(".agents/skills/demo-git/SKILL.md").is_file());
+  let cached: Vec<_> = fs::read_dir(p.path(".hivex/extensions"))
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+    .collect();
+  assert_eq!(cached.len(), 1, "{cached:?}");
+  assert!(cached[0].ends_with("@0.3.0"));
+}
+
+#[test]
+fn invalid_releases_are_never_cached_and_relative_paths_follow_the_project() {
+  let p = Project::new();
+  let nested = Project {
+    root: p.path("vendor/extension"),
+  };
+  fs::create_dir_all(&nested.root).unwrap();
+  git(&nested, &["init", "-q"]);
+  nested.write("hivex-extension.json", "[]");
+  release(&nested, "0.1.0");
+  p.write(
+    "hivex.json",
+    r#"{"extensions":[{"repository":"./vendor/extension","version":"0.1.0"}]}"#,
+  );
+  for _ in 0..2 {
+    assert_eq!(run(&p, &["init"])["error"]["code"], "INVALID_EXTENSION");
+  }
+  assert_eq!(
+    fs::read_dir(p.path(".hivex/extensions")).unwrap().count(),
+    0
+  );
+  nested.write("hivex-extension.json", "{}");
+  nested.write("skills/nested/SKILL.md", "# Nested\n");
+  git(&nested, &["add", "-A"]);
+  git(&nested, &["commit", "-q", "-m", "fix"]);
+  git(&nested, &["tag", "-f", "v0.1.0"]);
+  run(&p, &["init"]);
+  assert_eq!(read(&p, ".agents/skills/nested/SKILL.md"), "# Nested\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn extensions_cannot_reach_outside_the_project_or_their_checkout() {
+  use std::os::unix::fs::{PermissionsExt, symlink};
+  let outside = Project::new();
+  outside.write("AGENTS.md", "# Outside\n");
+
+  // A linked cache is refused before anything is fetched or written.
+  let guarded = extension();
+  let repository = guarded.root.to_str().unwrap();
+  let p = Project::new();
+  fs::create_dir(p.path(".hivex")).unwrap();
+  symlink(&outside.root, p.path(".hivex/extensions")).unwrap();
+  assert_eq!(
+    run(&p, &["init", "--extension", repository])["error"]["code"],
+    "INVALID_DESTINATION"
+  );
+  assert_eq!(fs::read_dir(&outside.root).unwrap().count(), 1);
+
+  // A linked source directory is not followed.
+  let linked = extension();
+  fs::remove_dir_all(linked.path("assets")).unwrap();
+  symlink(&outside.root, linked.path("assets")).unwrap();
+  release(&linked, "0.2.0");
+  let p = Project::new();
+  let linked_repository = linked.root.to_str().unwrap();
+  assert_eq!(
+    run(&p, &["init", "--extension", linked_repository])["error"]["code"],
+    "INVALID_EXTENSION"
+  );
+
+  // Names that could leave the tree are rejected.
+  let escaping = extension();
+  escaping.write("skills/demo-git/..\\..\\outside.md", "# Escape\n");
+  release(&escaping, "0.2.0");
+  let p = Project::new();
+  assert_eq!(
+    run(
+      &p,
+      &["init", "--extension", escaping.root.to_str().unwrap()]
+    )["error"]["code"],
+    "INVALID_EXTENSION"
+  );
+
+  // Executable scripts stay executable.
+  let scripted = extension();
+  scripted.write("skills/demo-git/scripts/run.sh", "#!/bin/sh\n");
+  let script = scripted.path("skills/demo-git/scripts/run.sh");
+  fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+  release(&scripted, "0.2.0");
+  let p = Project::new();
+  run(
+    &p,
+    &["init", "--extension", scripted.root.to_str().unwrap()],
+  );
+  let mode = fs::metadata(p.path(".agents/skills/demo-git/scripts/run.sh"))
+    .unwrap()
+    .permissions()
+    .mode();
+  assert_ne!(mode & 0o111, 0);
+}
