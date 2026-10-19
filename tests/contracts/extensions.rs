@@ -3,17 +3,21 @@ use serde_json::{Value, json};
 use std::fs;
 use std::process::Command;
 
-/// The real `PATH` without the directories of Claude and Codex, so the CLI finds `git` and
-/// everything Git for Windows needs, but not the hosts of whoever runs the tests.
-fn path_without_hosts() -> std::ffi::OsString {
+/// The real `PATH`, so the CLI finds Git and what Git needs, behind failing stand-ins for Claude
+/// and Codex, so it never touches the hosts of whoever runs the tests.
+fn path_with_stand_in_hosts(bin: &Project) -> std::ffi::OsString {
+  for host in ["claude", "codex"] {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::PermissionsExt;
+      bin.write(host, "#!/bin/sh\nexit 1\n");
+      fs::set_permissions(bin.path(host), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    #[cfg(windows)]
+    bin.write(&format!("{host}.cmd"), "@exit /b 1\r\n");
+  }
   let path = std::env::var_os("PATH").unwrap();
-  let directories = std::env::split_paths(&path).filter(|directory| {
-    !["claude", "codex"].iter().any(|host| {
-      ["", "exe", "cmd", "bat"]
-        .iter()
-        .any(|extension| directory.join(host).with_extension(extension).is_file())
-    })
-  });
+  let directories = std::iter::once(bin.root.clone()).chain(std::env::split_paths(&path));
   std::env::join_paths(directories).unwrap()
 }
 
@@ -59,8 +63,9 @@ fn extension() -> Project {
 }
 
 fn run(p: &Project, args: &[&str]) -> Value {
+  let bin = Project::new();
   let mut command = p.command(args);
-  command.env("PATH", path_without_hosts());
+  command.env("PATH", path_with_stand_in_hosts(&bin));
   let output = bounded(command);
   let stream = if output.status.success() {
     &output.stdout
@@ -172,6 +177,15 @@ fn extension_failures_are_reported_without_writing() {
   let failed = run(&missing, &["init", "--extension", gone.to_str().unwrap()]);
   assert_eq!(failed["error"]["code"], "EXTENSION_UNAVAILABLE");
   assert!(!missing.path("AGENTS.md").exists());
+  // A pinned release the repository lacks fails in `git fetch`, which the message names.
+  let unreleased = Project::new();
+  unreleased.json(
+    "hivex.json",
+    &json!({"extensions":[{"repository":repository,"version":"9.9.9"}]}),
+  );
+  let failed = run(&unreleased, &["init"]);
+  let message = failed["error"]["message"].as_str().unwrap();
+  assert!(message.starts_with("git fetch failed"), "{message}");
 
   extension.write("hivex-extension.json", r#"{"replaces":["hivex-unknown"]}"#);
   release(&extension, "0.2.0");
