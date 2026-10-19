@@ -18,6 +18,8 @@ Hivex gives agents and people a reusable project foundation and focused access t
 
 **Update**: Bringing the skill copies, their Claude links, managed ignore rules and the pinned release to the installed release and the ponytail plugin to its latest release, without creating or changing other project-owned files.
 
+**Extension**: A Git repository whose release tags add skills and project files to the bundled foundation, pinned in `hivex.json` and installed by `init`/`update`; see the [guide](guide.md#extensions).
+
 **Pinned release**: The Hivex version a project records in `hivex.json`. Initialization and update enforce it; other commands warn when the installed release differs.
 
 **Adoption**: Completing the foundation from project evidence, preserving useful knowledge and aligning working practices.

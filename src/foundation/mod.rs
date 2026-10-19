@@ -13,14 +13,13 @@ const IGNORE_RULES: [&str; 3] = ["/.claude/skills/hivex*", "/.hivex/", "/.review
 /// This release; `hivex.json` pins the release a project expects.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CONFIG: &str = "hivex.json";
-const SKILLS: [&str; 6] = [
-  "hivex",
-  "hivex-design",
-  "hivex-document",
-  "hivex-git",
-  "hivex-implement",
-  "hivex-review",
-];
+const IGNORE_FILE: &str = ".gitignore";
+/// The skill files and Claude links Hivex installed, so `update` can remove what a release drops.
+const MANAGED: &str = ".agents/.hivex-managed.json";
+
+mod extension;
+
+use extension::Pin;
 
 /// Bundled files under `prefix`, by their path relative to it.
 macro_rules! bundled {
@@ -31,7 +30,7 @@ macro_rules! bundled {
 
 /// Project foundation files: created when missing and never changed afterwards.
 static TEMPLATE_FILES: &[(&str, &[u8])] = bundled![
-  "../skills/hivex/assets/project/":
+  "../../skills/hivex/assets/project/":
   "AGENTS.md",
   "docs/CONTEXT.md",
   "docs/PRD.md",
@@ -49,7 +48,7 @@ static TEMPLATE_FILES: &[(&str, &[u8])] = bundled![
 /// The complete skills, relative to `.agents/skills/`: `init` creates missing files and `update`
 /// makes them identical to this release.
 static SKILL_FILES: &[(&str, &[u8])] = bundled![
-  "../skills/":
+  "../../skills/":
   "hivex-design/SKILL.md",
   "hivex-design/references/visual-review.md",
   "hivex-document/SKILL.md",
@@ -78,6 +77,76 @@ static SKILL_FILES: &[(&str, &[u8])] = bundled![
   "hivex/templates/swift/docs/guidelines/swift.md",
   "hivex/templates/typescript/docs/guidelines/typescript.md",
 ];
+
+/// A file a bundle installs.
+struct BundleFile {
+  path: String,
+  bytes: Vec<u8>,
+  /// Unix execute permission, carried from an extension.
+  executable: bool,
+}
+
+/// What a project installs: the bundled foundation with its extensions applied.
+struct Bundle {
+  templates: Vec<BundleFile>,
+  /// Skill files, relative to `.agents/skills/`.
+  skills: Vec<BundleFile>,
+  /// Ignore rules added by extensions.
+  ignore: Vec<String>,
+  /// Extension releases in use, whose older cached releases go once installation succeeds.
+  kept: Vec<extension::Kept>,
+}
+
+impl Bundle {
+  fn with_extensions(root: &Path, pins: &[Pin]) -> Result<Self> {
+    let owned = |files: &[(&str, &[u8])]| -> Vec<BundleFile> {
+      files
+        .iter()
+        .map(|(path, bytes)| BundleFile {
+          path: (*path).to_owned(),
+          bytes: bytes.to_vec(),
+          executable: false,
+        })
+        .collect()
+    };
+    let mut bundle = Self {
+      templates: owned(TEMPLATE_FILES),
+      skills: owned(SKILL_FILES),
+      ignore: Vec::new(),
+      kept: Vec::new(),
+    };
+    for pin in pins {
+      let release = extension::load(root, pin, &bundle.skill_names())?;
+      bundle.kept.push(release.kept);
+      extension::apply(&mut bundle, release.content);
+    }
+    Ok(bundle)
+  }
+
+  fn skill_names(&self) -> Vec<String> {
+    let mut names: Vec<String> = self
+      .skills
+      .iter()
+      .map(|file| extension::skill_name(&file.path).to_owned())
+      .collect();
+    names.dedup();
+    names
+  }
+
+  /// Claude's links are per machine, so each one is ignored.
+  fn ignore_rules(&self) -> Vec<String> {
+    let links = self
+      .skill_names()
+      .into_iter()
+      .filter(|name| !name.starts_with("hivex"))
+      .map(|name| format!("/.claude/skills/{name}"));
+    // Hivex's own rules come last, so no earlier rule can re-include their paths.
+    links
+      .chain(self.ignore.iter().cloned())
+      .chain(IGNORE_RULES.iter().map(|rule| (*rule).to_owned()))
+      .collect()
+  }
+}
 
 /// A host CLI and the idempotent steps it runs for the ponytail plugin.
 type HostSteps = (&'static str, &'static [&'static [&'static str]]);
@@ -126,6 +195,7 @@ enum OperationState {
   Created,
   Preserved,
   Updated,
+  Removed,
 }
 
 impl OperationState {
@@ -143,14 +213,17 @@ struct FileOperation {
   content: Content,
   path: String,
   state: OperationState,
+  executable: bool,
 }
 
 enum Content {
   Bytes(Vec<u8>),
   /// Claude's link to the named skill in `.agents/skills`.
-  SkillLink(&'static str),
-  /// A former npm link to a skill, replaced by a copy.
+  SkillLink(String),
+  /// A former npm link to a skill, replaced by a copy, or a Claude link to a retired skill.
   Unlink,
+  /// A managed file that the installed release no longer provides.
+  Remove,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -180,7 +253,24 @@ fn project_root(requested: &str) -> Result<PathBuf> {
     }
     root_error
   })?;
-  fs::canonicalize(directory).map_err(|read_error| error("INVALID_ROOT", read_error.to_string()))
+  fs::canonicalize(directory)
+    .map(without_verbatim_prefix)
+    .map_err(|read_error| error("INVALID_ROOT", read_error.to_string()))
+}
+
+/// `canonicalize` returns `\\?\` paths on Windows, which Git for Windows cannot use; the
+/// standard library adds the prefix back where long paths need it.
+fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+  #[cfg(windows)]
+  if let Some(rest) = path.to_str().and_then(|text| text.strip_prefix(r"\\?\")) {
+    if let Some(share) = rest.strip_prefix(r"UNC\") {
+      return PathBuf::from(format!(r"\\{share}"));
+    }
+    if rest.as_bytes().get(1) == Some(&b':') {
+      return PathBuf::from(rest);
+    }
+  }
+  path
 }
 
 fn destination(root: &Path, relative_path: &str, kind: DestinationKind) -> Result<Destination> {
@@ -242,22 +332,22 @@ fn split_crlf_lines(text: &str) -> impl Iterator<Item = &str> {
     .map(|line| line.strip_suffix('\r').unwrap_or(line))
 }
 
-fn missing_ignore_rules(text: &str) -> Vec<&'static str> {
+fn missing_ignore_rules<'a>(text: &str, rules: &'a [String]) -> Vec<&'a String> {
   let lines: Vec<_> = split_crlf_lines(text).collect();
   // The last matching rule wins, so a later negation could re-include local state.
   let effective = lines
     .iter()
     .rposition(|line| line.starts_with('!'))
     .map_or(&lines[..], |negation| &lines[negation + 1..]);
-  IGNORE_RULES
-    .into_iter()
-    .filter(|rule| !effective.contains(rule))
+  rules
+    .iter()
+    .filter(|rule| !effective.contains(&rule.as_str()))
     .collect()
 }
 
-fn ignore_update(existing: Option<&[u8]>) -> Option<Vec<u8>> {
+fn ignore_update(existing: Option<&[u8]>, rules: &[String]) -> Option<Vec<u8>> {
   let text = existing.map(String::from_utf8_lossy).unwrap_or_default();
-  let missing = missing_ignore_rules(&text);
+  let missing = missing_ignore_rules(&text, rules);
   if missing.is_empty() {
     return None;
   }
@@ -273,23 +363,27 @@ fn ignore_update(existing: Option<&[u8]>) -> Option<Vec<u8>> {
   Some(bytes)
 }
 
-fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
+fn template_operations(root: &Path, bundle: &Bundle, pins: &[Pin]) -> Result<Vec<FileOperation>> {
   let created_at = creation_date()?;
-  TEMPLATE_FILES
+  bundle
+    .templates
     .iter()
-    .map(|(path, bytes)| {
-      let target = destination(root, path, DestinationKind::File)?;
-      let bytes = match *path {
-        _ if target.exists => bytes.to_vec(),
-        CONFIG => pinned_config(&config_object(bytes)?),
-        _ if is_dated(path) => dated_template(bytes, &created_at),
-        _ => bytes.to_vec(),
+    // An extension's `.gitignore` starts the managed ignore operation instead.
+    .filter(|file| file.path != IGNORE_FILE)
+    .map(|file| {
+      let target = destination(root, &file.path, DestinationKind::File)?;
+      let bytes = match file.path.as_str() {
+        _ if target.exists => file.bytes.clone(),
+        CONFIG => pinned_config(&config_object(&file.bytes)?, pins),
+        path if is_dated(path) => dated_template(&file.bytes, &created_at),
+        _ => file.bytes.clone(),
       };
       Ok(FileOperation {
         absolute_path: target.absolute_path,
         content: Content::Bytes(bytes),
-        path: (*path).to_owned(),
+        path: file.path.clone(),
         state: OperationState::planned(target.exists),
+        executable: file.executable,
       })
     })
     .collect()
@@ -307,14 +401,22 @@ fn config_object(bytes: &[u8]) -> Result<serde_json::Map<String, Value>> {
   }
 }
 
-/// `config` with `version` set to this release as its first field, pretty-printed.
-fn pinned_config(config: &serde_json::Map<String, Value>) -> Vec<u8> {
+/// `config` with `version` set to this release and `extensions` to `pins` as its first fields,
+/// pretty-printed.
+fn pinned_config(config: &serde_json::Map<String, Value>, pins: &[Pin]) -> Vec<u8> {
   let mut object = serde_json::Map::new();
   object.insert("version".into(), VERSION.into());
+  if !pins.is_empty() {
+    let pins = pins
+      .iter()
+      .map(|pin| json!({"repository": pin.repository, "version": pin.version}))
+      .collect();
+    object.insert("extensions".into(), Value::Array(pins));
+  }
   object.extend(
     config
       .iter()
-      .filter(|(key, _)| *key != "version")
+      .filter(|(key, _)| !matches!(key.as_str(), "version" | "extensions"))
       .map(|(key, value)| (key.clone(), value.clone())),
   );
   let mut text = serde_json::to_string_pretty(&Value::Object(object)).expect("JSON serializes");
@@ -379,8 +481,9 @@ fn version_mismatch(pinned: &str) -> HivexError {
   .with_details(json!({"installed": VERSION, "pinned": pinned}))
 }
 
-/// `update` moves the pin to this release, but never back to an older one.
-fn pin_operation(root: &Path) -> Result<Option<FileOperation>> {
+/// `update` moves the pin to this release, but never back to an older one, and records the
+/// extension releases it installed.
+fn pin_operation(root: &Path, pins: &[Pin], pins_changed: bool) -> Result<Option<FileOperation>> {
   let target = destination(root, CONFIG, DestinationKind::File)?;
   if !target.exists {
     return Ok(None);
@@ -394,13 +497,14 @@ fn pin_operation(root: &Path) -> Result<Option<FileOperation>> {
   let config = config_object(&read_existing(&target, CONFIG)?)?;
   Ok(Some(FileOperation {
     absolute_path: target.absolute_path,
-    content: Content::Bytes(pinned_config(&config)),
+    content: Content::Bytes(pinned_config(&config, pins)),
     path: CONFIG.to_owned(),
-    state: if pinned.as_deref() == Some(VERSION) {
+    state: if pinned.as_deref() == Some(VERSION) && !pins_changed {
       OperationState::Preserved
     } else {
       OperationState::Updated
     },
+    executable: false,
   }))
 }
 
@@ -435,14 +539,25 @@ fn civil_date(days: u64) -> String {
   format!("{year:04}-{month:02}-{day:02}")
 }
 
+/// Extension files may lack frontmatter; they are installed unchanged. LF and CRLF
+/// frontmatter are both dated, keeping the file's line endings.
 fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
-  let text = std::str::from_utf8(bytes).expect("bundled Markdown is UTF-8");
-  let (header, body) = text
-    .strip_prefix("---\n")
-    .and_then(|text| text.split_once("\n---\n"))
-    .expect("bundled documentation has frontmatter");
+  let Ok(text) = std::str::from_utf8(bytes) else {
+    return bytes.to_vec();
+  };
+  let newline = if text.starts_with("---\r\n") {
+    "\r\n"
+  } else {
+    "\n"
+  };
+  let Some((header, body)) = text
+    .strip_prefix(&format!("---{newline}"))
+    .and_then(|text| text.split_once(&format!("{newline}---{newline}")))
+  else {
+    return bytes.to_vec();
+  };
   let mut metadata = header
-    .lines()
+    .split(newline)
     .filter(|line| {
       !["created_at:", "updated_at:", "archived_at:"]
         .iter()
@@ -455,18 +570,29 @@ fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
     .position(|line| line.starts_with("tags:") || line.starts_with("source:"))
     .unwrap_or(metadata.len());
   metadata.insert(date_position, format!("created_at: {created_at}"));
-  format!("---\n{}\n---\n{body}", metadata.join("\n")).into_bytes()
+  format!(
+    "---{newline}{}{newline}---{newline}{body}",
+    metadata.join(newline)
+  )
+  .into_bytes()
 }
 
-fn ignore_operation(root: &Path) -> Result<FileOperation> {
-  let relative_path = ".gitignore";
+/// The managed rules appended to `.gitignore`, starting a missing file from an extension's
+/// template when it has one.
+fn ignore_operation(root: &Path, bundle: &Bundle) -> Result<FileOperation> {
+  let relative_path = IGNORE_FILE;
+  let rules = bundle.ignore_rules();
   let target = destination(root, relative_path, DestinationKind::File)?;
   let existing = if target.exists {
     Some(read_existing(&target, relative_path)?)
   } else {
-    None
+    bundle
+      .templates
+      .iter()
+      .find(|file| file.path == IGNORE_FILE)
+      .map(|file| file.bytes.clone())
   };
-  let (bytes, state) = match ignore_update(existing.as_deref()) {
+  let (bytes, state) = match ignore_update(existing.as_deref(), &rules) {
     Some(bytes) => (
       bytes,
       if target.exists {
@@ -475,13 +601,15 @@ fn ignore_operation(root: &Path) -> Result<FileOperation> {
         OperationState::Created
       },
     ),
-    None => (existing.unwrap_or_default(), OperationState::Preserved),
+    None if target.exists => (existing.unwrap_or_default(), OperationState::Preserved),
+    None => (existing.unwrap_or_default(), OperationState::Created),
   };
   Ok(FileOperation {
     absolute_path: target.absolute_path,
     content: Content::Bytes(bytes),
     path: relative_path.to_owned(),
     state,
+    executable: false,
   })
 }
 
@@ -494,10 +622,15 @@ fn read_existing(target: &Destination, relative_path: &str) -> Result<Vec<u8>> {
   })
 }
 
-fn skill_operations(root: &Path, refresh: bool) -> Result<Vec<FileOperation>> {
+fn skill_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec<FileOperation>> {
   let mut operations = Vec::new();
-  for name in SKILLS {
-    operations.extend(skill_directory_operations(root, name, refresh)?);
+  for name in bundle.skill_names() {
+    let files: Vec<_> = bundle
+      .skills
+      .iter()
+      .filter(|file| extension::skill_name(&file.path) == name)
+      .collect();
+    operations.extend(skill_directory_operations(root, &name, &files, refresh)?);
   }
   Ok(operations)
 }
@@ -507,18 +640,24 @@ fn skill_operations(root: &Path, refresh: bool) -> Result<Vec<FileOperation>> {
 fn skill_directory_operations(
   root: &Path,
   name: &str,
+  files: &[&BundleFile],
   refresh: bool,
 ) -> Result<Vec<FileOperation>> {
   let directory = format!(".agents/skills/{name}");
   let target = destination(root, &directory, DestinationKind::Link)?;
   let linked = target.exists
     && fs::symlink_metadata(&target.absolute_path).is_ok_and(|entry| entry.is_symlink());
-  let files = SKILL_FILES
-    .iter()
-    .filter(|(path, _)| path.split('/').next() == Some(name));
   if !linked {
     return files
-      .map(|(path, bytes)| file_operation(root, &format!(".agents/skills/{path}"), bytes, refresh))
+      .iter()
+      .map(|file| {
+        file_operation(
+          root,
+          &format!(".agents/skills/{}", file.path),
+          file,
+          refresh,
+        )
+      })
       .collect();
   }
   let unlink = FileOperation {
@@ -530,25 +669,43 @@ fn skill_directory_operations(
     } else {
       OperationState::Preserved
     },
+    executable: false,
   };
   if !refresh {
     return Ok(vec![unlink]);
   }
-  let copies = files.map(|(path, bytes)| {
-    let relative = format!(".agents/skills/{path}");
-    FileOperation {
-      absolute_path: normalize_path(&root.join(&relative)),
-      content: Content::Bytes(bytes.to_vec()),
+  let mut operations = vec![unlink];
+  for file in files {
+    let relative = format!(".agents/skills/{}", file.path);
+    let absolute_path = normalize_path(&root.join(&relative));
+    // The link is removed first, so its copies are planned without a destination check.
+    if !absolute_path.starts_with(root) {
+      return Err(error(
+        "INVALID_DESTINATION",
+        format!("Initialization path escapes the project root: {relative}"),
+      ));
+    }
+    operations.push(FileOperation {
+      absolute_path,
+      content: Content::Bytes(file.bytes.clone()),
       path: relative,
       state: OperationState::Created,
-    }
-  });
-  Ok(std::iter::once(unlink).chain(copies).collect())
+      executable: file.executable,
+    });
+  }
+  Ok(operations)
 }
 
-fn file_operation(root: &Path, path: &str, bytes: &[u8], refresh: bool) -> Result<FileOperation> {
+fn file_operation(
+  root: &Path,
+  path: &str,
+  file: &BundleFile,
+  refresh: bool,
+) -> Result<FileOperation> {
   let target = destination(root, path, DestinationKind::File)?;
-  let current = target.exists && read_existing(&target, path)? == bytes;
+  let current = target.exists
+    && read_existing(&target, path)? == file.bytes
+    && is_executable(&target.absolute_path) == file.executable;
   Ok(FileOperation {
     state: match (target.exists, current) {
       (false, _) => OperationState::Created,
@@ -556,15 +713,28 @@ fn file_operation(root: &Path, path: &str, bytes: &[u8], refresh: bool) -> Resul
       _ => OperationState::Preserved,
     },
     absolute_path: target.absolute_path,
-    content: Content::Bytes(bytes.to_vec()),
+    content: Content::Bytes(file.bytes.clone()),
     path: path.to_owned(),
+    executable: file.executable,
   })
 }
 
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+  use std::os::unix::fs::PermissionsExt;
+  fs::metadata(path).is_ok_and(|entry| entry.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable(_: &Path) -> bool {
+  false
+}
+
 /// Claude loads skills only from `.claude/skills`; an existing entry there stays as it is.
-fn link_operations(root: &Path) -> Result<Vec<FileOperation>> {
-  SKILLS
-    .iter()
+fn link_operations(root: &Path, bundle: &Bundle) -> Result<Vec<FileOperation>> {
+  bundle
+    .skill_names()
+    .into_iter()
     .map(|name| {
       let path = format!(".claude/skills/{name}");
       let target = destination(root, &path, DestinationKind::Link)?;
@@ -573,6 +743,7 @@ fn link_operations(root: &Path) -> Result<Vec<FileOperation>> {
         content: Content::SkillLink(name),
         path,
         state: OperationState::planned(target.exists),
+        executable: false,
       })
     })
     .collect()
@@ -604,6 +775,16 @@ fn link_skill(link: &Path, name: &str) -> std::io::Result<()> {
 }
 
 fn write_operations(operations: &[FileOperation]) -> Result<()> {
+  let mut paths = std::collections::BTreeSet::new();
+  if let Some(conflict) = operations
+    .iter()
+    .find(|operation| !paths.insert(&operation.path))
+  {
+    return Err(error(
+      "INVALID_DESTINATION",
+      format!("Two installed files share a destination: {}", conflict.path),
+    ));
+  }
   for operation in operations {
     if operation.state != OperationState::Preserved {
       write_operation(operation).map_err(|write_error| {
@@ -614,7 +795,24 @@ fn write_operations(operations: &[FileOperation]) -> Result<()> {
       })?;
     }
   }
+  for operation in operations {
+    if operation.state == OperationState::Removed {
+      remove_empty_parents(&operation.absolute_path);
+    }
+  }
   Ok(())
+}
+
+/// Directories emptied by a removed file go too; `remove_dir` keeps any that still hold files.
+fn remove_empty_parents(path: &Path) {
+  for directory in path.ancestors().skip(1) {
+    if directory.ends_with(".agents") || directory.ends_with(".claude") {
+      return;
+    }
+    if fs::remove_dir(directory).is_err() {
+      return;
+    }
+  }
 }
 
 fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
@@ -628,17 +826,39 @@ fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
       return fs::remove_file(&operation.absolute_path)
         .or_else(|_| fs::remove_dir(&operation.absolute_path));
     }
+    Content::Remove => return fs::remove_file(&operation.absolute_path),
     Content::Bytes(bytes) => bytes,
   };
   if operation.state == OperationState::Updated {
-    return fs::write(&operation.absolute_path, bytes);
+    fs::write(&operation.absolute_path, bytes)?;
+  } else {
+    // Never replace a file that appeared after planning.
+    OpenOptions::new()
+      .write(true)
+      .create_new(true)
+      .open(&operation.absolute_path)?
+      .write_all(bytes)?;
   }
-  // Never replace a file that appeared after planning.
-  OpenOptions::new()
-    .write(true)
-    .create_new(true)
-    .open(&operation.absolute_path)?
-    .write_all(bytes)
+  #[cfg(unix)]
+  set_executable(&operation.absolute_path, operation.executable)?;
+  // Windows files have no execute permission to carry.
+  #[cfg(not(unix))]
+  let _ = operation.executable;
+  Ok(())
+}
+
+#[cfg(unix)]
+fn set_executable(path: &Path, executable: bool) -> std::io::Result<()> {
+  use std::os::unix::fs::PermissionsExt;
+  let mut permissions = fs::metadata(path)?.permissions();
+  let mode = permissions.mode();
+  let mode = if executable {
+    mode | ((mode & 0o444) >> 2)
+  } else {
+    mode & !0o111
+  };
+  permissions.set_mode(mode);
+  fs::set_permissions(path, permissions)
 }
 
 fn run_quietly(program: &std::ffi::OsStr, args: &[&str]) -> std::io::Result<Output> {
@@ -707,14 +927,17 @@ fn plugins(hosts: &[HostSteps], status: HostStatus) -> Value {
     .collect()
 }
 
-fn report(
-  command: &str,
-  operations: &[FileOperation],
-  hosts: &[HostSteps],
-  status: HostStatus,
-) -> Value {
+/// What `init` or `update` did to the project's files and which extension releases it installed.
+struct Outcome<'a> {
+  command: &'a str,
+  operations: &'a [FileOperation],
+  pins: &'a [Pin],
+}
+
+fn report(outcome: &Outcome, hosts: &[HostSteps], status: HostStatus) -> Value {
   let paths = |state| {
-    let mut paths: Vec<_> = operations
+    let mut paths: Vec<_> = outcome
+      .operations
       .iter()
       .filter(|operation| operation.state == state)
       .map(|operation| operation.path.as_str())
@@ -724,60 +947,239 @@ fn report(
     });
     paths
   };
+  let extensions: Vec<Value> = outcome
+    .pins
+    .iter()
+    .map(|pin| json!({"repository": pin.repository, "version": pin.version}))
+    .collect();
   json!({
-    "command": command,
+    "command": outcome.command,
     "created": paths(OperationState::Created),
+    "extensions": extensions,
     "modelCalls": 0,
     "plugins": plugins(hosts, status),
     "preserved": paths(OperationState::Preserved),
+    "removed": paths(OperationState::Removed),
     "updated": paths(OperationState::Updated),
   })
 }
 
 /// Prepare the missing foundation files, skills, Claude skill links and ignore rules of the project
 /// at `root` without changing anything that exists, and install the ponytail plugin in Claude and
-/// Codex.
-pub fn initialize(root: &str) -> Result<Value> {
+/// Codex. `extension` adds an extension at its newest release to a project without `hivex.json`.
+pub fn initialize(root: &str, extension: Option<&str>) -> Result<Value> {
   let root = project_root(root)?;
   // Retained state must not hide a symlink or a conflicting `.hivex` entry.
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
   if let Some(pinned) = pinned_version(&root)?.filter(|pinned| pinned != VERSION) {
     return Err(version_mismatch(&pinned));
   }
-  let mut operations = template_operations(&root)?;
-  operations.extend(managed_operations(&root, false)?);
+  let config = project_config(&root)?;
+  let mut pins = config
+    .as_ref()
+    .map(extension::pins)
+    .transpose()?
+    .unwrap_or_default();
+  if let Some(repository) = extension {
+    if config.is_some() {
+      return Err(error(
+        "INVALID_ARGUMENT",
+        "hivex.json already exists; add the extension to its extensions list",
+      ));
+    }
+    let version = extension::latest(&root, repository)?;
+    pins.push(Pin {
+      repository: repository.to_owned(),
+      version,
+    });
+  }
+  let bundle = Bundle::with_extensions(&root, &pins)?;
+  let mut operations = template_operations(&root, &bundle, &pins)?;
+  operations.extend(managed_operations(&root, &bundle, false)?);
   write_operations(&operations)?;
+  extension::prune(&root, &bundle.kept);
   Ok(report(
-    "init",
-    &operations,
+    &Outcome {
+      command: "init",
+      operations: &operations,
+      pins: &pins,
+    },
     &PONYTAIL_INSTALL,
     install_status,
   ))
 }
 
-/// Bring the managed parts of the project at `root` up to this release: the skills, Claude's skill
-/// links, the ignore rules, the pinned version and the ponytail plugin. Project files are neither
-/// created nor changed.
+/// Bring the managed parts of the project at `root` up to this release and each extension up to
+/// its newest release: the skills, Claude's skill links, the ignore rules, the pinned versions and
+/// the ponytail plugin. Project files are neither created nor changed.
 pub fn update(root: &str) -> Result<Value> {
   let root = project_root(root)?;
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
-  let mut operations = managed_operations(&root, true)?;
-  operations.extend(pin_operation(&root)?);
+  let pinned = project_config(&root)?
+    .as_ref()
+    .map(extension::pins)
+    .transpose()?
+    .unwrap_or_default();
+  let pins = pinned
+    .iter()
+    .map(|pin| {
+      let latest = extension::latest(&root, &pin.repository)?;
+      let newer = release(&latest) > release(&pin.version);
+      Ok(Pin {
+        repository: pin.repository.clone(),
+        version: if newer { latest } else { pin.version.clone() },
+      })
+    })
+    .collect::<Result<Vec<_>>>()?;
+  let bundle = Bundle::with_extensions(&root, &pins)?;
+  let mut operations = managed_operations(&root, &bundle, true)?;
+  operations.extend(pin_operation(&root, &pins, pins != pinned)?);
   write_operations(&operations)?;
+  extension::prune(&root, &bundle.kept);
   Ok(report(
-    "update",
-    &operations,
+    &Outcome {
+      command: "update",
+      operations: &operations,
+      pins: &pins,
+    },
     &PONYTAIL_UPDATE,
     update_status,
   ))
 }
 
-fn managed_operations(root: &Path, refresh: bool) -> Result<Vec<FileOperation>> {
-  let mut operations = skill_operations(root, refresh)?;
+/// The project's `hivex.json`, when it has one.
+fn project_config(root: &Path) -> Result<Option<serde_json::Map<String, Value>>> {
+  match fs::read(root.join(CONFIG)) {
+    Ok(bytes) => config_object(&bytes).map(Some),
+    Err(_) => Ok(None),
+  }
+}
+
+fn managed_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec<FileOperation>> {
+  let mut operations = skill_operations(root, bundle, refresh)?;
   // The links follow the skills so their targets exist when they are created.
-  operations.extend(link_operations(root)?);
-  operations.push(ignore_operation(root)?);
+  operations.extend(link_operations(root, bundle)?);
+  let installed: Vec<String> = operations
+    .iter()
+    .filter(|operation| !matches!(operation.content, Content::Unlink))
+    .map(|operation| operation.path.clone())
+    .collect();
+  let previous = previous_inventory(root)?;
+  let recorded = if refresh {
+    operations.extend(retired_operations(root, &previous, &installed)?);
+    installed
+  } else {
+    // `init` removes nothing, so what an earlier release installed stays recorded.
+    let still_present = previous
+      .into_iter()
+      .filter(|path| fs::symlink_metadata(root.join(path)).is_ok())
+      .filter(|path| !installed.contains(path));
+    installed.iter().cloned().chain(still_present).collect()
+  };
+  operations.push(inventory_operation(root, &recorded)?);
+  operations.push(ignore_operation(root, bundle)?);
   Ok(operations)
+}
+
+/// A path inside the managed trees: a file below `.agents/skills/<skill>/` or a Claude link
+/// `.claude/skills/<skill>`.
+fn managed_path(path: &str) -> bool {
+  let parts: Vec<_> = path.split('/').collect();
+  let plain = parts
+    .iter()
+    .all(|part| !part.is_empty() && !matches!(*part, "." | "..") && !part.contains(['\\', ':']));
+  plain
+    && matches!(
+      parts.as_slice(),
+      [".agents", "skills", _, _, ..] | [".claude", "skills", _]
+    )
+}
+
+/// The managed paths a previous release installed: its inventory, or, in a project initialized
+/// before inventories existed, the bundled skill files and links that are present.
+fn previous_inventory(root: &Path) -> Result<Vec<String>> {
+  let invalid = || {
+    error(
+      "INVALID_CONFIG",
+      format!("{MANAGED} must list paths inside .agents/skills or .claude/skills"),
+    )
+  };
+  if let Ok(bytes) = fs::read(root.join(MANAGED)) {
+    let paths: Vec<String> = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+    return if paths.iter().all(|path| managed_path(path)) {
+      Ok(paths)
+    } else {
+      Err(invalid())
+    };
+  }
+  let files = SKILL_FILES
+    .iter()
+    .map(|(path, _)| format!(".agents/skills/{path}"));
+  let links = SKILL_FILES
+    .iter()
+    .map(|(path, _)| format!(".claude/skills/{}", extension::skill_name(path)));
+  let mut paths: Vec<String> = files
+    .chain(links)
+    .filter(|path| fs::symlink_metadata(root.join(path)).is_ok())
+    .collect();
+  paths.dedup();
+  Ok(paths)
+}
+
+/// Remove the managed files and Claude links that the installed release no longer provides.
+fn retired_operations(
+  root: &Path,
+  previous: &[String],
+  installed: &[String],
+) -> Result<Vec<FileOperation>> {
+  let mut operations = Vec::new();
+  for path in previous {
+    if installed.contains(path) {
+      continue;
+    }
+    let kind = if path.starts_with(".claude/") {
+      DestinationKind::Link
+    } else {
+      DestinationKind::File
+    };
+    let target = destination(root, path, kind)?;
+    let Ok(entry) = fs::symlink_metadata(&target.absolute_path) else {
+      continue;
+    };
+    let content = match path.starts_with(".claude/") {
+      true if entry.is_symlink() || entry.is_dir() => Content::Unlink,
+      false if entry.is_file() => Content::Remove,
+      _ => continue,
+    };
+    operations.push(FileOperation {
+      absolute_path: target.absolute_path,
+      content,
+      path: path.clone(),
+      state: OperationState::Removed,
+      executable: false,
+    });
+  }
+  Ok(operations)
+}
+
+fn inventory_operation(root: &Path, installed: &[String]) -> Result<FileOperation> {
+  let mut paths = installed.to_vec();
+  paths.sort();
+  let mut bytes = serde_json::to_vec_pretty(&paths)?;
+  bytes.push(b'\n');
+  let target = destination(root, MANAGED, DestinationKind::File)?;
+  let current = target.exists && read_existing(&target, MANAGED)? == bytes;
+  Ok(FileOperation {
+    state: match (target.exists, current) {
+      (false, _) => OperationState::Created,
+      (true, false) => OperationState::Updated,
+      _ => OperationState::Preserved,
+    },
+    absolute_path: target.absolute_path,
+    content: Content::Bytes(bytes),
+    path: MANAGED.to_owned(),
+    executable: false,
+  })
 }
 
 fn validate_destination_component(
