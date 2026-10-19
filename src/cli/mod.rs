@@ -26,24 +26,26 @@ pub fn run(args: &[String]) -> Result<Value> {
     "search" => search::command(args),
     "relations" => relations::command(args),
     "check" => check::command(args),
-    "init" => initialize(args),
-    "update" | "ask" | "neighbors" | "review" | "warnings" | "snapshot" | "recover" | "prune"
-    | "status" => Err(HivexError::new(
-      "COMMAND_RETIRED",
-      "The inferred graph runtime was retired in 0.8. Use sources/search/relations/read and the migration guide; legacy files remain untouched.",
-    )),
+    "init" => project(args, "init", crate::foundation::initialize),
+    "update" => project(args, "update", crate::foundation::update),
+    "ask" | "neighbors" | "review" | "warnings" | "snapshot" | "recover" | "prune" | "status" => {
+      Err(HivexError::new(
+        "COMMAND_RETIRED",
+        "The inferred graph runtime was retired in 0.8. Use sources/search/relations/read and the migration guide; legacy files remain untouched.",
+      ))
+    }
     _ => Err(invalid(
-      "Use sources, read, search, relations, check or init; see --help",
+      "Use sources, read, search, relations, check, init or update; see --help",
     )),
   }
 }
 
-fn initialize(args: &[String]) -> Result<Value> {
+fn project(args: &[String], command: &str, run: fn(&str) -> Result<Value>) -> Result<Value> {
   let arguments = Arguments::parse(args, &["root"], &[])?;
   if arguments.positionals().len() != 1 {
-    return Err(invalid("Use init [--root <project>]"));
+    return Err(invalid(format!("Use {command} [--root <project>]")));
   }
-  crate::foundation::initialize(arguments.root())
+  run(arguments.root())
 }
 
 fn status(project: &Project) -> &'static str {

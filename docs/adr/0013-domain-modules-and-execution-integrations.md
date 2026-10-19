@@ -2,7 +2,7 @@
 title: Domain modules for deterministic Markdown retrieval
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-02
+updated_at: 2026-10-19
 tags: [adr, architecture, runtime]
 ---
 
@@ -12,7 +12,7 @@ Hivex remains a modular Rust monolith with small concrete interfaces. The owner 
 
 ## Module ownership
 
-Documents own source selection, Markdown parsing, exact source coordinates, lexical search and authored relationships. SQLite search belongs beside that retrieval responsibility and runs in memory. Foundation owns safe preparation of missing project files and skill links. CLI modules own arguments, bounded responses, continuation and process diagnostics. Shared error and compatibility utilities support those domains. Documents and foundation do not depend on CLI or each other; the entry boundary composes them.
+Documents own source selection, Markdown parsing, exact source coordinates, lexical search and authored relationships. SQLite search belongs beside that retrieval responsibility and runs in memory. Foundation owns safe preparation of missing project files and skill links, project updates and the ponytail plugin installation in Claude Code and Codex (since 2026-10-19). CLI modules own arguments, bounded responses, continuation and process diagnostics. Shared error and compatibility utilities support those domains. Documents and foundation do not depend on CLI or each other; the entry boundary composes them.
 
 Keep submodules private and expose only operations/types consumers need. Reuse existing helpers and installed dependencies before adding an abstraction. There is no provider framework, model invocation, graph store, execution orchestrator or persisted query cache in the current runtime.
 
