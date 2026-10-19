@@ -61,7 +61,7 @@ New installations ignore the Claude skill links (`/.claude/skills/hivex*`), `.hi
 
 An extension adds skills and project files to the bundled foundation for a particular kind of project or person, without forking the CLI. It is a Git repository whose `vX.Y.Z` tags are releases:
 
-- `hivex-extension.json`: a JSON object. Optional `replaces` lists bundled skills the extension removes, for example `["hivex-git"]`.
+- `hivex-extension.json`: a JSON object. Optional `replaces` lists bundled skills the extension removes, for example `["hivex-git"]`; optional `ignore` lists `.gitignore` rules its projects need, such as `["/work/"]`, appended and kept like Hivex's own managed rules.
 - `skills/<name>/…`: complete skills. A skill with the name of a bundled skill replaces it entirely.
 - `assets/project/…`: project files. A file at the same path as a bundled foundation file replaces it; others are added. Markdown under `docs/` receives the creation date like bundled files.
 

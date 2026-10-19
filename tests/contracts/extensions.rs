@@ -35,7 +35,10 @@ fn release(extension: &Project, version: &str) {
 fn extension() -> Project {
   let extension = Project::new();
   git(&extension, &["init", "-q"]);
-  extension.write("hivex-extension.json", r#"{"replaces":["hivex-git"]}"#);
+  extension.write(
+    "hivex-extension.json",
+    r#"{"replaces":["hivex-git"],"ignore":["/work/"]}"#,
+  );
   extension.write("skills/demo-git/SKILL.md", "# Demo git 1\n");
   extension.write("skills/hivex-design/SKILL.md", "# Replaced design\n");
   extension.write("assets/project/AGENTS.md", "# Demo agents 1\n");
@@ -98,7 +101,7 @@ fn init_installs_an_extension_over_the_foundation() {
     p.read_json("hivex.json")["extensions"],
     json!([{"repository": repository, "version": "0.1.0"}])
   );
-  assert!(read(&p, ".gitignore").contains("/.claude/skills/demo-git\n"));
+  assert!(read(&p, ".gitignore").contains("/.claude/skills/demo-git\n/work/\n"));
   // The cached release is local state and invisible to source selection.
   assert!(
     !list(&run(&p, &["sources"]), "documents")

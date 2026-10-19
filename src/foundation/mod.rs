@@ -79,6 +79,8 @@ struct Bundle {
   templates: Vec<(String, Vec<u8>)>,
   /// Skill files, relative to `.agents/skills/`.
   skills: Vec<(String, Vec<u8>)>,
+  /// Ignore rules added by extensions.
+  ignore: Vec<String>,
 }
 
 impl Bundle {
@@ -92,6 +94,7 @@ impl Bundle {
     let mut bundle = Self {
       templates: owned(TEMPLATE_FILES),
       skills: owned(SKILL_FILES),
+      ignore: Vec::new(),
     };
     for pin in pins {
       extension::apply(&mut bundle, &extension::fetch(root, pin)?)?;
@@ -120,6 +123,7 @@ impl Bundle {
       .iter()
       .map(|rule| (*rule).to_owned())
       .chain(links)
+      .chain(self.ignore.iter().cloned())
       .collect()
   }
 }

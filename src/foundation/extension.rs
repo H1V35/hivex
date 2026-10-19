@@ -151,27 +151,39 @@ pub fn fetch(root: &Path, pin: &Pin) -> Result<PathBuf> {
   Ok(directory)
 }
 
-/// The skills an extension replaces, from its manifest.
-fn replaced_skills(directory: &Path) -> Result<Vec<String>> {
+/// What an extension's manifest declares.
+struct Manifest {
+  /// Bundled skills the extension removes.
+  replaces: Vec<String>,
+  /// Ignore rules the extension's projects need, managed like Hivex's own.
+  ignore: Vec<String>,
+}
+
+fn manifest(directory: &Path) -> Result<Manifest> {
   let invalid = |message: &str| error("INVALID_EXTENSION", format!("{MANIFEST}: {message}"));
   let text = fs::read(directory.join(MANIFEST)).map_err(|_| invalid("missing"))?;
   let manifest: Value = serde_json::from_slice(&text).map_err(|_| invalid("invalid JSON"))?;
-  let Some(replaces) = manifest
+  let manifest = manifest
     .as_object()
-    .ok_or_else(|| invalid("must be an object"))?
-    .get("replaces")
-  else {
-    return Ok(Vec::new());
+    .ok_or_else(|| invalid("must be an object"))?;
+  let list = |key: &str| -> Result<Vec<String>> {
+    let Some(values) = manifest.get(key) else {
+      return Ok(Vec::new());
+    };
+    values
+      .as_array()
+      .and_then(|values| {
+        values
+          .iter()
+          .map(|value| value.as_str().map(str::to_owned))
+          .collect()
+      })
+      .ok_or_else(|| invalid(&format!("{key} must list text")))
   };
-  replaces
-    .as_array()
-    .and_then(|names| {
-      names
-        .iter()
-        .map(|name| name.as_str().map(str::to_owned))
-        .collect()
-    })
-    .ok_or_else(|| invalid("replaces must list skill names"))
+  Ok(Manifest {
+    replaces: list("replaces")?,
+    ignore: list("ignore")?,
+  })
 }
 
 /// Regular files under `directory`, by `/`-separated relative path. Symbolic links are skipped.
@@ -212,7 +224,10 @@ fn files(directory: &Path) -> Result<Vec<(String, Vec<u8>)>> {
 /// Apply an extension: its project files win over the bundled ones at the same path, and its
 /// skills replace bundled skills of the same name and those its manifest names.
 pub fn apply(bundle: &mut Bundle, directory: &Path) -> Result<()> {
-  let replaced = replaced_skills(directory)?;
+  let Manifest {
+    replaces: replaced,
+    ignore,
+  } = manifest(directory)?;
   let bundled = bundle.skill_names();
   if let Some(unknown) = replaced.iter().find(|name| !bundled.contains(name)) {
     return Err(error(
@@ -229,6 +244,9 @@ pub fn apply(bundle: &mut Bundle, directory: &Path) -> Result<()> {
     !added.contains(skill_name(path)) && !replaced.iter().any(|name| name == skill_name(path))
   });
   bundle.skills.extend(skills);
+  bundle
+    .ignore
+    .extend(ignore.into_iter().filter(|rule| !rule.trim().is_empty()));
   for (path, bytes) in files(&directory.join("assets").join("project"))? {
     match bundle
       .templates
