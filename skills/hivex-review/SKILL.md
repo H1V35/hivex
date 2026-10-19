@@ -9,7 +9,7 @@ Establish the comparison base, reviewed revision and intended outcome from the i
 
 Assess the change independently under the project's engineering policy and state any limit to that independence.
 
-Assess scope, correctness, regressions and relevant standards. Ground findings in an affected scenario and evidence; omit speculative defects, existing problems outside scope and style preferences handled by configured tools. Identify simpler solutions when they materially improve the result.
+Assess scope, correctness, regressions and relevant standards. Ground findings in an affected scenario and evidence; omit speculative defects, existing problems outside scope and style preferences handled by configured tools. Identify simpler solutions when they materially improve the result; when the ponytail plugin that `hivex init` installs is available, its `ponytail-review` skill helps find what the change could reuse, simplify or delete. Report those findings under the evidence and reporting rules here.
 
 Recover decisions, dependencies, exceptions and replacements through the documentation map, current Markdown and authored links. Use deterministic source search/read to expand only the evidence needed. The responsible reviewer assesses knowledge against sources and code; structural validation is not semantic approval.
 

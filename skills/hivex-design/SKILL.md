@@ -23,6 +23,8 @@ When visual direction is open, use a representative rendered screen or interacti
 
 Check terms and responsibilities against the project's glossary, code, rules and exceptions. Resolve ambiguity in the owning context instead of inventing synonyms. Prefer interfaces that hide useful complexity; question layers that only forward calls. Add an abstraction for a concrete responsibility, not to impose hexagonal architecture.
 
+When the ponytail plugin that `hivex init` installs is available, apply its `ponytail` skill to architectural choices: reuse what the project already has, then the standard library, platform features and installed dependencies, before proposing a new layer or dependency. It shortens the solution, never the recovery of evidence or the decisions above.
+
 Capture the outcome, boundaries and useful acceptance evidence in the existing issue or spec. Split only for independently verifiable results or real dependencies. Cross-layer slices should deliver a meaningful behavior; a broad mechanical refactor may instead need introduction, migration and removal in stages.
 
 Use `hivex-document` for durable decisions and `hivex-git` for authorized tracker work. Neither extra tickets nor a fixed number of alternatives, agents or prototypes is required.
