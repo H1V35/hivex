@@ -43,8 +43,17 @@ fn run(command: &mut Command) -> Result<String> {
   Ok(String::from_utf8(output.stdout)?)
 }
 
+/// Lowercase hexadecimal SHA-256; sha2 0.11 digests no longer implement `LowerHex`.
 fn digest(path: &Path) -> Result<String> {
-  Ok(format!("{:x}", Sha256::digest(fs::read(path)?)))
+  let bytes = Sha256::digest(fs::read(path)?);
+  Ok(
+    bytes
+      .iter()
+      .fold(String::with_capacity(64), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+      }),
+  )
 }
 
 fn write_json(path: &Path, value: &Value) -> Result<()> {
