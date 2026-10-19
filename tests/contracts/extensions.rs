@@ -14,7 +14,9 @@ fn git_directory() -> PathBuf {
 fn git(repository: &Project, args: &[&str]) {
   let status = Command::new("git")
     .current_dir(&repository.root)
-    .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
+    // Fixtures are committed byte for byte, also where Git converts line endings by default.
+    .args(["-c", "core.autocrlf=false", "-c", "user.name=Test"])
+    .args(["-c", "user.email=test@example.com"])
     .args(args)
     .output()
     .unwrap();
@@ -390,6 +392,15 @@ fn invalid_releases_leave_the_pinned_cache_and_negations_are_refused() {
 
   extension.write("hivex-extension.json", r#"{"ignore":["!/.hivex/"]}"#);
   release(&extension, "0.3.0");
+  assert_eq!(run(&p, &["update"])["error"]["code"], "INVALID_EXTENSION");
+  assert_eq!(cache_entries(&p), before);
+
+  // A rule hiding a second line cannot smuggle a negation in.
+  extension.write(
+    "hivex-extension.json",
+    r#"{"ignore":["/work/\n!/.hivex/"]}"#,
+  );
+  release(&extension, "0.4.0");
   assert_eq!(run(&p, &["update"])["error"]["code"], "INVALID_EXTENSION");
   assert_eq!(cache_entries(&p), before);
 }

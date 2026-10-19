@@ -324,10 +324,10 @@ fn validate(content: &Content, bundled: &[String]) -> Result<()> {
   if let Some(rule) = content
     .ignore
     .iter()
-    .find(|rule| rule.trim().is_empty() || rule.starts_with('!'))
+    .find(|rule| rule.trim().is_empty() || rule.starts_with('!') || rule.contains(['\r', '\n']))
   {
     return Err(invalid(format!(
-      "{MANIFEST}: ignore rules must be nonempty and cannot re-include paths: {rule:?}"
+      "{MANIFEST}: ignore rules must be single nonempty lines that do not re-include paths: {rule:?}"
     )));
   }
   Ok(())
@@ -494,7 +494,8 @@ mod tests {
 
   #[test]
   fn git_remotes_and_local_paths_are_told_apart() {
-    let root = Path::new("/project");
+    let root = Path::new("project");
+    let local = |path: &str| root.join(path).to_string_lossy().into_owned();
     assert_eq!(
       location(root, "owner/repo"),
       "https://github.com/owner/repo.git"
@@ -506,12 +507,16 @@ mod tests {
     assert_eq!(location(root, "ssh://host/repo"), "ssh://host/repo");
     assert_eq!(
       location(root, "./vendor/extension"),
-      "/project/./vendor/extension"
+      local("./vendor/extension")
     );
-    assert_eq!(
-      location(root, "C:\\extensions\\demo"),
-      "/project/C:\\extensions\\demo"
-    );
+    // A one-letter prefix is a Windows drive, never an SSH host.
+    let drive = "C:\\extensions\\demo";
+    let expected = if cfg!(windows) {
+      drive.to_owned()
+    } else {
+      local(drive)
+    };
+    assert_eq!(location(root, drive), expected);
   }
 
   #[test]
