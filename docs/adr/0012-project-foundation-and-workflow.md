@@ -54,6 +54,10 @@ The foundation also ships the [self-hosted runner pool procedure](../../skills/h
 
 `init` no longer links the skills into the installed package. It copies the six skills, with their references, assets and language templates, from the executable into `.agents/skills/` and links each from `.claude/skills/`; Git ignores those per-machine links. A standalone executable therefore installs the skills. `hivex.json` pins the release, and `update` refreshes the copies and moves the pin forward. The [guide](../guide.md#initialize-a-project) describes the current behavior.
 
+## Amendment (2026-10-19): reviewer when no other vendor is available
+
+The cross-vendor reviewer remains the default and the reason above still holds. When no model from a different vendor is available, the review uses the implementer's vendor in a new session that never saw the implementation, and the review record states that independence level; it never falls back silently. The [independent review procedure](../../skills/hivex/assets/project/docs/procedures/independent-review.md) operates both cases, and the project's engineering guide records the profiles.
+
 ## Relationships
 
 - Extends [Product contract](0010-practical-knowledge-assistance.md): adds the project foundation and independent capabilities without making every phase mandatory.

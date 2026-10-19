@@ -2,7 +2,7 @@
 title: "Engineering"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-03
+updated_at: 2026-10-19
 tags: [engineering, quality, workflow]
 ---
 
@@ -36,7 +36,17 @@ Run the relevant checks for the affected surfaces. Documentation and configurati
 
 ## Independent review
 
-Use one independent review by default, covering scope, correctness and project standards. Add another when concrete risk or findings justify it. The reviewer uses a different model vendor than the implementing agent, so the review does not share its blind spots. Record the reviewer's model and reasoning effort here; the initial profile is `gpt-6.1-sol` with `xhigh` effort, read-only through Codex, following `hivex-review` under the [independent review procedure](../procedures/independent-review.md). Hivex retrieval does not choose or invoke a model.
+Use one independent review by default before integrating a pull request, covering scope, correctness and project standards. Add another when concrete risk or findings justify it. The reviewer works read-only in a session that never saw the implementation, follows `hivex-review` and runs under the [independent review procedure](../procedures/independent-review.md).
+
+Prefer a reviewer from a different model vendor than the implementing agent, so the review does not share its blind spots. When none is available, use the same vendor in a new isolated session, and say so in the review record; never fall back silently. Record the project's reviewer profiles here and keep them current:
+
+| Implementing agent | Reviewer | Tool | Model | Effort |
+| --- | --- | --- | --- | --- |
+| Claude | Cross-vendor | Codex | `gpt-6.1-sol` | `xhigh` |
+| Codex or another OpenAI model | Cross-vendor | Claude Code | `claude-opus-5-5` | `xhigh` |
+| Any, when no other vendor is available | Same vendor, isolated | The implementer's tool | Its strongest model | Highest available |
+
+Hivex retrieval does not choose or invoke a model.
 
 The principal reviewer verifies possible conflicts with relevant decisions, dependencies and exceptions. Hivex assists that review. Start with local recovery of evidence; the reviewer reasons about actual applicability. Structural validation does not approve an implementation.
 
