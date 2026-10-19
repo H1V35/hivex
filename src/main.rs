@@ -4,7 +4,7 @@ mod documents;
 mod error;
 mod foundation;
 
-use error::HivexError;
+use error::HiveXError;
 use std::ffi::OsString;
 use std::io::{self, Write};
 
@@ -15,7 +15,7 @@ fn main() {
     .skip(1)
     .map(OsString::into_string)
     .collect::<Result<Vec<_>, _>>()
-    .map_err(|_| HivexError::new("INVALID_ARGUMENT", "Arguments must be valid UTF-8"))
+    .map_err(|_| HiveXError::new("INVALID_ARGUMENT", "Arguments must be valid UTF-8"))
     .and_then(|args| cli::run(&args));
   let code = match result {
     Ok(output) => {

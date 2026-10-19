@@ -4,7 +4,7 @@ use super::page::{self, Cursor};
 use crate::documents::{
   Document, MAX_DOCUMENTS, Project, line_content, load_project, raw_line_ranges,
 };
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde_json::{Value, json};
 
 fn metadata(document: &Document) -> Value {
@@ -62,7 +62,7 @@ pub fn sources(args: &[String]) -> Result<Value> {
       })
     },
     |_| {
-      HivexError::new(
+      HiveXError::new(
         "OUTPUT_LIMIT",
         "The next source metadata does not fit; increase --max-bytes or narrow the selected sources",
       )
@@ -81,7 +81,7 @@ pub fn read(args: &[String]) -> Result<Value> {
   let max_bytes = page::text_bytes(&arguments)?;
   let project = load_project(arguments.root())?;
   let source = project.document(id).ok_or_else(|| {
-    HivexError::new(
+    HiveXError::new(
       "SOURCE_NOT_FOUND",
       format!("Markdown source was not selected: {id}"),
     )
@@ -92,7 +92,7 @@ pub fn read(args: &[String]) -> Result<Value> {
   let end = to.unwrap_or(line_count);
   if start > end || end > line_count {
     return Err(
-      HivexError::new(
+      HiveXError::new(
         "INVALID_RANGE",
         format!("Line range {start}-{end} is outside the source"),
       )
@@ -146,7 +146,7 @@ fn excerpt(
     if bytes > max_bytes {
       let Some(included) = included else {
         return Err(
-          HivexError::new(
+          HiveXError::new(
             "OUTPUT_LIMIT",
             "The first requested line exceeds --max-bytes",
           )

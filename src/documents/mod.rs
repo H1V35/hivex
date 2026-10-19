@@ -13,7 +13,7 @@ pub(crate) use search::{Match, Query, search as search_sources};
 pub(crate) use validation::validate_sources;
 
 use crate::compatibility::{normalize_path, project_directory};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use collation::{compare_paths, compare_serialized};
 use markdown::MARKDOWN_EXTENSIONS;
 use selection::{Candidate, Config, GENERATED_DIRECTORIES, PROTECTED_DIRECTORIES};
@@ -70,8 +70,8 @@ impl Project {
   }
 }
 
-fn failure(code: &str, message: impl Into<String>, details: serde_json::Value) -> HivexError {
-  HivexError::new(code, message).with_details(details)
+fn failure(code: &str, message: impl Into<String>, details: serde_json::Value) -> HiveXError {
+  HiveXError::new(code, message).with_details(details)
 }
 
 /// Load the selected Markdown of the project at `root` from the working copy.
@@ -126,7 +126,7 @@ fn read_document(root: &Path, candidate: &Candidate, budget: usize) -> Result<Do
     .map_err(unreadable)?
     .len();
   if size > budget as u64 {
-    return Err(HivexError::new(
+    return Err(HiveXError::new(
       "CORPUS_LIMIT",
       "Selected Markdown exceeds the 64 MiB memory budget; narrow include paths",
     ));

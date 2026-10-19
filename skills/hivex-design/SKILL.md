@@ -5,7 +5,7 @@ description: Resolve product, interface or architectural decisions through focus
 
 # Resolve what matters
 
-Recover the request, relevant Markdown and Hivex's local evidence before asking questions. Reuse settled decisions and inspect facts available in the repository or primary sources. A defined change can proceed to implementation without an interview or another planning artifact.
+Recover the request, relevant Markdown and HiveX's local evidence before asking questions. Reuse settled decisions and inspect facts available in the repository or primary sources. A defined change can proceed to implementation without an interview or another planning artifact.
 
 For a grill, ask one consequential question at a time, explain the tradeoff and recommend a course of action. Follow dependencies between decisions and wait for the owner's answer before implementing a design still under discussion.
 

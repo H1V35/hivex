@@ -8,7 +8,7 @@ tags: [adr, workflow, adoption]
 
 # Project foundation and adaptive workflow
 
-Hivex distributes a small project documentation foundation, five independent workflow skills for design, documentation, implementation, review and Git/triage, plus the Hivex knowledge-support skill. The foundation extends [ADR 0010](0010-practical-knowledge-assistance.md); it does not turn the CLI into a development-session orchestrator or replace the principal reviewer.
+HiveX distributes a small project documentation foundation, five independent workflow skills for design, documentation, implementation, review and Git/triage, plus the HiveX knowledge-support skill. The foundation extends [ADR 0010](0010-practical-knowledge-assistance.md); it does not turn the CLI into a development-session orchestrator or replace the principal reviewer.
 
 ## Initialize without taking ownership
 
@@ -20,7 +20,7 @@ Project-local skill installation remains supported. `init` prepares a `CLAUDE.md
 
 Use the capabilities a task needs. Design, documentation, implementation, review and Git/triage skills remain independent; planning stages and extra tickets are not compulsory when the work is already defined. Triage labels describe readiness, participation, dependency, type, scope and risk for their distinct purposes. Labels neither select models nor grant permission. Preserve useful work labels such as `epic`, `research`, `prototype` and `decision` when skills change; avoid aliases that duplicate existing meaning.
 
-Skills provide task knowledge and criteria. The host harness coordinates agents, applies model and effort configuration, and manages execution permissions, processes and session limits. Project Markdown owns workflow policy; Hivex's CLI owns source retrieval, versions, explicit coverage and authored navigation. Keep those responsibilities distinct instead of duplicating harness mechanics in skills. The CLI invokes no knowledge model.
+Skills provide task knowledge and criteria. The host harness coordinates agents, applies model and effort configuration, and manages execution permissions, processes and session limits. Project Markdown owns workflow policy; HiveX's CLI owns source retrieval, versions, explicit coverage and authored navigation. Keep those responsibilities distinct instead of duplicating harness mechanics in skills. The CLI invokes no knowledge model.
 
 ## Engineering and independent review
 
@@ -42,9 +42,9 @@ The former graph-completeness and zero-warning gate is retained in the [historic
 
 The owner replaced the same-model reviewer rule. A reviewer from a different model vendor surfaces defects a same-vendor review misses; in Compi it caught defects the same-model review had approved. Implementation currently runs on Claude Code, so the foundation's initial reviewer is `gpt-6.1-sol` with `xhigh` effort, read-only through Codex, following `hivex-review`. Projects record their reviewer profile in their engineering guideline and may change it while keeping a different vendor. The foundation ships the [independent review procedure](../../skills/hivex/assets/project/docs/procedures/independent-review.md) with its report schema.
 
-The foundation also ships the [self-hosted runner pool procedure](../../skills/hivex/assets/project/docs/procedures/self-hosted-runners.md) for private projects running CI on their own machines: a pool of single-job runners, each with a private `HOME` so setup actions do not replace the owner's toolchain or each other's binaries. Hivex itself is public and keeps its GitHub-hosted runners under the [execution procedure](../procedures/self-hosted-runner.md).
+The foundation also ships the [self-hosted runner pool procedure](../../skills/hivex/assets/project/docs/procedures/self-hosted-runners.md) for private projects running CI on their own machines: a pool of single-job runners, each with a private `HOME` so setup actions do not replace the owner's toolchain or each other's binaries. HiveX itself is public and keeps its GitHub-hosted runners under the [execution procedure](../procedures/self-hosted-runner.md).
 
-`init` creates these files only when absent. Existing projects adopt them deliberately when updating Hivex.
+`init` creates these files only when absent. Existing projects adopt them deliberately when updating HiveX.
 
 ## Amendment (2026-10-03): native `AGENTS.md`
 

@@ -2,7 +2,7 @@ use super::arguments::{Arguments, invalid};
 use super::page::{self, Cursor};
 use super::{ORIGIN, coverage, status};
 use crate::documents::{Match, Query, hash, load_project, search_sources};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde_json::{Value, json};
 
 const MAX_QUERY_BYTES: usize = 4_096;
@@ -74,14 +74,14 @@ pub fn command(args: &[String]) -> Result<Value> {
   )
 }
 
-fn usage() -> HivexError {
+fn usage() -> HiveXError {
   invalid(
     "Use search <query up to 4096 bytes> [--source <document>] [--historical] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
   )
 }
 
-fn oversized(found: &Match) -> HivexError {
-  HivexError::new(
+fn oversized(found: &Match) -> HiveXError {
+  HiveXError::new(
     "OUTPUT_LIMIT",
     "The next complete passage exceeds --max-bytes; read its cited range or increase the limit",
   )

@@ -1,18 +1,18 @@
 ---
-title: "Hivex guide"
+title: "HiveX guide"
 status: accepted
 created_at: 2026-09-17
 updated_at: 2026-10-19
 tags: [cli, retrieval, adoption]
 ---
 
-# Hivex guide
+# HiveX guide
 
-Hivex is an AI-first CLI for agents and people. The principal agent reasons and implements; Hivex supplies reusable workflow skills and deterministic retrieval of repository Markdown. No command invokes a model or requires a persistent knowledge database.
+HiveX is an AI-first CLI for agents and people. The principal agent reasons and implements; HiveX supplies reusable workflow skills and deterministic retrieval of repository Markdown. No command invokes a model or requires a persistent knowledge database.
 
 ## Install the CLI
 
-Hivex is one executable with the six skills, the project foundation and the language templates built in; it needs no Node.js, Bun, npm, model credentials or Codex process. Each release `vX.Y.Z` on [GitHub Releases](https://github.com/H1V35/hivex/releases) provides prebuilt archives for macOS, Linux and Windows: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`. Each archive, `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` on Windows), contains the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, and has a `.sha256` checksum file beside it. Download yours from the Releases page or with the GitHub CLI, check it and put `hivex` (`hivex.exe` on Windows) on your `PATH`:
+HiveX is one executable with the six skills, the project foundation and the language templates built in; it needs no Node.js, Bun, npm, model credentials or Codex process. Each release `vX.Y.Z` on [GitHub Releases](https://github.com/H1V35/hivex/releases) provides prebuilt archives for macOS, Linux and Windows: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`. Each archive, `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` on Windows), contains the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, and has a `.sha256` checksum file beside it. Download yours from the Releases page or with the GitHub CLI, check it and put `hivex` (`hivex.exe` on Windows) on your `PATH`:
 
 ```sh
 gh release download v0.13.1 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
@@ -55,25 +55,25 @@ New installations ignore the Claude skill links (`/.claude/skills/hivex*`), `.hi
 
 ## Update a project
 
-`update [--root <project>]` brings what Hivex manages to the installed release and never creates or changes project files other than the pin in `hivex.json`. It makes the skill files in `.agents/skills/` identical to the installed release, reporting changed files in `updated` and missing ones in `created`, restores any missing Claude skill link and managed ignore rule as `init` does, and [moves the pin forward](#pin-the-release). A former npm link at `.agents/skills/<name>`, pointing into `node_modules`, is replaced with a copy: the directory is reported in `updated` and its files in `created`. It then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. After installing a new release, run `hivex update` and commit the changed skill files and `hivex.json`.
+`update [--root <project>]` brings what HiveX manages to the installed release and never creates or changes project files other than the pin in `hivex.json`. It makes the skill files in `.agents/skills/` identical to the installed release, reporting changed files in `updated` and missing ones in `created`, restores any missing Claude skill link and managed ignore rule as `init` does, and [moves the pin forward](#pin-the-release). A former npm link at `.agents/skills/<name>`, pointing into `node_modules`, is replaced with a copy: the directory is reported in `updated` and its files in `created`. It then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. After installing a new release, run `hivex update` and commit the changed skill files and `hivex.json`.
 
 ## Extensions
 
 An extension adds skills and project files to the bundled foundation for a particular kind of project or person, without forking the CLI. It is a Git repository whose `vX.Y.Z` tags are releases:
 
-- `hivex-extension.json`: a JSON object. Optional `replaces` lists bundled skills the extension removes, for example `["hivex-git"]`; optional `ignore` lists `.gitignore` rules its projects need, such as `["/work/"]`, appended and kept like Hivex's own managed rules, which always come last. Negated rules (`!…`) are refused, so an extension cannot re-include Hivex's local state.
+- `hivex-extension.json`: a JSON object. Optional `replaces` lists bundled skills the extension removes, for example `["hivex-git"]`; optional `ignore` lists `.gitignore` rules its projects need, such as `["/work/"]`, appended and kept like HiveX's own managed rules, which always come last. Negated rules (`!…`) are refused, so an extension cannot re-include HiveX's local state.
 - `skills/<name>/…`: complete skills. A skill with the name of a bundled skill replaces it entirely.
 - `assets/project/…`: project files. A file at the same path as a bundled foundation file replaces it; others are added. Markdown under `docs/` receives the creation date like bundled files. A replacing file keeps the headings or explicit anchors that bundled documents and skills link to; verify an extension by running `hivex init --extension <path>` in an empty folder and `hivex check` there.
 
-Install an extension in a new project with `hivex init --extension <repository>`, where `<repository>` is `OWNER/REPO` on GitHub, a Git URL (including `user@host:path`), an absolute path or a path starting with `./` or `../`, resolved from the project root. Hivex needs `git`; private repositories need Git credentials, for example `gh auth setup-git`. `init` pins the newest release in `hivex.json`:
+Install an extension in a new project with `hivex init --extension <repository>`, where `<repository>` is `OWNER/REPO` on GitHub, a Git URL (including `user@host:path`), an absolute path or a path starting with `./` or `../`, resolved from the project root. HiveX needs `git`; private repositories need Git credentials, for example `gh auth setup-git`. `init` pins the newest release in `hivex.json`:
 
 ```json
 {"version": "0.13.1", "extensions": [{"repository": "OWNER/REPO", "version": "1.2.0"}]}
 ```
 
-A project that already has `hivex.json` lists extensions there instead; `init --extension` refuses to change an existing configuration. `init` installs each pinned release, so every machine gets the same files, and `update` moves each extension to its newest release, rewrites its skills and records the new versions. Project files keep the rule of every project file: created when missing, never changed afterwards; an extension's `.gitignore` only starts a missing one, to which the managed rules are appended. Hivex fetches exactly the `refs/tags/vX.Y.Z` tag, without line-ending conversion, validates it before caching it in the ignored `.hivex/extensions/` (a real directory, never a link) under a name derived from the repository, and keeps only the pinned release of each repository there. Extension files keep their Unix execute permission; symbolic links inside an extension are skipped, and linked source directories or names that could leave the tree make it invalid.
+A project that already has `hivex.json` lists extensions there instead; `init --extension` refuses to change an existing configuration. `init` installs each pinned release, so every machine gets the same files, and `update` moves each extension to its newest release, rewrites its skills and records the new versions. Project files keep the rule of every project file: created when missing, never changed afterwards; an extension's `.gitignore` only starts a missing one, to which the managed rules are appended. HiveX fetches exactly the `refs/tags/vX.Y.Z` tag, without line-ending conversion, validates it before caching it in the ignored `.hivex/extensions/` (a real directory, never a link) under a name derived from the repository, and keeps only the pinned release of each repository there. Extension files keep their Unix execute permission; symbolic links inside an extension are skipped, and linked source directories or names that could leave the tree make it invalid.
 
-`.agents/.hivex-managed.json` records the skill files and Claude links Hivex installed. `update` removes those a newer release no longer provides, listing them under `removed`; in projects initialized before the inventory existed, only the bundled skill files and links that are present count as managed, so other skills, even with a `hivex` prefix, are kept. `init` removes nothing and keeps recording what an earlier release installed. An inventory listing paths outside `.agents/skills/<skill>/` or `.claude/skills/<skill>` fails with `INVALID_CONFIG`.
+`.agents/.hivex-managed.json` records the skill files and Claude links HiveX installed. `update` removes those a newer release no longer provides, listing them under `removed`; in projects initialized before the inventory existed, only the bundled skill files and links that are present count as managed, so other skills, even with a `hivex` prefix, are kept. `init` removes nothing and keeps recording what an earlier release installed. An inventory listing paths outside `.agents/skills/<skill>/` or `.claude/skills/<skill>` fails with `INVALID_CONFIG`.
 
 The init and update reports list the installed `extensions`. A missing `git`, an unreachable repository or a repository without release tags fails with `EXTENSION_UNAVAILABLE`; an invalid manifest, or one that replaces an unknown skill, fails with `INVALID_EXTENSION`. Nothing is written in either case.
 
@@ -89,7 +89,7 @@ Documents need no Git repository or committed revision. Keep them at their real 
 }
 ```
 
-Without configuration, Hivex selects Markdown under the project. Dependencies, Git metadata, generated directories (`vendor`, `dist`, `build`, Rust `target`), private dot directories and retained state are skipped. Explicit include/archive patterns can name generated documentation directories when that scope is intended. Explicit documentation directories can be selected; symlinks, protected directories and scope escapes are rejected. `exclude` wins over `archive`. The old `history` configuration field remains compatible; specifying both `history` and `archive` is invalid. Legacy `collections` configuration requires migration. Archive membership marks history explicitly rather than changing what its original status meant.
+Without configuration, HiveX selects Markdown under the project. Dependencies, Git metadata, generated directories (`vendor`, `dist`, `build`, Rust `target`), private dot directories and retained state are skipped. Explicit include/archive patterns can name generated documentation directories when that scope is intended. Explicit documentation directories can be selected; symlinks, protected directories and scope escapes are rejected. `exclude` wins over `archive`. The old `history` configuration field remains compatible; specifying both `history` and `archive` is invalid. Legacy `collections` configuration requires migration. Archive membership marks history explicitly rather than changing what its original status meant.
 
 ## Recover context
 

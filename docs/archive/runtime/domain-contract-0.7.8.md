@@ -11,7 +11,7 @@ source: https://github.com/H1V35/hivex/blob/180ea2750e0da9253494b02e7bbbb2593872
 
 # Domain modules and replaceable execution integrations
 
-This decision records the Rust domain boundaries and the compatibility contracts for Hivex's supported runtime. The model-assisted CLI and derived graph remain optional capabilities. [ADR 0014](../../adr/0014-reliable-markdown-and-explicit-relationships.md) makes reliable Markdown and authored relationships the primary retrieval path; this decision preserves the current runtime and data contracts without making graph use mandatory or removing supported commands.
+This decision records the Rust domain boundaries and the compatibility contracts for HiveX's supported runtime. The model-assisted CLI and derived graph remain optional capabilities. [ADR 0014](../../adr/0014-reliable-markdown-and-explicit-relationships.md) makes reliable Markdown and authored relationships the primary retrieval path; this decision preserves the current runtime and data contracts without making graph use mandatory or removing supported commands.
 
 ## Module ownership
 

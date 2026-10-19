@@ -1,6 +1,6 @@
 # Recommended Markdown foundation
 
-Use this foundation when adopting Hivex. Prefer migration to its standard structure when reasonably possible, preserving and completing useful existing documents, their authority, history and links. Hivex accepts other Markdown layouts; the authority map and authored relationships guide source reading. The inferred graph runtime is retired.
+Use this foundation when adopting HiveX. Prefer migration to its standard structure when reasonably possible, preserving and completing useful existing documents, their authority, history and links. HiveX accepts other Markdown layouts; the authority map and authored relationships guide source reading. The inferred graph runtime is retired.
 
 The foundation combines a clear authority map, project purpose, domain language and maintainable decisions. The bundled documentation skill guides adoption and completion; no retired planning framework or external skill set is required.
 
@@ -140,9 +140,9 @@ Before changing behavior, recover the existing authority and follow its relevant
 
 Use a short `AGENTS.md` with orientation and knowledge pointers, development/verification guidance and project-specific constraints only where needed. Link the relevant authority with enough context to know when it matters. Do not duplicate the PRD, glossary or guidelines, or require every document on every task.
 
-The public [AGENTS.md convention](https://agents.md/) uses ordinary Markdown. Keep agent entrypoints plain and concise; Hivex's documentary metadata applies inside `docs/`, not to these entrypoints.
+The public [AGENTS.md convention](https://agents.md/) uses ordinary Markdown. Keep agent entrypoints plain and concise; HiveX's documentary metadata applies inside `docs/`, not to these entrypoints.
 
-This convention carries out Hivex's [selective history decision](https://github.com/H1V35/hivex/blob/main/docs/adr/0011-shared-knowledge-and-selective-history.md): authors preserve dates and provenance while keeping live authorities concise. The link is absolute because this skill is copied into other projects.
+This convention carries out HiveX's [selective history decision](https://github.com/H1V35/hivex/blob/main/docs/adr/0011-shared-knowledge-and-selective-history.md): authors preserve dates and provenance while keeping live authorities concise. The link is absolute because this skill is copied into other projects.
 
 ## Validate affected knowledge
 

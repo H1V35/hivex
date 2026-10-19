@@ -2,7 +2,7 @@ use super::arguments::{Arguments, invalid};
 use super::page::{self, Cursor};
 use super::{ORIGIN, coverage, status};
 use crate::documents::{AuthoredRelation, Direction, authored_relations, hash, load_project};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -76,7 +76,7 @@ pub fn command(args: &[String]) -> Result<Value> {
       })
     },
     |_| {
-      HivexError::new(
+      HiveXError::new(
         "OUTPUT_LIMIT",
         "The next complete relation exceeds --max-bytes; increase it within 65536",
       )
@@ -84,7 +84,7 @@ pub fn command(args: &[String]) -> Result<Value> {
   )
 }
 
-fn usage() -> HivexError {
+fn usage() -> HiveXError {
   invalid(
     "Use relations <document> [--direction outgoing|incoming|both] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
   )

@@ -8,7 +8,7 @@ tags: [adr, architecture, runtime]
 
 # Domain modules for deterministic Markdown retrieval
 
-Hivex remains a modular Rust monolith with small concrete interfaces. The owner approved retiring the inferred graph and its execution engine under [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md). The [0.7.8 domain record](../archive/runtime/domain-contract-0.7.8.md) preserves the replaced runtime boundaries and accounting guarantees.
+HiveX remains a modular Rust monolith with small concrete interfaces. The owner approved retiring the inferred graph and its execution engine under [ADR 0014](0014-reliable-markdown-and-explicit-relationships.md). The [0.7.8 domain record](../archive/runtime/domain-contract-0.7.8.md) preserves the replaced runtime boundaries and accounting guarantees.
 
 ## Module ownership
 

@@ -1,4 +1,4 @@
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde_json::json;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -29,7 +29,7 @@ pub fn normalize_path(path: &Path) -> PathBuf {
 
 /// The absolute normalized path of an existing project directory that is not a symlink.
 pub fn project_directory(root: &str) -> Result<PathBuf> {
-  let invalid = |message: &str| HivexError::new("INVALID_ROOT", message);
+  let invalid = |message: &str| HiveXError::new("INVALID_ROOT", message);
   if trim_js_whitespace(root).is_empty() {
     return Err(invalid("Project root must be a non-empty path"));
   }

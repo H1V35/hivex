@@ -6,7 +6,7 @@ mod relations;
 mod search;
 
 use crate::documents::Project;
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use arguments::{Arguments, invalid};
 use serde_json::Value;
 
@@ -40,7 +40,7 @@ fn command(args: &[String]) -> Result<Value> {
     "init" => initialize(args),
     "update" => project(args, "update", crate::foundation::update),
     "ask" | "neighbors" | "review" | "warnings" | "snapshot" | "recover" | "prune" | "status" => {
-      Err(HivexError::new(
+      Err(HiveXError::new(
         "COMMAND_RETIRED",
         "The inferred graph runtime was retired in 0.8. Use sources/search/relations/read and the migration guide; legacy files remain untouched.",
       ))

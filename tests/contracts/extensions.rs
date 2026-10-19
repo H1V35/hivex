@@ -214,7 +214,7 @@ fn extension_ignore_templates_and_tags_are_honoured() {
     "# Demo git 1\n"
   );
   let ignore = read(&p, ".gitignore");
-  // Extension rules come first and Hivex's own rules last.
+  // Extension rules come first and HiveX's own rules last.
   assert!(
     ignore.starts_with("custom\n/.claude/skills/demo-git\n/work/\n"),
     "{ignore}"

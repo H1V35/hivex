@@ -17,7 +17,7 @@ The current Rust source workflow exposes decisions through authored Markdown and
 
 Run `cargo test --locked --test cli contracts::source_workflow -- --nocapture` for the curated evidence case. Its independent expectations check the specific sources, direction, historical flags, current versions and visible conditions. These are evidence-exposure checks; no implementing agent was evaluated for natural-language interpretation. A missing lexical match is not proof that the repository contains no relevant decision.
 
-A local debug observation performed nine CLI operations, returned 6819 JSON context bytes and took 90 ms, with zero Hivex model calls. That tiny fixture is smaller than its aggregate JSON responses: direct reading can be cheaper when the authority is already known. The shared method therefore uses capabilities adaptively, reuses current context and visited ranges, and does not require every command for every task.
+A local debug observation performed nine CLI operations, returned 6819 JSON context bytes and took 90 ms, with zero HiveX model calls. That tiny fixture is smaller than its aggregate JSON responses: direct reading can be cheaper when the authority is already known. The shared method therefore uses capabilities adaptively, reuses current context and visited ranges, and does not require every command for every task.
 
 ## Real repository measurements
 
@@ -43,7 +43,7 @@ hivex read skills/hivex/assets/project/docs/adr/README.md --max-bytes 65536
 hivex relations docs/adr/0014-reliable-markdown-and-explicit-relationships.md --direction outgoing --max-bytes 65536
 ```
 
-The observed lexical response exposes three source passages in 6089 bytes, rather than loading the entire ordinary corpus into the agent's context. It does not measure the additional evidence a complete implementation task might need, model tokenization, cold machines, other repository sizes or an end-to-end quality comparison with prior graph maintenance. All reported operations made zero Hivex model calls.
+The observed lexical response exposes three source passages in 6089 bytes, rather than loading the entire ordinary corpus into the agent's context. It does not measure the additional evidence a complete implementation task might need, model tokenization, cold machines, other repository sizes or an end-to-end quality comparison with prior graph maintenance. All reported operations made zero HiveX model calls.
 
 ## Reliability boundaries
 

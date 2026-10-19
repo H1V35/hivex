@@ -1,6 +1,6 @@
 //! Byte-bounded result pages and the continuations that resume them.
 use super::arguments::Arguments;
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::path::Path;
@@ -68,7 +68,7 @@ impl Cursor<'_> {
       .filter(|offset| !offset.is_empty() && offset.bytes().all(|byte| byte.is_ascii_digit()))
       .and_then(|offset| offset.parse().ok())
       .ok_or_else(|| {
-        HivexError::new(
+        HiveXError::new(
           "INVALID_CURSOR",
           "Continuation belongs to a different snapshot or query options",
         )
@@ -84,7 +84,7 @@ impl Cursor<'_> {
 /// Reject a continuation that starts past the end of its result.
 pub fn check_offset(offset: usize, total: usize) -> Result<()> {
   if offset > 0 && offset >= total {
-    return Err(HivexError::new(
+    return Err(HiveXError::new(
       "INVALID_CURSOR",
       "Continuation is outside this result",
     ));
@@ -99,7 +99,7 @@ pub fn fill<T>(
   records: impl IntoIterator<Item = T>,
   max_bytes: usize,
   render: impl Fn(&[T]) -> Value,
-  oversized: impl FnOnce(&T) -> HivexError,
+  oversized: impl FnOnce(&T) -> HiveXError,
 ) -> Result<Value> {
   let fits = |response: &Value| response.to_string().len() <= max_bytes;
   let mut page = Vec::new();
@@ -116,7 +116,7 @@ pub fn fill<T>(
   }
   let response = render(&page);
   if !fits(&response) {
-    return Err(HivexError::new(
+    return Err(HiveXError::new(
       "OUTPUT_LIMIT",
       "Response metadata exceeds --max-bytes",
     ));

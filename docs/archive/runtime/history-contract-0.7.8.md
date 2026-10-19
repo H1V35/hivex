@@ -11,13 +11,13 @@ source: https://github.com/H1V35/hivex/blob/180ea2750e0da9253494b02e7bbbb2593872
 
 # Shared knowledge snapshots and selective documentary history
 
-The owner accepted two changes while reviewing the project under [Hivex #17](https://github.com/H1V35/hivex/issues/17). Long ADRs mix current rules with replaced text, increasing ingestion cost and ambiguity. Keeping the derived graph only in a local store also makes each clone pay to rebuild knowledge and leaves no shared history of the interpretations used. Markdown remains authoritative; versioning a graph does not make its interpretations correct or its sources current.
+The owner accepted two changes while reviewing the project under [HiveX #17](https://github.com/H1V35/hivex/issues/17). Long ADRs mix current rules with replaced text, increasing ingestion cost and ambiguity. Keeping the derived graph only in a local store also makes each clone pay to rebuild knowledge and leaves no shared history of the interpretations used. Markdown remains authoritative; versioning a graph does not make its interpretations correct or its sources current.
 
 ## Compact current decisions, preserve accessible history
 
 An author may move replaced decision text into a clearly historical Markdown archive, preserving the original text, dates and provenance. The current ADR retains the applicable decision, reasons, dependencies and exceptions, with links to its history and replacements. A completely superseded ADR may become a short pointer at its original path. Preserve referenced anchors or update their callers; age alone never makes a still-applicable condition obsolete.
 
-`docs/archive/adr/` is one valid convention, not a required layout for every project. Historical sources remain explicitly available for bounded retrieval when needed. They do not become the normal ingestion backlog or enter every consultation simply because they are accessible. Hivex must respect the project's declared source scope and report unavailable necessary evidence rather than silently omitting a dependency or treating an old rule as current. The author performs documentary compaction; Hivex does not rewrite project decisions automatically.
+`docs/archive/adr/` is one valid convention, not a required layout for every project. Historical sources remain explicitly available for bounded retrieval when needed. They do not become the normal ingestion backlog or enter every consultation simply because they are accessible. HiveX must respect the project's declared source scope and report unavailable necessary evidence rather than silently omitting a dependency or treating an old rule as current. The author performs documentary compaction; HiveX does not rewrite project decisions automatically.
 
 ## Optional shared knowledge, local execution state
 

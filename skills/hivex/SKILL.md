@@ -1,6 +1,6 @@
 ---
 name: hivex
-description: Adopt Hivex's project foundation, recover relevant Markdown decisions and explicit dependencies or exceptions, and maintain reusable source knowledge.
+description: Adopt HiveX's project foundation, recover relevant Markdown decisions and explicit dependencies or exceptions, and maintain reusable source knowledge.
 ---
 
 # Project knowledge and foundation
@@ -9,9 +9,9 @@ Markdown records project intent and decisions. Use the documentation map and exp
 
 ## Use the installed interface
 
-Read the brief project entrypoint and source configuration. Use `hivex --help` for the command contract when the interface is unfamiliar. Do not invent commands. Model configuration belongs to the host harness, not Hivex retrieval.
+Read the brief project entrypoint and source configuration. Use `hivex --help` for the command contract when the interface is unfamiliar. Do not invent commands. Model configuration belongs to the host harness, not HiveX retrieval.
 
-`hivex init` copies these skills with their references, foundation assets and language templates, so their links resolve within `.agents/skills/`. Links into Hivex's own `docs/` resolve only in the Hivex repository; for command details and migration guidance, read the guide of the project's pinned release, `https://github.com/H1V35/hivex/blob/vX.Y.Z/docs/guide.md`, where `X.Y.Z` is the `version` in `hivex.json`. Do not substitute the adopting project's README for the release's command contract. A `versionWarning` in a result means the installed CLI differs from the pinned release; its `install` field gives the command that installs the pinned one.
+`hivex init` copies these skills with their references, foundation assets and language templates, so their links resolve within `.agents/skills/`. Links into HiveX's own `docs/` resolve only in the HiveX repository; for command details and migration guidance, read the guide of the project's pinned release, `https://github.com/H1V35/hivex/blob/vX.Y.Z/docs/guide.md`, where `X.Y.Z` is the `version` in `hivex.json`. Do not substitute the adopting project's README for the release's command contract. A `versionWarning` in a result means the installed CLI differs from the pinned release; its `install` field gives the command that installs the pinned one.
 
 For adoption, `init` prepares missing documents and configuration without model calls. Use `hivex-document` to complete actual project meaning and preserve useful history, and `hivex-git` for tracker work. The five workflow skills and knowledge skill are independent capabilities, not compulsory phases. Apply relevant standards from the installed [language-template catalogue](templates/README.md); project-specific language rules belong in the project.
 

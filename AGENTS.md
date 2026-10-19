@@ -1,8 +1,8 @@
-# Hivex
+# HiveX
 
 ## Orientation
 
-Use the [documentation map](docs/README.md) and relevant decisions to recover project intent. Hivex knowledge supports the responsible agent; use the installed interface and consult only the sources needed for the task.
+Use the [documentation map](docs/README.md) and relevant decisions to recover project intent. HiveX knowledge supports the responsible agent; use the installed interface and consult only the sources needed for the task.
 
 ## Development
 

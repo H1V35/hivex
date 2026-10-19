@@ -1,7 +1,7 @@
 use super::markdown::is_markdown_path;
 use super::markdown::{frontmatter, markdown_options};
 use super::{line_content, raw_line_ranges};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -271,7 +271,7 @@ fn scan_markdown(text: &str) -> Result<MarkdownScan> {
       scan.accept(event, range);
     }
     if scan.anchor_limit {
-      return Err(HivexError::new(
+      return Err(HiveXError::new(
         "ANCHOR_LIMIT",
         "At most 32768 headings and explicit anchors are supported per document",
       ));
@@ -360,8 +360,8 @@ fn line_positions(text: &str, scan: &MarkdownScan) -> (BTreeMap<usize, usize>, u
   (positions, count)
 }
 
-fn relation_error(line: usize, cause: &'static str) -> HivexError {
-  HivexError::new(
+fn relation_error(line: usize, cause: &'static str) -> HiveXError {
+  HiveXError::new(
     "INVALID_RELATION",
     "Invalid entry in the Relationships section",
   )
@@ -534,7 +534,7 @@ pub fn parse(text: &str) -> Result<Vec<DraftRelation>> {
     }
     if relations.len() == MAX_RELATIONS {
       return Err(
-        HivexError::new(
+        HiveXError::new(
           "RELATION_LIMIT",
           "At most 2048 authored declarations are supported per query",
         )
@@ -611,8 +611,8 @@ fn explicit_end(
     })
 }
 
-fn ambiguous_anchor(id: &str, first_line: usize, line: usize) -> HivexError {
-  HivexError::new("AMBIGUOUS_ANCHOR", "Document contains a duplicate anchor").with_details(json!({
+fn ambiguous_anchor(id: &str, first_line: usize, line: usize) -> HiveXError {
+  HiveXError::new("AMBIGUOUS_ANCHOR", "Document contains a duplicate anchor").with_details(json!({
     "anchor": id,
     "cause": "the same anchor ID names more than one target section",
     "firstLine": first_line,

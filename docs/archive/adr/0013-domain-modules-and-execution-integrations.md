@@ -10,7 +10,7 @@ source: https://github.com/H1V35/hivex/blob/1e3768f65f901522a63e00bde51069020049
 
 # Domain modules and replaceable execution integrations
 
-The owner approved [#101](https://github.com/H1V35/hivex/issues/101) after completing the Rust migration. Organize Hivex as a modular monolith around its language and invariants. Directory names alone do not establish a domain boundary; each capability owns meaningful behavior and exposes a small interface. Keep one product without mandatory hexagonal layers or a second orchestration runtime.
+The owner approved [#101](https://github.com/H1V35/hivex/issues/101) after completing the Rust migration. Organize HiveX as a modular monolith around its language and invariants. Directory names alone do not establish a domain boundary; each capability owns meaningful behavior and exposes a small interface. Keep one product without mandatory hexagonal layers or a second orchestration runtime.
 
 Documents own source discovery, parsing and source coordinates. Knowledge owns the derived graph, retrieval, ingestion, relationships, warnings, repairs and portable snapshots. Work owns progress, attempts, budgets, state transitions and recovery. Consultation and review compose those capabilities for their respective tasks. CLI parsing and process exit/output belong at the entry boundary. Concrete SQLite persistence remains beside the behavior it serves; no repository interface is required for every entity.
 
@@ -20,7 +20,7 @@ Work budgets span all phases and attempts. Resumption and configuration changes 
 
 ## Explicit profile continuity (#148)
 
-On 2026-09-30 the owner reaffirmed that the knowledge model may change at any time while Hivex preserves reliability, quality, efficiency and existing data. [#148](https://github.com/H1V35/hivex/issues/148) extends continuation to a supported profile chosen explicitly for a particular work ID, without a new provider framework or dependence on a retired model. Keep the declared #122 upgrade compatible.
+On 2026-09-30 the owner reaffirmed that the knowledge model may change at any time while HiveX preserves reliability, quality, efficiency and existing data. [#148](https://github.com/H1V35/hivex/issues/148) extends continuation to a supported profile chosen explicitly for a particular work ID, without a new provider framework or dependence on a retired model. Keep the declared #122 upgrade compatible.
 
 The original operation, sources and arguments must match. Preserve work identity, plan, pending candidate, attempts, results, receipts, consumption and limits; selecting another profile does not authorize more budget. Record every transition and the integration's opaque request identity so later code can verify historical input without guessing a model's serialization. Unit coverage remains attributed to that same work atomically across its key change; refuse ambiguous attribution. Existing decision/relationship identities, evidence and native quality remain unchanged. Completed historical work cannot be relabeled as a different model's result.
 

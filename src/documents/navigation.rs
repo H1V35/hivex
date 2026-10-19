@@ -1,6 +1,6 @@
 use super::relations::{Anchor, DraftRelation, MAX_RELATIONS, RelationKind, anchors, parse};
 use super::{Document, Project, has_uri_scheme, normalize_path, percent_decode, raw_line_ranges};
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
@@ -55,8 +55,8 @@ pub struct AuthoredRelation {
   pub reason: String,
 }
 
-fn invalid(source: &Document, line: usize, message: &str) -> HivexError {
-  HivexError::new("INVALID_RELATION", message).with_details(json!({
+fn invalid(source: &Document, line: usize, message: &str) -> HiveXError {
+  HiveXError::new("INVALID_RELATION", message).with_details(json!({
     "document":source.id,"line":line,"version":source.hash
   }))
 }
@@ -165,7 +165,7 @@ impl<'a> Resolver<'a> {
           .get_or_insert_with(|| {
             let records = anchors(&document.text)?;
             if *count + records.len() > 65536 {
-              return Err(HivexError::new(
+              return Err(HiveXError::new(
                 "ANCHOR_LIMIT",
                 "A query can retain at most 65536 target anchors; narrow source selection",
               ));
@@ -238,7 +238,7 @@ impl<'a> Resolver<'a> {
   ) -> Result<Vec<AuthoredRelation>> {
     let project = self.project;
     if project.document(id).is_none() {
-      return Err(HivexError::new(
+      return Err(HiveXError::new(
         "SOURCE_NOT_FOUND",
         "Relations require a selected document ID",
       ));
@@ -258,7 +258,7 @@ impl<'a> Resolver<'a> {
         count += 1;
         if count > MAX_RELATIONS {
           return Err(
-            HivexError::new(
+            HiveXError::new(
               "RELATION_LIMIT",
               "At most 2048 authored declarations are supported per query",
             )
@@ -302,7 +302,7 @@ fn order(relation: &AuthoredRelation) -> (&str, usize, &str, Option<&str>) {
 }
 
 /// Attach the declaring document's identity to a parse error.
-fn located(mut error: HivexError, source: &Document) -> HivexError {
+fn located(mut error: HiveXError, source: &Document) -> HiveXError {
   let details = error.details.get_or_insert_with(|| json!({}));
   details["document"] = json!(source.id);
   details["version"] = json!(source.hash);

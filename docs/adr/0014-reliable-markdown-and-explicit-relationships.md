@@ -10,7 +10,7 @@ tags: [adr, documentation, relationships]
 
 ## Reason
 
-Hivex exists to give projects a reusable workflow and preserve decisions that code cannot explain. Knowledge retrieval should help implementing agents avoid contradictions while spending less context and fewer tokens. Repeated graph checks and repairs consumed more effort than the small source changes they maintained; some findings were false and some mappings were prepared incorrectly. Lower input size alone did not establish a reliable or economical workflow.
+HiveX exists to give projects a reusable workflow and preserve decisions that code cannot explain. Knowledge retrieval should help implementing agents avoid contradictions while spending less context and fewer tokens. Repeated graph checks and repairs consumed more effort than the small source changes they maintained; some findings were false and some mappings were prepared incorrectly. Lower input size alone did not establish a reliable or economical workflow.
 
 The owner approved prioritizing a reliable Markdown base, archived history and explicit relationships. The goal remains autonomous, source-grounded work; maintaining an inferred graph is not itself the outcome.
 
@@ -44,7 +44,7 @@ Evaluate retrieval against correct evidence recovered, agent context, query late
 
 Maintain valuable Markdown and its explicit relationships before merging. Deterministic `check` validates affected outer documentary metadata, references and formal entries; authors/reviewers establish meaning and uniqueness of authority. The reviewer checks the affected authorities, current conditions, exceptions, history links and code together. Repair demonstrated contradictions, missing decisions needed by supported behavior, broken references and easy actionable defects. Do not leave durable decisions only in chats or tracker comments.
 
-Recover settled rules before implementation and reconcile the affected authority during the same change. Keep delivery and evidence aligned with the actual code revision. This shared methodology applies to Hivex and its adopting-project foundation to prevent hallucinated rules and contradictions; installing an updated package does not silently replace an existing project's explicit owner policy.
+Recover settled rules before implementation and reconcile the affected authority during the same change. Keep delivery and evidence aligned with the actual code revision. This shared methodology applies to HiveX and its adopting-project foundation to prevent hallucinated rules and contradictions; installing an updated package does not silently replace an existing project's explicit owner policy.
 
 Close the review against a defined source and implementation revision. Record new evidence as a bounded change to that review. A model finding is a claim to verify, not a reason to repeatedly certify the whole corpus. Current unresolved policy conflicts or implementation defects still block integration; a globally green graph, zero unrelated graph warnings or complete graph ingestion are not prerequisites. This does not authorize ignoring a real problem surfaced by the graph.
 
@@ -65,4 +65,4 @@ Preserve existing graph snapshots, SQLite records, failed candidates, attempts, 
 
 ## Delivery evidence
 
-Source-only retrieval and runtime retirement are integrated under #157 / PR #158. Structural validation, shared capability guidance and bounded evidence-exposure cases follow under #159. The [dated measurements](../archive/validation/source-workflow-2026-10-01.md) report local costs and limitations. Release preparation remains separate from npm publication. The owner requested finishing Hivex and notification before Compi adoption; no migration of Compi is part of this delivery.
+Source-only retrieval and runtime retirement are integrated under #157 / PR #158. Structural validation, shared capability guidance and bounded evidence-exposure cases follow under #159. The [dated measurements](../archive/validation/source-workflow-2026-10-01.md) report local costs and limitations. Release preparation remains separate from npm publication. The owner requested finishing HiveX and notification before Compi adoption; no migration of Compi is part of this delivery.

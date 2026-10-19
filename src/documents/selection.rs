@@ -3,7 +3,7 @@ use super::Warning;
 use super::collation::compare_paths;
 use super::markdown::is_markdown_path;
 use crate::compatibility::trim_js_whitespace;
-use crate::error::{HivexError, Result};
+use crate::error::{HiveXError, Result};
 use globset::{Glob, GlobBuilder, GlobMatcher};
 use serde_json::{Value, json};
 use std::fs;
@@ -99,11 +99,11 @@ pub struct Candidate {
   pub historical: bool,
 }
 
-fn invalid(message: impl Into<String>) -> HivexError {
-  HivexError::new("INVALID_CONFIG", message)
+fn invalid(message: impl Into<String>) -> HiveXError {
+  HiveXError::new("INVALID_CONFIG", message)
 }
 
-fn invalid_because(message: &str, reason: &impl ToString) -> HivexError {
+fn invalid_because(message: &str, reason: &impl ToString) -> HiveXError {
   invalid(message).with_details(json!({"reason": reason.to_string()}))
 }
 
@@ -168,7 +168,7 @@ impl Config {
       .as_object()
       .ok_or_else(|| invalid("hivex.json must contain an object"))?;
     if object.contains_key("collections") {
-      return Err(HivexError::new(
+      return Err(HiveXError::new(
         "LEGACY_CONFIGURATION",
         "hivex.json uses legacy collections; replace it with include and exclude globs",
       ));
