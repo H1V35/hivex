@@ -15,15 +15,15 @@ Hivex is an AI-first CLI for agents and people. The principal agent reasons and 
 Hivex is one executable with the six skills, the project foundation and the language templates built in; it needs no Node.js, Bun, npm, model credentials or Codex process. Each release `vX.Y.Z` on [GitHub Releases](https://github.com/H1V35/hivex/releases) provides prebuilt archives for macOS, Linux and Windows: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`. Each archive, `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` on Windows), contains the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, and has a `.sha256` checksum file beside it. Download yours from the Releases page or with the GitHub CLI, check it and put `hivex` (`hivex.exe` on Windows) on your `PATH`:
 
 ```sh
-gh release download v0.12.0 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
-shasum -a 256 -c hivex-v0.12.0-aarch64-apple-darwin.tar.gz.sha256
-tar -xzf hivex-v0.12.0-aarch64-apple-darwin.tar.gz
+gh release download v0.13.0 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
+shasum -a 256 -c hivex-v0.13.0-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf hivex-v0.13.0-aarch64-apple-darwin.tar.gz
 ```
 
 The macOS executables are not notarized, and a browser download is quarantined; remove that attribute with `xattr -d com.apple.quarantine hivex` after checking the archive, or download with `gh` or Cargo instead. Alternatively, build and install a release with stable Rust; `--force` replaces an installed version:
 
 ```sh
-cargo install --git https://github.com/H1V35/hivex --tag v0.12.0 --locked hivex --bin hivex --force
+cargo install --git https://github.com/H1V35/hivex --tag v0.13.0 --locked hivex --bin hivex --force
 ```
 
 Then run `hivex init` in the project root. Versions up to 0.11.1 were installed from the npm package `@h1v35/hivex`, now deprecated; existing projects [migrate from npm](#migrate-from-npm).
@@ -34,7 +34,7 @@ Then run `hivex init` in the project root. Versions up to 0.11.1 were installed 
 
 ```json
 {
-  "version": "0.12.0",
+  "version": "0.13.0",
   "include": ["docs/**/*.md"]
 }
 ```
