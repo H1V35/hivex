@@ -72,6 +72,7 @@ static SKILL_FILES: &[(&str, &[u8])] = bundled![
   "hivex/assets/project/hivex.json",
   "hivex/references/markdown.md",
   "hivex/templates/README.md",
+  "hivex/templates/python/docs/guidelines/python.md",
   "hivex/templates/rust/docs/guidelines/rust.md",
   "hivex/templates/swift/docs/guidelines/ios.md",
   "hivex/templates/swift/docs/guidelines/swift.md",
