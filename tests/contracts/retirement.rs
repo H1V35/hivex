@@ -10,7 +10,6 @@ fn retired_commands_explain_migration_without_touching_retained_state() {
   );
   p.write(".hivex/graph.json", "uncertain historical graph");
   for command in [
-    "update",
     "ask",
     "neighbors",
     "review",

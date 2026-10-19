@@ -30,6 +30,11 @@
     },
     {
       "modelCalls": 0,
+      "name": "update",
+      "usage": "update [--root <project>]"
+    },
+    {
+      "modelCalls": 0,
       "name": "check",
       "usage": "check [--source <document>] [--historical] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
       "maxLocalReferences": 32768

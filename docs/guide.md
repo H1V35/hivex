@@ -2,7 +2,7 @@
 title: "Hivex guide"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-04
+updated_at: 2026-10-19
 tags: [cli, retrieval, adoption]
 ---
 
@@ -28,6 +28,12 @@ In Bun projects use `bun add -d -E @h1v35/hivex`, then `bun hivex init`. The sco
 Initialization is a starting point. The responsible agent completes the project's purpose, vocabulary and scope from evidence and owner decisions, maps current authorities and preserves useful history. The [Markdown foundation](../skills/hivex/references/markdown.md) and [language-template catalogue](../templates/README.md) guide adoption. Installing a package does not replace an existing project's owner policy.
 
 New installations ignore `.hivex/` as retained local state and `.reviews/` for local review traces; `init` appends whichever of these final rules is missing, matching the file's line endings. Previously tracked graph files remain tracked until the project deliberately preserves and retires them; `init` neither deletes nor untracks them. Existing nested ignore files are preserved.
+
+`init` also installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin (MIT) in each host whose CLI is on `PATH`. It first runs `<host> plugin list --json`; when `ponytail@ponytail` is listed it changes nothing, because installing again would replace Codex's copy and re-enable a plugin the owner disabled. Otherwise it runs `claude plugin marketplace add DietrichGebert/ponytail` and `claude plugin install ponytail@ponytail`, or `codex plugin marketplace add DietrichGebert/ponytail` and `codex plugin add ponytail@ponytail`. Each host stops at its first failing step. The report's `plugins` entries are `current` when ponytail is installed (already or now), `missing` when the CLI is not installed and `failed` when a step fails; file results are unaffected and the exit code stays 0. The plugin hooks need Node.js; Codex asks to trust them in `/hooks`, and running apps load updates after a restart. Contract tests replace both CLIs with recording stand-ins and otherwise run with an empty `PATH`, so they never touch real installations.
+
+## Update a project
+
+`update [--root <project>]` keeps what Hivex manages current and never creates or changes project files. The skills update with the installed package through their links; `update` restores any missing skill link and managed ignore rule as `init` does, then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. After upgrading the package, run `npx hivex update`.
 
 ## Select sources
 
@@ -101,7 +107,7 @@ Before writing, inspect the map and search existing current and relevant histori
 <a id="update-and-repair-knowledge"></a>
 ## Migrate from the inferred graph runtime
 
-Version 0.8.0 retires `update`, `ask`, `neighbors`, model-assisted `review`, `warnings`, `snapshot`, `recover`, `prune` and graph `status`. They return `COMMAND_RETIRED`, without opening or changing legacy data. `search` now returns source passages rather than extracted decisions. Model/profile/budget options are no longer accepted by source commands. Use the responsible agent and workflow skills for interpretation and review.
+Version 0.8.0 retires `update`, `ask`, `neighbors`, model-assisted `review`, `warnings`, `snapshot`, `recover`, `prune` and graph `status`. They return `COMMAND_RETIRED`, without opening or changing legacy data. Since 2026-10-19 the `update` name is reused for [project updates](#update-a-project), which never open graph data; the other names stay retired. `search` now returns source passages rather than extracted decisions. Model/profile/budget options are no longer accepted by source commands. Use the responsible agent and workflow skills for interpretation and review.
 
 Before removing a project's old shared graph from ordinary tracking, preserve its useful decisions in Markdown and retain needed execution evidence. Keep original SQLite, snapshots, failed candidates, receipts, unknown consumption and consumed budgets unchanged; do not relabel pending work as completed. The [0.7.8 command record](archive/runtime/graph-cli-0.7.8.md) and [domain contract](archive/runtime/domain-contract-0.7.8.md) describe historical behavior. Use a preserved pinned legacy package only for a concrete historical investigation; the current CLI does not resume those operations or silently replay them.
 
