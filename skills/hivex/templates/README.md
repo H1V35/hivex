@@ -7,6 +7,7 @@ Identify the languages of maintained source code in each project or workspace pa
 | Language or target | Template | Suggested destination |
 | --- | --- | --- |
 | TypeScript | [TypeScript standard](typescript/docs/guidelines/typescript.md) | `docs/guidelines/typescript.md` |
+| Python | [Python standard](python/docs/guidelines/python.md) | `docs/guidelines/python.md` |
 | Rust | [Rust standard](rust/docs/guidelines/rust.md) | `docs/guidelines/rust.md` |
 | Swift | [Swift standard](swift/docs/guidelines/swift.md) | `docs/guidelines/swift.md` |
 | iOS/iPadOS app in Swift | [Native iOS presentation](swift/docs/guidelines/ios.md), in addition to the Swift standard | `docs/guidelines/ios.md` |
