@@ -173,13 +173,24 @@ impl Config {
         "hivex.json uses legacy collections; replace it with include and exclude globs",
       ));
     }
-    if let Some(unknown) = object
-      .keys()
-      .find(|key| !matches!(key.as_str(), "exclude" | "archive" | "history" | "include"))
-    {
+    if let Some(unknown) = object.keys().find(|key| {
+      !matches!(
+        key.as_str(),
+        "exclude" | "archive" | "history" | "include" | "version"
+      )
+    }) {
       return Err(invalid(format!(
         "hivex.json has unsupported field: {unknown}"
       )));
+    }
+    // The pinned release, `MAJOR.MINOR.PATCH`, is enforced by `init` and `update`.
+    if object.get("version").is_some_and(|version| {
+      !version.as_str().is_some_and(|text| {
+        let parts: Vec<_> = text.split('.').collect();
+        parts.len() == 3 && parts.iter().all(|part| part.parse::<u64>().is_ok())
+      })
+    }) {
+      return Err(invalid("hivex.json version must be MAJOR.MINOR.PATCH"));
     }
     if object.contains_key("archive") && object.contains_key("history") {
       return Err(invalid(

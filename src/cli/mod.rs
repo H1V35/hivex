@@ -12,8 +12,19 @@ use serde_json::Value;
 
 const ORIGIN: &str = "current-worktree";
 
-/// Run one command; its JSON result goes to stdout, an error to stderr.
+/// Run one command; its JSON result goes to stdout, an error to stderr. Paginated commands carry
+/// a version warning when the project pins another release; `init` and `update` enforce the pin.
 pub fn run(args: &[String]) -> Result<Value> {
+  let mut output = command(args)?;
+  if let Some(warning) = page::take_version_warning()
+    && let Some(object) = output.as_object_mut()
+  {
+    object.insert("versionWarning".into(), warning);
+  }
+  Ok(output)
+}
+
+fn command(args: &[String]) -> Result<Value> {
   let Some(command) = args
     .first()
     .filter(|_| !args.iter().any(|arg| arg == "--help"))

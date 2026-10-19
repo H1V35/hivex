@@ -2,52 +2,49 @@ name: Quality
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  pull_request:
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
   group: quality-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  quality:
-    runs-on: macos-15
-    timeout-minutes: 15
-    permissions:
-      contents: read
+  platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Verify hosted macOS ARM64 runner
+      # rust-toolchain.toml selects stable with clippy and rustfmt.
+      - run: cargo fmt --check
+      - run: cargo check --locked --all-targets
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo build --locked --release --bin hivex
+      # Contract deadlines assume an optimized executable, as users install it.
+      - name: cargo test --locked (contracts against the release executable)
         run: |
-          test "${{ runner.environment }}" = github-hosted
-          test "$RUNNER_OS" = macOS
-          test "$RUNNER_ARCH" = ARM64
-          xcode-select -p
-      - name: Rust toolchain
-        run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          "$HOME/.cargo/bin/rustup" toolchain install stable --profile minimal --component clippy --component rustfmt
-      - name: Native development gate without Bun or Node
-        run: |
-          export PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-          if command -v bun || command -v node; then exit 1; fi
-          cargo fmt --check
-          cargo check --locked --all-targets
-          cargo clippy --locked --all-targets -- -D warnings
-          cargo test --locked --test quality --test architecture
-          cargo build --locked --bins
-          cargo test --locked --bins
-      - name: Native package and archive verification
-        run: |
-          export PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-          cargo run --locked --bin hivex-dev -- pack "$RUNNER_TEMP/hivex-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tgz"
-          HIVEX_TEST_BINARY="$PWD/target/aarch64-apple-darwin/release/hivex" cargo test --locked --test cli
-          cargo run --locked --bin hivex-dev -- verify "$RUNNER_TEMP/hivex-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tgz"
+          binary=target/release/hivex
+          if [ -f "$binary.exe" ]; then binary="$binary.exe"; fi
+          HIVEX_TEST_BINARY="$binary" cargo test --locked
+
+  # The ruleset requires one `quality` check; it passes only when every platform passed.
+  quality:
+    needs: platform
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "${{ needs.platform.result }}" = success

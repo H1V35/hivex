@@ -78,7 +78,7 @@ pub fn read(args: &[String]) -> Result<Value> {
   };
   let from = arguments.optional_count("from", MAX_SAFE_INTEGER)?;
   let to = arguments.optional_count("to", MAX_SAFE_INTEGER)?;
-  let max_bytes = page::max_bytes(&arguments)?;
+  let max_bytes = page::text_bytes(&arguments)?;
   let project = load_project(arguments.root())?;
   let source = project.document(id).ok_or_else(|| {
     HivexError::new(

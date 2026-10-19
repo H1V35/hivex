@@ -3,41 +3,79 @@ use crate::error::{HivexError, Result};
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::{OpenOptionsExt, symlink};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// Managed rules stay last so earlier project rules cannot re-include their paths.
-const IGNORE_RULES: [&str; 2] = ["/.hivex/", "/.reviews/"];
+// Managed rules stay last so earlier project rules cannot re-include their paths. Claude's skill
+// links are created on each machine, because Git cannot share them with Windows.
+const IGNORE_RULES: [&str; 3] = ["/.claude/skills/hivex*", "/.hivex/", "/.reviews/"];
+/// This release; `hivex.json` pins the release a project expects.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const CONFIG: &str = "hivex.json";
 const SKILLS: [&str; 6] = [
   "hivex",
   "hivex-design",
   "hivex-document",
+  "hivex-git",
   "hivex-implement",
   "hivex-review",
-  "hivex-git",
 ];
-/// Bundled `skills/hivex/assets/project` files, by their project-relative path.
-macro_rules! templates {
-  ($($path:literal),* $(,)?) => {
-    &[$(($path, include_bytes!(concat!("../skills/hivex/assets/project/", $path)))),*]
+
+/// Bundled files under `prefix`, by their path relative to it.
+macro_rules! bundled {
+  ($prefix:literal: $($path:literal),* $(,)?) => {
+    &[$(($path, include_bytes!(concat!($prefix, $path)))),*]
   };
 }
 
-static TEMPLATE_FILES: &[(&str, &[u8])] = templates![
+/// Project foundation files: created when missing and never changed afterwards.
+static TEMPLATE_FILES: &[(&str, &[u8])] = bundled![
+  "../skills/hivex/assets/project/":
   "AGENTS.md",
-  "docs/adr/README.md",
   "docs/CONTEXT.md",
+  "docs/PRD.md",
+  "docs/README.md",
+  "docs/adr/README.md",
   "docs/guidelines/engineering.md",
   "docs/guidelines/triage-labels.md",
-  "docs/PRD.md",
-  "docs/procedures/issue-tracker.md",
   "docs/procedures/independent-review.md",
   "docs/procedures/independent-review.schema.json",
+  "docs/procedures/issue-tracker.md",
   "docs/procedures/self-hosted-runners.md",
-  "docs/README.md",
   "hivex.json",
+];
+
+/// The complete skills, relative to `.agents/skills/`: `init` creates missing files and `update`
+/// makes them identical to this release.
+static SKILL_FILES: &[(&str, &[u8])] = bundled![
+  "../skills/":
+  "hivex-design/SKILL.md",
+  "hivex-design/references/visual-review.md",
+  "hivex-document/SKILL.md",
+  "hivex-git/SKILL.md",
+  "hivex-git/assets/labels.json",
+  "hivex-implement/SKILL.md",
+  "hivex-review/SKILL.md",
+  "hivex/SKILL.md",
+  "hivex/assets/project/AGENTS.md",
+  "hivex/assets/project/docs/CONTEXT.md",
+  "hivex/assets/project/docs/PRD.md",
+  "hivex/assets/project/docs/README.md",
+  "hivex/assets/project/docs/adr/README.md",
+  "hivex/assets/project/docs/guidelines/engineering.md",
+  "hivex/assets/project/docs/guidelines/triage-labels.md",
+  "hivex/assets/project/docs/procedures/independent-review.md",
+  "hivex/assets/project/docs/procedures/independent-review.schema.json",
+  "hivex/assets/project/docs/procedures/issue-tracker.md",
+  "hivex/assets/project/docs/procedures/self-hosted-runners.md",
+  "hivex/assets/project/hivex.json",
+  "hivex/references/markdown.md",
+  "hivex/templates/README.md",
+  "hivex/templates/rust/docs/guidelines/rust.md",
+  "hivex/templates/swift/docs/guidelines/ios.md",
+  "hivex/templates/swift/docs/guidelines/swift.md",
+  "hivex/templates/typescript/docs/guidelines/typescript.md",
 ];
 
 /// A host CLI and the idempotent steps it runs for the ponytail plugin.
@@ -101,20 +139,23 @@ impl OperationState {
 
 struct FileOperation {
   absolute_path: PathBuf,
-  content: FileContent,
+  content: Content,
   path: String,
   state: OperationState,
 }
 
-enum FileContent {
+enum Content {
   Bytes(Vec<u8>),
-  Link(PathBuf),
+  /// Claude's link to the named skill in `.agents/skills`.
+  SkillLink(&'static str),
+  /// A former npm link to a skill, replaced by a copy.
+  Unlink,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DestinationKind {
   File,
-  Skill,
+  Link,
 }
 
 struct Destination {
@@ -237,18 +278,129 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
     .iter()
     .map(|(path, bytes)| {
       let target = destination(root, path, DestinationKind::File)?;
+      let bytes = match *path {
+        _ if target.exists => bytes.to_vec(),
+        CONFIG => pinned_config(&config_object(bytes)?),
+        _ if is_dated(path) => dated_template(bytes, &created_at),
+        _ => bytes.to_vec(),
+      };
       Ok(FileOperation {
         absolute_path: target.absolute_path,
-        content: FileContent::Bytes(if !target.exists && is_dated(path) {
-          dated_template(bytes, &created_at)
-        } else {
-          bytes.to_vec()
-        }),
+        content: Content::Bytes(bytes),
         path: (*path).to_owned(),
         state: OperationState::planned(target.exists),
       })
     })
     .collect()
+}
+
+/// The configuration object, accepting the optional UTF-8 BOM that source selection accepts.
+fn config_object(bytes: &[u8]) -> Result<serde_json::Map<String, Value>> {
+  let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+  match serde_json::from_slice(bytes) {
+    Ok(Value::Object(object)) => Ok(object),
+    _ => Err(error(
+      "INVALID_CONFIG",
+      format!("{CONFIG} must contain a JSON object"),
+    )),
+  }
+}
+
+/// `config` with `version` set to this release as its first field, pretty-printed.
+fn pinned_config(config: &serde_json::Map<String, Value>) -> Vec<u8> {
+  let mut object = serde_json::Map::new();
+  object.insert("version".into(), VERSION.into());
+  object.extend(
+    config
+      .iter()
+      .filter(|(key, _)| *key != "version")
+      .map(|(key, value)| (key.clone(), value.clone())),
+  );
+  let mut text = serde_json::to_string_pretty(&Value::Object(object)).expect("JSON serializes");
+  text.push('\n');
+  text.into_bytes()
+}
+
+/// `MAJOR.MINOR.PATCH` as comparable numbers.
+fn release(version: &str) -> Option<[u64; 3]> {
+  let mut parts = version.split('.').map(|part| part.parse().ok());
+  let release = [parts.next()??, parts.next()??, parts.next()??];
+  parts.next().is_none().then_some(release)
+}
+
+/// The command that installs `version`, for error messages and warnings.
+pub fn install_command(version: &str) -> String {
+  format!(
+    "cargo install --git https://github.com/H1V35/hivex --tag v{version} --locked hivex --bin hivex --force"
+  )
+}
+
+/// The release pinned in the project's `hivex.json`, if it has one.
+pub fn pinned_version(root: &Path) -> Result<Option<String>> {
+  let path = root.join(CONFIG);
+  let Ok(text) = fs::read(&path) else {
+    return Ok(None);
+  };
+  let config = config_object(&text)?;
+  let Some(version) = config.get("version") else {
+    return Ok(None);
+  };
+  version
+    .as_str()
+    .filter(|version| release(version).is_some())
+    .map(|version| Some(version.to_owned()))
+    .ok_or_else(|| {
+      error(
+        "INVALID_CONFIG",
+        "hivex.json version must be MAJOR.MINOR.PATCH",
+      )
+    })
+}
+
+/// The warning other commands carry when the project pins another release. Source selection
+/// reports an invalid configuration, so it is not repeated here.
+pub fn version_warning(root: &Path) -> Option<Value> {
+  let pinned = pinned_version(root).ok().flatten()?;
+  (pinned != VERSION).then(|| {
+    let install = install_command(&pinned);
+    json!({"installed": VERSION, "pinned": pinned, "install": install})
+  })
+}
+
+fn version_mismatch(pinned: &str) -> HivexError {
+  error(
+    "VERSION_MISMATCH",
+    format!(
+      "This project pins Hivex {pinned}, but {VERSION} is installed. Install it with: {}",
+      install_command(pinned)
+    ),
+  )
+  .with_details(json!({"installed": VERSION, "pinned": pinned}))
+}
+
+/// `update` moves the pin to this release, but never back to an older one.
+fn pin_operation(root: &Path) -> Result<Option<FileOperation>> {
+  let target = destination(root, CONFIG, DestinationKind::File)?;
+  if !target.exists {
+    return Ok(None);
+  }
+  let pinned = pinned_version(root)?;
+  if let Some(pinned) = &pinned
+    && release(pinned) > release(VERSION)
+  {
+    return Err(version_mismatch(pinned));
+  }
+  let config = config_object(&read_existing(&target, CONFIG)?)?;
+  Ok(Some(FileOperation {
+    absolute_path: target.absolute_path,
+    content: Content::Bytes(pinned_config(&config)),
+    path: CONFIG.to_owned(),
+    state: if pinned.as_deref() == Some(VERSION) {
+      OperationState::Preserved
+    } else {
+      OperationState::Updated
+    },
+  }))
 }
 
 /// New Markdown under `docs/` records its creation day.
@@ -309,12 +461,7 @@ fn ignore_operation(root: &Path) -> Result<FileOperation> {
   let relative_path = ".gitignore";
   let target = destination(root, relative_path, DestinationKind::File)?;
   let existing = if target.exists {
-    Some(fs::read(&target.absolute_path).map_err(|read_error| {
-      error(
-        "INIT_READ_FAILED",
-        format!("Unable to read {relative_path}: {read_error}"),
-      )
-    })?)
+    Some(read_existing(&target, relative_path)?)
   } else {
     None
   };
@@ -331,87 +478,128 @@ fn ignore_operation(root: &Path) -> Result<FileOperation> {
   };
   Ok(FileOperation {
     absolute_path: target.absolute_path,
-    content: FileContent::Bytes(bytes),
+    content: Content::Bytes(bytes),
     path: relative_path.to_owned(),
     state,
   })
 }
 
-fn bundled_skills() -> Result<PathBuf> {
-  let executable = std::env::current_exe()
-    .and_then(fs::canonicalize)
-    .map_err(|read_error| error("INIT_SKILLS_UNAVAILABLE", read_error.to_string()))?;
-  for directory in executable.ancestors().skip(1) {
-    let manifest = fs::read(directory.join("package.json"))
-      .ok()
-      .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
-    if manifest.as_ref().is_some_and(|value| {
-      value["name"] == "@h1v35/hivex" && value["version"] == env!("CARGO_PKG_VERSION")
-    }) {
-      let skills = directory.join("skills");
-      if SKILLS
-        .iter()
-        .all(|name| skills.join(name).join("SKILL.md").is_file())
-      {
-        return fs::canonicalize(skills)
-          .map_err(|read_error| error("INIT_SKILLS_UNAVAILABLE", read_error.to_string()));
-      }
-    }
-  }
-  Err(error(
-    "INIT_SKILLS_UNAVAILABLE",
-    "Install the complete @h1v35/hivex package; its bundled skills must remain alongside the executable",
-  ))
+fn read_existing(target: &Destination, relative_path: &str) -> Result<Vec<u8>> {
+  fs::read(&target.absolute_path).map_err(|read_error| {
+    error(
+      "INIT_READ_FAILED",
+      format!("Unable to read {relative_path}: {read_error}"),
+    )
+  })
 }
 
-fn relative_link(from: &Path, target: &Path) -> PathBuf {
-  let from: Vec<_> = from.components().collect();
-  let target: Vec<_> = target.components().collect();
-  let common = from.iter().zip(&target).take_while(|(a, b)| a == b).count();
-  let mut relative = PathBuf::new();
-  for _ in common..from.len() {
-    relative.push("..");
-  }
-  for component in &target[common..] {
-    relative.push(component.as_os_str());
-  }
-  relative
-}
-
-fn skill_operations(root: &Path) -> Result<Vec<FileOperation>> {
-  let bundled = bundled_skills()?;
-  // Link through the stable dependency entry, including hoisted/symlinked installs.
-  let bundled = root
-    .ancestors()
-    .map(|directory| directory.join("node_modules/@h1v35/hivex/skills"))
-    .find(|candidate| fs::canonicalize(candidate).is_ok_and(|path| path == bundled))
-    .unwrap_or(bundled);
+fn skill_operations(root: &Path, refresh: bool) -> Result<Vec<FileOperation>> {
   let mut operations = Vec::new();
-  for family in [".agents", ".claude"] {
-    for name in SKILLS {
-      let path = format!("{family}/skills/{name}");
-      let target = destination(root, &path, DestinationKind::Skill)?;
-      let source = if family == ".agents" {
-        bundled.join(name)
-      } else {
-        root.join(".agents/skills").join(name)
-      };
-      let link = relative_link(
-        target
-          .absolute_path
-          .parent()
-          .expect("skill link has a parent"),
-        &source,
-      );
-      operations.push(FileOperation {
-        absolute_path: target.absolute_path,
-        content: FileContent::Link(link),
-        path,
-        state: OperationState::planned(target.exists),
-      });
-    }
+  for name in SKILLS {
+    operations.extend(skill_directory_operations(root, name, refresh)?);
   }
   Ok(operations)
+}
+
+/// One skill's files. `init` leaves a former npm link to the skill alone; `update` replaces it
+/// with a copy.
+fn skill_directory_operations(
+  root: &Path,
+  name: &str,
+  refresh: bool,
+) -> Result<Vec<FileOperation>> {
+  let directory = format!(".agents/skills/{name}");
+  let target = destination(root, &directory, DestinationKind::Link)?;
+  let linked = target.exists
+    && fs::symlink_metadata(&target.absolute_path).is_ok_and(|entry| entry.is_symlink());
+  let files = SKILL_FILES
+    .iter()
+    .filter(|(path, _)| path.split('/').next() == Some(name));
+  if !linked {
+    return files
+      .map(|(path, bytes)| file_operation(root, &format!(".agents/skills/{path}"), bytes, refresh))
+      .collect();
+  }
+  let unlink = FileOperation {
+    absolute_path: target.absolute_path,
+    content: Content::Unlink,
+    path: directory,
+    state: if refresh {
+      OperationState::Updated
+    } else {
+      OperationState::Preserved
+    },
+  };
+  if !refresh {
+    return Ok(vec![unlink]);
+  }
+  let copies = files.map(|(path, bytes)| {
+    let relative = format!(".agents/skills/{path}");
+    FileOperation {
+      absolute_path: normalize_path(&root.join(&relative)),
+      content: Content::Bytes(bytes.to_vec()),
+      path: relative,
+      state: OperationState::Created,
+    }
+  });
+  Ok(std::iter::once(unlink).chain(copies).collect())
+}
+
+fn file_operation(root: &Path, path: &str, bytes: &[u8], refresh: bool) -> Result<FileOperation> {
+  let target = destination(root, path, DestinationKind::File)?;
+  let current = target.exists && read_existing(&target, path)? == bytes;
+  Ok(FileOperation {
+    state: match (target.exists, current) {
+      (false, _) => OperationState::Created,
+      (true, false) if refresh => OperationState::Updated,
+      _ => OperationState::Preserved,
+    },
+    absolute_path: target.absolute_path,
+    content: Content::Bytes(bytes.to_vec()),
+    path: path.to_owned(),
+  })
+}
+
+/// Claude loads skills only from `.claude/skills`; an existing entry there stays as it is.
+fn link_operations(root: &Path) -> Result<Vec<FileOperation>> {
+  SKILLS
+    .iter()
+    .map(|name| {
+      let path = format!(".claude/skills/{name}");
+      let target = destination(root, &path, DestinationKind::Link)?;
+      Ok(FileOperation {
+        absolute_path: target.absolute_path,
+        content: Content::SkillLink(name),
+        path,
+        state: OperationState::planned(target.exists),
+      })
+    })
+    .collect()
+}
+
+#[cfg(unix)]
+fn link_skill(link: &Path, name: &str) -> std::io::Result<()> {
+  std::os::unix::fs::symlink(format!("../../.agents/skills/{name}"), link)
+}
+
+/// A directory junction needs no extra privileges, unlike a Windows symlink.
+#[cfg(windows)]
+fn link_skill(link: &Path, name: &str) -> std::io::Result<()> {
+  let project = link
+    .ancestors()
+    .nth(3)
+    .expect("the link lives inside the project");
+  let status = std::process::Command::new("cmd")
+    .args(["/C", "mklink", "/J"])
+    .arg(link)
+    .arg(project.join(".agents").join("skills").join(name))
+    .stdout(std::process::Stdio::null())
+    .status()?;
+  if status.success() {
+    Ok(())
+  } else {
+    Err(std::io::Error::other("mklink /J failed"))
+  }
 }
 
 fn write_operations(operations: &[FileOperation]) -> Result<()> {
@@ -433,8 +621,13 @@ fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
     fs::create_dir_all(parent)?;
   }
   let bytes = match &operation.content {
-    FileContent::Link(target) => return symlink(target, &operation.absolute_path),
-    FileContent::Bytes(bytes) => bytes,
+    Content::SkillLink(name) => return link_skill(&operation.absolute_path, name),
+    // A directory link is a file on Unix and a directory on Windows.
+    Content::Unlink => {
+      return fs::remove_file(&operation.absolute_path)
+        .or_else(|_| fs::remove_dir(&operation.absolute_path));
+    }
+    Content::Bytes(bytes) => bytes,
   };
   if operation.state == OperationState::Updated {
     return fs::write(&operation.absolute_path, bytes);
@@ -443,17 +636,35 @@ fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
   OpenOptions::new()
     .write(true)
     .create_new(true)
-    .mode(0o644)
     .open(&operation.absolute_path)?
     .write_all(bytes)
 }
 
-fn run_host(host: &str, args: &[&str]) -> std::io::Result<Output> {
-  Command::new(host)
+fn run_quietly(program: &std::ffi::OsStr, args: &[&str]) -> std::io::Result<Output> {
+  Command::new(program)
     .args(args)
     .stdin(Stdio::null())
     .stderr(Stdio::null())
     .output()
+}
+
+#[cfg(unix)]
+fn run_host(host: &str, args: &[&str]) -> std::io::Result<Output> {
+  run_quietly(host.as_ref(), args)
+}
+
+/// npm installs `.cmd` shims on Windows, which `Command` starts only by their full name.
+#[cfg(windows)]
+fn run_host(host: &str, args: &[&str]) -> std::io::Result<Output> {
+  let program = std::env::var_os("PATH")
+    .iter()
+    .flat_map(std::env::split_paths)
+    .flat_map(|directory| {
+      ["exe", "cmd", "bat"].map(|extension| directory.join(host).with_extension(extension))
+    })
+    .find(|path| path.is_file())
+    .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::NotFound))?;
+  run_quietly(program.as_os_str(), args)
 }
 
 /// `None` once every step succeeded, otherwise `missing` without the host's CLI or `failed`.
@@ -522,14 +733,18 @@ fn report(
   })
 }
 
-/// Prepare the missing foundation files, skill links and ignore rules of the project at `root`,
-/// preserving everything that already exists, and install the ponytail plugin in Claude and Codex.
+/// Prepare the missing foundation files, skills, Claude skill links and ignore rules of the project
+/// at `root` without changing anything that exists, and install the ponytail plugin in Claude and
+/// Codex.
 pub fn initialize(root: &str) -> Result<Value> {
   let root = project_root(root)?;
   // Retained state must not hide a symlink or a conflicting `.hivex` entry.
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
+  if let Some(pinned) = pinned_version(&root)?.filter(|pinned| pinned != VERSION) {
+    return Err(version_mismatch(&pinned));
+  }
   let mut operations = template_operations(&root)?;
-  operations.extend(managed_operations(&root)?);
+  operations.extend(managed_operations(&root, false)?);
   write_operations(&operations)?;
   Ok(report(
     "init",
@@ -539,13 +754,14 @@ pub fn initialize(root: &str) -> Result<Value> {
   ))
 }
 
-/// Restore the missing skill links and ignore rules of the project at `root` and bring the
-/// ponytail plugin to its latest release. Skills update with the package; project files are
-/// neither created nor changed.
+/// Bring the managed parts of the project at `root` up to this release: the skills, Claude's skill
+/// links, the ignore rules, the pinned version and the ponytail plugin. Project files are neither
+/// created nor changed.
 pub fn update(root: &str) -> Result<Value> {
   let root = project_root(root)?;
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
-  let operations = managed_operations(&root)?;
+  let mut operations = managed_operations(&root, true)?;
+  operations.extend(pin_operation(&root)?);
   write_operations(&operations)?;
   Ok(report(
     "update",
@@ -555,8 +771,10 @@ pub fn update(root: &str) -> Result<Value> {
   ))
 }
 
-fn managed_operations(root: &Path) -> Result<Vec<FileOperation>> {
-  let mut operations = skill_operations(root)?;
+fn managed_operations(root: &Path, refresh: bool) -> Result<Vec<FileOperation>> {
+  let mut operations = skill_operations(root, refresh)?;
+  // The links follow the skills so their targets exist when they are created.
+  operations.extend(link_operations(root)?);
   operations.push(ignore_operation(root)?);
   Ok(operations)
 }
@@ -567,14 +785,14 @@ fn validate_destination_component(
   is_final: bool,
   kind: DestinationKind,
 ) -> Result<()> {
-  let preserved_skill = is_final && kind == DestinationKind::Skill;
-  if metadata.file_type().is_symlink() && !preserved_skill {
+  let preserved_link = is_final && kind == DestinationKind::Link;
+  if metadata.file_type().is_symlink() && !preserved_link {
     return Err(error(
       "INVALID_DESTINATION",
       format!("Initialization path must not use symlinks: {relative_path}"),
     ));
   }
-  let valid_leaf = if preserved_skill {
+  let valid_leaf = if preserved_link {
     metadata.is_dir() || metadata.file_type().is_symlink()
   } else {
     metadata.is_file()

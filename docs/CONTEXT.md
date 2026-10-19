@@ -14,9 +14,11 @@ Hivex gives agents and people a reusable project foundation and focused access t
 
 **Project foundation**: Recommended starting documents, workflow capabilities and knowledge practices, tailored to the adopting project's purpose and decisions.
 
-**Initialization**: Preparing missing foundation files, configuration and skill links while preserving project-owned files, and installing the ponytail plugin in Claude Code and Codex.
+**Initialization**: Preparing missing foundation files and configuration, copying the bundled skills into the project and linking them for Claude Code while preserving project-owned files, and installing the ponytail plugin in Claude Code and Codex.
 
-**Update**: Restoring missing skill links and managed ignore rules and bringing the ponytail plugin to its latest release, without creating or changing project-owned files.
+**Update**: Bringing the skill copies, their Claude links, managed ignore rules and the pinned release to the installed release and the ponytail plugin to its latest release, without creating or changing other project-owned files.
+
+**Pinned release**: The Hivex version a project records in `hivex.json`. Initialization and update enforce it; other commands warn when the installed release differs.
 
 **Adoption**: Completing the foundation from project evidence, preserving useful knowledge and aligning working practices.
 

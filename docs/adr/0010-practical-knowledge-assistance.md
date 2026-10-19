@@ -2,7 +2,7 @@
 title: Practical project knowledge through deterministic sources
 status: accepted
 created_at: 2026-09-09
-updated_at: 2026-10-02
+updated_at: 2026-10-19
 tags: [adr, retrieval, runtime]
 ---
 
@@ -24,6 +24,8 @@ Retired graph/model operations return a migration diagnostic rather than executi
 The package is `@h1v35/hivex`, command `hivex`, license MIT. Retain the six workflow/knowledge skills and optional language templates. The verified native target is macOS ARM64, with a direct executable and no JavaScript launcher, runtime installation hook or model integration. Additional targets require their own behavior and artifact verification.
 
 Cargo and the Rust development tool prepare and verify the exact npm archive using system `tar`. Registry installation/publication follows the [release procedure](../procedures/releasing.md); installing Hivex does not replace an adopting project's owner policy.
+
+Amendment (2026-10-19): since 0.12.0 ([#206](https://github.com/H1V35/hivex/issues/206)), Hivex is no longer distributed through npm. Releases are Git tags with prebuilt executables for macOS, Linux and Windows on GitHub Releases, or `cargo install` from a tag; the executable embeds the six skills and language templates, and the Rust development tool only writes license notices. The npm package is deprecated after 0.11.1. The [guide](../guide.md#install-the-cli) and [release procedure](../procedures/releasing.md) own installation and publication.
 
 Validate observable retrieval, failures, source changes, history and preservation at useful boundaries. Measure relevant evidence recovered, context read, latency and maintenance effort together. Include indirect dependency, exception, conflict, insufficient evidence and source-change cases; do not substitute identity with an old model graph or an exhaustive replay requirement.
 

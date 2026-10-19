@@ -59,6 +59,7 @@ impl Project {
     assert_eq!(result.stdout.len(), 0);
     serde_json::from_slice(&result.stderr).unwrap()
   }
+  #[cfg(unix)]
   pub fn git(&self, args: &[&str]) -> String {
     let output = Command::new("git")
       .current_dir(&self.root)

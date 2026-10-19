@@ -10,30 +10,52 @@ tags: [cli, retrieval, adoption]
 
 Hivex is an AI-first CLI for agents and people. The principal agent reasons and implements; Hivex supplies reusable workflow skills and deterministic retrieval of repository Markdown. No command invokes a model or requires a persistent knowledge database.
 
-## Install the CLI and skills
+## Install the CLI
 
-The verified native target is macOS ARM64. Install a pinned project dependency:
+Hivex is one executable with the six skills, the project foundation and the language templates built in; it needs no Node.js, Bun, npm, model credentials or Codex process. Each release `vX.Y.Z` on [GitHub Releases](https://github.com/H1V35/hivex/releases) provides prebuilt archives for macOS, Linux and Windows: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`. Each archive, `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` on Windows), contains the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, and has a `.sha256` checksum file beside it. Download yours from the Releases page or with the GitHub CLI, check it and put `hivex` (`hivex.exe` on Windows) on your `PATH`:
 
 ```sh
-npm install -D -E @h1v35/hivex
-npx hivex init
+gh release download v0.12.0 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
+shasum -a 256 -c hivex-v0.12.0-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf hivex-v0.12.0-aarch64-apple-darwin.tar.gz
 ```
 
-In Bun projects use `bun add -d -E @h1v35/hivex`, then `bun hivex init`. The scoped package is `@h1v35/hivex`; do not install the unrelated unscoped package. The executable needs no JavaScript launcher, model credentials or Codex process. npm/Bun are installation clients, not Hivex runtime dependencies.
+The macOS executables are not notarized, and a browser download is quarantined; remove that attribute with `xattr -d com.apple.quarantine hivex` after checking the archive, or download with `gh` or Cargo instead. Alternatively, build and install a release with stable Rust; `--force` replaces an installed version:
+
+```sh
+cargo install --git https://github.com/H1V35/hivex --tag v0.12.0 --locked hivex --bin hivex --force
+```
+
+Then run `hivex init` in the project root. Versions up to 0.11.1 were installed from the npm package `@h1v35/hivex`, now deprecated; existing projects [migrate from npm](#migrate-from-npm).
+
+## Pin the release
+
+`hivex.json` can pin the release a project uses with `version`, in `MAJOR.MINOR.PATCH` form:
+
+```json
+{
+  "version": "0.12.0",
+  "include": ["docs/**/*.md"]
+}
+```
+
+`init` writes the installed version when it creates `hivex.json`, and fails with `VERSION_MISMATCH` (details `installed` and `pinned`) before writing anything when the project pins another release. `update` adds the pin to an existing `hivex.json` or moves it forward to the installed release, reported as `hivex.json` in `updated`; it fails with `VERSION_MISMATCH` rather than move the pin back. All other commands keep working and add `"versionWarning":{"installed":…,"pinned":…,"install":…}` to their result, where `install` is the command that installs the pinned release, `cargo install --git https://github.com/H1V35/hivex --tag vX.Y.Z --locked hivex --bin hivex --force`. A missing pin imposes nothing; an invalid one fails with `INVALID_CONFIG`.
+
+Commit `hivex.json` so collaborators and agents use the same release. The guide for a pinned release is `https://github.com/H1V35/hivex/blob/vX.Y.Z/docs/guide.md`; `hivex --help` lists the installed command contract.
 
 ## Initialize a project
 
-`init [--root <project>]` prepares missing foundation documents, a source configuration, brief `AGENTS.md` and relative links to six packaged skills in `.agents/skills/` and `.claude/skills/`. It does not create `CLAUDE.md`: Claude Code 2.1.277 and later reads `AGENTS.md` natively when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working directory or above it. Where that support is [unavailable](https://code.claude.com/docs/en/memory#when-agents-md-support-is-unavailable), such as older versions, the first session after upgrading or Amazon Bedrock and disabled-telemetry sessions before 2.1.281, keep a project-owned `CLAUDE.md` containing `@AGENTS.md`; `init` preserves an existing `CLAUDE.md`. It preserves existing files, configuration, custom skills and historical runtime state. Run it from a complete package; copying the executable alone does not install its assets. Unsafe destination paths and symlink parents fail before writes. Newly created Markdown under `docs/` retains its template title and provisional status and gets `created_at` for its UTC creation day; source-template update/archive dates are not copied. Agent entrypoints remain plain Markdown. Existing document dates and contents are preserved. Version 0.10.0 adds the cross-vendor independent review procedure with its report schema (initially `gpt-6.1-sol` with `xhigh` effort through Codex) and the self-hosted runner pool procedure for private repositories; other files under `docs/`, such as that schema, are copied unchanged. Version 0.10.1 stops creating `CLAUDE.md` while preserving an existing one, and appends the `/.hivex/` and `/.reviews/` ignore rules only when they are absent as exact lines after the file's last negation, so rules already present mid-file are not duplicated. Version 0.11.0 reports write failures as `INIT_WRITE_FAILED` instead of `READ_FAILED` and determines the UTC creation day without an external process.
+`init [--root <project>]` prepares missing foundation documents, a source configuration [pinned](#pin-the-release) to the installed release, a brief `AGENTS.md` and the six skills built into the executable. It copies each skill completely into `.agents/skills/<name>/`: its `SKILL.md`, `references/` and `assets/`, including the project foundation under `hivex/assets/project/` and the language templates under `hivex/templates/`, so the skills' relative links keep working. `.claude/skills/<name>` links to that copy: a relative symlink on macOS and Linux, and a directory junction on Windows, which needs no extra privileges. It does not create `CLAUDE.md`: Claude Code 2.1.277 and later reads `AGENTS.md` natively when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists in the working directory or above it. Where that support is [unavailable](https://code.claude.com/docs/en/memory#when-agents-md-support-is-unavailable), such as older versions, the first session after upgrading or Amazon Bedrock and disabled-telemetry sessions before 2.1.281, keep a project-owned `CLAUDE.md` containing `@AGENTS.md`; `init` preserves an existing `CLAUDE.md`. It creates missing foundation and skill files and never changes existing ones, preserving configuration, custom skills and historical runtime state. The executable is self-contained, so a standalone copy works anywhere. Unsafe destination paths, symlinked destinations and symlink parents fail before writes. Newly created Markdown under `docs/` retains its template title and provisional status and gets `created_at` for its UTC creation day; source-template update/archive dates are not copied. Agent entrypoints remain plain Markdown. Existing document dates and contents are preserved. Version 0.10.0 adds the cross-vendor independent review procedure with its report schema (initially `gpt-6.1-sol` with `xhigh` effort through Codex) and the self-hosted runner pool procedure for private repositories; other files under `docs/`, such as that schema, are copied unchanged. Version 0.10.1 stops creating `CLAUDE.md` while preserving an existing one, and appends the `/.hivex/` and `/.reviews/` ignore rules only when they are absent as exact lines after the file's last negation, so rules already present mid-file are not duplicated. Version 0.11.0 reports write failures as `INIT_WRITE_FAILED` instead of `READ_FAILED` and determines the UTC creation day without an external process.
 
-Initialization is a starting point. The responsible agent completes the project's purpose, vocabulary and scope from evidence and owner decisions, maps current authorities and preserves useful history. The [Markdown foundation](../skills/hivex/references/markdown.md) and [language-template catalogue](../templates/README.md) guide adoption. Installing a package does not replace an existing project's owner policy.
+Initialization is a starting point. The responsible agent completes the project's purpose, vocabulary and scope from evidence and owner decisions, maps current authorities and preserves useful history. The [Markdown foundation](../skills/hivex/references/markdown.md) and [language-template catalogue](../skills/hivex/templates/README.md) guide adoption. Installing a release does not replace an existing project's owner policy.
 
-New installations ignore `.hivex/` as retained local state and `.reviews/` for local review traces; `init` appends whichever of these final rules is missing, matching the file's line endings. Previously tracked graph files remain tracked until the project deliberately preserves and retires them; `init` neither deletes nor untracks them. Existing nested ignore files are preserved.
+New installations ignore the Claude skill links (`/.claude/skills/hivex*`), `.hivex/` as retained local state and `.reviews/` for local review traces; `init` appends whichever of these final rules is missing, matching the file's line endings. The links are created per machine, so Git does not share them: commit the copies in `.agents/skills/`, and each collaborator's `hivex init` or `hivex update` creates the links. Claude skill links an earlier version committed stay tracked until the project runs `git rm --cached .claude/skills/hivex*`. Previously tracked graph files remain tracked until the project deliberately preserves and retires them; `init` neither deletes nor untracks them. Existing nested ignore files are preserved.
 
 `init` also installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin (MIT) in each host whose CLI is on `PATH`. It first runs `<host> plugin list --json`; when `ponytail@ponytail` is listed it changes nothing, because installing again would replace Codex's copy and re-enable a plugin the owner disabled. Otherwise it runs `claude plugin marketplace add DietrichGebert/ponytail` and `claude plugin install ponytail@ponytail`, or `codex plugin marketplace add DietrichGebert/ponytail` and `codex plugin add ponytail@ponytail`. Each host stops at its first failing step. The report's `plugins` entries are `current` when ponytail is installed (already or now), `missing` when the CLI is not installed and `failed` when a step fails; file results are unaffected and the exit code stays 0. The plugin hooks need Node.js; Codex asks to trust them in `/hooks`, and running apps load updates after a restart. Contract tests replace both CLIs with recording stand-ins and otherwise run with an empty `PATH`, so they never touch real installations.
 
 ## Update a project
 
-`update [--root <project>]` keeps what Hivex manages current and never creates or changes project files. The skills update with the installed package through their links; `update` restores any missing skill link and managed ignore rule as `init` does, then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. After upgrading the package, run `npx hivex update`.
+`update [--root <project>]` brings what Hivex manages to the installed release and never creates or changes project files other than the pin in `hivex.json`. It makes the skill files in `.agents/skills/` identical to the installed release, reporting changed files in `updated` and missing ones in `created`, restores any missing Claude skill link and managed ignore rule as `init` does, and [moves the pin forward](#pin-the-release). A former npm link at `.agents/skills/<name>`, pointing into `node_modules`, is replaced with a copy: the directory is reported in `updated` and its files in `created`. It then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. After installing a new release, run `hivex update` and commit the changed skill files and `hivex.json`.
 
 ## Select sources
 
@@ -54,10 +76,10 @@ Without configuration, Hivex selects Markdown under the project. Dependencies, G
 Start from the documentation map and the authority for the task:
 
 ```sh
-npx hivex sources --limit 20
-npx hivex search "cache access revocation"
-npx hivex relations docs/policy.md --direction both
-npx hivex read docs/policy.md --from 20 --to 45
+hivex sources --limit 20
+hivex search "cache access revocation"
+hivex relations docs/policy.md --direction both
+hivex read docs/policy.md --from 20 --to 45
 ```
 
 All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles; read a known authority directly instead of invoking every command by ceremony. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
@@ -104,6 +126,17 @@ A report contains `checkedDocuments` (the union), `checkedMetadataDocuments`, `c
 
 Before writing, inspect the map and search existing current and relevant historical authorities. Update the existing home for the topic/scope. Keep acceptance, implementation, verification and permission distinct under the [state catalogue](../skills/hivex/assets/project/docs/adr/README.md#decision-and-delivery-states). Maintain affected Markdown, authored relationships and callers alongside code changes. Validate affected sources with `check --source`, inspect omissions and continuations, and check supported behavior before integration; independent review judges semantic correctness against a defined source/code revision.
 
+## Migrate from npm
+
+Versions up to 0.11.1 were distributed as the npm package `@h1v35/hivex`, deprecated after that release, and `init` linked `.agents/skills/<name>` into `node_modules`. To move a project to a release:
+
+1. [Install the CLI](#install-the-cli) from a release archive or with Cargo.
+2. Run `hivex update` in the project. It replaces each skill link into `node_modules` with a copy and pins the installed version in `hivex.json`.
+3. Optionally untrack Claude skill links the project committed earlier with `git rm --cached .claude/skills/hivex*`; the managed ignore rule keeps the new per-machine links out of Git.
+4. Remove the dependency with `npm uninstall @h1v35/hivex` (`bun remove @h1v35/hivex` in Bun projects).
+
+Replace `npx hivex` and `bun hivex` in scripts and project instructions with `hivex`, then commit the copied skills, `hivex.json` and the dependency change.
+
 <a id="update-and-repair-knowledge"></a>
 ## Migrate from the inferred graph runtime
 
@@ -121,12 +154,13 @@ Use stable Rust and Git 2.45 or newer. The [engineering guideline](guidelines/en
 cargo fmt --check
 cargo check --locked --all-targets
 cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-cargo run --locked --bin hivex-dev -- pack
-cargo run --locked --bin hivex-dev -- verify
+cargo build --locked --release --bin hivex
+HIVEX_TEST_BINARY=target/release/hivex cargo test --locked
 ```
 
-CI runs unit/quality/architecture checks and the complete public CLI suite against the packaged release executable. `HIVEX_TEST_BINARY` selects that executable. Package verification runs with a PATH excluding Bun/Node and confirms initialization, source retrieval and exact preservation of fixed legacy SQLite/snapshot bytes. No synthetic model server or model test suite remains. The Rust development tool and system `tar` prepare the npm-compatible archive; existing artifacts are never overwritten. Follow the [release procedure](procedures/releasing.md) for exact artifact verification, installation and publication.
+`HIVEX_TEST_BINARY` runs the public CLI contracts against the given executable (`target/release/hivex.exe` on Windows). Contract deadlines assume an optimized build, as users install it. The Quality workflow runs these steps on `macos-15`, `ubuntu-latest` and `windows-latest`; a final `quality` job, which the `main` ruleset requires, passes only when every platform passed. Contract tests that create symbolic links run only on Unix. No synthetic model server or model test suite remains.
+
+The development tool has one command, `cargo run --locked --bin hivex-dev -- notices <target> <output>`, which writes the third-party license notices for a target's normal and build dependencies, excluding development-only analyzers. The release workflow ships them in each archive; follow the [release procedure](procedures/releasing.md) to publish a release.
 
 ## Relationships
 

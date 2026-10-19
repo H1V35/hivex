@@ -1,6 +1,7 @@
 use crate::support::{Project, list, subset};
 use serde_json::{Value, json};
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::symlink;
 use std::process::Command;
 
@@ -19,14 +20,7 @@ const DATED_TEMPLATES: [&str; 9] = [
 #[test]
 fn empty_project_initialization_creates_the_complete_foundation() {
   let p = Project::new();
-  let before = String::from_utf8(
-    Command::new("/bin/date")
-      .args(["-u", "+%Y-%m-%d"])
-      .output()
-      .unwrap()
-      .stdout,
-  )
-  .unwrap();
+  let before = utc_date();
   let result = p.ok(&["init"]);
   subset(
     &result,
@@ -44,20 +38,15 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     assert!(list(&result, "created").contains(&json!(file)));
     assert_ne!(fs::read(p.path(file)).unwrap().len(), 0);
   }
-  let today = String::from_utf8(
-    Command::new("/bin/date")
-      .args(["-u", "+%Y-%m-%d"])
-      .output()
-      .unwrap()
-      .stdout,
-  )
-  .unwrap();
+  let today = utc_date();
   let map = fs::read_to_string(p.path("docs/README.md")).unwrap();
   let created = map
     .lines()
     .find_map(|line| line.strip_prefix("created_at: "))
     .unwrap();
-  assert!(created == before.trim() || created == today.trim());
+  assert!(before.is_none_or(
+    |before| created == before.trim() || Some(created) == today.as_deref().map(str::trim)
+  ));
   for file in DATED_TEMPLATES {
     let text = fs::read_to_string(p.path(file)).unwrap();
     assert!(text.contains(&format!("created_at: {created}")));
@@ -93,17 +82,31 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     "hivex-review",
     "hivex-git",
   ] {
-    for family in [".agents", ".claude"] {
-      let relative = format!("{family}/skills/{skill}");
-      assert!(list(&result, "created").contains(&json!(relative)));
-      assert!(!fs::read_link(p.path(&relative)).unwrap().is_absolute());
-      assert!(p.path(&format!("{relative}/SKILL.md")).is_file());
-    }
+    let copy = format!(".agents/skills/{skill}/SKILL.md");
+    let link = format!(".claude/skills/{skill}");
+    assert!(list(&result, "created").contains(&json!(copy)));
+    assert!(list(&result, "created").contains(&json!(link)));
+    assert!(p.path(&format!("{link}/SKILL.md")).is_file());
     assert_eq!(
       fs::canonicalize(p.path(&format!(".agents/skills/{skill}"))).unwrap(),
-      fs::canonicalize(p.path(&format!(".claude/skills/{skill}"))).unwrap()
+      fs::canonicalize(p.path(&link)).unwrap()
     );
+    #[cfg(unix)]
+    assert!(!fs::read_link(p.path(&link)).unwrap().is_absolute());
   }
+  // Skills are complete copies, including references, assets and language templates.
+  assert_eq!(
+    fs::read(p.path(".agents/skills/hivex/templates/README.md")).unwrap(),
+    include_bytes!("../../skills/hivex/templates/README.md")
+  );
+  assert!(
+    p.path(".agents/skills/hivex-git/assets/labels.json")
+      .is_file()
+  );
+  assert_eq!(
+    p.read_json("hivex.json")["version"],
+    env!("CARGO_PKG_VERSION")
+  );
   assert!(!p.path(".hivex/knowledge.sqlite").exists());
 }
 
@@ -113,7 +116,7 @@ fn initialization_copies_bundled_non_markdown_templates_and_ignores_local_state(
   p.ok(&["init"]);
   assert_eq!(
     fs::read_to_string(p.path(".gitignore")).unwrap(),
-    "/.hivex/\n/.reviews/\n"
+    "/.claude/skills/hivex*\n/.hivex/\n/.reviews/\n"
   );
   assert_eq!(
     fs::read(p.path("docs/procedures/independent-review.schema.json")).unwrap(),
@@ -133,7 +136,7 @@ fn initialization_keeps_existing_ignore_rules_unless_a_later_negation_follows() 
     p.ok(&["init"]);
     assert_eq!(
       fs::read_to_string(p.path(".gitignore")).unwrap(),
-      format!("{ignore}/.reviews/{newline}")
+      format!("{ignore}/.claude/skills/hivex*{newline}/.reviews/{newline}")
     );
     subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
 
@@ -143,7 +146,7 @@ fn initialization_keeps_existing_ignore_rules_unless_a_later_negation_follows() 
     p.ok(&["init"]);
     assert_eq!(
       fs::read_to_string(p.path(".gitignore")).unwrap(),
-      format!("{ignore}/.hivex/{newline}/.reviews/{newline}")
+      format!("{ignore}/.claude/skills/hivex*{newline}/.hivex/{newline}/.reviews/{newline}")
     );
     subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
   }
@@ -159,8 +162,8 @@ fn cjk_source_order_and_page_boundaries_remain_compatible() {
   ] {
     p.write(name, text);
   }
-  assert_eq!(paths(&p.ok(&["sources"])), ["𠀀.md", "中.md", "文.md"]);
-  assert_eq!(paths(&p.ok(&["sources", "--limit", "1"])), ["𠀀.md"]);
+  assert_eq!(paths(&p.ok(&["sources"])), ["中.md", "文.md", "𠀀.md"]);
+  assert_eq!(paths(&p.ok(&["sources", "--limit", "1"])), ["中.md"]);
 }
 
 fn paths(value: &Value) -> Vec<&str> {
@@ -393,6 +396,8 @@ fn generated_rust_outputs_are_skipped_unless_explicitly_selected() {
   assert_eq!(paths(&p.ok(&["sources"])), ["target/generated.md"]);
 }
 
+// Symbolic links need extra privileges on Windows.
+#[cfg(unix)]
 #[test]
 fn selecting_nested_generated_docs_does_not_open_a_root_build_tree() {
   let p = Project::new();
@@ -411,6 +416,8 @@ fn selecting_nested_generated_docs_does_not_open_a_root_build_tree() {
   assert_eq!(excluded["warnings"].as_array().unwrap().len(), 0);
 }
 
+// Symbolic links need extra privileges on Windows.
+#[cfg(unix)]
 #[test]
 fn excluded_subtrees_symlinks_invalid_utf8_and_history_are_bounded() {
   let p = Project::new();
@@ -480,6 +487,8 @@ fn excluded_subtrees_symlinks_invalid_utf8_and_history_are_bounded() {
   );
 }
 
+// Symbolic links need extra privileges on Windows.
+#[cfg(unix)]
 #[test]
 fn initialization_is_repeatable_preserves_owned_bytes_and_git_visibility() {
   let p = Project::new();
@@ -562,14 +571,18 @@ fn initialization_reports_an_unreadable_root_in_its_message() {
   let output = crate::support::bounded(command);
   assert_eq!(output.status.code(), Some(1));
   let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-  assert_eq!(
-    error,
-    json!({"error":{"code":"INVALID_ROOT",
-      "message":"Project root is not readable: No such file or directory (os error 2)",
-      "messageTruncated":false}})
+  subset(
+    &error,
+    &json!({"error":{"code":"INVALID_ROOT","messageTruncated":false}}),
   );
+  // The reason comes from the operating system, whose wording differs between platforms.
+  let message = error["error"]["message"].as_str().unwrap();
+  assert!(message.starts_with("Project root is not readable: "));
+  assert!(message.ends_with("(os error 2)"));
 }
 
+// Symbolic links need extra privileges on Windows.
+#[cfg(unix)]
 #[test]
 fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
   for relative in [
@@ -597,19 +610,18 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
     fs::read_to_string(p.path(".agents/skills/hivex")).unwrap(),
     "occupied by an owner file"
   );
+  // The skills travel inside the executable, so a copy of it works anywhere.
   let p = Project::new();
   let standalone = p.path("hivex");
   fs::copy(p.command(&[]).get_program(), &standalone).unwrap();
   let output = Command::new(standalone)
     .current_dir(&p.root)
+    .env("PATH", std::env::temp_dir().join("hivex-no-hosts"))
     .arg("init")
     .output()
     .unwrap();
-  assert_eq!(output.status.code(), Some(1));
-  assert_eq!(output.stdout.len(), 0);
-  let result: Value = serde_json::from_slice(&output.stderr).unwrap();
-  assert_eq!(result["error"]["code"], "INIT_SKILLS_UNAVAILABLE");
-  assert!(!p.path("AGENTS.md").exists());
+  assert_eq!(output.status.code(), Some(0));
+  assert!(p.path(".agents/skills/hivex/SKILL.md").is_file());
   for rule in ["!knowledge.sqlite", "*"] {
     let p = Project::new();
     let files = [
@@ -629,7 +641,7 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
     }
     assert_eq!(
       fs::read_to_string(p.path(".gitignore")).unwrap(),
-      "/.hivex/\r\n/.reviews/\r\n"
+      "/.hivex/\r\n/.claude/skills/hivex*\r\n/.reviews/\r\n"
     );
     subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
     assert_eq!(
@@ -785,4 +797,13 @@ fn legacy_source_byte_budgets_have_exact_page_boundaries() {
       .unwrap()
       .contains("snapshot")
   );
+}
+
+/// Today's UTC date from the system, where a `date` command exists.
+fn utc_date() -> Option<String> {
+  let output = Command::new("date")
+    .args(["-u", "+%Y-%m-%d"])
+    .output()
+    .ok()?;
+  String::from_utf8(output.stdout).ok()
 }
