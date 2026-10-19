@@ -183,12 +183,14 @@ impl Config {
         "hivex.json has unsupported field: {unknown}"
       )));
     }
-    // The pinned release belongs to project setup, which validates its format.
-    if object
-      .get("version")
-      .is_some_and(|version| !version.is_string())
-    {
-      return Err(invalid("hivex.json version must be text"));
+    // The pinned release, `MAJOR.MINOR.PATCH`, is enforced by `init` and `update`.
+    if object.get("version").is_some_and(|version| {
+      !version.as_str().is_some_and(|text| {
+        let parts: Vec<_> = text.split('.').collect();
+        parts.len() == 3 && parts.iter().all(|part| part.parse::<u64>().is_ok())
+      })
+    }) {
+      return Err(invalid("hivex.json version must be MAJOR.MINOR.PATCH"));
     }
     if object.contains_key("archive") && object.contains_key("history") {
       return Err(invalid(

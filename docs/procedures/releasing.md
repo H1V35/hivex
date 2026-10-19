@@ -39,6 +39,6 @@ gh release download vX.Y.Z --repo H1V35/hivex --pattern "*aarch64-apple-darwin.t
 shasum -a 256 -c hivex-vX.Y.Z-aarch64-apple-darwin.tar.gz.sha256
 ```
 
-Run the extracted `hivex --help` and `hivex init` in a temporary project, and check that `cargo install --git https://github.com/H1V35/hivex --tag vX.Y.Z --locked hivex --force` installs the same version. The Quality workflow tests the CLI contracts on macOS ARM64, Linux x86_64 and Windows x86_64; the `x86_64-apple-darwin` executable is built on the ARM64 runner without running them.
+Run the extracted `hivex --help` and `hivex init` in a temporary project, and check that `cargo install --git https://github.com/H1V35/hivex --tag vX.Y.Z --locked hivex --bin hivex --force` installs the same version. The Quality workflow tests the CLI contracts on macOS ARM64, Linux x86_64 and Windows x86_64; the `x86_64-apple-darwin` executable is built on the ARM64 runner without running them.
 
 Never move, delete or recreate the tag of a published release, and never replace its archives with a local build. Publish a correction as a new version.

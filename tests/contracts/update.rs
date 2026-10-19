@@ -229,3 +229,40 @@ fn a_failing_host_stops_at_its_first_step() {
     ["codex plugin marketplace add DietrichGebert/ponytail"]
   );
 }
+
+#[test]
+fn version_pins_are_read_like_the_rest_of_the_configuration() {
+  let other = Project::new();
+  let p = Project::new();
+  p.ok(&["init"]);
+  p.write("hivex.json", "\u{feff}{\"version\":\"0.0.1\"}");
+  // A BOM-prefixed pin is read, not rejected.
+  assert_eq!(p.error(&["init"])["error"]["code"], "VERSION_MISMATCH");
+  // The warning follows the last `--root`, like every other option.
+  let root = other.root.to_str().unwrap();
+  subset(
+    &p.ok(&["sources", "--root", root]),
+    &json!({"versionWarning":{"pinned":"0.0.1"}}),
+  );
+  assert!(
+    other
+      .ok(&["sources", &format!("--root={}", p.root.display())])
+      .get("versionWarning")
+      .is_none()
+  );
+  // Responses with the warning still fit `--max-bytes`.
+  for max in (700..1600).step_by(37) {
+    let max = max.to_string();
+    let output = p.raw(&["sources", "--max-bytes", &max]);
+    if output.status.success() {
+      assert!(output.stdout.len() - 1 <= max.parse().unwrap(), "{max}");
+      let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+      assert!(response.get("versionWarning").is_some(), "{max}");
+    }
+  }
+  p.write("hivex.json", r#"{"version":"latest"}"#);
+  assert_eq!(p.error(&["sources"])["error"]["code"], "INVALID_CONFIG");
+  p.write("hivex.json", "[]");
+  assert_eq!(p.error(&["update"])["error"]["code"], "INVALID_CONFIG");
+  assert_eq!(fs::read_to_string(p.path("hivex.json")).unwrap(), "[]");
+}

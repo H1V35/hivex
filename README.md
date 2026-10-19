@@ -17,7 +17,7 @@ Your Markdown remains the authority. Hivex helps the responsible agent interpret
 Download the archive for your platform from [GitHub Releases](https://github.com/H1V35/hivex/releases) and put `hivex` (`hivex.exe` on Windows) on your `PATH`. Prebuilt binaries cover macOS (Apple silicon and Intel), Linux x86_64 and Windows x86_64. Alternatively, build a release with Cargo:
 
 ```sh
-cargo install --git https://github.com/H1V35/hivex --tag v0.12.0 --locked hivex --force
+cargo install --git https://github.com/H1V35/hivex --tag v0.12.0 --locked hivex --bin hivex --force
 ```
 
 Then initialize your project from its root:

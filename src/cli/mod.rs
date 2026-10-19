@@ -12,35 +12,16 @@ use serde_json::Value;
 
 const ORIGIN: &str = "current-worktree";
 
-/// Run one command; its JSON result goes to stdout, an error to stderr. Other commands than
-/// `init` and `update`, which enforce it, warn when the project pins another release.
+/// Run one command; its JSON result goes to stdout, an error to stderr. Paginated commands carry
+/// a version warning when the project pins another release; `init` and `update` enforce the pin.
 pub fn run(args: &[String]) -> Result<Value> {
   let mut output = command(args)?;
-  if !matches!(args.first().map(String::as_str), Some("init" | "update")) {
-    warn_version(args, &mut output);
-  }
-  Ok(output)
-}
-
-fn warn_version(args: &[String], output: &mut Value) {
-  let root = args
-    .iter()
-    .position(|arg| arg == "--root")
-    .and_then(|index| args.get(index + 1))
-    .map_or(".", String::as_str);
-  let installed = env!("CARGO_PKG_VERSION");
-  let Ok(Some(pinned)) = crate::foundation::pinned_version(std::path::Path::new(root)) else {
-    return;
-  };
-  if pinned != installed
+  if let Some(warning) = page::take_version_warning()
     && let Some(object) = output.as_object_mut()
   {
-    let install = crate::foundation::install_command(&pinned);
-    object.insert(
-      "versionWarning".into(),
-      serde_json::json!({"installed": installed, "pinned": pinned, "install": install}),
-    );
+    object.insert("versionWarning".into(), warning);
   }
+  Ok(output)
 }
 
 fn command(args: &[String]) -> Result<Value> {

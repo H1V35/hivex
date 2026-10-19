@@ -23,7 +23,7 @@ tar -xzf hivex-v0.12.0-aarch64-apple-darwin.tar.gz
 The macOS executables are not notarized, and a browser download is quarantined; remove that attribute with `xattr -d com.apple.quarantine hivex` after checking the archive, or download with `gh` or Cargo instead. Alternatively, build and install a release with stable Rust; `--force` replaces an installed version:
 
 ```sh
-cargo install --git https://github.com/H1V35/hivex --tag v0.12.0 --locked hivex --force
+cargo install --git https://github.com/H1V35/hivex --tag v0.12.0 --locked hivex --bin hivex --force
 ```
 
 Then run `hivex init` in the project root. Versions up to 0.11.1 were installed from the npm package `@h1v35/hivex`, now deprecated; existing projects [migrate from npm](#migrate-from-npm).
@@ -39,7 +39,7 @@ Then run `hivex init` in the project root. Versions up to 0.11.1 were installed 
 }
 ```
 
-`init` writes the installed version when it creates `hivex.json`, and fails with `VERSION_MISMATCH` (details `installed` and `pinned`) before writing anything when the project pins another release. `update` adds the pin to an existing `hivex.json` or moves it forward to the installed release, reported as `hivex.json` in `updated`; it fails with `VERSION_MISMATCH` rather than move the pin back. All other commands keep working and add `"versionWarning":{"installed":…,"pinned":…,"install":…}` to their result, where `install` is the command that installs the pinned release, `cargo install --git https://github.com/H1V35/hivex --tag vX.Y.Z --locked hivex --force`. A missing pin imposes nothing; an invalid one fails with `INVALID_CONFIG`.
+`init` writes the installed version when it creates `hivex.json`, and fails with `VERSION_MISMATCH` (details `installed` and `pinned`) before writing anything when the project pins another release. `update` adds the pin to an existing `hivex.json` or moves it forward to the installed release, reported as `hivex.json` in `updated`; it fails with `VERSION_MISMATCH` rather than move the pin back. All other commands keep working and add `"versionWarning":{"installed":…,"pinned":…,"install":…}` to their result, where `install` is the command that installs the pinned release, `cargo install --git https://github.com/H1V35/hivex --tag vX.Y.Z --locked hivex --bin hivex --force`. A missing pin imposes nothing; an invalid one fails with `INVALID_CONFIG`.
 
 Commit `hivex.json` so collaborators and agents use the same release. The guide for a pinned release is `https://github.com/H1V35/hivex/blob/vX.Y.Z/docs/guide.md`; `hivex --help` lists the installed command contract.
 

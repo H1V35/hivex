@@ -280,7 +280,7 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
       let target = destination(root, path, DestinationKind::File)?;
       let bytes = match *path {
         _ if target.exists => bytes.to_vec(),
-        CONFIG => pinned_config(&serde_json::from_slice(bytes)?),
+        CONFIG => pinned_config(&config_object(bytes)?),
         _ if is_dated(path) => dated_template(bytes, &created_at),
         _ => bytes.to_vec(),
       };
@@ -294,18 +294,28 @@ fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
     .collect()
 }
 
+/// The configuration object, accepting the optional UTF-8 BOM that source selection accepts.
+fn config_object(bytes: &[u8]) -> Result<serde_json::Map<String, Value>> {
+  let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+  match serde_json::from_slice(bytes) {
+    Ok(Value::Object(object)) => Ok(object),
+    _ => Err(error(
+      "INVALID_CONFIG",
+      format!("{CONFIG} must contain a JSON object"),
+    )),
+  }
+}
+
 /// `config` with `version` set to this release as its first field, pretty-printed.
-fn pinned_config(config: &Value) -> Vec<u8> {
+fn pinned_config(config: &serde_json::Map<String, Value>) -> Vec<u8> {
   let mut object = serde_json::Map::new();
   object.insert("version".into(), VERSION.into());
-  if let Some(fields) = config.as_object() {
-    object.extend(
-      fields
-        .iter()
-        .filter(|(key, _)| *key != "version")
-        .map(|(key, value)| (key.clone(), value.clone())),
-    );
-  }
+  object.extend(
+    config
+      .iter()
+      .filter(|(key, _)| *key != "version")
+      .map(|(key, value)| (key.clone(), value.clone())),
+  );
   let mut text = serde_json::to_string_pretty(&Value::Object(object)).expect("JSON serializes");
   text.push('\n');
   text.into_bytes()
@@ -321,7 +331,7 @@ fn release(version: &str) -> Option<[u64; 3]> {
 /// The command that installs `version`, for error messages and warnings.
 pub fn install_command(version: &str) -> String {
   format!(
-    "cargo install --git https://github.com/H1V35/hivex --tag v{version} --locked hivex --force"
+    "cargo install --git https://github.com/H1V35/hivex --tag v{version} --locked hivex --bin hivex --force"
   )
 }
 
@@ -331,8 +341,7 @@ pub fn pinned_version(root: &Path) -> Result<Option<String>> {
   let Ok(text) = fs::read(&path) else {
     return Ok(None);
   };
-  let config: Value = serde_json::from_slice(&text)
-    .map_err(|_| error("INVALID_CONFIG", "hivex.json must contain valid JSON"))?;
+  let config = config_object(&text)?;
   let Some(version) = config.get("version") else {
     return Ok(None);
   };
@@ -346,6 +355,16 @@ pub fn pinned_version(root: &Path) -> Result<Option<String>> {
         "hivex.json version must be MAJOR.MINOR.PATCH",
       )
     })
+}
+
+/// The warning other commands carry when the project pins another release. Source selection
+/// reports an invalid configuration, so it is not repeated here.
+pub fn version_warning(root: &Path) -> Option<Value> {
+  let pinned = pinned_version(root).ok().flatten()?;
+  (pinned != VERSION).then(|| {
+    let install = install_command(&pinned);
+    json!({"installed": VERSION, "pinned": pinned, "install": install})
+  })
 }
 
 fn version_mismatch(pinned: &str) -> HivexError {
@@ -371,8 +390,7 @@ fn pin_operation(root: &Path) -> Result<Option<FileOperation>> {
   {
     return Err(version_mismatch(pinned));
   }
-  let config: Value = serde_json::from_slice(&read_existing(&target, CONFIG)?)
-    .map_err(|_| error("INVALID_CONFIG", "hivex.json must contain valid JSON"))?;
+  let config = config_object(&read_existing(&target, CONFIG)?)?;
   Ok(Some(FileOperation {
     absolute_path: target.absolute_path,
     content: Content::Bytes(pinned_config(&config)),

@@ -2,13 +2,32 @@
 use super::arguments::Arguments;
 use crate::error::{HivexError, Result};
 use serde_json::Value;
+use std::cell::RefCell;
+use std::path::Path;
 
 const DEFAULT_MAX_BYTES: usize = 16_384;
 const MAX_BYTES: usize = 65_536;
 
-/// `--max-bytes`, the bound of a complete serialized response.
+thread_local! {
+  /// The version warning `max_bytes` made room for; `cli::run` adds it to the response.
+  static VERSION_WARNING: RefCell<Option<Value>> = const { RefCell::new(None) };
+}
+
+/// `--max-bytes`, the bound of a complete serialized response, less the room a version warning
+/// for the selected root needs.
 pub fn max_bytes(arguments: &Arguments) -> Result<usize> {
-  arguments.count("max-bytes", DEFAULT_MAX_BYTES, MAX_BYTES)
+  let max_bytes = arguments.count("max-bytes", DEFAULT_MAX_BYTES, MAX_BYTES)?;
+  let Some(warning) = crate::foundation::version_warning(Path::new(arguments.root())) else {
+    return Ok(max_bytes);
+  };
+  let reserved = format!(",\"versionWarning\":{warning}").len();
+  VERSION_WARNING.with(|slot| slot.replace(Some(warning)));
+  Ok(max_bytes.saturating_sub(reserved))
+}
+
+/// The version warning reserved by `max_bytes` for the current response, if any.
+pub fn take_version_warning() -> Option<Value> {
+  VERSION_WARNING.with(RefCell::take)
 }
 
 /// A continuation `{version}.{key}.{offset}`. The key binds it to the
