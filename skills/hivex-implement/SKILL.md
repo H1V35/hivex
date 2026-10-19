@@ -9,7 +9,7 @@ Recover the request, owning issue and relevant project decisions through local H
 
 Before implementing against a retrieved rule, recover its governing context and relevant qualifications under the [shared context-reading method](../hivex/references/markdown.md#recover-enough-context-to-apply-a-rule). Check how the proposed behavior respects its scope, conditions, exceptions and replacements; a search passage alone may omit them. Reuse already inspected current sources rather than repeating retrieval.
 
-Prefer existing capabilities or a direct solution over speculative layers and dependencies. For a difficult bug, reproduce the failure, use a falsifiable hypothesis and observe what distinguishes causes before changing code; remove temporary diagnostics when finished.
+Prefer existing capabilities or a direct solution over speculative layers and dependencies. When the ponytail plugin that `hivex init` installs is available, work under its `ponytail` skill: the smallest change that fully solves the task, once the code it touches is understood. Where its defaults differ from the project's decisions or this skill, those prevail. For a difficult bug, reproduce the failure, use a falsifiable hypothesis and observe what distinguishes causes before changing code; remove temporary diagnostics when finished.
 
 ## Verify for value
 
