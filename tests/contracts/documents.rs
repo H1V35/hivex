@@ -614,12 +614,22 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
   let p = Project::new();
   let standalone = p.path("hivex");
   fs::copy(p.command(&[]).get_program(), &standalone).unwrap();
-  let output = Command::new(standalone)
+  let mut command = Command::new(standalone);
+  command
     .current_dir(&p.root)
     .env("PATH", std::env::temp_dir().join("hivex-no-hosts"))
-    .arg("init")
-    .output()
-    .unwrap();
+    .arg("init");
+  // Linux refuses to run a just-copied file while a process forked by a parallel test still
+  // holds it open for writing ("Text file busy"); that lasts only until the fork executes.
+  let output = (0..50)
+    .find_map(|_| match command.output() {
+      Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        None
+      }
+      result => Some(result.unwrap()),
+    })
+    .expect("the copied executable stayed busy");
   assert_eq!(output.status.code(), Some(0));
   assert!(p.path(".agents/skills/hivex/SKILL.md").is_file());
   for rule in ["!knowledge.sqlite", "*"] {
