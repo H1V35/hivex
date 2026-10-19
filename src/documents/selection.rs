@@ -176,7 +176,7 @@ impl Config {
     if let Some(unknown) = object.keys().find(|key| {
       !matches!(
         key.as_str(),
-        "exclude" | "archive" | "history" | "include" | "version"
+        "exclude" | "archive" | "history" | "include" | "version" | "extensions"
       )
     }) {
       return Err(invalid(format!(

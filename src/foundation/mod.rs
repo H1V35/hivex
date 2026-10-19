@@ -13,14 +13,10 @@ const IGNORE_RULES: [&str; 3] = ["/.claude/skills/hivex*", "/.hivex/", "/.review
 /// This release; `hivex.json` pins the release a project expects.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CONFIG: &str = "hivex.json";
-const SKILLS: [&str; 6] = [
-  "hivex",
-  "hivex-design",
-  "hivex-document",
-  "hivex-git",
-  "hivex-implement",
-  "hivex-review",
-];
+
+mod extension;
+
+use extension::Pin;
 
 /// Bundled files under `prefix`, by their path relative to it.
 macro_rules! bundled {
@@ -31,7 +27,7 @@ macro_rules! bundled {
 
 /// Project foundation files: created when missing and never changed afterwards.
 static TEMPLATE_FILES: &[(&str, &[u8])] = bundled![
-  "../skills/hivex/assets/project/":
+  "../../skills/hivex/assets/project/":
   "AGENTS.md",
   "docs/CONTEXT.md",
   "docs/PRD.md",
@@ -49,7 +45,7 @@ static TEMPLATE_FILES: &[(&str, &[u8])] = bundled![
 /// The complete skills, relative to `.agents/skills/`: `init` creates missing files and `update`
 /// makes them identical to this release.
 static SKILL_FILES: &[(&str, &[u8])] = bundled![
-  "../skills/":
+  "../../skills/":
   "hivex-design/SKILL.md",
   "hivex-design/references/visual-review.md",
   "hivex-document/SKILL.md",
@@ -77,6 +73,56 @@ static SKILL_FILES: &[(&str, &[u8])] = bundled![
   "hivex/templates/swift/docs/guidelines/swift.md",
   "hivex/templates/typescript/docs/guidelines/typescript.md",
 ];
+
+/// What a project installs: the bundled foundation with its extensions applied.
+struct Bundle {
+  templates: Vec<(String, Vec<u8>)>,
+  /// Skill files, relative to `.agents/skills/`.
+  skills: Vec<(String, Vec<u8>)>,
+}
+
+impl Bundle {
+  fn with_extensions(root: &Path, pins: &[Pin]) -> Result<Self> {
+    let owned = |files: &[(&str, &[u8])]| -> Vec<(String, Vec<u8>)> {
+      files
+        .iter()
+        .map(|(path, bytes)| ((*path).to_owned(), bytes.to_vec()))
+        .collect()
+    };
+    let mut bundle = Self {
+      templates: owned(TEMPLATE_FILES),
+      skills: owned(SKILL_FILES),
+    };
+    for pin in pins {
+      extension::apply(&mut bundle, &extension::fetch(root, pin)?)?;
+    }
+    Ok(bundle)
+  }
+
+  fn skill_names(&self) -> Vec<String> {
+    let mut names: Vec<String> = self
+      .skills
+      .iter()
+      .map(|(path, _)| extension::skill_name(path).to_owned())
+      .collect();
+    names.dedup();
+    names
+  }
+
+  /// Claude's links are per machine, so each one is ignored.
+  fn ignore_rules(&self) -> Vec<String> {
+    let links = self
+      .skill_names()
+      .into_iter()
+      .filter(|name| !name.starts_with("hivex"))
+      .map(|name| format!("/.claude/skills/{name}"));
+    IGNORE_RULES
+      .iter()
+      .map(|rule| (*rule).to_owned())
+      .chain(links)
+      .collect()
+  }
+}
 
 /// A host CLI and the idempotent steps it runs for the ponytail plugin.
 type HostSteps = (&'static str, &'static [&'static [&'static str]]);
@@ -147,7 +193,7 @@ struct FileOperation {
 enum Content {
   Bytes(Vec<u8>),
   /// Claude's link to the named skill in `.agents/skills`.
-  SkillLink(&'static str),
+  SkillLink(String),
   /// A former npm link to a skill, replaced by a copy.
   Unlink,
 }
@@ -241,22 +287,22 @@ fn split_crlf_lines(text: &str) -> impl Iterator<Item = &str> {
     .map(|line| line.strip_suffix('\r').unwrap_or(line))
 }
 
-fn missing_ignore_rules(text: &str) -> Vec<&'static str> {
+fn missing_ignore_rules<'a>(text: &str, rules: &'a [String]) -> Vec<&'a String> {
   let lines: Vec<_> = split_crlf_lines(text).collect();
   // The last matching rule wins, so a later negation could re-include local state.
   let effective = lines
     .iter()
     .rposition(|line| line.starts_with('!'))
     .map_or(&lines[..], |negation| &lines[negation + 1..]);
-  IGNORE_RULES
-    .into_iter()
-    .filter(|rule| !effective.contains(rule))
+  rules
+    .iter()
+    .filter(|rule| !effective.contains(&rule.as_str()))
     .collect()
 }
 
-fn ignore_update(existing: Option<&[u8]>) -> Option<Vec<u8>> {
+fn ignore_update(existing: Option<&[u8]>, rules: &[String]) -> Option<Vec<u8>> {
   let text = existing.map(String::from_utf8_lossy).unwrap_or_default();
-  let missing = missing_ignore_rules(&text);
+  let missing = missing_ignore_rules(&text, rules);
   if missing.is_empty() {
     return None;
   }
@@ -272,22 +318,23 @@ fn ignore_update(existing: Option<&[u8]>) -> Option<Vec<u8>> {
   Some(bytes)
 }
 
-fn template_operations(root: &Path) -> Result<Vec<FileOperation>> {
+fn template_operations(root: &Path, bundle: &Bundle, pins: &[Pin]) -> Result<Vec<FileOperation>> {
   let created_at = creation_date()?;
-  TEMPLATE_FILES
+  bundle
+    .templates
     .iter()
     .map(|(path, bytes)| {
       let target = destination(root, path, DestinationKind::File)?;
-      let bytes = match *path {
-        _ if target.exists => bytes.to_vec(),
-        CONFIG => pinned_config(&config_object(bytes)?),
+      let bytes = match path.as_str() {
+        _ if target.exists => bytes.clone(),
+        CONFIG => pinned_config(&config_object(bytes)?, pins),
         _ if is_dated(path) => dated_template(bytes, &created_at),
-        _ => bytes.to_vec(),
+        _ => bytes.clone(),
       };
       Ok(FileOperation {
         absolute_path: target.absolute_path,
         content: Content::Bytes(bytes),
-        path: (*path).to_owned(),
+        path: path.clone(),
         state: OperationState::planned(target.exists),
       })
     })
@@ -306,14 +353,22 @@ fn config_object(bytes: &[u8]) -> Result<serde_json::Map<String, Value>> {
   }
 }
 
-/// `config` with `version` set to this release as its first field, pretty-printed.
-fn pinned_config(config: &serde_json::Map<String, Value>) -> Vec<u8> {
+/// `config` with `version` set to this release and `extensions` to `pins` as its first fields,
+/// pretty-printed.
+fn pinned_config(config: &serde_json::Map<String, Value>, pins: &[Pin]) -> Vec<u8> {
   let mut object = serde_json::Map::new();
   object.insert("version".into(), VERSION.into());
+  if !pins.is_empty() {
+    let pins = pins
+      .iter()
+      .map(|pin| json!({"repository": pin.repository, "version": pin.version}))
+      .collect();
+    object.insert("extensions".into(), Value::Array(pins));
+  }
   object.extend(
     config
       .iter()
-      .filter(|(key, _)| *key != "version")
+      .filter(|(key, _)| !matches!(key.as_str(), "version" | "extensions"))
       .map(|(key, value)| (key.clone(), value.clone())),
   );
   let mut text = serde_json::to_string_pretty(&Value::Object(object)).expect("JSON serializes");
@@ -378,8 +433,9 @@ fn version_mismatch(pinned: &str) -> HivexError {
   .with_details(json!({"installed": VERSION, "pinned": pinned}))
 }
 
-/// `update` moves the pin to this release, but never back to an older one.
-fn pin_operation(root: &Path) -> Result<Option<FileOperation>> {
+/// `update` moves the pin to this release, but never back to an older one, and records the
+/// extension releases it installed.
+fn pin_operation(root: &Path, pins: &[Pin], pins_changed: bool) -> Result<Option<FileOperation>> {
   let target = destination(root, CONFIG, DestinationKind::File)?;
   if !target.exists {
     return Ok(None);
@@ -393,9 +449,9 @@ fn pin_operation(root: &Path) -> Result<Option<FileOperation>> {
   let config = config_object(&read_existing(&target, CONFIG)?)?;
   Ok(Some(FileOperation {
     absolute_path: target.absolute_path,
-    content: Content::Bytes(pinned_config(&config)),
+    content: Content::Bytes(pinned_config(&config, pins)),
     path: CONFIG.to_owned(),
-    state: if pinned.as_deref() == Some(VERSION) {
+    state: if pinned.as_deref() == Some(VERSION) && !pins_changed {
       OperationState::Preserved
     } else {
       OperationState::Updated
@@ -434,12 +490,15 @@ fn civil_date(days: u64) -> String {
   format!("{year:04}-{month:02}-{day:02}")
 }
 
+/// Extension files may lack frontmatter; they are installed unchanged.
 fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
-  let text = std::str::from_utf8(bytes).expect("bundled Markdown is UTF-8");
-  let (header, body) = text
-    .strip_prefix("---\n")
+  let Some((header, body)) = std::str::from_utf8(bytes)
+    .ok()
+    .and_then(|text| text.strip_prefix("---\n"))
     .and_then(|text| text.split_once("\n---\n"))
-    .expect("bundled documentation has frontmatter");
+  else {
+    return bytes.to_vec();
+  };
   let mut metadata = header
     .lines()
     .filter(|line| {
@@ -457,7 +516,7 @@ fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
   format!("---\n{}\n---\n{body}", metadata.join("\n")).into_bytes()
 }
 
-fn ignore_operation(root: &Path) -> Result<FileOperation> {
+fn ignore_operation(root: &Path, rules: &[String]) -> Result<FileOperation> {
   let relative_path = ".gitignore";
   let target = destination(root, relative_path, DestinationKind::File)?;
   let existing = if target.exists {
@@ -465,7 +524,7 @@ fn ignore_operation(root: &Path) -> Result<FileOperation> {
   } else {
     None
   };
-  let (bytes, state) = match ignore_update(existing.as_deref()) {
+  let (bytes, state) = match ignore_update(existing.as_deref(), rules) {
     Some(bytes) => (
       bytes,
       if target.exists {
@@ -493,10 +552,15 @@ fn read_existing(target: &Destination, relative_path: &str) -> Result<Vec<u8>> {
   })
 }
 
-fn skill_operations(root: &Path, refresh: bool) -> Result<Vec<FileOperation>> {
+fn skill_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec<FileOperation>> {
   let mut operations = Vec::new();
-  for name in SKILLS {
-    operations.extend(skill_directory_operations(root, name, refresh)?);
+  for name in bundle.skill_names() {
+    let files: Vec<_> = bundle
+      .skills
+      .iter()
+      .filter(|(path, _)| extension::skill_name(path) == name)
+      .collect();
+    operations.extend(skill_directory_operations(root, &name, &files, refresh)?);
   }
   Ok(operations)
 }
@@ -506,17 +570,16 @@ fn skill_operations(root: &Path, refresh: bool) -> Result<Vec<FileOperation>> {
 fn skill_directory_operations(
   root: &Path,
   name: &str,
+  files: &[&(String, Vec<u8>)],
   refresh: bool,
 ) -> Result<Vec<FileOperation>> {
   let directory = format!(".agents/skills/{name}");
   let target = destination(root, &directory, DestinationKind::Link)?;
   let linked = target.exists
     && fs::symlink_metadata(&target.absolute_path).is_ok_and(|entry| entry.is_symlink());
-  let files = SKILL_FILES
-    .iter()
-    .filter(|(path, _)| path.split('/').next() == Some(name));
   if !linked {
     return files
+      .iter()
       .map(|(path, bytes)| file_operation(root, &format!(".agents/skills/{path}"), bytes, refresh))
       .collect();
   }
@@ -533,11 +596,11 @@ fn skill_directory_operations(
   if !refresh {
     return Ok(vec![unlink]);
   }
-  let copies = files.map(|(path, bytes)| {
+  let copies = files.iter().map(|(path, bytes)| {
     let relative = format!(".agents/skills/{path}");
     FileOperation {
       absolute_path: normalize_path(&root.join(&relative)),
-      content: Content::Bytes(bytes.to_vec()),
+      content: Content::Bytes(bytes.clone()),
       path: relative,
       state: OperationState::Created,
     }
@@ -561,9 +624,10 @@ fn file_operation(root: &Path, path: &str, bytes: &[u8], refresh: bool) -> Resul
 }
 
 /// Claude loads skills only from `.claude/skills`; an existing entry there stays as it is.
-fn link_operations(root: &Path) -> Result<Vec<FileOperation>> {
-  SKILLS
-    .iter()
+fn link_operations(root: &Path, bundle: &Bundle) -> Result<Vec<FileOperation>> {
+  bundle
+    .skill_names()
+    .into_iter()
     .map(|name| {
       let path = format!(".claude/skills/{name}");
       let target = destination(root, &path, DestinationKind::Link)?;
@@ -706,14 +770,17 @@ fn plugins(hosts: &[HostSteps], status: HostStatus) -> Value {
     .collect()
 }
 
-fn report(
-  command: &str,
-  operations: &[FileOperation],
-  hosts: &[HostSteps],
-  status: HostStatus,
-) -> Value {
+/// What `init` or `update` did to the project's files and which extension releases it installed.
+struct Outcome<'a> {
+  command: &'a str,
+  operations: &'a [FileOperation],
+  pins: &'a [Pin],
+}
+
+fn report(outcome: &Outcome, hosts: &[HostSteps], status: HostStatus) -> Value {
   let paths = |state| {
-    let mut paths: Vec<_> = operations
+    let mut paths: Vec<_> = outcome
+      .operations
       .iter()
       .filter(|operation| operation.state == state)
       .map(|operation| operation.path.as_str())
@@ -723,9 +790,15 @@ fn report(
     });
     paths
   };
+  let extensions: Vec<Value> = outcome
+    .pins
+    .iter()
+    .map(|pin| json!({"repository": pin.repository, "version": pin.version}))
+    .collect();
   json!({
-    "command": command,
+    "command": outcome.command,
     "created": paths(OperationState::Created),
+    "extensions": extensions,
     "modelCalls": 0,
     "plugins": plugins(hosts, status),
     "preserved": paths(OperationState::Preserved),
@@ -735,47 +808,98 @@ fn report(
 
 /// Prepare the missing foundation files, skills, Claude skill links and ignore rules of the project
 /// at `root` without changing anything that exists, and install the ponytail plugin in Claude and
-/// Codex.
-pub fn initialize(root: &str) -> Result<Value> {
+/// Codex. `extension` adds an extension at its newest release to a project without `hivex.json`.
+pub fn initialize(root: &str, extension: Option<&str>) -> Result<Value> {
   let root = project_root(root)?;
   // Retained state must not hide a symlink or a conflicting `.hivex` entry.
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
   if let Some(pinned) = pinned_version(&root)?.filter(|pinned| pinned != VERSION) {
     return Err(version_mismatch(&pinned));
   }
-  let mut operations = template_operations(&root)?;
-  operations.extend(managed_operations(&root, false)?);
+  let config = project_config(&root)?;
+  let mut pins = config
+    .as_ref()
+    .map(extension::pins)
+    .transpose()?
+    .unwrap_or_default();
+  if let Some(repository) = extension {
+    if config.is_some() {
+      return Err(error(
+        "INVALID_ARGUMENT",
+        "hivex.json already exists; add the extension to its extensions list",
+      ));
+    }
+    let version = extension::latest(repository)?;
+    pins.push(Pin {
+      repository: repository.to_owned(),
+      version,
+    });
+  }
+  let bundle = Bundle::with_extensions(&root, &pins)?;
+  let mut operations = template_operations(&root, &bundle, &pins)?;
+  operations.extend(managed_operations(&root, &bundle, false)?);
   write_operations(&operations)?;
   Ok(report(
-    "init",
-    &operations,
+    &Outcome {
+      command: "init",
+      operations: &operations,
+      pins: &pins,
+    },
     &PONYTAIL_INSTALL,
     install_status,
   ))
 }
 
-/// Bring the managed parts of the project at `root` up to this release: the skills, Claude's skill
-/// links, the ignore rules, the pinned version and the ponytail plugin. Project files are neither
-/// created nor changed.
+/// Bring the managed parts of the project at `root` up to this release and each extension up to
+/// its newest release: the skills, Claude's skill links, the ignore rules, the pinned versions and
+/// the ponytail plugin. Project files are neither created nor changed.
 pub fn update(root: &str) -> Result<Value> {
   let root = project_root(root)?;
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
-  let mut operations = managed_operations(&root, true)?;
-  operations.extend(pin_operation(&root)?);
+  let pinned = project_config(&root)?
+    .as_ref()
+    .map(extension::pins)
+    .transpose()?
+    .unwrap_or_default();
+  let pins = pinned
+    .iter()
+    .map(|pin| {
+      let latest = extension::latest(&pin.repository)?;
+      let newer = release(&latest) > release(&pin.version);
+      Ok(Pin {
+        repository: pin.repository.clone(),
+        version: if newer { latest } else { pin.version.clone() },
+      })
+    })
+    .collect::<Result<Vec<_>>>()?;
+  let bundle = Bundle::with_extensions(&root, &pins)?;
+  let mut operations = managed_operations(&root, &bundle, true)?;
+  operations.extend(pin_operation(&root, &pins, pins != pinned)?);
   write_operations(&operations)?;
   Ok(report(
-    "update",
-    &operations,
+    &Outcome {
+      command: "update",
+      operations: &operations,
+      pins: &pins,
+    },
     &PONYTAIL_UPDATE,
     update_status,
   ))
 }
 
-fn managed_operations(root: &Path, refresh: bool) -> Result<Vec<FileOperation>> {
-  let mut operations = skill_operations(root, refresh)?;
+/// The project's `hivex.json`, when it has one.
+fn project_config(root: &Path) -> Result<Option<serde_json::Map<String, Value>>> {
+  match fs::read(root.join(CONFIG)) {
+    Ok(bytes) => config_object(&bytes).map(Some),
+    Err(_) => Ok(None),
+  }
+}
+
+fn managed_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec<FileOperation>> {
+  let mut operations = skill_operations(root, bundle, refresh)?;
   // The links follow the skills so their targets exist when they are created.
-  operations.extend(link_operations(root)?);
-  operations.push(ignore_operation(root)?);
+  operations.extend(link_operations(root, bundle)?);
+  operations.push(ignore_operation(root, &bundle.ignore_rules())?);
   Ok(operations)
 }
 

@@ -37,7 +37,7 @@ fn command(args: &[String]) -> Result<Value> {
     "search" => search::command(args),
     "relations" => relations::command(args),
     "check" => check::command(args),
-    "init" => project(args, "init", crate::foundation::initialize),
+    "init" => initialize(args),
     "update" => project(args, "update", crate::foundation::update),
     "ask" | "neighbors" | "review" | "warnings" | "snapshot" | "recover" | "prune" | "status" => {
       Err(HivexError::new(
@@ -49,6 +49,16 @@ fn command(args: &[String]) -> Result<Value> {
       "Use sources, read, search, relations, check, init or update; see --help",
     )),
   }
+}
+
+fn initialize(args: &[String]) -> Result<Value> {
+  let arguments = Arguments::parse(args, &["root", "extension"], &[])?;
+  if arguments.positionals().len() != 1 {
+    return Err(invalid(
+      "Use init [--extension <repository>] [--root <project>]",
+    ));
+  }
+  crate::foundation::initialize(arguments.root(), arguments.value("extension"))
 }
 
 fn project(args: &[String], command: &str, run: fn(&str) -> Result<Value>) -> Result<Value> {

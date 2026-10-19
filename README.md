@@ -26,7 +26,7 @@ Then initialize your project from its root:
 hivex init
 ```
 
-`init` prepares project documents, agent instructions and the six bundled skills, and installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin in Claude Code and Codex when they are installed. It preserves existing files and makes no model calls. The skills are copied into `.agents/skills/` and linked from `.claude/skills/`, and `hivex.json` pins the installed release so collaborators use the same version. After installing a newer release, `hivex update` refreshes the skill copies, moves the pin forward and brings ponytail to its latest release; it changes no other project file.
+`init` prepares project documents, agent instructions and the six bundled skills, and installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin in Claude Code and Codex when they are installed. It preserves existing files and makes no model calls. The skills are copied into `.agents/skills/` and linked from `.claude/skills/`, and `hivex.json` pins the installed release so collaborators use the same version. Extensions add skills and project files for a particular kind of project: `hivex init --extension OWNER/REPO` ([guide](docs/guide.md#extensions)). After installing a newer release, `hivex update` refreshes the skill copies, moves the pin forward and brings ponytail to its latest release; it changes no other project file.
 
 ```sh
 hivex search "cache policy"
