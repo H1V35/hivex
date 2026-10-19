@@ -329,6 +329,21 @@ fn thresholds_and_flow_rules_reject_violations() {
       .iter()
       .any(|issue| issue.contains("three nested"))
   );
+  // syn 3 represents match guards as `Pat::Guard`; flow rules still apply inside them.
+  let guarded = analyze(
+    "fn guarded(v: bool) -> bool { match v { _ if (if v { v } else if v { v } else { v }) => v, _ => v } }",
+  )
+  .unwrap();
+  assert!(guarded.issues.iter().any(|issue| issue.contains("else-if")));
+  let guarded =
+    analyze("fn guarded(v: bool) -> bool { match v { _ if { { { { v } } } } => v, _ => v } }")
+      .unwrap();
+  assert!(
+    guarded
+      .issues
+      .iter()
+      .any(|issue| issue.contains("three nested"))
+  );
   let macros = analyze("fn macro_input(value: bool) { json!({\"answer\": if value { 1 } else if value { 2 } else { 0 }}); }").unwrap();
   assert!(macros.issues.iter().any(|issue| issue.contains("else-if")));
   assert_eq!(

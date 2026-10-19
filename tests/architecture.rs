@@ -251,6 +251,8 @@ fn dependency_gate_covers_imports_qualified_paths_and_test_boundaries() {
   for source in [
     "fn violation() { crate::knowledge::algo!(); }",
     "macro_rules! violation { () => { $crate::knowledge::algo!() }; }",
+    // syn 3 represents match guards as `Pat::Guard`.
+    "fn violation(value: u8) { match value { _ if crate::knowledge::check() => {} _ => {} } }",
   ] {
     boundary.issues.clear();
     boundary.visit_file(&syn::parse_file(source).unwrap());

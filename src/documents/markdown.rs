@@ -6,6 +6,7 @@ use pulldown_cmark::{Event, Options, Parser, Tag as MarkdownTag};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
+use std::fmt::Write;
 use std::ops::Range;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -17,9 +18,14 @@ pub struct MarkdownDescription {
   pub title: String,
 }
 
+/// Lowercase hexadecimal SHA-256; sha2 0.11 digests no longer implement `LowerHex`.
 pub fn hash(text: &str) -> String {
-  let digest = Sha256::digest(text.as_bytes());
-  format!("{digest:x}")
+  Sha256::digest(text.as_bytes())
+    .iter()
+    .fold(String::with_capacity(64), |mut hex, byte| {
+      let _ = write!(hex, "{byte:02x}");
+      hex
+    })
 }
 
 pub const MARKDOWN_EXTENSIONS: [&str; 3] = [".md", ".markdown", ".mdown"];
