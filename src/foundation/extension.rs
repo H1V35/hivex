@@ -96,14 +96,21 @@ fn git(args: &[&str]) -> Result<String> {
       error("EXTENSION_UNAVAILABLE", message)
     })?;
   if !output.status.success() {
-    let reason = String::from_utf8_lossy(&output.stderr);
-    let reason = reason
-      .lines()
+    // Git reports most failures on stderr, but some only on stdout.
+    let streams = [&output.stderr, &output.stdout].map(|bytes| String::from_utf8_lossy(bytes));
+    let reason = streams
+      .iter()
+      .flat_map(|text| text.lines())
       .find(|line| !line.trim().is_empty())
-      .unwrap_or("");
+      .unwrap_or("no output");
+    let command = args.iter().find(|arg| !arg.starts_with('-')).unwrap_or(&"");
     return Err(error(
       "EXTENSION_UNAVAILABLE",
-      format!("git failed: {}", reason.trim()),
+      format!(
+        "git {command} failed ({}): {}",
+        output.status,
+        reason.trim()
+      ),
     ));
   }
   Ok(String::from_utf8_lossy(&output.stdout).into_owned())
