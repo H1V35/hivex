@@ -822,7 +822,12 @@ fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
       .open(&operation.absolute_path)?
       .write_all(bytes)?;
   }
-  set_executable(&operation.absolute_path, operation.executable)
+  #[cfg(unix)]
+  set_executable(&operation.absolute_path, operation.executable)?;
+  // Windows files have no execute permission to carry.
+  #[cfg(not(unix))]
+  let _ = operation.executable;
+  Ok(())
 }
 
 #[cfg(unix)]
@@ -837,11 +842,6 @@ fn set_executable(path: &Path, executable: bool) -> std::io::Result<()> {
   };
   permissions.set_mode(mode);
   fs::set_permissions(path, permissions)
-}
-
-#[cfg(not(unix))]
-fn set_executable(_: &Path, _: bool) -> std::io::Result<()> {
-  Ok(())
 }
 
 fn run_quietly(program: &std::ffi::OsStr, args: &[&str]) -> std::io::Result<Output> {
