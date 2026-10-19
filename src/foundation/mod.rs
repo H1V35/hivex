@@ -92,6 +92,8 @@ struct Bundle {
   skills: Vec<BundleFile>,
   /// Ignore rules added by extensions.
   ignore: Vec<String>,
+  /// Extension releases in use, whose older cached releases go once installation succeeds.
+  kept: Vec<extension::Kept>,
 }
 
 impl Bundle {
@@ -110,9 +112,12 @@ impl Bundle {
       templates: owned(TEMPLATE_FILES),
       skills: owned(SKILL_FILES),
       ignore: Vec::new(),
+      kept: Vec::new(),
     };
     for pin in pins {
-      extension::apply(&mut bundle, extension::load(root, pin)?)?;
+      let release = extension::load(root, pin, &bundle.skill_names())?;
+      bundle.kept.push(release.kept);
+      extension::apply(&mut bundle, release.content);
     }
     Ok(bundle)
   }
@@ -134,11 +139,10 @@ impl Bundle {
       .into_iter()
       .filter(|name| !name.starts_with("hivex"))
       .map(|name| format!("/.claude/skills/{name}"));
-    IGNORE_RULES
-      .iter()
-      .map(|rule| (*rule).to_owned())
-      .chain(links)
+    // Hivex's own rules come last, so no earlier rule can re-include their paths.
+    links
       .chain(self.ignore.iter().cloned())
+      .chain(IGNORE_RULES.iter().map(|rule| (*rule).to_owned()))
       .collect()
   }
 }
@@ -517,17 +521,25 @@ fn civil_date(days: u64) -> String {
   format!("{year:04}-{month:02}-{day:02}")
 }
 
-/// Extension files may lack frontmatter; they are installed unchanged.
+/// Extension files may lack frontmatter; they are installed unchanged. LF and CRLF
+/// frontmatter are both dated, keeping the file's line endings.
 fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
-  let Some((header, body)) = std::str::from_utf8(bytes)
-    .ok()
-    .and_then(|text| text.strip_prefix("---\n"))
-    .and_then(|text| text.split_once("\n---\n"))
+  let Ok(text) = std::str::from_utf8(bytes) else {
+    return bytes.to_vec();
+  };
+  let newline = if text.starts_with("---\r\n") {
+    "\r\n"
+  } else {
+    "\n"
+  };
+  let Some((header, body)) = text
+    .strip_prefix(&format!("---{newline}"))
+    .and_then(|text| text.split_once(&format!("{newline}---{newline}")))
   else {
     return bytes.to_vec();
   };
   let mut metadata = header
-    .lines()
+    .split(newline)
     .filter(|line| {
       !["created_at:", "updated_at:", "archived_at:"]
         .iter()
@@ -540,7 +552,11 @@ fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
     .position(|line| line.starts_with("tags:") || line.starts_with("source:"))
     .unwrap_or(metadata.len());
   metadata.insert(date_position, format!("created_at: {created_at}"));
-  format!("---\n{}\n---\n{body}", metadata.join("\n")).into_bytes()
+  format!(
+    "---{newline}{}{newline}---{newline}{body}",
+    metadata.join(newline)
+  )
+  .into_bytes()
 }
 
 /// The managed rules appended to `.gitignore`, starting a missing file from an extension's
@@ -963,6 +979,7 @@ pub fn initialize(root: &str, extension: Option<&str>) -> Result<Value> {
   let mut operations = template_operations(&root, &bundle, &pins)?;
   operations.extend(managed_operations(&root, &bundle, false)?);
   write_operations(&operations)?;
+  extension::prune(&root, &bundle.kept);
   Ok(report(
     &Outcome {
       command: "init",
@@ -1000,6 +1017,7 @@ pub fn update(root: &str) -> Result<Value> {
   let mut operations = managed_operations(&root, &bundle, true)?;
   operations.extend(pin_operation(&root, &pins, pins != pinned)?);
   write_operations(&operations)?;
+  extension::prune(&root, &bundle.kept);
   Ok(report(
     &Outcome {
       command: "update",
@@ -1028,63 +1046,77 @@ fn managed_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec
     .filter(|operation| !matches!(operation.content, Content::Unlink))
     .map(|operation| operation.path.clone())
     .collect();
-  if refresh {
-    operations.extend(retired_operations(root, &installed)?);
-  }
-  operations.push(inventory_operation(root, &installed)?);
+  let previous = previous_inventory(root)?;
+  let recorded = if refresh {
+    operations.extend(retired_operations(root, &previous, &installed)?);
+    installed
+  } else {
+    // `init` removes nothing, so what an earlier release installed stays recorded.
+    let still_present = previous
+      .into_iter()
+      .filter(|path| fs::symlink_metadata(root.join(path)).is_ok())
+      .filter(|path| !installed.contains(path));
+    installed.iter().cloned().chain(still_present).collect()
+  };
+  operations.push(inventory_operation(root, &recorded)?);
   operations.push(ignore_operation(root, bundle)?);
   Ok(operations)
 }
 
-/// The managed paths a previous release installed: its inventory, or the bundled skill
-/// directories and links of a project initialized before inventories existed.
-fn previous_inventory(root: &Path) -> Vec<String> {
-  if let Some(paths) = fs::read(root.join(MANAGED))
-    .ok()
-    .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
-  {
-    return paths;
-  }
-  let mut paths = Vec::new();
-  let skills = root.join(".agents").join("skills");
-  for entry in fs::read_dir(&skills).into_iter().flatten().flatten() {
-    let name = entry.file_name().to_string_lossy().into_owned();
-    if !name.starts_with("hivex") || !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-      continue;
-    }
-    paths.push(format!(".claude/skills/{name}"));
-    paths.extend(files_under(
-      &entry.path(),
-      &format!(".agents/skills/{name}"),
-    ));
-  }
-  paths
+/// A path inside the managed trees: a file below `.agents/skills/<skill>/` or a Claude link
+/// `.claude/skills/<skill>`.
+fn managed_path(path: &str) -> bool {
+  let parts: Vec<_> = path.split('/').collect();
+  let plain = parts
+    .iter()
+    .all(|part| !part.is_empty() && !matches!(*part, "." | "..") && !part.contains(['\\', ':']));
+  plain
+    && matches!(
+      parts.as_slice(),
+      [".agents", "skills", _, _, ..] | [".claude", "skills", _]
+    )
 }
 
-/// Regular files under `directory`, by project-relative path below `prefix`.
-fn files_under(directory: &Path, prefix: &str) -> Vec<String> {
-  let mut paths = Vec::new();
-  let mut pending = vec![(directory.to_path_buf(), prefix.to_owned())];
-  while let Some((directory, prefix)) = pending.pop() {
-    for child in fs::read_dir(&directory).into_iter().flatten().flatten() {
-      let path = format!("{prefix}/{}", child.file_name().to_string_lossy());
-      match child.file_type() {
-        Ok(kind) if kind.is_dir() => pending.push((child.path(), path)),
-        Ok(kind) if kind.is_file() => paths.push(path),
-        _ => {}
-      }
-    }
+/// The managed paths a previous release installed: its inventory, or, in a project initialized
+/// before inventories existed, the bundled skill files and links that are present.
+fn previous_inventory(root: &Path) -> Result<Vec<String>> {
+  let invalid = || {
+    error(
+      "INVALID_CONFIG",
+      format!("{MANAGED} must list paths inside .agents/skills or .claude/skills"),
+    )
+  };
+  if let Ok(bytes) = fs::read(root.join(MANAGED)) {
+    let paths: Vec<String> = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
+    return if paths.iter().all(|path| managed_path(path)) {
+      Ok(paths)
+    } else {
+      Err(invalid())
+    };
   }
-  paths
+  let files = SKILL_FILES
+    .iter()
+    .map(|(path, _)| format!(".agents/skills/{path}"));
+  let links = SKILL_FILES
+    .iter()
+    .map(|(path, _)| format!(".claude/skills/{}", extension::skill_name(path)));
+  let mut paths: Vec<String> = files
+    .chain(links)
+    .filter(|path| fs::symlink_metadata(root.join(path)).is_ok())
+    .collect();
+  paths.dedup();
+  Ok(paths)
 }
 
 /// Remove the managed files and Claude links that the installed release no longer provides.
-fn retired_operations(root: &Path, installed: &[String]) -> Result<Vec<FileOperation>> {
+fn retired_operations(
+  root: &Path,
+  previous: &[String],
+  installed: &[String],
+) -> Result<Vec<FileOperation>> {
   let mut operations = Vec::new();
-  for path in previous_inventory(root) {
-    if installed.contains(&path)
-      || !(path.starts_with(".agents/skills/") || path.starts_with(".claude/skills/"))
-    {
+  for path in previous {
+    if installed.contains(path) {
       continue;
     }
     let kind = if path.starts_with(".claude/") {
@@ -1092,7 +1124,7 @@ fn retired_operations(root: &Path, installed: &[String]) -> Result<Vec<FileOpera
     } else {
       DestinationKind::File
     };
-    let target = destination(root, &path, kind)?;
+    let target = destination(root, path, kind)?;
     let Ok(entry) = fs::symlink_metadata(&target.absolute_path) else {
       continue;
     };
@@ -1104,7 +1136,7 @@ fn retired_operations(root: &Path, installed: &[String]) -> Result<Vec<FileOpera
     operations.push(FileOperation {
       absolute_path: target.absolute_path,
       content,
-      path,
+      path: path.clone(),
       state: OperationState::Removed,
       executable: false,
     });

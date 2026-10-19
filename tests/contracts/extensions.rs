@@ -192,8 +192,13 @@ fn extension_ignore_templates_and_tags_are_honoured() {
     "# Demo git 1\n"
   );
   let ignore = read(&p, ".gitignore");
+  // Extension rules come first and Hivex's own rules last.
   assert!(
-    ignore.starts_with("custom\n/.claude/skills/hivex*\n"),
+    ignore.starts_with("custom\n/.claude/skills/demo-git\n/work/\n"),
+    "{ignore}"
+  );
+  assert!(
+    ignore.ends_with("/.claude/skills/hivex*\n/.hivex/\n/.reviews/\n"),
     "{ignore}"
   );
   assert!(ignore.contains("/work/\n"));
@@ -322,4 +327,130 @@ fn extensions_cannot_reach_outside_the_project_or_their_checkout() {
     .permissions()
     .mode();
   assert_ne!(mode & 0o111, 0);
+}
+
+fn cache_entries(p: &Project) -> Vec<String> {
+  let mut names: Vec<_> = fs::read_dir(p.path(".hivex/extensions"))
+    .unwrap()
+    .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+    .collect();
+  names.sort();
+  names
+}
+
+#[test]
+fn inventories_track_ownership_and_reject_paths_outside_the_managed_trees() {
+  let extension = extension();
+  extension.write("skills/demo-old/SKILL.md", "# Old\n");
+  release(&extension, "0.2.0");
+  let repository = extension.root.to_str().unwrap();
+  let p = Project::new();
+  run(&p, &["init", "--extension", repository]);
+  // `init` at a release without the skill keeps recording it, so `update` can retire it.
+  fs::remove_dir_all(extension.path("skills/demo-old")).unwrap();
+  release(&extension, "0.3.0");
+  let config = read(&p, "hivex.json").replace("\"0.2.0\"", "\"0.3.0\"");
+  p.write("hivex.json", config);
+  run(&p, &["init"]);
+  assert!(p.path(".agents/skills/demo-old/SKILL.md").is_file());
+  assert!(read(&p, ".agents/.hivex-managed.json").contains("demo-old"));
+  run(&p, &["update"]);
+  assert!(!p.path(".agents/skills/demo-old").exists());
+
+  // A tampered inventory cannot reach project files.
+  p.write(
+    ".agents/.hivex-managed.json",
+    r#"[".agents/skills/hivex/../../../AGENTS.md"]"#,
+  );
+  assert_eq!(run(&p, &["update"])["error"]["code"], "INVALID_CONFIG");
+  assert!(p.path("AGENTS.md").is_file());
+}
+
+#[test]
+fn projects_without_inventory_keep_their_own_hivex_named_skills() {
+  let p = Project::new();
+  run(&p, &["init"]);
+  fs::remove_file(p.path(".agents/.hivex-managed.json")).unwrap();
+  p.write(".agents/skills/hivex-custom/SKILL.md", "# Mine\n");
+  run(&p, &["update"]);
+  assert_eq!(read(&p, ".agents/skills/hivex-custom/SKILL.md"), "# Mine\n");
+}
+
+#[test]
+fn invalid_releases_leave_the_pinned_cache_and_negations_are_refused() {
+  let extension = extension();
+  let repository = extension.root.to_str().unwrap();
+  let p = Project::new();
+  run(&p, &["init", "--extension", repository]);
+  let before = cache_entries(&p);
+  extension.write("hivex-extension.json", r#"{"replaces":["hivex-unknown"]}"#);
+  release(&extension, "0.2.0");
+  assert_eq!(run(&p, &["update"])["error"]["code"], "INVALID_EXTENSION");
+  assert_eq!(cache_entries(&p), before);
+
+  extension.write("hivex-extension.json", r#"{"ignore":["!/.hivex/"]}"#);
+  release(&extension, "0.3.0");
+  assert_eq!(run(&p, &["update"])["error"]["code"], "INVALID_EXTENSION");
+  assert_eq!(cache_entries(&p), before);
+}
+
+#[test]
+fn crlf_extension_documents_are_dated() {
+  let extension = extension();
+  extension.write(
+    "assets/project/docs/windows.md",
+    "---\r\ntitle: Windows\r\nstatus: draft\r\ncreated_at: 2026-01-01\r\ntags: [notes]\r\n---\r\n\r\n# Windows\r\n",
+  );
+  release(&extension, "0.2.0");
+  let p = Project::new();
+  run(
+    &p,
+    &["init", "--extension", extension.root.to_str().unwrap()],
+  );
+  let text = read(&p, "docs/windows.md");
+  assert!(!text.contains("2026-01-01"), "{text}");
+  assert!(text.contains("\r\ncreated_at: "), "{text}");
+}
+
+#[cfg(unix)]
+#[test]
+fn cache_entries_and_checkout_content_cannot_redirect_writes() {
+  use std::os::unix::fs::{PermissionsExt, symlink};
+  let outside = Project::new();
+  outside.write("AGENTS.md", "# Outside\n");
+
+  // A file the repository calls `source` stays inside the checkout.
+  let extension = extension();
+  symlink(outside.path("AGENTS.md"), extension.path("source")).unwrap();
+  release(&extension, "0.2.0");
+  let p = Project::new();
+  run(
+    &p,
+    &["init", "--extension", extension.root.to_str().unwrap()],
+  );
+  assert_eq!(read(&outside, "AGENTS.md"), "# Outside\n");
+
+  // A linked staging entry is refused instead of being written through.
+  let entry = cache_entries(&p).pop().unwrap();
+  fs::remove_dir_all(p.path(&format!(".hivex/extensions/{entry}"))).unwrap();
+  symlink(
+    &outside.root,
+    p.path(&format!(".hivex/extensions/{entry}.partial")),
+  )
+  .unwrap();
+  assert_eq!(run(&p, &["update"])["error"]["code"], "INVALID_DESTINATION");
+  assert_eq!(fs::read_dir(&outside.root).unwrap().count(), 1);
+
+  // An unreadable source directory is reported, not treated as absent.
+  let q = Project::new();
+  run(
+    &q,
+    &["init", "--extension", extension.root.to_str().unwrap()],
+  );
+  let entry = cache_entries(&q).pop().unwrap();
+  let assets = q.path(&format!(".hivex/extensions/{entry}/checkout/assets"));
+  fs::set_permissions(&assets, fs::Permissions::from_mode(0o000)).unwrap();
+  let failed = run(&q, &["init"]);
+  fs::set_permissions(&assets, fs::Permissions::from_mode(0o755)).unwrap();
+  assert_eq!(failed["error"]["code"], "INVALID_EXTENSION");
 }

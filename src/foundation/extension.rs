@@ -7,12 +7,13 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const MANIFEST: &str = "hivex-extension.json";
-/// Written into a cached release to bind it to the repository it came from.
-const SOURCE: &str = ".hivex-source";
+/// Beside each cached checkout, binding it to the repository it came from.
+const SOURCE: &str = "source";
+const CHECKOUT: &str = "checkout";
 
 /// An extension repository and the release a project pins.
 #[derive(Clone, PartialEq, Eq)]
@@ -54,7 +55,12 @@ pub fn pins(config: &serde_json::Map<String, Value>) -> Result<Vec<Pin>> {
 /// `OWNER/REPO` names a GitHub repository, a URL is used as given and any other text is a path
 /// relative to the project.
 fn location(root: &Path, repository: &str) -> String {
-  let url = repository.contains("://") || repository.starts_with("git@");
+  // `user@host:path` remotes; a one-letter prefix is a Windows drive, not a host.
+  let scp = !repository.contains("://")
+    && repository
+      .split_once(':')
+      .is_some_and(|(host, _)| host.len() > 1 && !host.contains(['/', '\\']));
+  let url = repository.contains("://") || scp;
   let github = !url
     && repository.split('/').count() == 2
     && !repository.contains(':')
@@ -166,51 +172,94 @@ fn real_directory(path: &Path) -> Result<()> {
   }
 }
 
-/// Remove a cache entry this process owns, never following a link out of the cache.
-fn discard(path: &Path) {
-  if fs::symlink_metadata(path).is_ok_and(|entry| entry.is_dir()) {
-    let _ = fs::remove_dir_all(path);
+/// Remove a cache entry this process owns. A link or file in its place is refused rather than
+/// followed or left for a later step to write through.
+fn clear(path: &Path) -> Result<()> {
+  match fs::symlink_metadata(path) {
+    Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Ok(entry) if entry.is_dir() => fs::remove_dir_all(path).map_err(|io_error| {
+      error(
+        "INIT_WRITE_FAILED",
+        format!("Unable to clear {}: {io_error}", path.display()),
+      )
+    }),
+    _ => Err(error(
+      "INVALID_DESTINATION",
+      format!(
+        "The extension cache holds an unexpected entry: {}",
+        path.display()
+      ),
+    )),
   }
 }
 
-/// The extension content at the pinned release. Releases are fetched once into the ignored
-/// `.hivex/extensions/`, validated before they are kept, and older releases of the same
-/// repository are removed.
-pub fn load(root: &Path, pin: &Pin) -> Result<Content> {
+fn real_directory_exists(path: &Path) -> bool {
+  fs::symlink_metadata(path).is_ok_and(|entry| entry.is_dir())
+}
+
+/// A cached release kept while its pin is in use.
+pub struct Kept {
+  key: String,
+  directory: PathBuf,
+}
+
+/// A validated extension release and the cache entry that holds it.
+pub struct Release {
+  pub content: Content,
+  pub kept: Kept,
+}
+
+/// The extension release a project pins, validated against the `bundled` skill names it may
+/// replace. Releases are fetched once into the ignored `.hivex/extensions/` and kept only after
+/// validation.
+pub fn load(root: &Path, pin: &Pin, bundled: &[String]) -> Result<Release> {
   let source = location(root, &pin.repository);
   let key = cache_key(&source);
   let cache = root.join(".hivex").join("extensions");
   real_directory(&root.join(".hivex"))?;
   real_directory(&cache)?;
-  let release_directory = cache.join(format!("{key}@{}", pin.version));
-  let cached = fs::symlink_metadata(&release_directory).is_ok_and(|entry| entry.is_dir())
-    && fs::read_to_string(release_directory.join(SOURCE)).is_ok_and(|text| text == source);
+  let entry = cache.join(format!("{key}@{}", pin.version));
+  let marker = entry.join(SOURCE);
+  let cached = real_directory_exists(&entry)
+    && real_directory_exists(&entry.join(CHECKOUT))
+    && fs::symlink_metadata(&marker).is_ok_and(|metadata| metadata.is_file())
+    && fs::read_to_string(&marker).is_ok_and(|text| text == source);
   if !cached {
-    discard(&release_directory);
-    fetch(&release_directory, &source, &pin.version)?;
+    clear(&entry)?;
+    fetch(&entry, &source, &pin.version, bundled)?;
   }
-  let content = read(&release_directory)?;
-  prune(&cache, &key, &release_directory);
-  Ok(content)
+  let content = read(&entry.join(CHECKOUT))?;
+  validate(&content, bundled)?;
+  Ok(Release {
+    content,
+    kept: Kept {
+      key,
+      directory: entry,
+    },
+  })
 }
 
-/// Fetch exactly the tag into a staging directory and keep it only once it is a valid
-/// extension.
-fn fetch(release_directory: &Path, source: &str, version: &str) -> Result<()> {
-  let mut name = release_directory
-    .file_name()
-    .unwrap_or_default()
-    .to_os_string();
+/// Fetch exactly the tag into a staging entry and keep it only once it is a valid extension.
+fn fetch(entry: &Path, source: &str, version: &str, bundled: &[String]) -> Result<()> {
+  let mut name = entry.file_name().unwrap_or_default().to_os_string();
   name.push(".partial");
-  let staging = release_directory.with_file_name(name);
-  discard(&staging);
+  let staging = entry.with_file_name(name);
+  clear(&staging)?;
+  let write_error = |io_error: std::io::Error| {
+    error(
+      "INIT_WRITE_FAILED",
+      format!("Unable to cache {source}: {io_error}"),
+    )
+  };
+  fs::create_dir(&staging).map_err(write_error)?;
+  let checkout = staging.join(CHECKOUT);
+  let checkout_path = checkout.to_string_lossy().into_owned();
   let tag = format!("refs/tags/v{version}");
-  let staged = staging.to_string_lossy().into_owned();
-  let fetched = git(&["init", "--quiet", &staged])
+  let fetched = git(&["init", "--quiet", &checkout_path])
     .and_then(|_| {
       git(&[
         "-C",
-        &staged,
+        &checkout_path,
         "fetch",
         "--quiet",
         "--depth",
@@ -220,36 +269,68 @@ fn fetch(release_directory: &Path, source: &str, version: &str) -> Result<()> {
         &format!("+{tag}:{tag}"),
       ])
     })
-    .and_then(|_| git(&["-C", &staged, "checkout", "--quiet", "--detach", &tag]))
-    .and_then(|_| read(&staging).map(|_| ()))
+    .and_then(|_| {
+      git(&[
+        "-C",
+        &checkout_path,
+        "checkout",
+        "--quiet",
+        "--detach",
+        &tag,
+      ])
+    })
+    .and_then(|_| validate(&read(&checkout)?, bundled))
     .and_then(|()| {
-      fs::write(staging.join(SOURCE), source)
-        .and_then(|()| fs::rename(&staging, release_directory))
-        .map_err(|io_error| {
-          error(
-            "INIT_WRITE_FAILED",
-            format!("Unable to cache {source}: {io_error}"),
-          )
-        })
+      // The staging entry is new and owned here; the checkout cannot supply the marker.
+      fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(staging.join(SOURCE))
+        .and_then(|mut file| std::io::Write::write_all(&mut file, source.as_bytes()))
+        .and_then(|()| fs::rename(&staging, entry))
+        .map_err(write_error)
     });
   if fetched.is_err() {
-    discard(&staging);
+    let _ = clear(&staging);
   }
   fetched
 }
 
-/// Remove other cached releases of the same repository.
-fn prune(cache: &Path, key: &str, keep: &Path) {
-  let Ok(entries) = fs::read_dir(cache) else {
+/// After a successful installation, remove other cached releases of the kept repositories.
+pub fn prune(root: &Path, kept: &[Kept]) {
+  let cache = root.join(".hivex").join("extensions");
+  let Ok(entries) = fs::read_dir(&cache) else {
     return;
   };
-  let prefix = format!("{key}@");
   for entry in entries.flatten() {
     let path = entry.path();
-    if path != keep && entry.file_name().to_string_lossy().starts_with(&prefix) {
-      discard(&path);
+    let name = entry.file_name().to_string_lossy().into_owned();
+    let stale = kept
+      .iter()
+      .any(|kept| name.starts_with(&format!("{}@", kept.key)) && path != kept.directory);
+    if stale && real_directory_exists(&path) {
+      let _ = fs::remove_dir_all(&path);
     }
   }
+}
+
+/// What the manifest declares must make sense for this project.
+fn validate(content: &Content, bundled: &[String]) -> Result<()> {
+  if let Some(unknown) = content.replaces.iter().find(|name| !bundled.contains(name)) {
+    return Err(invalid(format!(
+      "{MANIFEST} replaces an unknown skill: {unknown}"
+    )));
+  }
+  if let Some(rule) = content
+    .ignore
+    .iter()
+    .find(|rule| rule.trim().is_empty() || rule.starts_with('!'))
+  {
+    return Err(invalid(format!(
+      "{MANIFEST}: ignore rules must be nonempty and cannot re-include paths: {rule:?}"
+    )));
+  }
+  Ok(())
 }
 
 /// What a validated extension release contributes.
@@ -308,7 +389,13 @@ fn files(directory: &Path, relative: &[&str]) -> Result<Vec<BundleFile>> {
   for component in relative {
     root.push(component);
     match fs::symlink_metadata(&root) {
-      Err(_) => return Ok(Vec::new()),
+      Err(io_error) if io_error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+      Err(io_error) => {
+        return Err(invalid(format!(
+          "Unable to read {}: {io_error}",
+          relative.join("/")
+        )));
+      }
       Ok(entry) if entry.is_dir() => {}
       Ok(_) => {
         return Err(invalid(format!(
@@ -372,13 +459,7 @@ fn executable(_: &Path) -> bool {
 
 /// Apply an extension: its project files win over the bundled ones at the same path, and its
 /// skills replace bundled skills of the same name and those its manifest names.
-pub fn apply(bundle: &mut Bundle, content: Content) -> Result<()> {
-  let bundled = bundle.skill_names();
-  if let Some(unknown) = content.replaces.iter().find(|name| !bundled.contains(name)) {
-    return Err(invalid(format!(
-      "{MANIFEST} replaces an unknown skill: {unknown}"
-    )));
-  }
+pub fn apply(bundle: &mut Bundle, content: Content) {
   let added: BTreeSet<String> = content
     .skills
     .iter()
@@ -389,12 +470,7 @@ pub fn apply(bundle: &mut Bundle, content: Content) -> Result<()> {
     !added.contains(name) && !content.replaces.iter().any(|replaced| replaced == name)
   });
   bundle.skills.extend(content.skills);
-  bundle.ignore.extend(
-    content
-      .ignore
-      .into_iter()
-      .filter(|rule| !rule.trim().is_empty()),
-  );
+  bundle.ignore.extend(content.ignore);
   for template in content.templates {
     match bundle
       .templates
@@ -405,7 +481,6 @@ pub fn apply(bundle: &mut Bundle, content: Content) -> Result<()> {
       None => bundle.templates.push(template),
     }
   }
-  Ok(())
 }
 
 pub fn skill_name(path: &str) -> &str {
@@ -414,7 +489,30 @@ pub fn skill_name(path: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-  use super::cache_key;
+  use super::{cache_key, location};
+  use std::path::Path;
+
+  #[test]
+  fn git_remotes_and_local_paths_are_told_apart() {
+    let root = Path::new("/project");
+    assert_eq!(
+      location(root, "owner/repo"),
+      "https://github.com/owner/repo.git"
+    );
+    assert_eq!(
+      location(root, "deploy@example.com:team/repo.git"),
+      "deploy@example.com:team/repo.git"
+    );
+    assert_eq!(location(root, "ssh://host/repo"), "ssh://host/repo");
+    assert_eq!(
+      location(root, "./vendor/extension"),
+      "/project/./vendor/extension"
+    );
+    assert_eq!(
+      location(root, "C:\\extensions\\demo"),
+      "/project/C:\\extensions\\demo"
+    );
+  }
 
   #[test]
   fn repositories_with_the_same_name_get_distinct_cache_entries() {
