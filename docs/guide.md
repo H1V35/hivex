@@ -63,7 +63,7 @@ An extension adds skills and project files to the bundled foundation for a parti
 
 - `hivex-extension.json`: a JSON object. Optional `replaces` lists bundled skills the extension removes, for example `["hivex-git"]`; optional `ignore` lists `.gitignore` rules its projects need, such as `["/work/"]`, appended and kept like Hivex's own managed rules.
 - `skills/<name>/…`: complete skills. A skill with the name of a bundled skill replaces it entirely.
-- `assets/project/…`: project files. A file at the same path as a bundled foundation file replaces it; others are added. Markdown under `docs/` receives the creation date like bundled files.
+- `assets/project/…`: project files. A file at the same path as a bundled foundation file replaces it; others are added. Markdown under `docs/` receives the creation date like bundled files. A replacing file keeps the headings or explicit anchors that bundled documents and skills link to; verify an extension by running `hivex init --extension <path>` in an empty folder and `hivex check` there.
 
 Install an extension in a new project with `hivex init --extension <repository>`, where `<repository>` is `OWNER/REPO` on GitHub or any Git URL or path. Hivex needs `git`; private repositories need Git credentials, for example `gh auth setup-git`. `init` pins the newest release in `hivex.json`:
 
