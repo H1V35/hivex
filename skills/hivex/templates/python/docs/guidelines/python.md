@@ -26,7 +26,7 @@ Prefer the standard library or an existing dependency over a new one. Name impor
 
 ## Maintained baseline
 
-Ruff formats and lints. Configure it once for the project, in `pyproject.toml` under `[tool.ruff]` or in `ruff.toml`:
+Ruff formats and lints. Configure it once for the project. In `ruff.toml`:
 
 ```toml
 line-length = 100
@@ -48,13 +48,13 @@ max-args = 4
 max-nested-blocks = 3
 ```
 
-Set `target-version` to the oldest supported Python. `explicit-preview-rules` enables only the named preview rule (`PLR1702`), not the whole preview set. Consult the [rule reference](https://docs.astral.sh/ruff/rules/) when updating Ruff.
+In `pyproject.toml`, use the same settings under `[tool.ruff]` and rename every table: `[lint]` becomes `[tool.ruff.lint]`, `[lint.mccabe]` becomes `[tool.ruff.lint.mccabe]` and `[lint.pylint]` becomes `[tool.ruff.lint.pylint]`; TOML table headers are absolute, so unprefixed tables are silently ignored. Set `target-version` to the oldest supported Python. `explicit-preview-rules` enables only the named preview rule (`PLR1702`), not the whole preview set. Consult the [rule reference](https://docs.astral.sh/ruff/rules/) when updating Ruff.
 
 Refactor nonconforming code rather than adding `# noqa`, per-file ignores or raised limits to silence findings. Preserve behavior and meaningful responsibilities; do not split functions or introduce abstractions solely to lower a metric.
 
 ## Agreed preferences
 
-- Maximum parameters: four per function or method, counting `self`/`cls` as Ruff does (`PLR0913`).
+- Maximum parameters: four per function or method (`PLR0913`). Ruff does not count `self` or `cls`, so a method may take four parameters besides its receiver, one more than the Rust standard allows; keep methods within that limit rather than adding a second check.
 - Maximum nesting: three nested blocks inside a function (`PLR1702`).
 - Maximum McCabe complexity: 10 per function (`C90`), with Ruff's default limits on branches and returns (`PLR0912`, `PLR0911`). Python has no Ruff cognitive-complexity rule; keep the Rust standard's intent of readable, shallow flow.
 - Prefer early returns and `match` over long `if`/`elif` chains; an ordinary `if`/`else` remains useful for two-way choices.
@@ -63,7 +63,7 @@ Refactor nonconforming code rather than adding `# noqa`, per-file ignores or rai
 
 ## Tests
 
-Test with [pytest](https://docs.pytest.org/), run through uv (`uv run pytest`, or `uv run --with pytest pytest` for standalone scripts). Each test protects an important behavior, a business rule or a demonstrated regression, using observable interfaces and independent expected results. TDD is optional and reserved for critical flows whose intended behavior is sufficiently defined. Keep fixtures small and free of real personal data.
+Test with [pytest](https://docs.pytest.org/), run through uv: `uv run pytest` in a package, or `uv run --with pytest --with-requirements <script>.py pytest` for a standalone script, so its inline dependencies are installed with the interpreter its `requires-python` allows. Each test protects an important behavior, a business rule or a demonstrated regression, using observable interfaces and independent expected results. TDD is optional and reserved for critical flows whose intended behavior is sufficiently defined. Keep fixtures small and free of real personal data.
 
 ## Adoption and verification
 
