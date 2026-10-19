@@ -1,14 +1,20 @@
 use crate::support::{Project, bounded, list, subset};
 use serde_json::{Value, json};
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 
-/// The directory holding `git`, so the CLI finds it without the real Claude or Codex.
-fn git_directory() -> PathBuf {
-  std::env::split_paths(&std::env::var_os("PATH").unwrap())
-    .find(|directory| directory.join("git").is_file() || directory.join("git.exe").is_file())
-    .expect("git is installed")
+/// The real `PATH` without the directories of Claude and Codex, so the CLI finds `git` and
+/// everything Git for Windows needs, but not the hosts of whoever runs the tests.
+fn path_without_hosts() -> std::ffi::OsString {
+  let path = std::env::var_os("PATH").unwrap();
+  let directories = std::env::split_paths(&path).filter(|directory| {
+    !["claude", "codex"].iter().any(|host| {
+      ["", "exe", "cmd", "bat"]
+        .iter()
+        .any(|extension| directory.join(host).with_extension(extension).is_file())
+    })
+  });
+  std::env::join_paths(directories).unwrap()
 }
 
 fn git(repository: &Project, args: &[&str]) {
@@ -54,7 +60,7 @@ fn extension() -> Project {
 
 fn run(p: &Project, args: &[&str]) -> Value {
   let mut command = p.command(args);
-  command.env("PATH", git_directory());
+  command.env("PATH", path_without_hosts());
   let output = bounded(command);
   let stream = if output.status.success() {
     &output.stdout
