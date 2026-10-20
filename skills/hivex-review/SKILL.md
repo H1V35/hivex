@@ -1,6 +1,6 @@
 ---
 name: hivex-review
-description: Independently review a change for intended scope, correctness and project standards, including relevant decision dependencies and exceptions.
+description: Independently review a change for intended scope, correctness and project standards, including relevant decision dependencies and exceptions, or review the whole system or an area as a baseline at a milestone.
 ---
 
 # Review the actual change
@@ -20,3 +20,7 @@ Check whether verification protects meaningful behavior and covers the change. T
 For visual changes, assess the rendered evidence against the intended screen, its current design rules and relevant platform guidance, using the applicable [visual review criteria](../hivex-design/references/visual-review.md). Compare equivalent content, state and environment, and identify mismatches in references before judging fidelity. Report missing visual evidence as a limit, not proof of a defect; compilation and functional tests do not establish composition or interaction quality.
 
 Report actionable findings with location, impact and evidence, or a clean result with material verification limits. Explain technical details when needed. Review later changes as a delta, reusing conclusions that remain valid. Add another pass only for concrete risk or findings; never repeat reviews to obtain approval. Review does not grant merge or publication permission.
+
+## Baseline review
+
+Change review omits existing problems, so debt that cuts across correct changes goes unseen. At milestones the project chooses, such as completing a vertical slice or after a set number of pull requests, review the whole system or an area instead. Include existing problems; typical ones are documentation that contradicts the code, decision states left stale, rules no check enforces and stored data without cleanup. When the ponytail plugin is available, start from its `ponytail-audit` skill. Verify each finding against the code and authorities under the evidence rules above, and record actionable findings as issues instead of changing code in the review. Change review is unchanged.
