@@ -2,7 +2,7 @@
 title: "Engineering"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-19
+updated_at: 2026-10-20
 tags: [engineering, quality, workflow]
 ---
 
@@ -18,7 +18,7 @@ Choose the workflow the task needs. Implement a defined change directly, use a g
 
 Prefer domain-driven design: group behavior by meaningful domain responsibilities, use the agreed language and keep interfaces small. Do not impose hexagonal architecture or speculative layers. Respect existing accepted project choices and raise genuine conflicts before replacing them.
 
-Prefer an existing library, standard facility or small direct implementation when it solves the problem. Create files and abstractions for meaningful responsibilities, not to satisfy arbitrary structure. Keep code self-explanatory; documentation records intent and reasons that code cannot explain.
+Prefer an existing library, standard facility or small direct implementation when it solves the problem. Create files and abstractions for meaningful responsibilities, not to satisfy arbitrary structure. Keep code self-explanatory; documentation records intent and reasons that code cannot explain, without narrating what code, configuration or tests already declare, such as imports, modules or routes.
 
 Delegate suitable bounded subtasks when authorized and useful. Keep responsibility for the integrated result. Model and effort choices belong to the task or project configuration, not to issue labels.
 
@@ -31,6 +31,8 @@ Prefer kebab-case for authored files and directories. Preserve conventional Mark
 Choose checks for value and risk. Prioritize critical flows, stable rules and demonstrated regressions. TDD is optional and reserved for critical flows whose behavior is sufficiently defined; use exploration first when product assumptions remain open.
 
 Test observable behavior at useful interfaces with independent expected results. Avoid tests that freeze internal helpers, arbitrary structure or the implementation's own calculation. Investigate failures against the intended behavior before deciding whether the code or the test needs correction.
+
+Make checkable rules checked. When a rule can be enforced by a lint, a test or a self-check in CI, prefer that gate to another guideline line, and run the self-checks of the project's own scripts in CI. Rules left to memory stop being applied.
 
 Run the relevant checks for the affected surfaces. Documentation and configuration need appropriate reference, format or behavior checks, not a test for every edit. Record what was actually verified and any material limits; do not turn unavailable or interrupted checks into passes.
 

@@ -2,7 +2,7 @@
 title: "Native iOS presentation standard"
 status: draft
 created_at: 2026-09-28
-updated_at: 2026-10-17
+updated_at: 2026-10-20
 tags: [ios, ui]
 ---
 
@@ -60,7 +60,7 @@ Specify behavior across foreground/background, process termination, cancellation
 
 ## Local security and transport
 
-Use [Keychain services](https://developer.apple.com/documentation/security/keychain-services) and appropriate native data protection for secrets; select accessibility/backup behavior for the product's locked-device and recovery requirements. Keychain is not the database for all application data. Where multiple accounts are supported, separate their stores, queues, files and keys. Do not put tokens, keys, private messages or personal data in logs, fixtures, crash metadata or diagnostics; sanitize before telemetry leaves the device.
+Use [Keychain services](https://developer.apple.com/documentation/security/keychain-services) and appropriate native data protection for secrets; select accessibility/backup behavior for the product's locked-device and recovery requirements. Keychain is not the database for all application data. Where multiple accounts are supported, separate their stores, queues, files and keys. Signing out removes the account's data from the device, not only its token: system caches such as `URLCache` and cookie storage, local files, databases and temporary files, and its Keychain items, which can survive deleting and reinstalling the app. Verify on a device what remains after signing out. Do not put tokens, keys, private messages or personal data in logs, fixtures, crash metadata or diagnostics; sanitize before telemetry leaves the device.
 
 Respect system permissions and least-privilege capabilities even when business authority is remote. Hiding a button is not access control. Use platform TLS and maintained cryptographic libraries; do not add an authentication method, recovery workflow or end-to-end encryption protocol from a style guideline. Local-only features must remain local if that is the accepted product policy, including failure behavior without an unapproved cloud fallback.
 

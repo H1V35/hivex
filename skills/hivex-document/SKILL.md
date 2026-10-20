@@ -25,6 +25,8 @@ Prefer migration to the standard when reasonably possible. Preserve useful conte
 - Guideline: maintained rules for ongoing work.
 - Procedure: steps and verification for an operation, with prerequisites or recovery when relevant.
 
+Do not narrate the code. When a document lists what code or configuration already declares, such as imports, modules, routes or tables that tests already check, replace the list with the rule the code cannot express; it will otherwise drift and contradict the code. Turn what can be checked into a check instead of prose.
+
 Preserve conditions, exceptions and partial replacements. Keep proposed, current and historical decisions distinct. When replaced detail obscures the current authority, archive it with provenance and links while preserving referenced anchors or updating their callers.
 
 Use a short [AGENTS.md entrypoint](../hivex/assets/project/AGENTS.md): orientation, development/verification guidance and indispensable project constraints. Explain when linked authorities matter; do not duplicate them or require every document on every task.
