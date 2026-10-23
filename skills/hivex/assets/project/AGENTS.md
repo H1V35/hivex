@@ -11,6 +11,7 @@ Follow the [engineering guideline](docs/guidelines/engineering.md) for implement
 For issues, triage and pull requests, follow the [tracker procedure](docs/procedures/issue-tracker.md). Preserve decisions and authorizations already supplied by the owner.
 
 <!-- hivex:skills -->
+
 ## HiveX skills
 
 Every task loads the HiveX skill that matches its work before starting, with no exception for small changes:
@@ -20,4 +21,5 @@ Every task loads the HiveX skill that matches its work before starting, with no 
 - Instructions for a particular task may add skills, never remove one. Delegated work follows this section, and its instructions refer to it instead of restating the skills.
 
 HiveX maintains this section: `hivex update` replaces it with the installed release's.
+
 <!-- /hivex:skills -->
