@@ -313,14 +313,20 @@ fn the_skills_section_of_agents_md_is_kept_current_and_the_rest_left_alone() {
     &json!({"totalFindings":0}),
   );
 
-  // A heading inside fenced code is not the final section; at the file's edges it still is.
-  let fenced = "# Rules\n\n```md\n## Relationships\n```\n";
-  p.write("AGENTS.md", fenced);
-  p.ok(&["update"]);
-  assert_eq!(
-    fs::read_to_string(p.path("AGENTS.md")).unwrap(),
-    format!("{fenced}\n{section}\n")
-  );
+  // A heading inside code or an HTML comment is not the final section; at the file's edges it
+  // still is.
+  for literal in [
+    "# Rules\n\n```md\n## Relationships\n```\n",
+    "# Rules\n\n```md\n```example\n## Relationships\n```\n",
+    "# Rules\n\n<!--\n## Relationships\n-->\n",
+  ] {
+    p.write("AGENTS.md", literal);
+    p.ok(&["update"]);
+    assert_eq!(
+      fs::read_to_string(p.path("AGENTS.md")).unwrap(),
+      format!("{literal}\n{section}\n")
+    );
+  }
   for (before, after) in [
     (
       "## Relationships\n",

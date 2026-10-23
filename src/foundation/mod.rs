@@ -1,5 +1,6 @@
 use crate::compatibility::{normalize_path, project_directory};
 use crate::error::{HiveXError, Result};
+use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -632,27 +633,31 @@ fn skills_section() -> String {
   AGENTS_TEMPLATE[start..end].replace("\r\n", "\n")
 }
 
-/// The byte offset of the last `## Relationships` heading outside fenced code, which must stay the
-/// final section.
+/// The byte offset of the last level-two `Relationships` heading, which must stay the final
+/// section, as the Markdown parser sees it: never one inside code or an HTML block.
 fn relationships_heading(text: &str) -> Option<usize> {
-  let mut fence: Option<(char, usize)> = None;
-  let mut offset = 0;
   let mut heading = None;
-  for line in text.split_inclusive('\n') {
-    let content = line.trim_end_matches(['\r', '\n']);
-    let indented = content.len() - content.trim_start_matches(' ').len();
-    let marker = content.trim_start_matches(' ');
-    let run = |symbol| marker.chars().take_while(|&c| c == symbol).count();
-    match fence {
-      Some((symbol, length)) if indented < 4 && run(symbol) >= length => fence = None,
-      None if indented < 4 && (run('`') >= 3 || run('~') >= 3) => {
-        let symbol = if run('`') >= 3 { '`' } else { '~' };
-        fence = Some((symbol, run(symbol)));
+  let mut current: Option<(usize, String)> = None;
+  for (event, range) in Parser::new(text).into_offset_iter() {
+    match event {
+      Event::Start(Tag::Heading {
+        level: HeadingLevel::H2,
+        ..
+      }) => current = Some((range.start, String::new())),
+      Event::Text(title) | Event::Code(title) => {
+        if let Some((_, collected)) = current.as_mut() {
+          collected.push_str(&title);
+        }
       }
-      None if content.trim_end() == "## Relationships" => heading = Some(offset),
-      Some(_) | None => {}
+      Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
+        if let Some((start, title)) = current.take()
+          && title.trim() == "Relationships"
+        {
+          heading = Some(start);
+        }
+      }
+      _ => {}
     }
-    offset += line.len();
   }
   heading
 }
