@@ -1,6 +1,6 @@
 use crate::compatibility::{normalize_path, project_directory};
 use crate::error::{HiveXError, Result};
-use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, HeadingLevel, Parser, Tag};
 use serde_json::{Value, json};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -633,27 +633,37 @@ fn skills_section() -> String {
   AGENTS_TEMPLATE[start..end].replace("\r\n", "\n")
 }
 
-/// The byte offset of the last level-two `Relationships` heading, which must stay the final
-/// section, as the Markdown parser sees it: never one inside code or an HTML block.
+/// The byte offset of the last root level-two `Relationships` heading, which must stay the final
+/// section, as the Markdown parser sees it: never one inside code, an HTML block, a quote or a list.
 fn relationships_heading(text: &str) -> Option<usize> {
+  let mut depth = 0usize;
   let mut heading = None;
   let mut current: Option<(usize, String)> = None;
   for (event, range) in Parser::new(text).into_offset_iter() {
     match event {
-      Event::Start(Tag::Heading {
-        level: HeadingLevel::H2,
-        ..
-      }) => current = Some((range.start, String::new())),
-      Event::Text(title) | Event::Code(title) => {
-        if let Some((_, collected)) = current.as_mut() {
-          collected.push_str(&title);
+      Event::Start(tag) => {
+        if depth == 0
+          && let Tag::Heading {
+            level: HeadingLevel::H2,
+            ..
+          } = tag
+        {
+          current = Some((range.start, String::new()));
         }
+        depth += 1;
       }
-      Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
-        if let Some((start, title)) = current.take()
+      Event::End(_) => {
+        depth = depth.saturating_sub(1);
+        if depth == 0
+          && let Some((start, title)) = current.take()
           && title.trim() == "Relationships"
         {
           heading = Some(start);
+        }
+      }
+      Event::Text(title) | Event::Code(title) => {
+        if let Some((_, collected)) = current.as_mut() {
+          collected.push_str(&title);
         }
       }
       _ => {}

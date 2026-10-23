@@ -319,6 +319,8 @@ fn the_skills_section_of_agents_md_is_kept_current_and_the_rest_left_alone() {
     "# Rules\n\n```md\n## Relationships\n```\n",
     "# Rules\n\n```md\n```example\n## Relationships\n```\n",
     "# Rules\n\n<!--\n## Relationships\n-->\n",
+    "# Rules\n\n> ## Relationships\n> Example\n",
+    "# Rules\n\n- ## Relationships\n",
   ] {
     p.write("AGENTS.md", literal);
     p.ok(&["update"]);
