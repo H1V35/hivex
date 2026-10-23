@@ -351,6 +351,14 @@ fn the_skills_section_of_agents_md_is_kept_current_and_the_rest_left_alone() {
     format!("# Owner\n\n\n\n{section}\n")
   );
 
+  // The section as Prettier formats Markdown is already current: formatting and update agree.
+  let formatted = format!("# Rules\n\n{section}\n");
+  assert!(section.starts_with("<!-- hivex:skills -->\n\n## HiveX skills\n"));
+  assert!(section.ends_with("\n\n<!-- /hivex:skills -->"));
+  p.write("AGENTS.md", &formatted);
+  assert!(list(&p.ok(&["update"]), "preserved").contains(&json!("AGENTS.md")));
+  assert_eq!(fs::read_to_string(p.path("AGENTS.md")).unwrap(), formatted);
+
   // A lone or extra marker is refused before anything is written.
   for broken in [
     format!("{section}\n<!-- hivex:skills -->\n"),
