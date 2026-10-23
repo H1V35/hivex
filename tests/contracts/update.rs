@@ -313,7 +313,45 @@ fn the_skills_section_of_agents_md_is_kept_current_and_the_rest_left_alone() {
     &json!({"totalFindings":0}),
   );
 
-  // A lone marker is refused before anything is written.
+  // A heading inside fenced code is not the final section; at the file's edges it still is.
+  let fenced = "# Rules\n\n```md\n## Relationships\n```\n";
+  p.write("AGENTS.md", fenced);
+  p.ok(&["update"]);
+  assert_eq!(
+    fs::read_to_string(p.path("AGENTS.md")).unwrap(),
+    format!("{fenced}\n{section}\n")
+  );
+  for (before, after) in [
+    (
+      "## Relationships\n",
+      format!("{section}\n\n## Relationships\n"),
+    ),
+    (
+      "# Rules\n\n## Relationships",
+      format!("# Rules\n\n{section}\n\n## Relationships"),
+    ),
+  ] {
+    p.write("AGENTS.md", before);
+    p.ok(&["update"]);
+    assert_eq!(fs::read_to_string(p.path("AGENTS.md")).unwrap(), after);
+  }
+  // Appending keeps the project's own trailing blank lines.
+  p.write("AGENTS.md", "# Owner\n\n\n\n");
+  p.ok(&["update"]);
+  assert_eq!(
+    fs::read_to_string(p.path("AGENTS.md")).unwrap(),
+    format!("# Owner\n\n\n\n{section}\n")
+  );
+
+  // A lone or extra marker is refused before anything is written.
+  for broken in [
+    format!("{section}\n<!-- hivex:skills -->\n"),
+    format!("{section}\n<!-- /hivex:skills -->\n"),
+  ] {
+    p.write("AGENTS.md", &broken);
+    assert_eq!(p.error(&["update"])["error"]["code"], "INVALID_AGENTS");
+    assert_eq!(fs::read_to_string(p.path("AGENTS.md")).unwrap(), broken);
+  }
   p.write("AGENTS.md", "# Rules\n<!-- /hivex:skills -->\n");
   fs::remove_file(p.path(".agents/skills/hivex-git/SKILL.md")).unwrap();
   for command in ["update", "init"] {

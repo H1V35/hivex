@@ -632,39 +632,77 @@ fn skills_section() -> String {
   AGENTS_TEMPLATE[start..end].replace("\r\n", "\n")
 }
 
+/// The byte offset of the last `## Relationships` heading outside fenced code, which must stay the
+/// final section.
+fn relationships_heading(text: &str) -> Option<usize> {
+  let mut fence: Option<(char, usize)> = None;
+  let mut offset = 0;
+  let mut heading = None;
+  for line in text.split_inclusive('\n') {
+    let content = line.trim_end_matches(['\r', '\n']);
+    let indented = content.len() - content.trim_start_matches(' ').len();
+    let marker = content.trim_start_matches(' ');
+    let run = |symbol| marker.chars().take_while(|&c| c == symbol).count();
+    match fence {
+      Some((symbol, length)) if indented < 4 && run(symbol) >= length => fence = None,
+      None if indented < 4 && (run('`') >= 3 || run('~') >= 3) => {
+        let symbol = if run('`') >= 3 { '`' } else { '~' };
+        fence = Some((symbol, run(symbol)));
+      }
+      None if content.trim_end() == "## Relationships" => heading = Some(offset),
+      Some(_) | None => {}
+    }
+    offset += line.len();
+  }
+  heading
+}
+
+/// What `prefix` needs to end with a blank line before a new block, unless it is empty.
+fn blank_line_after(prefix: &str, newline: &str) -> String {
+  match prefix {
+    "" => String::new(),
+    _ if prefix.ends_with(&format!("{newline}{newline}")) => String::new(),
+    _ if prefix.ends_with('\n') => newline.to_owned(),
+    _ => newline.repeat(2),
+  }
+}
+
 /// `bytes` with this release's skills section, in the file's line endings: replaced between its
-/// markers, or added after a blank line: before a final `## Relationships` section, which must stay
-/// last, or at the end. `None` when it is already current, or the file is not UTF-8 text, which
-/// HiveX leaves as it is.
+/// markers, or added after a blank line before a final `## Relationships` section, which must stay
+/// last, or else at the end, keeping every other byte. `None` when it is already current, or the
+/// file is not UTF-8 text, which HiveX leaves as it is.
 fn skills_update(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
   let Ok(text) = std::str::from_utf8(bytes) else {
     return Ok(None);
   };
   let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
   let section = skills_section().replace('\n', newline);
-  let relationships = format!("{newline}## Relationships{newline}");
-  let updated = match (text.find(SKILLS_START), text.find(SKILLS_END)) {
-    (Some(start), Some(end)) if start < end => format!(
+  let markers = (
+    text.matches(SKILLS_START).count(),
+    text.matches(SKILLS_END).count(),
+  );
+  let updated = match (markers, text.find(SKILLS_START), text.find(SKILLS_END)) {
+    ((1, 1), Some(start), Some(end)) if start < end => format!(
       "{}{section}{}",
       &text[..start],
       &text[end + SKILLS_END.len()..]
     ),
-    (None, None) => match (
-      text.rfind(&relationships),
-      text.trim_end_matches(['\r', '\n']),
-    ) {
-      (Some(heading), _) => {
-        let (body, rest) = text.split_at(heading + newline.len());
-        format!("{body}{section}{newline}{newline}{rest}")
+    ((0, 0), ..) => match relationships_heading(text) {
+      Some(heading) => {
+        let (prefix, rest) = text.split_at(heading);
+        let separator = blank_line_after(prefix, newline);
+        format!("{prefix}{separator}{section}{newline}{newline}{rest}")
       }
-      (None, "") => format!("{section}{newline}"),
-      (None, body) => format!("{body}{newline}{newline}{section}{newline}"),
+      None => format!(
+        "{text}{}{section}{newline}",
+        blank_line_after(text, newline)
+      ),
     },
     _ => {
       return Err(error(
         "INVALID_AGENTS",
         format!(
-          "{AGENTS} must keep both HiveX skills markers, {SKILLS_START} and then {SKILLS_END}, or neither"
+          "{AGENTS} must keep one pair of HiveX skills markers, {SKILLS_START} and then {SKILLS_END}, or none"
         ),
       ));
     }
