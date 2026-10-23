@@ -1,4 +1,4 @@
-use crate::support::{Project, list, subset};
+use crate::support::{Project, list, skills_section, subset};
 use serde_json::{Value, json};
 use std::fs;
 #[cfg(unix)]
@@ -646,9 +646,14 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
     p.write(".hivex/.gitignore", format!("# Local rules\r\n{rule}\r\n"));
     p.write(".hivex/knowledge.sqlite", [0, 255, 127, 1]);
     p.ok(&["init"]);
-    for (file, text) in &files[1..] {
-      assert_eq!(fs::read_to_string(p.path(file)).unwrap(), *text);
+    for (file, text) in [files[1], files[3]] {
+      assert_eq!(fs::read_to_string(p.path(file)).unwrap(), text);
     }
+    // Only the skills section of AGENTS.md is HiveX's, appended in the file's line endings.
+    assert_eq!(
+      fs::read_to_string(p.path("AGENTS.md")).unwrap(),
+      format!("# Owner\r\n\r\n{}\r\n", skills_section("\r\n"))
+    );
     assert_eq!(
       fs::read_to_string(p.path(".gitignore")).unwrap(),
       "/.hivex/\r\n/.claude/skills/hivex*\r\n/.reviews/\r\n"

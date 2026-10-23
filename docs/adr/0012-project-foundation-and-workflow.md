@@ -2,7 +2,7 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-19
+updated_at: 2026-10-23
 tags: [adr, workflow, adoption]
 ---
 
@@ -57,6 +57,10 @@ The foundation also ships the [self-hosted runner pool procedure](../../skills/h
 ## Amendment (2026-10-19): reviewer when no other vendor is available
 
 The cross-vendor reviewer remains the default and the reason above still holds. When no model from a different vendor is available, the review uses the implementer's vendor in a new session that never saw the implementation, and the review record states that independence level; it never falls back silently. The [independent review procedure](../../skills/hivex/assets/project/docs/procedures/independent-review.md) operates both cases, and the project's engineering guide records the profiles.
+
+## Amendment (2026-10-23): the skills section of `AGENTS.md`
+
+Agents skipped the HiveX skill a task needed, such as visual work done without `hivex-design`, even with the skills installed; a project had to write the routing rule into its own entrypoint by hand ([H1V35/compi#2075](https://github.com/H1V35/compi/pull/2075)). The bundled `AGENTS.md` now carries a marked section stating which skill each kind of work loads, with no exception for small changes, and that delegated work follows it. `init` writes it into a new entrypoint and appends it to an existing one; `update` keeps it current. That section is the only part of a project's `AGENTS.md` HiveX changes after creation, as the managed rules are of `.gitignore`; the rest of the file remains project-owned and the conciseness rule above still applies. The [guide](../guide.md#the-skills-section-of-agentsmd) describes the behavior ([#230](https://github.com/H1V35/hivex/issues/230)).
 
 ## Relationships
 

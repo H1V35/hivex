@@ -1,4 +1,4 @@
-use crate::support::{Project, bounded, list, subset};
+use crate::support::{Project, bounded, list, skills_section, subset};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
@@ -16,7 +16,7 @@ fn installed_skills_are_self_contained() {
 }
 
 #[test]
-fn update_restores_managed_entries_without_touching_project_files() {
+fn update_restores_managed_entries_and_only_the_skills_section_of_project_files() {
   let p = Project::new();
   p.ok(&["init"]);
   p.write("AGENTS.md", "# My rules\n");
@@ -34,17 +34,16 @@ fn update_restores_managed_entries_without_touching_project_files() {
         {"host":"claude","plugin":"ponytail","status":"missing"},
         {"host":"codex","plugin":"ponytail","status":"missing"}
       ],
-      "updated":[".agents/skills/hivex-design/SKILL.md", ".gitignore"]
+      "updated":[".agents/skills/hivex-design/SKILL.md", ".gitignore", "AGENTS.md"]
     }),
   );
   assert_eq!(
     fs::read(p.path(".agents/skills/hivex-design/SKILL.md")).unwrap(),
     include_bytes!("../../skills/hivex-design/SKILL.md")
   );
-  assert!(!list(&result, "preserved").contains(&json!("AGENTS.md")));
   assert_eq!(
     fs::read_to_string(p.path("AGENTS.md")).unwrap(),
-    "# My rules\n"
+    format!("# My rules\n\n{}\n", skills_section("\n"))
   );
   assert!(!p.path("docs/PRD.md").exists());
   assert!(
@@ -279,4 +278,50 @@ fn a_version_warning_does_not_shrink_read_text() {
   assert!(warned.get("versionWarning").is_some());
   assert_eq!(warned["text"], pinned["text"]);
   assert_eq!(warned["continuation"], pinned["continuation"]);
+}
+
+#[test]
+fn the_skills_section_of_agents_md_is_kept_current_and_the_rest_left_alone() {
+  let p = Project::new();
+  p.ok(&["init"]);
+  // A new project gets the section in its place in the bundled entrypoint.
+  let created = fs::read_to_string(p.path("AGENTS.md")).unwrap();
+  assert_eq!(created.matches(&skills_section("\n")).count(), 1);
+  assert!(list(&p.ok(&["update"]), "preserved").contains(&json!("AGENTS.md")));
+
+  // An edit inside the markers is replaced; the text around them stays.
+  let section = skills_section("\n");
+  let edited = section.replace("with no exception", "with exceptions");
+  p.write("AGENTS.md", format!("# Rules\n\n{edited}\n\nMore rules.\n"));
+  subset(&p.ok(&["update"]), &json!({"updated":["AGENTS.md"]}));
+  assert_eq!(
+    fs::read_to_string(p.path("AGENTS.md")).unwrap(),
+    format!("# Rules\n\n{section}\n\nMore rules.\n")
+  );
+  subset(&p.ok(&["init"]), &json!({"updated":[]}));
+
+  // Added to a file without it, the section goes before a final Relationships section.
+  let relationships = "## Relationships\n\n- Depends on [Map](docs/README.md): orientation.\n";
+  p.write("AGENTS.md", format!("# Rules\n\nText.\n\n{relationships}"));
+  p.ok(&["update"]);
+  assert_eq!(
+    fs::read_to_string(p.path("AGENTS.md")).unwrap(),
+    format!("# Rules\n\nText.\n\n{section}\n\n{relationships}")
+  );
+  subset(
+    &p.ok(&["check", "--source", "AGENTS.md"]),
+    &json!({"totalFindings":0}),
+  );
+
+  // A lone marker is refused before anything is written.
+  p.write("AGENTS.md", "# Rules\n<!-- /hivex:skills -->\n");
+  fs::remove_file(p.path(".agents/skills/hivex-git/SKILL.md")).unwrap();
+  for command in ["update", "init"] {
+    assert_eq!(p.error(&[command])["error"]["code"], "INVALID_AGENTS");
+  }
+  assert!(!p.path(".agents/skills/hivex-git/SKILL.md").exists());
+  assert_eq!(
+    fs::read_to_string(p.path("AGENTS.md")).unwrap(),
+    "# Rules\n<!-- /hivex:skills -->\n"
+  );
 }

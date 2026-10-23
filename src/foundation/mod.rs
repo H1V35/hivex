@@ -16,6 +16,12 @@ const CONFIG: &str = "hivex.json";
 const IGNORE_FILE: &str = ".gitignore";
 /// The skill files and Claude links HiveX installed, so `update` can remove what a release drops.
 const MANAGED: &str = ".agents/.hivex-managed.json";
+const AGENTS: &str = "AGENTS.md";
+/// The bundled entrypoint, whose marked section on which skill each kind of work loads every
+/// project's `AGENTS.md` keeps current (#230).
+const AGENTS_TEMPLATE: &str = include_str!("../../skills/hivex/assets/project/AGENTS.md");
+const SKILLS_START: &str = "<!-- hivex:skills -->";
+const SKILLS_END: &str = "<!-- /hivex:skills -->";
 
 mod extension;
 
@@ -28,7 +34,8 @@ macro_rules! bundled {
   };
 }
 
-/// Project foundation files: created when missing and never changed afterwards.
+/// Project foundation files: created when missing and never changed afterwards, but for the
+/// skills section of `AGENTS.md`.
 static TEMPLATE_FILES: &[(&str, &[u8])] = bundled![
   "../../skills/hivex/assets/project/":
   "AGENTS.md",
@@ -613,6 +620,103 @@ fn ignore_operation(root: &Path, bundle: &Bundle) -> Result<FileOperation> {
   })
 }
 
+/// This release's skills section of `AGENTS.md`, its markers included, with LF line endings.
+fn skills_section() -> String {
+  let start = AGENTS_TEMPLATE
+    .find(SKILLS_START)
+    .expect("the bundled AGENTS.md marks its skills section");
+  let end = AGENTS_TEMPLATE
+    .find(SKILLS_END)
+    .expect("the bundled AGENTS.md closes its skills section")
+    + SKILLS_END.len();
+  AGENTS_TEMPLATE[start..end].replace("\r\n", "\n")
+}
+
+/// `bytes` with this release's skills section, in the file's line endings: replaced between its
+/// markers, or added after a blank line: before a final `## Relationships` section, which must stay
+/// last, or at the end. `None` when it is already current, or the file is not UTF-8 text, which
+/// HiveX leaves as it is.
+fn skills_update(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
+  let Ok(text) = std::str::from_utf8(bytes) else {
+    return Ok(None);
+  };
+  let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+  let section = skills_section().replace('\n', newline);
+  let relationships = format!("{newline}## Relationships{newline}");
+  let updated = match (text.find(SKILLS_START), text.find(SKILLS_END)) {
+    (Some(start), Some(end)) if start < end => format!(
+      "{}{section}{}",
+      &text[..start],
+      &text[end + SKILLS_END.len()..]
+    ),
+    (None, None) => match (
+      text.rfind(&relationships),
+      text.trim_end_matches(['\r', '\n']),
+    ) {
+      (Some(heading), _) => {
+        let (body, rest) = text.split_at(heading + newline.len());
+        format!("{body}{section}{newline}{newline}{rest}")
+      }
+      (None, "") => format!("{section}{newline}"),
+      (None, body) => format!("{body}{newline}{newline}{section}{newline}"),
+    },
+    _ => {
+      return Err(error(
+        "INVALID_AGENTS",
+        format!(
+          "{AGENTS} must keep both HiveX skills markers, {SKILLS_START} and then {SKILLS_END}, or neither"
+        ),
+      ));
+    }
+  };
+  Ok((updated != text).then(|| updated.into_bytes()))
+}
+
+/// The existing `AGENTS.md` with this release's skills section, which is all of it HiveX manages.
+fn agents_operation(root: &Path) -> Result<Option<FileOperation>> {
+  let target = destination(root, AGENTS, DestinationKind::File)?;
+  if !target.exists {
+    return Ok(None);
+  }
+  let existing = read_existing(&target, AGENTS)?;
+  let (bytes, state) = match skills_update(&existing)? {
+    Some(bytes) => (bytes, OperationState::Updated),
+    None => (existing, OperationState::Preserved),
+  };
+  Ok(Some(FileOperation {
+    absolute_path: target.absolute_path,
+    content: Content::Bytes(bytes),
+    path: AGENTS.to_owned(),
+    state,
+    executable: false,
+  }))
+}
+
+/// `init`'s `AGENTS.md`, created or found, with the skills section, which an extension's template
+/// may lack.
+fn with_skills_section(root: &Path, operations: &mut [FileOperation]) -> Result<()> {
+  let Some(operation) = operations
+    .iter_mut()
+    .find(|operation| operation.path == AGENTS)
+  else {
+    return Ok(());
+  };
+  match (&operation.state, &operation.content) {
+    (OperationState::Created, Content::Bytes(bytes)) => {
+      if let Some(bytes) = skills_update(bytes)? {
+        operation.content = Content::Bytes(bytes);
+      }
+    }
+    (OperationState::Preserved, _) => {
+      if let Some(found) = agents_operation(root)? {
+        *operation = found;
+      }
+    }
+    _ => {}
+  }
+  Ok(())
+}
+
 fn read_existing(target: &Destination, relative_path: &str) -> Result<Vec<u8>> {
   fs::read(&target.absolute_path).map_err(|read_error| {
     error(
@@ -965,8 +1069,8 @@ fn report(outcome: &Outcome, hosts: &[HostSteps], status: HostStatus) -> Value {
 }
 
 /// Prepare the missing foundation files, skills, Claude skill links and ignore rules of the project
-/// at `root` without changing anything that exists, and install the ponytail plugin in Claude and
-/// Codex. `extension` adds an extension at its newest release to a project without `hivex.json`.
+/// at `root`, and the skills section of its `AGENTS.md`, without changing anything else that
+/// exists, and install the ponytail plugin in Claude and Codex. `extension` adds an extension at its newest release to a project without `hivex.json`.
 pub fn initialize(root: &str, extension: Option<&str>) -> Result<Value> {
   let root = project_root(root)?;
   // Retained state must not hide a symlink or a conflicting `.hivex` entry.
@@ -995,6 +1099,7 @@ pub fn initialize(root: &str, extension: Option<&str>) -> Result<Value> {
   }
   let bundle = Bundle::with_extensions(&root, &pins)?;
   let mut operations = template_operations(&root, &bundle, &pins)?;
+  with_skills_section(&root, &mut operations)?;
   operations.extend(managed_operations(&root, &bundle, false)?);
   write_operations(&operations)?;
   extension::prune(&root, &bundle.kept);
@@ -1010,8 +1115,9 @@ pub fn initialize(root: &str, extension: Option<&str>) -> Result<Value> {
 }
 
 /// Bring the managed parts of the project at `root` up to this release and each extension up to
-/// its newest release: the skills, Claude's skill links, the ignore rules, the pinned versions and
-/// the ponytail plugin. Project files are neither created nor changed.
+/// its newest release: the skills, Claude's skill links, the ignore rules, the skills section of
+/// `AGENTS.md`, the pinned versions and the ponytail plugin. Project files are neither created nor
+/// otherwise changed.
 pub fn update(root: &str) -> Result<Value> {
   let root = project_root(root)?;
   destination(&root, ".hivex/.gitignore", DestinationKind::File)?;
@@ -1033,6 +1139,7 @@ pub fn update(root: &str) -> Result<Value> {
     .collect::<Result<Vec<_>>>()?;
   let bundle = Bundle::with_extensions(&root, &pins)?;
   let mut operations = managed_operations(&root, &bundle, true)?;
+  operations.extend(agents_operation(&root)?);
   operations.extend(pin_operation(&root, &pins, pins != pinned)?);
   write_operations(&operations)?;
   extension::prune(&root, &bundle.kept);
