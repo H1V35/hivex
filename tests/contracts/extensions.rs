@@ -1,4 +1,4 @@
-use crate::support::{Project, bounded, list, subset};
+use crate::support::{Project, bounded, list, skills_section, subset};
 use serde_json::{Value, json};
 use std::fs;
 use std::process::Command;
@@ -106,8 +106,12 @@ fn init_installs_an_extension_over_the_foundation() {
   );
   assert!(!p.path(".agents/skills/hivex-design/references").exists());
   assert!(p.path(".agents/skills/hivex/SKILL.md").is_file());
-  // Extension project files win over the bundled ones and are dated like them.
-  assert_eq!(read(&p, "AGENTS.md"), "# Demo agents 1\n");
+  // Extension project files win over the bundled ones and are dated like them; AGENTS.md also
+  // gets the skills section its template lacks.
+  assert_eq!(
+    read(&p, "AGENTS.md"),
+    format!("# Demo agents 1\n\n{}\n", skills_section("\n"))
+  );
   assert!(!read(&p, "docs/notes.md").contains("created_at: 2026-01-01"));
   assert!(p.path("docs/PRD.md").is_file());
   assert_eq!(
@@ -145,8 +149,11 @@ fn update_moves_extensions_forward_and_init_installs_the_pinned_release() {
     read(&p, ".agents/skills/demo-git/SKILL.md"),
     "# Demo git 2\n"
   );
-  // Project files belong to the project once created.
-  assert_eq!(read(&p, "AGENTS.md"), "# Demo agents 1\n");
+  // Project files belong to the project once created, but for the skills section.
+  assert_eq!(
+    read(&p, "AGENTS.md"),
+    format!("# Demo agents 1\n\n{}\n", skills_section("\n"))
+  );
   subset(&run(&p, &["update"]), &json!({"updated":[]}));
 
   // Another machine installs the pinned release, not a newer one.

@@ -136,3 +136,11 @@ pub fn subset(actual: &Value, expected: &Value) {
 pub fn list<'a>(value: &'a Value, key: &str) -> &'a Vec<Value> {
   value[key].as_array().unwrap()
 }
+
+/// The bundled skills section of `AGENTS.md`, its markers included, with `newline` line endings.
+pub fn skills_section(newline: &str) -> String {
+  let template = include_str!("../../skills/hivex/assets/project/AGENTS.md").replace("\r\n", "\n");
+  let start = template.find("<!-- hivex:skills -->").unwrap();
+  let end = template.find("<!-- /hivex:skills -->").unwrap() + "<!-- /hivex:skills -->".len();
+  template[start..end].replace('\n', newline)
+}

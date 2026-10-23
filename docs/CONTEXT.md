@@ -2,7 +2,7 @@
 title: "HiveX domain language"
 status: accepted
 created_at: 2026-09-05
-updated_at: 2026-10-19
+updated_at: 2026-10-23
 tags: [domain, project-knowledge]
 ---
 
@@ -16,7 +16,7 @@ HiveX gives agents and people a reusable project foundation and focused access t
 
 **Initialization**: Preparing missing foundation files and configuration, copying the bundled skills into the project and linking them for Claude Code while preserving project-owned files, and installing the ponytail plugin in Claude Code and Codex.
 
-**Update**: Bringing the skill copies, their Claude links, managed ignore rules and the pinned release to the installed release and the ponytail plugin to its latest release, without creating or changing other project-owned files.
+**Update**: Bringing the skill copies, their Claude links, managed ignore rules, the skills section of `AGENTS.md` and the pinned release to the installed release and the ponytail plugin to its latest release, without creating or changing other project-owned files.
 
 **Extension**: A Git repository whose release tags add skills and project files to the bundled foundation, pinned in `hivex.json` and installed by `init`/`update`; see the [guide](guide.md#extensions).
 
