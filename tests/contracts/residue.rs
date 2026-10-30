@@ -364,3 +364,111 @@ fn the_documented_example_check_needs_a_readable_checkout() {
     ],
   );
 }
+
+#[test]
+fn the_project_root_is_literal_even_with_wildcard_characters() {
+  let outside = Project::new();
+  for root in ["project[1]", "project1"] {
+    outside.write(&format!("{root}/cache/item/data"), "");
+    outside.write(
+      &format!("{root}/docs/procedures/workspace-hygiene.json"),
+      json!({"classes": [
+        {"name": "Cache", "paths": ["cache/*"], "unneeded": "exit 1", "removal": "review"}
+      ]})
+      .to_string(),
+    );
+  }
+  let binary = std::env::var_os("HIVEX_TEST_BINARY").map_or_else(
+    || std::path::PathBuf::from(env!("CARGO_BIN_EXE_hivex")),
+    std::path::PathBuf::from,
+  );
+  let root = outside.path("project[1]");
+  let mut command = std::process::Command::new(binary);
+  command.args(["residue", "--root"]).arg(&root);
+  let output = bounded(command);
+  let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+  assert_eq!(result["totalItems"], 1, "{result}");
+  let path = result["items"][0]["path"].as_str().unwrap();
+  assert!(Path::new(path).starts_with(&root), "{path}");
+}
+
+// Permissions and symbolic links need Unix; Windows lacks both without extra privileges.
+#[cfg(unix)]
+#[test]
+fn a_review_item_that_cannot_be_inspected_still_blocks_its_parent() {
+  use std::os::unix::fs::PermissionsExt;
+  // 0o000 hides the folder's names; 0o600 lists them but cannot inspect them.
+  for mode in [0o000, 0o600] {
+    let p = Project::new();
+    let outside = Project::new();
+    p.ok(&["init"]);
+    outside.write("nest/kept/data", "residue bytes");
+    let root = outside.root.display();
+    declare(
+      &p,
+      &json!([
+        {"name": "Parent", "paths": [format!("{root}/nest")], "unneeded": "exit 0", "removal": "deterministic"},
+        {"name": "Child", "paths": [format!("{root}/nest/*")], "unneeded": "exit 0", "removal": "review"}
+      ]),
+    );
+    let nest = outside.path("nest");
+    fs::set_permissions(&nest, fs::Permissions::from_mode(mode)).unwrap();
+    let (code, result) = residue(&p, &outside, &["--trash"]);
+    fs::set_permissions(&nest, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(code, Some(0), "{result}");
+    subset(&result, &json!({"moved":{"items":0}}));
+    assert_eq!(result["items"][0]["status"], "overlaps", "{result}");
+    assert!(outside.path("nest/kept/data").is_file());
+  }
+}
+
+#[cfg(unix)]
+#[test]
+fn an_alias_of_a_reviewed_link_is_not_moved() {
+  let p = Project::new();
+  let outside = Project::new();
+  p.ok(&["init"]);
+  outside.write("target/data", "");
+  std::os::unix::fs::symlink(outside.path("target"), outside.path("link")).unwrap();
+  let root = outside.root.display();
+  declare(
+    &p,
+    &json!([
+      {"name": "Upper", "paths": [format!("{root}/LINK")], "unneeded": "exit 0", "removal": "deterministic"},
+      {"name": "Lower", "paths": [format!("{root}/link")], "unneeded": "exit 0", "removal": "review"}
+    ]),
+  );
+  let (code, result) = residue(&p, &outside, &["--trash"]);
+  assert_eq!(code, Some(0), "{result}");
+  subset(&result, &json!({"moved":{"items":0}}));
+  assert!(
+    fs::symlink_metadata(outside.path("link"))
+      .unwrap()
+      .is_symlink()
+  );
+}
+
+// Only Linux allows file names that are not valid UTF-8.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_name_that_is_not_utf8_is_reported_lossily() {
+  use std::os::unix::ffi::OsStrExt;
+  let p = Project::new();
+  let outside = Project::new();
+  p.ok(&["init"]);
+  let name = std::ffi::OsStr::from_bytes(b"build-\xff");
+  fs::create_dir_all(outside.path("cache").join(name)).unwrap();
+  let root = outside.root.display();
+  declare(
+    &p,
+    &json!([{"name": "Cache", "paths": [format!("{root}/cache/*")], "unneeded": "exit 1", "removal": "review"}]),
+  );
+  let (code, result) = residue(&p, &outside, &[]);
+  assert_eq!(code, Some(0), "{result}");
+  assert!(
+    result["items"][0]["path"]
+      .as_str()
+      .unwrap()
+      .ends_with("build-\u{fffd}")
+  );
+}

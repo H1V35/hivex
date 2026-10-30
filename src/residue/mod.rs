@@ -7,6 +7,7 @@ use globset::GlobBuilder;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -54,6 +55,8 @@ pub enum Status {
 #[derive(Serialize)]
 pub struct Item {
   pub class: String,
+  /// Shown lossily when not UTF-8; operations use the path itself.
+  #[serde(serialize_with = "lossy")]
   pub path: PathBuf,
   pub bytes: u64,
   pub status: Status,
@@ -86,6 +89,10 @@ pub struct Sweep {
   pub items: Vec<Item>,
   pub moved: Tally,
   pub failed: Tally,
+}
+
+fn lossy<S: serde::Serializer>(path: &Path, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+  serializer.serialize_str(&path.to_string_lossy())
 }
 
 /// The project root and the folders no item may be or contain, by their canonical paths.
@@ -164,10 +171,14 @@ fn load(path: &Path) -> Result<Vec<Class>> {
 
 fn class_items(index: usize, class: &Class, guard: &Guard) -> Result<Vec<Item>> {
   let mut paths = Vec::new();
+  let mut unreadable = Vec::new();
   for pattern in &class.paths {
-    paths.extend(expand(pattern, &guard.root)?);
+    paths.extend(expand(pattern, &guard.root, &mut unreadable)?);
   }
+  // A folder a pattern cannot list may hold items of this class: it stays and is never checked.
+  paths.extend(unreadable.iter().cloned());
   paths.sort();
+  paths.dedup();
   let mut items: Vec<Item> = Vec::new();
   for path in paths {
     let identity = identity(&path);
@@ -181,7 +192,11 @@ fn class_items(index: usize, class: &Class, guard: &Guard) -> Result<Vec<Item>> 
     items.push(Item {
       class: class.name.clone(),
       bytes: size(&path),
-      status: status(&path, &class.unneeded, guard),
+      status: if unreadable.contains(&path) {
+        Status::Uncertain
+      } else {
+        status(&path, &class.unneeded, guard)
+      },
       path,
       identity,
       index,
@@ -191,29 +206,37 @@ fn class_items(index: usize, class: &Class, guard: &Guard) -> Result<Vec<Item>> 
   Ok(items)
 }
 
-/// The existing paths a pattern matches: `~` and `$NAME` or `${NAME}` expand, a relative pattern
-/// starts at the project root, and `*`, `?`, `[…]` and `{…}` match within one path component.
-fn expand(pattern: &str, root: &Path) -> Result<Vec<PathBuf>> {
-  let path = normalize_path(&root.join(variables(pattern)));
-  let mut found = vec![PathBuf::new()];
-  for component in path.components() {
-    found = step(found, component)?;
+/// The paths a pattern matches. `~` and a relative pattern start at the home folder and the project
+/// root, taken literally; `$NAME` and `${NAME}` expand; and `*`, `?`, `[…]` and `{…}` match within
+/// one path component. Folders it cannot list go to `unreadable`.
+fn expand(pattern: &str, root: &Path, unreadable: &mut Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+  let tilde = pattern
+    .strip_prefix('~')
+    .filter(|rest| rest.is_empty() || rest.starts_with(['/', '\\']));
+  let (start, rest) = match (tilde, std::env::home_dir()) {
+    (Some(rest), Some(home)) => (home, rest.trim_start_matches(['/', '\\'])),
+    _ => (root.to_path_buf(), pattern),
+  };
+  let rest = PathBuf::from(variables(rest));
+  let mut found = vec![if rest.has_root() {
+    PathBuf::new()
+  } else {
+    start
+  }];
+  for component in rest.components() {
+    found = step(found, component, unreadable)?;
   }
-  found.retain(|path| fs::symlink_metadata(path).is_ok());
-  Ok(found)
+  // Only absence removes a match: an item that cannot be inspected is still reported.
+  found.retain(|path| {
+    fs::symlink_metadata(path).map_or_else(|error| error.kind() != ErrorKind::NotFound, |_| true)
+  });
+  Ok(found.iter().map(|path| normalize_path(path)).collect())
 }
 
 fn variables(pattern: &str) -> String {
-  let home = std::env::home_dir().map(|home| home.to_string_lossy().into_owned());
-  let pattern = match (pattern.strip_prefix('~'), home) {
-    (Some(rest), Some(home)) if rest.is_empty() || rest.starts_with(['/', '\\']) => {
-      format!("{home}{rest}")
-    }
-    _ => pattern.to_owned(),
-  };
   let variable = Regex::new(r"\$(?:\{(\w+)\}|(\w+))").expect("valid variable pattern");
   variable
-    .replace_all(&pattern, |found: &regex::Captures| {
+    .replace_all(pattern, |found: &regex::Captures| {
       let name = found
         .get(1)
         .or_else(|| found.get(2))
@@ -223,7 +246,11 @@ fn variables(pattern: &str) -> String {
     .into_owned()
 }
 
-fn step(bases: Vec<PathBuf>, component: Component) -> Result<Vec<PathBuf>> {
+fn step(
+  bases: Vec<PathBuf>,
+  component: Component,
+  unreadable: &mut Vec<PathBuf>,
+) -> Result<Vec<PathBuf>> {
   let text = component.as_os_str().to_string_lossy();
   if !matches!(component, Component::Normal(_)) || !text.contains(['*', '?', '[', '{']) {
     return Ok(bases.into_iter().map(|base| base.join(component)).collect());
@@ -237,8 +264,13 @@ fn step(bases: Vec<PathBuf>, component: Component) -> Result<Vec<PathBuf>> {
   let hidden = text.starts_with('.');
   let mut next = Vec::new();
   for base in bases {
-    let Ok(entries) = fs::read_dir(&base) else {
-      continue;
+    let entries = match fs::read_dir(&base) {
+      Ok(entries) => entries,
+      Err(error) if listable(&base, &error) => {
+        unreadable.push(normalize_path(&base));
+        continue;
+      }
+      Err(_) => continue,
     };
     for name in entries.flatten().map(|entry| entry.file_name()) {
       let shown = name.to_string_lossy();
@@ -250,6 +282,14 @@ fn step(bases: Vec<PathBuf>, component: Component) -> Result<Vec<PathBuf>> {
   Ok(next)
 }
 
+/// Whether a folder that could not be listed may still exist as a folder.
+fn listable(base: &Path, error: &std::io::Error) -> bool {
+  match fs::metadata(base) {
+    Ok(metadata) => metadata.is_dir(),
+    Err(_) => error.kind() != ErrorKind::NotFound,
+  }
+}
+
 /// The canonical path of the item itself, without following it when it is a link, so that aliases
 /// such as another letter case on a case-insensitive volume are the same item.
 fn identity(path: &Path) -> Option<PathBuf> {
@@ -257,11 +297,24 @@ fn identity(path: &Path) -> Option<PathBuf> {
   if !metadata.file_type().is_symlink() {
     return fs::canonicalize(path).ok();
   }
-  Some(
-    fs::canonicalize(path.parent()?)
-      .ok()?
-      .join(path.file_name()?),
-  )
+  let parent = fs::canonicalize(path.parent()?).ok()?;
+  Some(parent.join(stored_name(&parent, path.file_name()?)?))
+}
+
+/// A link's name as its folder stores it, which a case-insensitive volume may spell otherwise.
+fn stored_name(parent: &Path, name: &std::ffi::OsStr) -> Option<std::ffi::OsString> {
+  let names: Vec<_> = fs::read_dir(parent)
+    .ok()?
+    .flatten()
+    .map(|entry| entry.file_name())
+    .collect();
+  if names.iter().any(|stored| stored == name) {
+    return Some(name.to_owned());
+  }
+  let wanted = name.to_string_lossy().to_lowercase();
+  names
+    .into_iter()
+    .find(|stored| stored.to_string_lossy().to_lowercase() == wanted)
 }
 
 /// Bytes the item occupies on disk, without following links.
@@ -363,12 +416,13 @@ fn mark_overlaps(items: &mut [Item]) {
     let Some(folder) = &item.identity else {
       continue;
     };
+    // An item without an identity could not be inspected; its written path still counts.
     let overlaps = items.iter().enumerate().any(|(other, inner)| {
       other != index
-        && inner
-          .identity
-          .as_ref()
-          .is_some_and(|inner| inner.starts_with(folder))
+        && match &inner.identity {
+          Some(inner) => inner.starts_with(folder),
+          None => inner.path.starts_with(folder) || inner.path.starts_with(&item.path),
+        }
     });
     if overlaps {
       items[index].status = Status::Overlaps;
