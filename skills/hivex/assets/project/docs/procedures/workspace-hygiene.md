@@ -15,7 +15,7 @@ Work leaves residue outside its worktree: build caches keyed by checkout, simula
 
 - `name`: what the residue is.
 - `paths`: where it lives, as glob patterns; `~` and environment variables expand, and relative patterns start at the project root.
-- `unneeded`: a shell command, run from the project root with `RESIDUE` set to an item's path, that exits 0 when no live work needs the item, 1 when something still does and with any other code when it cannot tell. Base it on a fact a command can check, such as the checkout a cache records no longer existing, or the item's issue being closed and its branch integrated.
+- `unneeded`: a shell command, run from the project root with `RESIDUE` set to an item's path, that exits 0 when no live work needs the item, 1 when something still does and with any other code when it cannot tell. Exit 0 only on positive evidence: when the check cannot read what it relies on, such as a missing or empty marker, it must exit with another code rather than let a failed command pass. Base it on a fact a command can check, such as the checkout a cache records no longer existing, or the item's issue being closed and its branch integrated.
 - `removal`: `deterministic` when an unneeded item can go without human judgment, or `review` when it is only listed for the responsible person to decide. Use `deterministic` only when the check is reliable, the item's owner can be established and the residue can be regenerated; evidence that may still need preserving is `review`.
 
 For example, a build cache whose folders record the checkout they belong to:
@@ -26,14 +26,14 @@ For example, a build cache whose folders record the checkout they belong to:
     {
       "name": "Build cache per checkout",
       "paths": ["~/Library/Caches/example-builds/*"],
-      "unneeded": "test ! -e \"$(cat \"$RESIDUE/checkout-path\")\"",
+      "unneeded": "checkout=$(cat \"$RESIDUE/checkout-path\") && [ -n \"$checkout\" ] || exit 2; test ! -e \"$checkout\"",
       "removal": "deterministic"
     }
   ]
 }
 ```
 
-Prefer locations whose name identifies the work, such as the issue or branch, so that the check can tell whether the work is still live. Declare each runner cache and its cap from the [runner procedure](self-hosted-runners.md) when the project uses one.
+Keep classes from overlapping: an item that contains another declared item is never moved automatically, because moving it would take the other along. Prefer locations whose name identifies the work, such as the issue or branch, so that the check can tell whether the work is still live. Declare each runner cache and its cap from the [runner procedure](self-hosted-runners.md) when the project uses one.
 
 ## While working
 
@@ -54,10 +54,10 @@ python3 .agents/skills/hivex-git/scripts/residue.py --trash
 
 The script needs Python 3, run as `python` where `python3` is not available.
 
-Without options it changes nothing: it reports each item with its size and status (`unneeded`, `needed`, `uncertain`, or `protected` for the filesystem root, the home folder, the project and any folder containing them). With `--trash` it moves only the `unneeded` items of `deterministic` classes to the Trash and reports how many items and bytes it moved. Give the responsible person the `unneeded` items of `review` classes to decide, and leave `needed`, `uncertain` and `protected` items alone. Never remove unfinished work, another session's work or anything uncertain. Report what was moved, what was listed and their sizes.
+Without options it changes nothing: it reports each item with its size and status: `unneeded`, `needed`, `uncertain`, `overlaps` for a `deterministic` item containing another declared item, or `protected` for the filesystem root, the home folder, the project and any folder containing them. With `--trash` it runs each `unneeded` item's check of a `deterministic` class again, moves it to the Trash if it still passes, and reports how many items and bytes it moved. Give the responsible person the `unneeded` items of `review` classes to decide, and leave the others alone. Never remove unfinished work, another session's work or anything uncertain. Report what was moved, what was listed and their sizes.
 
 ## Remove recoverably
 
-Move files and folders to the Trash, never delete them permanently. The script uses the command in `HIVEX_TRASH` when set, otherwise `trash` (built into recent macOS) or `gio trash` on Linux, and refuses to move anything without one. Residue a tool manages, such as containers, images or simulators, is removed with that tool's own command for the declared items only; that removal is not recoverable, so list such classes as `review`.
+Move files and folders to the Trash, never delete them permanently. The script uses the command in `HIVEX_TRASH` when it is set, refusing an empty one, otherwise `trash` (built into recent macOS) or `gio trash` on Linux, and refuses to move anything without one. Residue a tool manages, such as containers, images or simulators, is removed with that tool's own command for the declared items only; that removal is not recoverable, so list such classes as `review`.
 
 The Trash frees no space until it is emptied. The owner empties it by hand: nothing in this procedure empties it or changes its settings.

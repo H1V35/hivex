@@ -49,15 +49,22 @@ fn residue(p: &Project, outside: &Project, args: &[&str]) -> (Option<i32>, Value
     "trash.sh",
     "mkdir -p \"$TRASHED\" && mv \"$1\" \"$TRASHED/\"\n",
   );
+  let trash = format!("sh {}", outside.path("trash.sh").display());
+  residue_with(p, outside, args, &trash)
+}
+
+fn residue_with(
+  p: &Project,
+  outside: &Project,
+  args: &[&str],
+  trash: &str,
+) -> (Option<i32>, Value) {
   let mut command = Command::new("python3");
   command
     .current_dir(&p.root)
     .arg(SCRIPT)
     .args(args)
-    .env(
-      "HIVEX_TRASH",
-      format!("sh {}", outside.path("trash.sh").display()),
-    )
+    .env("HIVEX_TRASH", trash)
     .env("TRASHED", outside.path("Trash"));
   let output = bounded(command);
   let stream = if output.stdout.is_empty() {
@@ -150,19 +157,118 @@ fn trash_moves_only_unneeded_items_of_deterministic_classes() {
 }
 
 #[test]
-fn a_class_without_its_check_stops_before_anything_moves() {
+fn a_class_without_a_check_stops_before_anything_moves() {
+  for check in [None, Some(" ")] {
+    let p = Project::new();
+    let outside = Project::new();
+    declared(&p, &outside);
+    let mut declaration = p.read_json("docs/procedures/workspace-hygiene.json");
+    let class = declaration["classes"][0].as_object_mut().unwrap();
+    match check {
+      Some(check) => class.insert("unneeded".into(), json!(check)),
+      None => class.remove("unneeded"),
+    };
+    p.json("docs/procedures/workspace-hygiene.json", &declaration);
+    let (code, result) = residue(&p, &outside, &["--trash"]);
+    assert_eq!(code, Some(2));
+    assert!(result["error"].as_str().unwrap().contains("unneeded"));
+    assert!(outside.path("cache/gone/data").is_file());
+    assert!(!outside.path("Trash").exists());
+  }
+}
+
+#[test]
+fn an_empty_trash_override_moves_nothing() {
   let p = Project::new();
   let outside = Project::new();
   declared(&p, &outside);
-  let mut declaration = p.read_json("docs/procedures/workspace-hygiene.json");
-  declaration["classes"][0]
-    .as_object_mut()
-    .unwrap()
-    .remove("unneeded");
-  p.json("docs/procedures/workspace-hygiene.json", &declaration);
-  let (code, result) = residue(&p, &outside, &["--trash"]);
+  let (code, result) = residue_with(&p, &outside, &["--trash"], " ");
   assert_eq!(code, Some(2));
-  assert!(result["error"].as_str().unwrap().contains("unneeded"));
+  assert!(result["error"].as_str().unwrap().contains("trash"));
   assert!(outside.path("cache/gone/data").is_file());
+}
+
+#[test]
+fn trash_skips_items_claimed_since_their_check_or_holding_other_residue() {
+  let p = Project::new();
+  let outside = Project::new();
+  p.ok(&["init"]);
+  for item in ["claimed/item/data", "nest/kept/data"] {
+    outside.write(item, "residue bytes");
+  }
+  let root = outside.root.display();
+  p.json(
+    "docs/procedures/workspace-hygiene.json",
+    &json!({"classes": [
+      {
+        "name": "Claimed by live work after the first check",
+        "paths": [format!("{root}/claimed/*")],
+        "unneeded": "if [ -e \"$RESIDUE/seen\" ]; then exit 1; fi; touch \"$RESIDUE/seen\"",
+        "removal": "deterministic"
+      },
+      {"name": "Parent", "paths": [format!("{root}/nest")], "unneeded": "true", "removal": "deterministic"},
+      {"name": "Child", "paths": [format!("{root}/nest/kept")], "unneeded": "true", "removal": "review"}
+    ]}),
+  );
+  let (code, result) = residue(&p, &outside, &["--trash"]);
+  assert_eq!(code, Some(0));
+  subset(&result, &json!({"moved":{"items":0,"bytes":0},"failed":[]}));
+  let expected = [
+    ("item", "needed"),
+    ("nest", "overlaps"),
+    ("kept", "unneeded"),
+  ];
+  assert_eq!(
+    statuses(&result),
+    expected.map(|(name, status)| (name.to_owned(), status.to_owned()))
+  );
+  assert!(outside.path("claimed/item/data").is_file());
+  assert!(outside.path("nest/kept/data").is_file());
   assert!(!outside.path("Trash").exists());
+}
+
+#[test]
+fn the_documented_example_check_needs_a_readable_checkout() {
+  let p = Project::new();
+  let outside = Project::new();
+  p.ok(&["init"]);
+  let procedure = std::fs::read_to_string(p.path("docs/procedures/workspace-hygiene.md")).unwrap();
+  let example = procedure
+    .split("```json\n")
+    .nth(1)
+    .unwrap()
+    .split("```")
+    .next()
+    .unwrap();
+  let check = serde_json::from_str::<Value>(example).unwrap()["classes"][0]["unneeded"].clone();
+  outside.write("live-checkout/README", "");
+  outside.write("cache/missing/data", "");
+  outside.write("cache/empty/checkout-path", "");
+  outside.write(
+    "cache/live/checkout-path",
+    outside.path("live-checkout").to_str().unwrap(),
+  );
+  outside.write(
+    "cache/gone/checkout-path",
+    outside.path("removed").to_str().unwrap(),
+  );
+  let root = outside.root.display();
+  p.json(
+    "docs/procedures/workspace-hygiene.json",
+    &json!({"classes": [
+      {"name": "Example", "paths": [format!("{root}/cache/*")], "unneeded": check, "removal": "review"}
+    ]}),
+  );
+  let (code, result) = residue(&p, &outside, &[]);
+  assert_eq!(code, Some(0));
+  let expected = [
+    ("empty", "uncertain"),
+    ("gone", "unneeded"),
+    ("live", "needed"),
+    ("missing", "uncertain"),
+  ];
+  assert_eq!(
+    statuses(&result),
+    expected.map(|(name, status)| (name.to_owned(), status.to_owned()))
+  );
 }

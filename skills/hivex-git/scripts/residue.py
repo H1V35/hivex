@@ -6,9 +6,10 @@ Usage: python3 residue.py [--classes FILE] [--trash]
 Run it from the project root. FILE defaults to docs/procedures/workspace-hygiene.json, the
 declaration the workspace hygiene procedure describes. Each item's check runs through the shell
 with RESIDUE set to the item's path: exit 0 means no live work needs it, 1 that something still
-does, anything else that it is uncertain. Only `unneeded` items of `deterministic` classes move,
-through HIVEX_TRASH when set, else `trash` or `gio trash`; nothing is ever deleted permanently and
-nothing empties the Trash. The result is JSON on standard output.
+does, anything else that it is uncertain. Only `unneeded` items of `deterministic` classes that
+contain no other declared item move, after their check passes again, through HIVEX_TRASH when set,
+else `trash` or `gio trash`; nothing is ever deleted permanently and nothing empties the Trash. The
+result is JSON on standard output.
 """
 
 import argparse
@@ -42,10 +43,11 @@ def load(path):
             and isinstance(entry.get("paths"), list)
             and all(isinstance(pattern, str) for pattern in entry["paths"])
             and isinstance(entry.get("unneeded"), str)
+            and entry["unneeded"].strip()
             and entry.get("removal") in REMOVALS
         )
         if not valid:
-            fail(f"{path}: each class needs name, paths, unneeded and a removal in {REMOVALS}")
+            fail(f"{path}: each class needs name, paths, a nonempty unneeded and a removal")
     return classes
 
 
@@ -53,14 +55,22 @@ def matches(patterns):
     found = set()
     for pattern in patterns:
         found.update(glob.glob(os.path.expandvars(os.path.expanduser(pattern)), recursive=True))
-    return sorted(os.path.abspath(path) for path in found)
+    # Resolve the parent folders so that one item has one path, without following the item itself.
+    return sorted(
+        os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path))
+        for path in map(os.path.abspath, found)
+    )
+
+
+def within(path, folder):
+    return path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)
 
 
 def protected(path):
     """The filesystem root, the home folder, the project or any folder containing them."""
     path = os.path.realpath(path)
     keep = [os.path.realpath(p) for p in (os.sep, os.path.expanduser("~"), os.getcwd())]
-    return any(path == other or other.startswith(path.rstrip(os.sep) + os.sep) for other in keep)
+    return any(within(other, path) for other in keep)
 
 
 def size(path):
@@ -103,8 +113,8 @@ def status(path, check):
 
 
 def trash_command():
-    if os.environ.get("HIVEX_TRASH"):
-        return shlex.split(os.environ["HIVEX_TRASH"])
+    if "HIVEX_TRASH" in os.environ:
+        return shlex.split(os.environ["HIVEX_TRASH"]) or None
     if shutil.which("trash"):
         return ["trash"]
     if shutil.which("gio"):
@@ -118,35 +128,46 @@ def main():
     parser.add_argument("--trash", action="store_true", help="move unneeded deterministic items")
     options = parser.parse_args()
 
-    report = []
-    for entry in load(options.classes):
-        items = [
+    classes = load(options.classes)
+    found = [
+        [
             {"path": path, "bytes": size(path), "status": status(path, entry["unneeded"])}
             for path in matches(entry["paths"])
         ]
-        report.append(
-            {
-                "name": entry["name"],
-                "removal": entry["removal"],
-                "items": items,
-                "bytes": sum(item["bytes"] for item in items),
-                "unneededBytes": sum(i["bytes"] for i in items if i["status"] == "unneeded"),
-            }
-        )
-
-    movable = [
-        item
-        for entry in report
-        if entry["removal"] == "deterministic"
-        for item in entry["items"]
-        if item["status"] == "unneeded"
+        for entry in classes
     ]
+    everything = [item for items in found for item in items]
+    movable = []
+    for entry, items in zip(classes, found):
+        for item in items:
+            if entry["removal"] != "deterministic" or item["status"] != "unneeded":
+                continue
+            # Moving a folder moves every other declared item inside it, whatever its class.
+            if any(other is not item and within(other["path"], item["path"]) for other in everything):
+                item["status"] = "overlaps"
+            else:
+                movable.append((item, entry["unneeded"]))
+    report = [
+        {
+            "name": entry["name"],
+            "removal": entry["removal"],
+            "items": items,
+            "bytes": sum(item["bytes"] for item in items),
+            "unneededBytes": sum(i["bytes"] for i in items if i["status"] == "unneeded"),
+        }
+        for entry, items in zip(classes, found)
+    ]
+
     moved, failed = [], []
     if options.trash and movable:
         command = trash_command()
         if command is None:
             fail("no recoverable trash command found: install `trash` or set HIVEX_TRASH")
-        for item in movable:
+        for item, check in movable:
+            # Live work may have claimed the item while the rest of the sweep ran.
+            item["status"] = status(item["path"], check)
+            if item["status"] != "unneeded":
+                continue
             result = subprocess.run([*command, item["path"]], stdin=subprocess.DEVNULL)
             gone = result.returncode == 0 and not os.path.lexists(item["path"])
             (moved if gone else failed).append(item)
