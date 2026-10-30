@@ -62,15 +62,37 @@ def matches(patterns):
     )
 
 
+def identity(path):
+    try:
+        status = os.lstat(path)
+    except OSError:
+        return None
+    return (status.st_dev, status.st_ino)
+
+
+def chain(path):
+    """The identities of the path and of every folder above it."""
+    path = os.path.join(os.path.realpath(os.path.dirname(path)), os.path.basename(path))
+    found = set()
+    while True:
+        found.add(identity(path))
+        parent = os.path.dirname(path)
+        if parent == path:
+            return found - {None}
+        path = parent
+
+
 def within(path, folder):
-    return path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)
+    """Whether `path` is `folder` or lies inside it, by filesystem identity so that aliases such as
+    another letter case on a case-insensitive volume count as the same item."""
+    folder = identity(folder)
+    return folder is not None and folder in chain(path)
 
 
 def protected(path):
     """The filesystem root, the home folder, the project or any folder containing them."""
-    path = os.path.realpath(path)
-    keep = [os.path.realpath(p) for p in (os.sep, os.path.expanduser("~"), os.getcwd())]
-    return any(within(other, path) for other in keep)
+    keep = (os.sep, os.path.expanduser("~"), os.getcwd())
+    return any(within(os.path.realpath(other), path) for other in keep)
 
 
 def size(path):

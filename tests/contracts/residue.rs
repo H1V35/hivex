@@ -228,6 +228,27 @@ fn trash_skips_items_claimed_since_their_check_or_holding_other_residue() {
 }
 
 #[test]
+fn an_alias_of_a_review_item_is_not_moved() {
+  let p = Project::new();
+  let outside = Project::new();
+  p.ok(&["init"]);
+  outside.write("alias/data", "residue bytes");
+  let root = outside.root.display();
+  // On a case-insensitive volume, such as macOS by default, both classes match the same folder.
+  p.json(
+    "docs/procedures/workspace-hygiene.json",
+    &json!({"classes": [
+      {"name": "Upper", "paths": [format!("{root}/ALIAS")], "unneeded": "true", "removal": "deterministic"},
+      {"name": "Lower", "paths": [format!("{root}/alias")], "unneeded": "true", "removal": "review"}
+    ]}),
+  );
+  let (code, result) = residue(&p, &outside, &["--trash"]);
+  assert_eq!(code, Some(0));
+  subset(&result, &json!({"moved":{"items":0,"bytes":0}}));
+  assert!(outside.path("alias/data").is_file());
+}
+
+#[test]
 fn the_documented_example_check_needs_a_readable_checkout() {
   let p = Project::new();
   let outside = Project::new();
