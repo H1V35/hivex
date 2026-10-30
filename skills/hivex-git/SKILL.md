@@ -30,3 +30,5 @@ Merge when required checks/review pass and existing owner authorization covers i
 Remove local/remote branches and worktrees belonging to completed work. Establish integration for implementation branches. Research, evidence and prototypes may have another end state: preserve useful results and required history before retiring them.
 
 Keep unfinished, uncertain or unrelated work. Age, no PR or no open issue does not prove completion. Do not discard unmerged work to bypass a deletion refusal; establish integration, preservation of needed results/history, or explicit authorization to discard it. Preserve required evidence before cleaning execution state.
+
+Work also leaves residue outside its worktree, such as caches, simulators or devices, containers, evidence and temporary folders. Record each while working and remove it when the work closes, after preserving what must be kept. Remove it recoverably, to the Trash, never permanently, and never remove another session's or unfinished work.
