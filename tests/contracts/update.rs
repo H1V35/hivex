@@ -49,7 +49,7 @@ fn update_restores_managed_entries_and_only_the_skills_section_of_project_files(
   assert!(
     fs::read_to_string(p.path(".gitignore"))
       .unwrap()
-      .starts_with("*.tmp\n/.claude/skills/hivex*\n")
+      .starts_with("*.tmp\n/.hivex/\n")
   );
   assert_eq!(
     p.error(&["update", "extra"])["error"]["code"],
@@ -90,6 +90,176 @@ fn update_replaces_former_npm_links_with_copies() {
   assert_eq!(
     fs::read_to_string(package.path("hivex/SKILL.md")).unwrap(),
     "# Skill from npm\n"
+  );
+}
+
+const SKILLS: [&str; 6] = [
+  "hivex",
+  "hivex-design",
+  "hivex-document",
+  "hivex-git",
+  "hivex-implement",
+  "hivex-review",
+];
+
+#[test]
+fn new_clones_and_worktrees_carry_the_skills_for_claude_code() {
+  let p = Project::new();
+  p.git(&["init", "-q"]);
+  p.ok(&["init"]);
+  p.git(&["add", "-A"]);
+  p.git(&["commit", "-q", "-m", "init"]);
+  let clone = Project::new();
+  let worktree = Project::new();
+  p.git(&["clone", "-q", ".", clone.root.to_str().unwrap()]);
+  p.git(&[
+    "worktree",
+    "add",
+    "-q",
+    "--detach",
+    worktree.root.to_str().unwrap(),
+  ]);
+  for checkout in [&clone, &worktree] {
+    // Claude Code loads skills only from `.claude/skills`; Git brings them without a step.
+    for skill in SKILLS {
+      for directory in [".agents/skills", ".claude/skills"] {
+        assert_eq!(
+          fs::read(checkout.path(&format!("{directory}/{skill}/SKILL.md"))).unwrap(),
+          fs::read(p.path(&format!(".agents/skills/{skill}/SKILL.md"))).unwrap(),
+          "{directory}/{skill}"
+        );
+      }
+    }
+    assert!(
+      checkout
+        .path(".claude/skills/hivex/templates/README.md")
+        .is_file()
+    );
+    subset(&checkout.ok(&["init"]), &json!({"created":[],"updated":[]}));
+    subset(
+      &checkout.ok(&["update"]),
+      &json!({"created":[],"removed":[],"updated":[]}),
+    );
+  }
+}
+
+/// A link in place of `link` to `target`, both relative to the project, as earlier releases
+/// created Claude's: a symlink on Unix and a directory junction on Windows.
+fn former_link(p: &Project, link: &str, target: &str) {
+  #[cfg(unix)]
+  std::os::unix::fs::symlink(Path::new("../..").join(target), p.path(link)).unwrap();
+  // `mklink` needs backslashes, which rebuilding the path from its components gives.
+  #[cfg(windows)]
+  let native = |path: &str| p.path(path).components().collect::<std::path::PathBuf>();
+  #[cfg(windows)]
+  assert!(
+    std::process::Command::new("cmd")
+      .args(["/C", "mklink", "/J"])
+      .arg(native(link))
+      .arg(native(target))
+      .output()
+      .unwrap()
+      .status
+      .success()
+  );
+}
+
+#[test]
+fn update_replaces_claude_s_former_links_and_ignore_rules_with_copies() {
+  let p = Project::new();
+  p.ok(&["init"]);
+  // The layout earlier releases left: ignored links to `.agents/skills`, recorded as links.
+  for skill in SKILLS {
+    fs::remove_dir_all(p.path(&format!(".claude/skills/{skill}"))).unwrap();
+  }
+  for skill in &SKILLS[..5] {
+    former_link(
+      &p,
+      &format!(".claude/skills/{skill}"),
+      &format!(".agents/skills/{skill}"),
+    );
+  }
+  // A link elsewhere is the project's own.
+  p.write("owner-skill/SKILL.md", "# Owner skill\n");
+  former_link(&p, ".claude/skills/hivex-review", "owner-skill");
+  let inventory: Vec<String> =
+    serde_json::from_value(p.read_json(".agents/.hivex-managed.json")).unwrap();
+  let mut former: Vec<String> = inventory
+    .iter()
+    .map(|path| match path.strip_prefix(".claude/skills/") {
+      Some(rest) => format!(".claude/skills/{}", rest.split('/').next().unwrap()),
+      None => path.clone(),
+    })
+    .collect();
+  former.dedup();
+  p.json(".agents/.hivex-managed.json", &json!(former));
+  p.write(
+    ".gitignore",
+    "*.tmp\n/.claude/skills/hivex*\n/.hivex/\n/.reviews/\n",
+  );
+  // `init` keeps the former links and their rule, so no link becomes visible to Git.
+  p.ok(&["init"]);
+  assert!(fs::read_link(p.path(".claude/skills/hivex")).is_ok());
+  assert!(
+    fs::read_to_string(p.path(".gitignore"))
+      .unwrap()
+      .contains("/.claude/skills/hivex*\n")
+  );
+  // Former links whose copies are gone, as after npm's `node_modules` went, are still HiveX's.
+  fs::remove_dir_all(p.path(".agents/skills")).unwrap();
+
+  let updated = p.ok(&["update"]);
+  for path in [".claude/skills/hivex", ".gitignore"] {
+    assert!(list(&updated, "updated").contains(&json!(path)), "{path}");
+  }
+  assert!(list(&updated, "created").contains(&json!(".claude/skills/hivex/SKILL.md")));
+  assert!(list(&updated, "preserved").contains(&json!(".claude/skills/hivex-review")));
+  subset(&updated, &json!({"removed":[]}));
+  for skill in &SKILLS[..5] {
+    let directory = p.path(&format!(".claude/skills/{skill}"));
+    assert!(fs::read_link(&directory).is_err(), "{skill}");
+    assert_eq!(
+      fs::read(directory.join("SKILL.md")).unwrap(),
+      fs::read(p.path(&format!(".agents/skills/{skill}/SKILL.md"))).unwrap()
+    );
+  }
+  assert_eq!(
+    fs::read_to_string(p.path(".claude/skills/hivex-review/SKILL.md")).unwrap(),
+    "# Owner skill\n"
+  );
+  assert_eq!(
+    fs::read_to_string(p.path(".gitignore")).unwrap(),
+    "*.tmp\n/.hivex/\n/.reviews/\n"
+  );
+  let recorded = p.read_json(".agents/.hivex-managed.json");
+  assert!(
+    recorded
+      .as_array()
+      .unwrap()
+      .contains(&json!(".claude/skills/hivex/SKILL.md"))
+  );
+  assert!(
+    !recorded
+      .as_array()
+      .unwrap()
+      .contains(&json!(".claude/skills/hivex"))
+  );
+  subset(
+    &p.ok(&["update"]),
+    &json!({"created":[],"removed":[],"updated":[]}),
+  );
+
+  // A project link put in place of a managed copy is the project's from then on.
+  fs::remove_dir_all(p.path(".claude/skills/hivex")).unwrap();
+  former_link(&p, ".claude/skills/hivex", "owner-skill");
+  let relinquished = p.ok(&["update"]);
+  assert!(list(&relinquished, "preserved").contains(&json!(".claude/skills/hivex")));
+  subset(&relinquished, &json!({"created":[],"removed":[]}));
+  assert!(
+    !p.read_json(".agents/.hivex-managed.json")
+      .as_array()
+      .unwrap()
+      .contains(&json!(".claude/skills/hivex/SKILL.md"))
   );
 }
 
