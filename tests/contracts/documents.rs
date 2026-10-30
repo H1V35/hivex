@@ -82,17 +82,16 @@ fn empty_project_initialization_creates_the_complete_foundation() {
     "hivex-review",
     "hivex-git",
   ] {
+    // Claude Code reads only `.claude/skills`, which holds a real copy, not a link.
     let copy = format!(".agents/skills/{skill}/SKILL.md");
-    let link = format!(".claude/skills/{skill}");
+    let claude = format!(".claude/skills/{skill}/SKILL.md");
     assert!(list(&result, "created").contains(&json!(copy)));
-    assert!(list(&result, "created").contains(&json!(link)));
-    assert!(p.path(&format!("{link}/SKILL.md")).is_file());
+    assert!(list(&result, "created").contains(&json!(claude)));
     assert_eq!(
-      fs::canonicalize(p.path(&format!(".agents/skills/{skill}"))).unwrap(),
-      fs::canonicalize(p.path(&link)).unwrap()
+      fs::read(p.path(&claude)).unwrap(),
+      fs::read(p.path(&copy)).unwrap()
     );
-    #[cfg(unix)]
-    assert!(!fs::read_link(p.path(&link)).unwrap().is_absolute());
+    assert!(fs::read_link(p.path(&format!(".claude/skills/{skill}"))).is_err());
   }
   // Skills are complete copies, including references, assets and language templates.
   assert_eq!(
@@ -116,7 +115,7 @@ fn initialization_copies_bundled_non_markdown_templates_and_ignores_local_state(
   p.ok(&["init"]);
   assert_eq!(
     fs::read_to_string(p.path(".gitignore")).unwrap(),
-    "/.claude/skills/hivex*\n/.hivex/\n/.reviews/\n"
+    "/.hivex/\n/.reviews/\n"
   );
   assert_eq!(
     fs::read(p.path("docs/procedures/independent-review.schema.json")).unwrap(),
@@ -136,7 +135,7 @@ fn initialization_keeps_existing_ignore_rules_unless_a_later_negation_follows() 
     p.ok(&["init"]);
     assert_eq!(
       fs::read_to_string(p.path(".gitignore")).unwrap(),
-      format!("{ignore}/.claude/skills/hivex*{newline}/.reviews/{newline}")
+      format!("{ignore}/.reviews/{newline}")
     );
     subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
 
@@ -146,7 +145,7 @@ fn initialization_keeps_existing_ignore_rules_unless_a_later_negation_follows() 
     p.ok(&["init"]);
     assert_eq!(
       fs::read_to_string(p.path(".gitignore")).unwrap(),
-      format!("{ignore}/.claude/skills/hivex*{newline}/.hivex/{newline}/.reviews/{newline}")
+      format!("{ignore}/.hivex/{newline}/.reviews/{newline}")
     );
     subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
   }
@@ -659,7 +658,7 @@ fn initialization_refuses_symlinks_and_conflicting_nested_ignores_atomically() {
     );
     assert_eq!(
       fs::read_to_string(p.path(".gitignore")).unwrap(),
-      "/.hivex/\r\n/.claude/skills/hivex*\r\n/.reviews/\r\n"
+      "/.hivex/\r\n/.reviews/\r\n"
     );
     subset(&p.ok(&["init"]), &json!({"created":[],"updated":[]}));
     assert_eq!(

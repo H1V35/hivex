@@ -92,7 +92,7 @@ fn init_installs_an_extension_over_the_foundation() {
   let created = list(&result, "created");
   for path in [
     ".agents/skills/demo-git/SKILL.md",
-    ".claude/skills/demo-git",
+    ".claude/skills/demo-git/SKILL.md",
     "docs/notes.md",
   ] {
     assert!(created.contains(&json!(path)), "{path}");
@@ -118,7 +118,8 @@ fn init_installs_an_extension_over_the_foundation() {
     p.read_json("hivex.json")["extensions"],
     json!([{"repository": repository, "version": "0.1.0"}])
   );
-  assert!(read(&p, ".gitignore").contains("/.claude/skills/demo-git\n/work/\n"));
+  assert!(read(&p, ".gitignore").contains("/work/\n"));
+  assert!(!read(&p, ".gitignore").contains("/.claude/"));
   // The cached release is local state and invisible to source selection.
   assert!(
     !list(&run(&p, &["sources"]), "documents")
@@ -136,15 +137,26 @@ fn update_moves_extensions_forward_and_init_installs_the_pinned_release() {
   extension.write("skills/demo-git/SKILL.md", "# Demo git 2\n");
   extension.write("assets/project/AGENTS.md", "# Demo agents 2\n");
   release(&extension, "0.2.0");
+  // Claude's former link rule for an extension skill would keep its committed copy out of Git.
+  p.write(
+    ".gitignore",
+    format!("/.claude/skills/demo-git\n{}", read(&p, ".gitignore")),
+  );
 
   let updated = run(&p, &["update"]);
   subset(
     &updated,
     &json!({"extensions":[{"repository":repository,"version":"0.2.0"}]}),
   );
-  for path in [".agents/skills/demo-git/SKILL.md", "hivex.json"] {
+  for path in [
+    ".agents/skills/demo-git/SKILL.md",
+    ".claude/skills/demo-git/SKILL.md",
+    ".gitignore",
+    "hivex.json",
+  ] {
     assert!(list(&updated, "updated").contains(&json!(path)), "{path}");
   }
+  assert_eq!(read(&p, ".gitignore"), "/work/\n/.hivex/\n/.reviews/\n");
   assert_eq!(
     read(&p, ".agents/skills/demo-git/SKILL.md"),
     "# Demo git 2\n"
@@ -222,12 +234,9 @@ fn extension_ignore_templates_and_tags_are_honoured() {
   );
   let ignore = read(&p, ".gitignore");
   // Extension rules come first and HiveX's own rules last.
+  assert!(ignore.starts_with("custom\n/work/\n"), "{ignore}");
   assert!(
-    ignore.starts_with("custom\n/.claude/skills/demo-git\n/work/\n"),
-    "{ignore}"
-  );
-  assert!(
-    ignore.ends_with("/.claude/skills/hivex*\n/.hivex/\n/.reviews/\n"),
+    ignore.ends_with("/work/\n/.hivex/\n/.reviews/\n"),
     "{ignore}"
   );
   assert!(ignore.contains("/work/\n"));
@@ -251,7 +260,7 @@ fn update_removes_what_a_release_retires_and_old_caches() {
   for path in [
     ".agents/skills/demo-old/SKILL.md",
     ".agents/skills/demo-git/extra.md",
-    ".claude/skills/demo-old",
+    ".claude/skills/demo-old/SKILL.md",
   ] {
     assert!(removed.contains(&json!(path)), "{path}");
   }

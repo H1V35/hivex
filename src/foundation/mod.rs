@@ -8,14 +8,17 @@ use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// Managed rules stay last so earlier project rules cannot re-include their paths. Claude's skill
-// links are created on each machine, because Git cannot share them with Windows.
-const IGNORE_RULES: [&str; 3] = ["/.claude/skills/hivex*", "/.hivex/", "/.reviews/"];
+// Managed rules stay last so earlier project rules cannot re-include their paths.
+const IGNORE_RULES: [&str; 2] = ["/.hivex/", "/.reviews/"];
+/// Where agents read the skills: Claude Code only from `.claude/skills`, other agents from
+/// `.agents/skills`. Each gets a committed copy, because Git cannot share links with Windows and
+/// ignored links leave every new clone and worktree without skills (#244).
+const SKILL_DIRECTORIES: [&str; 2] = [".agents/skills", ".claude/skills"];
 /// This release; `hivex.json` pins the release a project expects.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const CONFIG: &str = "hivex.json";
 const IGNORE_FILE: &str = ".gitignore";
-/// The skill files and Claude links HiveX installed, so `update` can remove what a release drops.
+/// The skill files HiveX installed, so `update` can remove what a release drops.
 const MANAGED: &str = ".agents/.hivex-managed.json";
 const AGENTS: &str = "AGENTS.md";
 /// The bundled entrypoint, whose marked section on which skill each kind of work loads every
@@ -141,17 +144,27 @@ impl Bundle {
     names
   }
 
-  /// Claude's links are per machine, so each one is ignored.
   fn ignore_rules(&self) -> Vec<String> {
-    let links = self
-      .skill_names()
-      .into_iter()
-      .filter(|name| !name.starts_with("hivex"))
-      .map(|name| format!("/.claude/skills/{name}"));
     // HiveX's own rules come last, so no earlier rule can re-include their paths.
-    links
-      .chain(self.ignore.iter().cloned())
+    self
+      .ignore
+      .iter()
+      .cloned()
       .chain(IGNORE_RULES.iter().map(|rule| (*rule).to_owned()))
+      .collect()
+  }
+
+  /// The rules that ignored Claude's former per-machine links, which would now keep the
+  /// committed copies out of Git.
+  fn former_link_rules(&self) -> Vec<String> {
+    std::iter::once("/.claude/skills/hivex*".to_owned())
+      .chain(
+        self
+          .skill_names()
+          .into_iter()
+          .map(|name| format!("/.claude/skills/{name}")),
+      )
+      .filter(|rule| !self.ignore.contains(rule))
       .collect()
   }
 }
@@ -226,9 +239,8 @@ struct FileOperation {
 
 enum Content {
   Bytes(Vec<u8>),
-  /// Claude's link to the named skill in `.agents/skills`.
-  SkillLink(String),
-  /// A former npm link to a skill, replaced by a copy, or a Claude link to a retired skill.
+  /// A former link to a skill: npm's in `.agents/skills` or Claude's in `.claude/skills`,
+  /// replaced by a copy or removed with its retired skill.
   Unlink,
   /// A managed file that the installed release no longer provides.
   Remove,
@@ -353,14 +365,30 @@ fn missing_ignore_rules<'a>(text: &str, rules: &'a [String]) -> Vec<&'a String> 
     .collect()
 }
 
-fn ignore_update(existing: Option<&[u8]>, rules: &[String]) -> Option<Vec<u8>> {
-  let text = existing.map(String::from_utf8_lossy).unwrap_or_default();
+/// `existing` with the `retired` rules removed and the missing `rules` appended, or `None` when
+/// nothing changes.
+fn ignore_update(existing: Option<&[u8]>, rules: &[String], retired: &[String]) -> Option<Vec<u8>> {
+  let existing = existing.unwrap_or_default();
+  let mut bytes: Vec<u8> = existing
+    .split_inclusive(|byte| *byte == b'\n')
+    .filter(|line| {
+      let line = line.strip_suffix(b"\n").unwrap_or(line);
+      let line = line.strip_suffix(b"\r").unwrap_or(line);
+      !retired.iter().any(|rule| rule.as_bytes() == line)
+    })
+    .flatten()
+    .copied()
+    .collect();
+  let text = String::from_utf8_lossy(&bytes).into_owned();
   let missing = missing_ignore_rules(&text, rules);
-  if missing.is_empty() {
+  if missing.is_empty() && bytes == existing {
     return None;
   }
-  let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
-  let mut bytes = existing.unwrap_or_default().to_vec();
+  let newline = if existing.windows(2).any(|pair| pair == b"\r\n") {
+    "\r\n"
+  } else {
+    "\n"
+  };
   if !text.is_empty() && !text.ends_with('\n') {
     bytes.extend_from_slice(newline.as_bytes());
   }
@@ -586,10 +614,11 @@ fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
 }
 
 /// The managed rules appended to `.gitignore`, starting a missing file from an extension's
-/// template when it has one.
+/// template when it has one, and the former link rules removed.
 fn ignore_operation(root: &Path, bundle: &Bundle) -> Result<FileOperation> {
   let relative_path = IGNORE_FILE;
   let rules = bundle.ignore_rules();
+  let retired = bundle.former_link_rules();
   let target = destination(root, relative_path, DestinationKind::File)?;
   let existing = if target.exists {
     Some(read_existing(&target, relative_path)?)
@@ -600,7 +629,7 @@ fn ignore_operation(root: &Path, bundle: &Bundle) -> Result<FileOperation> {
       .find(|file| file.path == IGNORE_FILE)
       .map(|file| file.bytes.clone())
   };
-  let (bytes, state) = match ignore_update(existing.as_deref(), &rules) {
+  let (bytes, state) = match ignore_update(existing.as_deref(), &rules, &retired) {
     Some(bytes) => (
       bytes,
       if target.exists {
@@ -787,53 +816,58 @@ fn skill_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec<F
       .iter()
       .filter(|file| extension::skill_name(&file.path) == name)
       .collect();
-    operations.extend(skill_directory_operations(root, &name, &files, refresh)?);
+    for base in SKILL_DIRECTORIES {
+      operations.extend(skill_directory_operations(root, base, &files, refresh)?);
+    }
   }
   Ok(operations)
 }
 
-/// One skill's files. `init` leaves a former npm link to the skill alone; `update` replaces it
-/// with a copy.
+/// One skill's files, never empty, below `base`. `init` leaves a link in place of the skill alone; `update`
+/// replaces a former npm link or Claude's former link to the copy in `.agents/skills` with a
+/// copy, and leaves any other Claude link to the project.
 fn skill_directory_operations(
   root: &Path,
-  name: &str,
+  base: &str,
   files: &[&BundleFile],
   refresh: bool,
 ) -> Result<Vec<FileOperation>> {
-  let directory = format!(".agents/skills/{name}");
+  let name = extension::skill_name(&files[0].path);
+  let directory = format!("{base}/{name}");
   let target = destination(root, &directory, DestinationKind::Link)?;
   let linked = target.exists
     && fs::symlink_metadata(&target.absolute_path).is_ok_and(|entry| entry.is_symlink());
   if !linked {
     return files
       .iter()
-      .map(|file| {
-        file_operation(
-          root,
-          &format!(".agents/skills/{}", file.path),
-          file,
-          refresh,
-        )
-      })
+      .map(|file| file_operation(root, &format!("{base}/{}", file.path), file, refresh))
       .collect();
   }
+  let former = base == SKILL_DIRECTORIES[0]
+    || matches!(
+      (
+        fs::canonicalize(&target.absolute_path),
+        fs::canonicalize(root.join(SKILL_DIRECTORIES[0]).join(name)),
+      ),
+      (Ok(link), Ok(copy)) if link == copy
+    );
   let unlink = FileOperation {
     absolute_path: target.absolute_path,
     content: Content::Unlink,
     path: directory,
-    state: if refresh {
+    state: if refresh && former {
       OperationState::Updated
     } else {
       OperationState::Preserved
     },
     executable: false,
   };
-  if !refresh {
+  if unlink.state == OperationState::Preserved {
     return Ok(vec![unlink]);
   }
   let mut operations = vec![unlink];
   for file in files {
-    let relative = format!(".agents/skills/{}", file.path);
+    let relative = format!("{base}/{}", file.path);
     let absolute_path = normalize_path(&root.join(&relative));
     // The link is removed first, so its copies are planned without a destination check.
     if !absolute_path.starts_with(root) {
@@ -887,50 +921,6 @@ fn is_executable(_: &Path) -> bool {
   false
 }
 
-/// Claude loads skills only from `.claude/skills`; an existing entry there stays as it is.
-fn link_operations(root: &Path, bundle: &Bundle) -> Result<Vec<FileOperation>> {
-  bundle
-    .skill_names()
-    .into_iter()
-    .map(|name| {
-      let path = format!(".claude/skills/{name}");
-      let target = destination(root, &path, DestinationKind::Link)?;
-      Ok(FileOperation {
-        absolute_path: target.absolute_path,
-        content: Content::SkillLink(name),
-        path,
-        state: OperationState::planned(target.exists),
-        executable: false,
-      })
-    })
-    .collect()
-}
-
-#[cfg(unix)]
-fn link_skill(link: &Path, name: &str) -> std::io::Result<()> {
-  std::os::unix::fs::symlink(format!("../../.agents/skills/{name}"), link)
-}
-
-/// A directory junction needs no extra privileges, unlike a Windows symlink.
-#[cfg(windows)]
-fn link_skill(link: &Path, name: &str) -> std::io::Result<()> {
-  let project = link
-    .ancestors()
-    .nth(3)
-    .expect("the link lives inside the project");
-  let status = std::process::Command::new("cmd")
-    .args(["/C", "mklink", "/J"])
-    .arg(link)
-    .arg(project.join(".agents").join("skills").join(name))
-    .stdout(std::process::Stdio::null())
-    .status()?;
-  if status.success() {
-    Ok(())
-  } else {
-    Err(std::io::Error::other("mklink /J failed"))
-  }
-}
-
 fn write_operations(operations: &[FileOperation]) -> Result<()> {
   let mut paths = std::collections::BTreeSet::new();
   if let Some(conflict) = operations
@@ -977,7 +967,6 @@ fn write_operation(operation: &FileOperation) -> std::io::Result<()> {
     fs::create_dir_all(parent)?;
   }
   let bytes = match &operation.content {
-    Content::SkillLink(name) => return link_skill(&operation.absolute_path, name),
     // A directory link is a file on Unix and a directory on Windows.
     Content::Unlink => {
       return fs::remove_file(&operation.absolute_path)
@@ -1121,7 +1110,7 @@ fn report(outcome: &Outcome, hosts: &[HostSteps], status: HostStatus) -> Value {
   })
 }
 
-/// Prepare the missing foundation files, skills, Claude skill links and ignore rules of the project
+/// Prepare the missing foundation files, skill copies for every agent and ignore rules of the project
 /// at `root`, and the skills section of its `AGENTS.md`, without changing anything else that
 /// exists, and install the ponytail plugin in Claude and Codex. `extension` adds an extension at its newest release to a project without `hivex.json`.
 pub fn initialize(root: &str, extension: Option<&str>) -> Result<Value> {
@@ -1168,7 +1157,7 @@ pub fn initialize(root: &str, extension: Option<&str>) -> Result<Value> {
 }
 
 /// Bring the managed parts of the project at `root` up to this release and each extension up to
-/// its newest release: the skills, Claude's skill links, the ignore rules, the skills section of
+/// its newest release: the skill copies for every agent, the ignore rules, the skills section of
 /// `AGENTS.md`, the pinned versions and the ponytail plugin. Project files are neither created nor
 /// otherwise changed.
 pub fn update(root: &str) -> Result<Value> {
@@ -1217,8 +1206,10 @@ fn project_config(root: &Path) -> Result<Option<serde_json::Map<String, Value>>>
 
 fn managed_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec<FileOperation>> {
   let mut operations = skill_operations(root, bundle, refresh)?;
-  // The links follow the skills so their targets exist when they are created.
-  operations.extend(link_operations(root, bundle)?);
+  let planned: Vec<String> = operations
+    .iter()
+    .map(|operation| operation.path.clone())
+    .collect();
   let installed: Vec<String> = operations
     .iter()
     .filter(|operation| !matches!(operation.content, Content::Unlink))
@@ -1226,7 +1217,7 @@ fn managed_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec
     .collect();
   let previous = previous_inventory(root)?;
   let recorded = if refresh {
-    operations.extend(retired_operations(root, &previous, &installed)?);
+    operations.extend(retired_operations(root, &previous, &planned)?);
     installed
   } else {
     // `init` removes nothing, so what an earlier release installed stays recorded.
@@ -1241,8 +1232,8 @@ fn managed_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec
   Ok(operations)
 }
 
-/// A path inside the managed trees: a file below `.agents/skills/<skill>/` or a Claude link
-/// `.claude/skills/<skill>`.
+/// A path inside the managed trees: a file below `.agents/skills/<skill>/` or
+/// `.claude/skills/<skill>/`, or Claude's former link `.claude/skills/<skill>`.
 fn managed_path(path: &str) -> bool {
   let parts: Vec<_> = path.split('/').collect();
   let plain = parts
@@ -1251,7 +1242,7 @@ fn managed_path(path: &str) -> bool {
   plain
     && matches!(
       parts.as_slice(),
-      [".agents", "skills", _, _, ..] | [".claude", "skills", _]
+      [".agents", "skills", _, _, ..] | [".claude", "skills", _, ..]
     )
 }
 
@@ -1286,18 +1277,24 @@ fn previous_inventory(root: &Path) -> Result<Vec<String>> {
   Ok(paths)
 }
 
-/// Remove the managed files and Claude links that the installed release no longer provides.
+/// Remove the managed files and Claude's former links that the installed release no longer
+/// provides; a path the release still plans, or a former link now holding its copies, stays.
 fn retired_operations(
   root: &Path,
   previous: &[String],
-  installed: &[String],
+  planned: &[String],
 ) -> Result<Vec<FileOperation>> {
   let mut operations = Vec::new();
   for path in previous {
-    if installed.contains(path) {
+    let directory = format!("{path}/");
+    if planned
+      .iter()
+      .any(|kept| kept == path || kept.starts_with(&directory))
+    {
       continue;
     }
-    let kind = if path.starts_with(".claude/") {
+    let link = path.starts_with(".claude/") && path.matches('/').count() == 2;
+    let kind = if link {
       DestinationKind::Link
     } else {
       DestinationKind::File
@@ -1306,7 +1303,7 @@ fn retired_operations(
     let Ok(entry) = fs::symlink_metadata(&target.absolute_path) else {
       continue;
     };
-    let content = match path.starts_with(".claude/") {
+    let content = match link {
       true if entry.is_symlink() || entry.is_dir() => Content::Unlink,
       false if entry.is_file() => Content::Remove,
       _ => continue,

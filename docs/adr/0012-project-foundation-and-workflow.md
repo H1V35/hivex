@@ -2,7 +2,7 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-23
+updated_at: 2026-10-30
 tags: [adr, workflow, adoption]
 ---
 
@@ -14,7 +14,7 @@ HiveX distributes a small project documentation foundation, five independent wor
 
 `init` prepares only missing project Markdown, source configuration and Git visibility rules, without model calls. It preserves existing files and local knowledge. The responsible agent completes purpose, vision and domain language from project evidence and owner decisions, and may migrate useful material toward the recommended structure. Existing monorepo, package and module documentation authorities remain valid. Templates are optional starting points, not a required repository layout; retain useful content, links and history.
 
-Project-local skill installation remains supported. `init` prepares a `CLAUDE.md` import of `AGENTS.md` and relative links for the six packaged skills in `.agents/skills` and `.claude/skills`. Existing skill entries remain project-owned, including custom or stale links; inspect them before changing them. Parent symlinks and incompatible path types fail validation before writes. The complete package supplies skill assets; moving its executable alone does not install them. Keep the presentation README short and use the packaged [CLI guide](../guide.md) for command details.
+Project-local skill installation remains supported. `init` prepares a `CLAUDE.md` import of `AGENTS.md` and relative links for the six packaged skills in `.agents/skills` and `.claude/skills`, as later amended below. Existing skill entries remain project-owned, including custom or stale links; inspect them before changing them. Parent symlinks and incompatible path types fail validation before writes. The complete package supplies skill assets; moving its executable alone does not install them. Keep the presentation README short and use the packaged [CLI guide](../guide.md) for command details.
 
 ## Keep capabilities focused
 
@@ -52,7 +52,7 @@ The foundation also ships the [self-hosted runner pool procedure](../../skills/h
 
 ## Amendment (2026-10-19): copied skills and pinned release
 
-`init` no longer links the skills into the installed package. It copies the six skills, with their references, assets and language templates, from the executable into `.agents/skills/` and links each from `.claude/skills/`; Git ignores those per-machine links. A standalone executable therefore installs the skills. `hivex.json` pins the release, and `update` refreshes the copies and moves the pin forward. The [guide](../guide.md#initialize-a-project) describes the current behavior.
+`init` no longer links the skills into the installed package. It copies the six skills, with their references, assets and language templates, from the executable into `.agents/skills/` and links each from `.claude/skills/`; Git ignores those per-machine links. The amendment of 2026-10-30 replaces the links with committed copies. A standalone executable therefore installs the skills. `hivex.json` pins the release, and `update` refreshes the copies and moves the pin forward. The [guide](../guide.md#initialize-a-project) describes the current behavior.
 
 ## Amendment (2026-10-19): reviewer when no other vendor is available
 
@@ -61,6 +61,12 @@ The cross-vendor reviewer remains the default and the reason above still holds. 
 ## Amendment (2026-10-23): the skills section of `AGENTS.md`
 
 Agents skipped the HiveX skill a task needed, such as visual work done without `hivex-design`, even with the skills installed; a project had to write the routing rule into its own entrypoint by hand ([H1V35/compi#2075](https://github.com/H1V35/compi/pull/2075)). The bundled `AGENTS.md` now carries a marked section stating which skill each kind of work loads, with no exception for small changes, and that delegated work follows it. `init` writes it into a new entrypoint and appends it to an existing one; `update` keeps it current. That section is the only part of a project's `AGENTS.md` HiveX changes after creation, as the managed rules are of `.gitignore`; the rest of the file remains project-owned and the conciseness rule above still applies. The [guide](../guide.md#the-skills-section-of-agentsmd) describes the behavior ([#230](https://github.com/H1V35/hivex/issues/230)).
+
+## Amendment (2026-10-30): committed skill copies for Claude Code
+
+The ignored links of the amendment of 2026-10-19 existed only in the checkout that ran `init` or `update`. Claude Code loads project skills only from `.claude/skills`, and in a linked worktree it falls back to the main checkout's skills only when the worktree has no `.claude/skills` of its own, so every new clone and every worktree of a project that commits another Claude skill went without HiveX's skills (Compi, 2026-10-30). Committed links are no remedy: Git for Windows checks a symbolic link out as a text file unless the machine allows symlinks, and Claude Code offers no setting to read `.agents/skills`.
+
+`init` and `update` therefore write the same managed copy of each skill into `.claude/skills/<name>/` as into `.agents/skills/<name>/`, and the project commits both. The release bundle stays the single source: `update` makes both copies identical to it and the inventory records both. `update` replaces Claude's former link to the copy in `.agents/skills`, and `init` and `update` remove the rules that ignored those links, so the copies reach Git; a link elsewhere stays project-owned. The [guide](../guide.md#initialize-a-project) describes the behavior ([#244](https://github.com/H1V35/hivex/issues/244)).
 
 ## Relationships
 

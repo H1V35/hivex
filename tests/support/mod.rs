@@ -59,10 +59,12 @@ impl Project {
     assert_eq!(result.stdout.len(), 0);
     serde_json::from_slice(&result.stderr).unwrap()
   }
-  #[cfg(unix)]
   pub fn git(&self, args: &[&str]) -> String {
     let output = Command::new("git")
       .current_dir(&self.root)
+      // Files are committed byte for byte, also where Git converts line endings by default.
+      .args(["-c", "core.autocrlf=false", "-c", "user.name=Test"])
+      .args(["-c", "user.email=test@example.com"])
       .args(args)
       .output()
       .unwrap();
