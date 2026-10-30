@@ -2,7 +2,7 @@
 title: "Documentation map"
 status: accepted
 created_at: 2026-09-07
-updated_at: 2026-10-19
+updated_at: 2026-10-30
 tags: [documentation, navigation]
 ---
 
@@ -22,6 +22,7 @@ HiveX supplies a reusable workflow and reliable project knowledge to people and 
 | Implement or review a change | [Engineering policy](guidelines/engineering.md) | [Module/execution boundaries](adr/0013-domain-modules-and-execution-integrations.md), [Rust quality](guidelines/rust-quality.md), [domain language](CONTEXT.md) |
 | Adopt HiveX or update workflow skills | [Project foundation](adr/0012-project-foundation-and-workflow.md) | [Initialization](guide.md#initialize-a-project), [pinned release](guide.md#pin-the-release), [npm migration](guide.md#migrate-from-npm), [language templates](../skills/hivex/templates/README.md) |
 | Manage an issue, PR or merge | [Tracker procedure](procedures/issue-tracker.md) | [Triage labels](guidelines/triage-labels.md), [knowledge before merge](guidelines/engineering.md#knowledge-before-merge) |
+| Sweep work residue | [Residue command](guide.md#sweep-residue) | [Workspace hygiene procedure](../skills/hivex/assets/project/docs/procedures/workspace-hygiene.md) |
 | Run development checks or CI | [Development guide](guide.md#development) | [Rust quality](guidelines/rust-quality.md), [hosted CI](procedures/self-hosted-runner.md) |
 | Publish a release | [Release procedure](procedures/releasing.md) | [Development checks](guide.md#development), owner approval for that version |
 | Assess source-workflow evidence and cost | [Dated validation record](archive/validation/source-workflow-2026-10-01.md) | Local observed measurements and explicit limits, not semantic certification |

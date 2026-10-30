@@ -3,6 +3,7 @@ mod compatibility;
 mod documents;
 mod error;
 mod foundation;
+mod residue;
 
 use error::HiveXError;
 use std::ffi::OsString;

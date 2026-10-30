@@ -14,8 +14,8 @@ Work leaves residue outside its worktree: build caches keyed by checkout, simula
 [`workspace-hygiene.json`](workspace-hygiene.json) declares the project's classes; it starts empty. Each class has:
 
 - `name`: what the residue is.
-- `paths`: where it lives, as glob patterns; `~` and environment variables expand, and relative patterns start at the project root.
-- `unneeded`: a shell command, run from the project root with `RESIDUE` set to an item's path, that exits 0 when no live work needs the item, 1 when something still does and with any other code when it cannot tell. Exit 0 only on positive evidence: when the check cannot read what it relies on, such as a missing or empty marker, it must exit with another code rather than let a failed command pass. Base it on a fact a command can check, such as the checkout a cache records no longer existing, or the item's issue being closed and its branch integrated.
+- `paths`: where it lives, as patterns in which `*`, `?`, `[…]` and `{…}` match within one path component, without matching hidden names unless the pattern starts with a dot, and `**` is rejected; `~`, `$NAME` and `${NAME}` expand, and relative patterns start at the project root.
+- `unneeded`: a command line for the platform shell (`/bin/sh` on macOS and Linux, `cmd` on Windows), run from the project root with `RESIDUE` set to an item's path, that exits 0 when no live work needs the item, 1 when something still does and with any other code when it cannot tell. Exit 0 only on positive evidence: when the check cannot read what it relies on, such as a missing or empty marker, it must exit with another code rather than let a failed command pass. Base it on a fact a command can check, such as the checkout a cache records no longer existing, or the item's issue being closed and its branch integrated.
 - `removal`: `deterministic` when an unneeded item can go without human judgment, or `review` when it is only listed for the responsible person to decide. Use `deterministic` only when the check is reliable, the item's owner can be established and the residue can be regenerated; evidence that may still need preserving is `review`.
 
 For example, a build cache whose folders record the checkout they belong to:
@@ -45,19 +45,17 @@ Once the work is integrated, or has another established end state under the [tra
 
 ## At each handoff or pause
 
-Sweep the declared classes with the script installed with the `hivex-git` skill, from the project root:
+Sweep the declared classes with HiveX:
 
 ```sh
-python3 .agents/skills/hivex-git/scripts/residue.py
-python3 .agents/skills/hivex-git/scripts/residue.py --trash
+hivex residue
+hivex residue --trash
 ```
 
-The script needs Python 3, run as `python` where `python3` is not available.
-
-Without options it changes nothing: it reports each item with its size and status: `unneeded`, `needed`, `uncertain`, `overlaps` for a `deterministic` item containing another declared item, or `protected` for the filesystem root, the home folder, the project and any folder containing them. With `--trash` it runs each `unneeded` item's check of a `deterministic` class again, moves it to the Trash if it still passes, and reports how many items and bytes it moved. Give the responsible person the `unneeded` items of `review` classes to decide, and leave the others alone. Never remove unfinished work, another session's work or anything uncertain. Report what was moved, what was listed and their sizes.
+Without `--trash` it changes nothing: it reports each item with its size and status: `unneeded`, `needed`, `uncertain`, `overlaps` for a `deterministic` item containing another declared item, or `protected` for the filesystem root, the home folder, the project and any folder containing them. With `--trash` it runs each `unneeded` item's check of a `deterministic` class again, moves it to the Trash if it still passes, and reports how many items and bytes it moved. `hivex --help` and the guide of the project's pinned release, `https://github.com/H1V35/hivex/blob/vX.Y.Z/docs/guide.md#sweep-residue`, describe the command. Give the responsible person the `unneeded` items of `review` classes to decide, and leave the others alone. Never remove unfinished work, another session's work or anything uncertain. Report what was moved, what was listed and their sizes.
 
 ## Remove recoverably
 
-Move files and folders to the Trash, never delete them permanently. The script uses the command in `HIVEX_TRASH` when it is set, refusing an empty one, otherwise `trash` (built into recent macOS) or `gio trash` on Linux, and refuses to move anything without one. Residue a tool manages, such as containers, images or simulators, is removed with that tool's own command for the declared items only; that removal is not recoverable, so list such classes as `review`.
+Move files and folders to the Trash, never delete them permanently. `hivex residue` uses the command line in `HIVEX_TRASH` when it is set, run by the platform shell with `RESIDUE` set and refusing an empty one, otherwise `trash` (built into recent macOS) or `gio trash` on Linux, and moves nothing without one; on Windows, set `HIVEX_TRASH` to a command that moves to the Recycle Bin. Residue a tool manages, such as containers, images or simulators, is removed with that tool's own command for the declared items only; that removal is not recoverable, so list such classes as `review`.
 
 The Trash frees no space until it is emptied. The owner empties it by hand: nothing in this procedure empties it or changes its settings.

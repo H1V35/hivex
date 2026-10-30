@@ -35,6 +35,11 @@
     },
     {
       "modelCalls": 0,
+      "name": "residue",
+      "usage": "residue [--classes <file>] [--trash] [--limit <count>] [--max-bytes <bytes>] [--root <project>]"
+    },
+    {
+      "modelCalls": 0,
       "name": "check",
       "usage": "check [--source <document>] [--historical] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
       "maxLocalReferences": 32768
@@ -42,6 +47,6 @@
   ],
   "configuration": "Optional hivex.json with include/exclude/archive relative Markdown globs; archived sources are focused evidence.",
   "purpose": "Project decisions, dependencies and exceptions for the responsible agent.",
-  "stage": "Deterministic Markdown retrieval and authored navigation; no model integration or persistent knowledge store.",
+  "stage": "Deterministic Markdown retrieval and authored navigation, and a report of declared residue that moves only unneeded deterministic items to the Trash; no model integration or persistent knowledge store.",
   "migration": "Graph/model commands retired in 0.8.0; retained files are never opened or changed. See docs/guide.md#migrate-from-the-inferred-graph-runtime."
 }

@@ -33,10 +33,11 @@ hivex search "cache policy"
 hivex relations docs/policy.md
 hivex read docs/policy.md --from 20 --to 45
 hivex check --source docs/policy.md
+hivex residue
 hivex --help
 ```
 
-Run these commands from the project root. All current CLI commands use Markdown directly without model calls or a persistent knowledge store. The executable needs no Node.js or other runtime. Version 0.8 retires the inferred graph runtime; the [migration guide](docs/guide.md#migrate-from-the-inferred-graph-runtime) explains the changed command contract and preservation of historical data. Version 0.12 replaces the npm package; existing projects follow [Migrate from npm](docs/guide.md#migrate-from-npm).
+Run these commands from the project root. They make no model calls and keep no persistent knowledge store; the retrieval commands use Markdown directly. `residue` reports the residue the project declares outside its worktrees and, with `--trash`, moves only what is unneeded and declared deterministic to the Trash ([guide](docs/guide.md#sweep-residue)). The executable needs no Node.js or other runtime. Version 0.8 retires the inferred graph runtime; the [migration guide](docs/guide.md#migrate-from-the-inferred-graph-runtime) explains the changed command contract and preservation of historical data. Version 0.12 replaces the npm package; existing projects follow [Migrate from npm](docs/guide.md#migrate-from-npm).
 
 ## Documentation
 

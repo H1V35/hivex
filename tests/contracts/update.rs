@@ -389,7 +389,7 @@ fn update_offers_a_new_foundation_procedure_that_init_then_adopts_without_changi
     "docs/procedures/workspace-hygiene.md",
     "docs/procedures/workspace-hygiene.json",
     ".agents/skills/hivex/assets/project/docs/procedures/workspace-hygiene.md",
-    ".agents/skills/hivex-git/scripts/residue.py",
+    ".agents/skills/hivex/assets/project/docs/procedures/workspace-hygiene.json",
   ] {
     fs::remove_file(p.path(file)).unwrap();
   }
@@ -398,7 +398,7 @@ fn update_offers_a_new_foundation_procedure_that_init_then_adopts_without_changi
   let created = list(&updated, "created");
   for file in [
     ".agents/skills/hivex/assets/project/docs/procedures/workspace-hygiene.md",
-    ".agents/skills/hivex-git/scripts/residue.py",
+    ".agents/skills/hivex/assets/project/docs/procedures/workspace-hygiene.json",
   ] {
     assert!(created.contains(&json!(file)), "{updated}");
   }

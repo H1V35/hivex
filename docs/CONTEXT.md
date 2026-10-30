@@ -2,7 +2,7 @@
 title: "HiveX domain language"
 status: accepted
 created_at: 2026-09-05
-updated_at: 2026-10-23
+updated_at: 2026-10-30
 tags: [domain, project-knowledge]
 ---
 
@@ -23,6 +23,8 @@ HiveX gives agents and people a reusable project foundation and focused access t
 **Pinned release**: The HiveX version a project records in `hivex.json`. Initialization and update enforce it; other commands warn when the installed release differs.
 
 **Adoption**: Completing the foundation from project evidence, preserving useful knowledge and aligning working practices.
+
+**Residue**: What work leaves outside its worktree, such as caches, devices, containers, evidence and temporary folders. A project declares its residue classes, where they live, when an item is no longer needed and whether it is removed without human judgment; `residue` reports them and moves only unneeded deterministic items to the Trash.
 
 **Authority**: The maintained Markdown home for a topic and scope. Its current applicability depends on conditions, exceptions and replacements, not merely its folder or status.
 

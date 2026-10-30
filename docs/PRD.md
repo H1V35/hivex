@@ -2,7 +2,7 @@
 title: HiveX purpose and product scope
 status: accepted
 created_at: 2026-10-01
-updated_at: 2026-10-23
+updated_at: 2026-10-30
 tags: [product, scope]
 ---
 
@@ -37,6 +37,7 @@ The accepted product scope includes:
 - A project foundation covering purpose, domain language, decisions, guidelines, procedures and a concise agent entrypoint, completed from actual project evidence.
 - Independent workflow capabilities for knowledge retrieval, design, documentation, implementation, review and Git, with applicable language templates. These are useful capabilities, not a compulsory sequence for every task.
 - A project-local CLI for deterministic source discovery, lexical passage search, exact reading, authored relationship navigation and structural validation, with versions, bounds, continuation and historical scope visible.
+- A `residue` command that reports the residue a project declares outside its worktrees and, on request, moves only the unneeded items of its deterministic classes to the Trash, never deleting permanently or emptying the Trash. The owner widened the CLI beyond Markdown retrieval for it on 2026-10-30 ([#239](https://github.com/H1V35/hivex/issues/239)); each project declares the classes and their conditions.
 - One current Markdown authority per topic and scope, reusable explicit relationships, preservation of useful history, and maintenance of affected knowledge alongside a change.
 
 HiveX does not own the adopting project's product decisions, execution permissions or host-model configuration. It does not orchestrate development sessions, replace the responsible implementer/reviewer, infer semantic authority or guarantee that authored knowledge is complete and contradiction-free. Documentation records knowledge code cannot explain; it is not a parallel implementation manual.

@@ -64,7 +64,6 @@ static SKILL_FILES: &[(&str, &[u8])] = bundled![
   "hivex-document/SKILL.md",
   "hivex-git/SKILL.md",
   "hivex-git/assets/labels.json",
-  "hivex-git/scripts/residue.py",
   "hivex-implement/SKILL.md",
   "hivex-review/SKILL.md",
   "hivex/SKILL.md",

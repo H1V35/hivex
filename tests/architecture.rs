@@ -10,8 +10,8 @@ fn allowed(from: &str, to: &str) -> bool {
     return true;
   }
   let dependencies: &[&str] = match from {
-    "" | "cli" => &["cli", "documents", "foundation"],
-    "documents" | "foundation" | "error" | "compatibility" => &[],
+    "" | "cli" => &["cli", "documents", "foundation", "residue"],
+    "documents" | "foundation" | "residue" | "error" | "compatibility" => &[],
     _ => return false,
   };
   dependencies.contains(&to)

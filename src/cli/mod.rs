@@ -3,6 +3,7 @@ mod check;
 mod documents;
 mod page;
 mod relations;
+mod residue;
 mod search;
 
 use crate::documents::Project;
@@ -39,6 +40,7 @@ fn command(args: &[String]) -> Result<Value> {
     "check" => check::command(args),
     "init" => initialize(args),
     "update" => project(args, "update", crate::foundation::update),
+    "residue" => residue::command(args),
     "ask" | "neighbors" | "review" | "warnings" | "snapshot" | "recover" | "prune" | "status" => {
       Err(HiveXError::new(
         "COMMAND_RETIRED",
@@ -46,7 +48,7 @@ fn command(args: &[String]) -> Result<Value> {
       ))
     }
     _ => Err(invalid(
-      "Use sources, read, search, relations, check, init or update; see --help",
+      "Use sources, read, search, relations, check, init, update or residue; see --help",
     )),
   }
 }
