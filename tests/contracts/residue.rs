@@ -395,10 +395,11 @@ fn the_project_root_is_literal_even_with_wildcard_characters() {
 // Permissions and symbolic links need Unix; Windows lacks both without extra privileges.
 #[cfg(unix)]
 #[test]
-fn a_review_item_that_cannot_be_inspected_still_blocks_its_parent() {
+fn nothing_moves_while_a_declared_item_cannot_be_inspected() {
   use std::os::unix::fs::PermissionsExt;
-  // 0o000 hides the folder's names; 0o600 lists them but cannot inspect them.
-  for mode in [0o000, 0o600] {
+  // 0o000 hides the folder's names, 0o600 lists them without inspecting them and 0o300 inspects
+  // named entries without listing them.
+  for (mode, parent) in [(0o000, "nest"), (0o600, "nest"), (0o300, "nest/kept")] {
     let p = Project::new();
     let outside = Project::new();
     p.ok(&["init"]);
@@ -407,18 +408,26 @@ fn a_review_item_that_cannot_be_inspected_still_blocks_its_parent() {
     declare(
       &p,
       &json!([
-        {"name": "Parent", "paths": [format!("{root}/nest")], "unneeded": "exit 0", "removal": "deterministic"},
+        {"name": "Parent", "paths": [format!("{root}/{parent}")], "unneeded": "exit 0", "removal": "deterministic"},
         {"name": "Child", "paths": [format!("{root}/nest/*")], "unneeded": "exit 0", "removal": "review"}
       ]),
     );
     let nest = outside.path("nest");
     fs::set_permissions(&nest, fs::Permissions::from_mode(mode)).unwrap();
+    let (report_code, report) = residue(&p, &outside, &[]);
     let (code, result) = residue(&p, &outside, &["--trash"]);
     fs::set_permissions(&nest, fs::Permissions::from_mode(0o755)).unwrap();
-    assert_eq!(code, Some(0), "{result}");
-    subset(&result, &json!({"moved":{"items":0}}));
-    assert_eq!(result["items"][0]["status"], "overlaps", "{result}");
+    assert_eq!(report_code, Some(0), "{report}");
+    assert!(
+      statuses(&report)
+        .iter()
+        .any(|(_, status)| status == "uncertain"),
+      "{mode:o}: {report}"
+    );
+    assert_eq!(code, Some(1), "{mode:o}: {result}");
+    assert_eq!(result["error"]["code"], "INCOMPLETE_INVENTORY");
     assert!(outside.path("nest/kept/data").is_file());
+    assert!(!outside.path("Trash").exists());
   }
 }
 
@@ -446,6 +455,29 @@ fn an_alias_of_a_reviewed_link_is_not_moved() {
       .unwrap()
       .is_symlink()
   );
+}
+
+// Windows allows a rooted path without a drive; it must stay on the project's drive.
+#[cfg(windows)]
+#[test]
+fn a_rooted_pattern_without_a_drive_stays_on_the_project_drive() {
+  let p = Project::new();
+  let outside = Project::new();
+  p.ok(&["init"]);
+  outside.write("cache/item/data", "");
+  // `outside` lives on the project's drive; the tests may run from another one.
+  let rooted: std::path::PathBuf = outside
+    .root
+    .components()
+    .skip_while(|component| matches!(component, std::path::Component::Prefix(_)))
+    .collect();
+  declare(
+    &p,
+    &json!([{"name": "Cache", "paths": [format!("{}\\cache\\*", rooted.display())], "unneeded": "exit 1", "removal": "review"}]),
+  );
+  let (code, result) = residue(&p, &outside, &[]);
+  assert_eq!(code, Some(0), "{result}");
+  expect(&result, &[("item", "needed")]);
 }
 
 // Only Linux allows file names that are not valid UTF-8.

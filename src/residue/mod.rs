@@ -64,6 +64,9 @@ pub struct Item {
   identity: Option<PathBuf>,
   #[serde(skip)]
   index: usize,
+  /// Whether its identity was established and, for a folder a pattern lists, its entries read.
+  #[serde(skip)]
+  inspected: bool,
   #[serde(skip)]
   removal: Removal,
 }
@@ -119,6 +122,16 @@ pub fn sweep(root: &Path, declaration: &str, trash: bool) -> Result<Sweep> {
     items.extend(class_items(index, class, &guard)?);
   }
   mark_overlaps(&mut items);
+  let uninspected = items.iter().filter(|item| !item.inspected).count();
+  // What could not be inspected may hold or alias another item, so nothing moves.
+  if trash && uninspected > 0 {
+    return Err(HiveXError::new(
+      "INCOMPLETE_INVENTORY",
+      format!(
+        "{uninspected} declared items or folders could not be inspected; run without --trash to see them"
+      ),
+    ));
+  }
   let reports = classes
     .iter()
     .enumerate()
@@ -189,15 +202,17 @@ fn class_items(index: usize, class: &Class, guard: &Guard) -> Result<Vec<Item>> 
     {
       continue;
     }
+    let listed = !unreadable.contains(&path);
     items.push(Item {
       class: class.name.clone(),
       bytes: size(&path),
-      status: if unreadable.contains(&path) {
-        Status::Uncertain
-      } else {
+      status: if listed {
         status(&path, &class.unneeded, guard)
+      } else {
+        Status::Uncertain
       },
       path,
+      inspected: listed && identity.is_some(),
       identity,
       index,
       removal: class.removal,
@@ -218,8 +233,12 @@ fn expand(pattern: &str, root: &Path, unreadable: &mut Vec<PathBuf>) -> Result<V
     _ => (root.to_path_buf(), pattern),
   };
   let rest = PathBuf::from(variables(rest));
+  // A rooted pattern without a drive, as Windows allows, stays on the project's drive.
   let mut found = vec![if rest.has_root() {
-    PathBuf::new()
+    root
+      .components()
+      .take_while(|component| matches!(component, Component::Prefix(_)))
+      .collect()
   } else {
     start
   }];
@@ -272,7 +291,11 @@ fn step(
       }
       Err(_) => continue,
     };
-    for name in entries.flatten().map(|entry| entry.file_name()) {
+    for entry in entries {
+      let Ok(name) = entry.map(|entry| entry.file_name()) else {
+        unreadable.push(normalize_path(&base));
+        continue;
+      };
       let shown = name.to_string_lossy();
       if (hidden || !shown.starts_with('.')) && matcher.is_match(&*shown) {
         next.push(base.join(&name));
@@ -416,13 +439,12 @@ fn mark_overlaps(items: &mut [Item]) {
     let Some(folder) = &item.identity else {
       continue;
     };
-    // An item without an identity could not be inspected; its written path still counts.
     let overlaps = items.iter().enumerate().any(|(other, inner)| {
       other != index
-        && match &inner.identity {
-          Some(inner) => inner.starts_with(folder),
-          None => inner.path.starts_with(folder) || inner.path.starts_with(&item.path),
-        }
+        && inner
+          .identity
+          .as_ref()
+          .is_some_and(|inner| inner.starts_with(folder))
     });
     if overlaps {
       items[index].status = Status::Overlaps;
