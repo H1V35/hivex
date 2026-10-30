@@ -2,6 +2,7 @@
 title: "Self-hosted runner pool"
 status: draft
 created_at: 2026-10-03
+updated_at: 2026-10-30
 tags: [ci, runner, security]
 ---
 
@@ -25,6 +26,10 @@ Then install and start the service with the runner's `svc.sh`. Restart it after 
 ## Keep parallel jobs isolated
 
 Give every run its own external resources, such as a per-run database branch named from the run ID, and clean them up; use no fixed ports or other shared mutable state. Concurrency groups per pull request or ref cancel superseded runs without serialising unrelated work.
+
+## Cap each runner's caches
+
+A persistent runner keeps what its jobs leave: checkouts and build output under `_work`, toolchains and package caches under its private `HOME`, and the setup actions' tool cache. Give each of those caches a cap by size or age, and enforce it while the runner is idle, for example from the runner's job-completed hook (`ACTIONS_RUNNER_HOOK_JOB_COMPLETED` in its `.env`) or during the [workspace hygiene](workspace-hygiene.md) sweep, where each cache is declared as a residue class. Trimming a cache only slows the next job that needs it.
 
 ## Change the pool
 

@@ -2,7 +2,7 @@
 title: "Issues, triage and pull requests"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-02
+updated_at: 2026-10-30
 tags: [workflow, issues, review]
 ---
 
@@ -26,6 +26,6 @@ Complete the relevant verification and independent review, then open a clear PR 
 
 Complete the [knowledge-before-merge requirements](../guidelines/engineering.md#knowledge-before-merge) before integration. Include maintained Markdown and explicit relationships in the reviewed change, with source and code review against a defined revision. A real applicable knowledge defect still blocks; historical graph state alone does not.
 
-Merge within the owner's existing authorization after required checks and review. Do not infer authority from readiness or supervision labels. Preserve shared history and clean up the local/remote branches and worktrees belonging to finished work. Implementation changes must be integrated; completed research, evidence or prototypes must have their useful results and required history retained before cleanup. Keep unfinished or uncertain work intact, regardless of branch age or whether it has a PR. Do not discard unmerged work without an established disposition and the applicable owner authorization.
+Merge within the owner's existing authorization after required checks and review. Do not infer authority from readiness or supervision labels. Preserve shared history and clean up the local/remote branches and worktrees belonging to finished work, with the residue it left outside them under the [workspace hygiene procedure](workspace-hygiene.md). Implementation changes must be integrated; completed research, evidence or prototypes must have their useful results and required history retained before cleanup. Keep unfinished or uncertain work intact, regardless of branch age or whether it has a PR. Do not discard unmerged work without an established disposition and the applicable owner authorization.
 
 Record durable decisions in the appropriate Markdown authority and maintain their explicit relationships. Preserve necessary historical graph/execution evidence unchanged; the current CLI has no graph export operation. A tracker discussion is useful evidence but does not replace maintained project documentation.

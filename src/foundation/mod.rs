@@ -50,6 +50,8 @@ static TEMPLATE_FILES: &[(&str, &[u8])] = bundled![
   "docs/procedures/independent-review.schema.json",
   "docs/procedures/issue-tracker.md",
   "docs/procedures/self-hosted-runners.md",
+  "docs/procedures/workspace-hygiene.json",
+  "docs/procedures/workspace-hygiene.md",
   "hivex.json",
 ];
 
@@ -62,6 +64,7 @@ static SKILL_FILES: &[(&str, &[u8])] = bundled![
   "hivex-document/SKILL.md",
   "hivex-git/SKILL.md",
   "hivex-git/assets/labels.json",
+  "hivex-git/scripts/residue.py",
   "hivex-implement/SKILL.md",
   "hivex-review/SKILL.md",
   "hivex/SKILL.md",
@@ -76,6 +79,8 @@ static SKILL_FILES: &[(&str, &[u8])] = bundled![
   "hivex/assets/project/docs/procedures/independent-review.schema.json",
   "hivex/assets/project/docs/procedures/issue-tracker.md",
   "hivex/assets/project/docs/procedures/self-hosted-runners.md",
+  "hivex/assets/project/docs/procedures/workspace-hygiene.json",
+  "hivex/assets/project/docs/procedures/workspace-hygiene.md",
   "hivex/assets/project/hivex.json",
   "hivex/references/markdown.md",
   "hivex/templates/README.md",

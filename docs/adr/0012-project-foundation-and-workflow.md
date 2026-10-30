@@ -2,7 +2,7 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-23
+updated_at: 2026-10-30
 tags: [adr, workflow, adoption]
 ---
 
@@ -61,6 +61,12 @@ The cross-vendor reviewer remains the default and the reason above still holds. 
 ## Amendment (2026-10-23): the skills section of `AGENTS.md`
 
 Agents skipped the HiveX skill a task needed, such as visual work done without `hivex-design`, even with the skills installed; a project had to write the routing rule into its own entrypoint by hand ([H1V35/compi#2075](https://github.com/H1V35/compi/pull/2075)). The bundled `AGENTS.md` now carries a marked section stating which skill each kind of work loads, with no exception for small changes, and that delegated work follows it. `init` writes it into a new entrypoint and appends it to an existing one; `update` keeps it current. That section is the only part of a project's `AGENTS.md` HiveX changes after creation, as the managed rules are of `.gitignore`; the rest of the file remains project-owned and the conciseness rule above still applies. The [guide](../guide.md#the-skills-section-of-agentsmd) describes the behavior ([#230](https://github.com/H1V35/hivex/issues/230)).
+
+## Amendment (2026-10-30): workspace hygiene
+
+Agents removed branches and worktrees when work closed, but not what the work had created outside them: build caches keyed by checkout, copied evidence, temporary folders, runner caches and the like. In one adopting project it reached about 330 GB. The foundation now ships a [workspace hygiene procedure](../../skills/hivex/assets/project/docs/procedures/workspace-hygiene.md) with a declaration file in which each project lists its residue classes: where they live, a command that tells when an item is no longer needed, and whether unneeded items go without human judgment or are listed for the responsible person. `hivex-git` records residue while working, removes it when work closes and sweeps at each handoff or pause. The [runner pool procedure](../../skills/hivex/assets/project/docs/procedures/self-hosted-runners.md) caps each runner cache.
+
+The owner chose a script for the sweep ([#239](https://github.com/H1V35/hivex/issues/239)): `hivex-git` packages `scripts/residue.py`, which reads the declaration, reports each item and its size by default, and with `--trash` moves only the unneeded items of deterministic classes to the Trash and reports what it moved. It is a skill script, not a CLI command: the [product brief](../PRD.md#scope-and-non-goals) limits the CLI to deterministic source retrieval without orchestrating sessions, and the conditions belong to each project's tools and live work. Removal is always recoverable; the owner empties the Trash by hand, and neither the procedure nor the script empties it or changes its settings. Like the other foundation files, `init` creates the procedure and its declaration only when absent; `update` installs them and the script in the skill copies, from which an existing project adopts the procedure deliberately.
 
 ## Relationships
 

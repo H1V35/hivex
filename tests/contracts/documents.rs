@@ -5,7 +5,7 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::process::Command;
 
-const DATED_TEMPLATES: [&str; 9] = [
+const DATED_TEMPLATES: [&str; 10] = [
   "docs/README.md",
   "docs/PRD.md",
   "docs/CONTEXT.md",
@@ -15,6 +15,7 @@ const DATED_TEMPLATES: [&str; 9] = [
   "docs/procedures/issue-tracker.md",
   "docs/procedures/independent-review.md",
   "docs/procedures/self-hosted-runners.md",
+  "docs/procedures/workspace-hygiene.md",
 ];
 
 #[test]

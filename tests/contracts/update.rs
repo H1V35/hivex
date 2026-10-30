@@ -379,3 +379,40 @@ fn the_skills_section_of_agents_md_is_kept_current_and_the_rest_left_alone() {
     "# Rules\n<!-- /hivex:skills -->\n"
   );
 }
+
+#[test]
+fn update_offers_a_new_foundation_procedure_that_init_then_adopts_without_changing_others() {
+  let p = Project::new();
+  p.ok(&["init"]);
+  // A project adopted before the release that added the workspace hygiene procedure.
+  for file in [
+    "docs/procedures/workspace-hygiene.md",
+    "docs/procedures/workspace-hygiene.json",
+    ".agents/skills/hivex/assets/project/docs/procedures/workspace-hygiene.md",
+    ".agents/skills/hivex-git/scripts/residue.py",
+  ] {
+    fs::remove_file(p.path(file)).unwrap();
+  }
+  p.write("docs/procedures/self-hosted-runners.md", "# Our runners\n");
+  let updated = p.ok(&["update"]);
+  let created = list(&updated, "created");
+  for file in [
+    ".agents/skills/hivex/assets/project/docs/procedures/workspace-hygiene.md",
+    ".agents/skills/hivex-git/scripts/residue.py",
+  ] {
+    assert!(created.contains(&json!(file)), "{updated}");
+  }
+  assert!(!p.path("docs/procedures/workspace-hygiene.md").exists());
+  let adopted = p.ok(&["init"]);
+  subset(
+    &adopted,
+    &json!({"created":[
+      "docs/procedures/workspace-hygiene.json",
+      "docs/procedures/workspace-hygiene.md"
+    ],"updated":[]}),
+  );
+  assert_eq!(
+    fs::read_to_string(p.path("docs/procedures/self-hosted-runners.md")).unwrap(),
+    "# Our runners\n"
+  );
+}
