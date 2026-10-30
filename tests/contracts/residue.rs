@@ -433,6 +433,32 @@ fn nothing_moves_while_a_declared_item_cannot_be_inspected() {
 
 #[cfg(unix)]
 #[test]
+fn an_unlistable_alias_keeps_the_inventory_incomplete() {
+  use std::os::unix::fs::PermissionsExt;
+  let p = Project::new();
+  let outside = Project::new();
+  p.ok(&["init"]);
+  outside.write("nest/kept/data", "residue bytes");
+  let root = outside.root.display();
+  // On a case-insensitive volume `NEST` sorts first and names the folder `nest/*` cannot list.
+  declare(
+    &p,
+    &json!([
+      {"name": "Kept", "paths": [format!("{root}/nest/kept")], "unneeded": "exit 0", "removal": "deterministic"},
+      {"name": "Nest", "paths": [format!("{root}/NEST"), format!("{root}/nest/*")], "unneeded": "exit 0", "removal": "review"}
+    ]),
+  );
+  let nest = outside.path("nest");
+  fs::set_permissions(&nest, fs::Permissions::from_mode(0o300)).unwrap();
+  let (code, result) = residue(&p, &outside, &["--trash"]);
+  fs::set_permissions(&nest, fs::Permissions::from_mode(0o755)).unwrap();
+  assert_eq!(code, Some(1), "{result}");
+  assert_eq!(result["error"]["code"], "INCOMPLETE_INVENTORY");
+  assert!(outside.path("nest/kept/data").is_file());
+}
+
+#[cfg(unix)]
+#[test]
 fn an_alias_of_a_reviewed_link_is_not_moved() {
   let p = Project::new();
   let outside = Project::new();

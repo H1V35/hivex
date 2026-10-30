@@ -195,14 +195,19 @@ fn class_items(index: usize, class: &Class, guard: &Guard) -> Result<Vec<Item>> 
   let mut items: Vec<Item> = Vec::new();
   for path in paths {
     let identity = identity(&path);
-    // Patterns can name one item in several ways; it is still one item.
-    if items
-      .iter()
-      .any(|item| item.identity.is_some() && item.identity == identity)
+    let listed = !unreadable.contains(&path);
+    // Patterns can name one item in several ways; it is still one item, and uninspected if any
+    // of its names could not be listed.
+    if let Some(same) = items
+      .iter_mut()
+      .find(|item| item.identity.is_some() && item.identity == identity)
     {
+      if !listed {
+        same.inspected = false;
+        same.status = Status::Uncertain;
+      }
       continue;
     }
-    let listed = !unreadable.contains(&path);
     items.push(Item {
       class: class.name.clone(),
       bytes: size(&path),
