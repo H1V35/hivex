@@ -197,6 +197,16 @@ fn update_replaces_claude_s_former_links_and_ignore_rules_with_copies() {
     ".gitignore",
     "*.tmp\n/.claude/skills/hivex*\n/.hivex/\n/.reviews/\n",
   );
+  // `init` keeps the former links and their rule, so no link becomes visible to Git.
+  p.ok(&["init"]);
+  assert!(fs::read_link(p.path(".claude/skills/hivex")).is_ok());
+  assert!(
+    fs::read_to_string(p.path(".gitignore"))
+      .unwrap()
+      .contains("/.claude/skills/hivex*\n")
+  );
+  // A former link whose copy is gone, as after npm's `node_modules` went, is still HiveX's.
+  fs::remove_dir_all(p.path(".agents/skills/hivex-git")).unwrap();
 
   let updated = p.ok(&["update"]);
   for path in [".claude/skills/hivex", ".gitignore"] {
@@ -237,6 +247,19 @@ fn update_replaces_claude_s_former_links_and_ignore_rules_with_copies() {
   subset(
     &p.ok(&["update"]),
     &json!({"created":[],"removed":[],"updated":[]}),
+  );
+
+  // A project link put in place of a managed copy is the project's from then on.
+  fs::remove_dir_all(p.path(".claude/skills/hivex")).unwrap();
+  former_link(&p, ".claude/skills/hivex", "owner-skill");
+  let relinquished = p.ok(&["update"]);
+  assert!(list(&relinquished, "preserved").contains(&json!(".claude/skills/hivex")));
+  subset(&relinquished, &json!({"created":[],"removed":[]}));
+  assert!(
+    !p.read_json(".agents/.hivex-managed.json")
+      .as_array()
+      .unwrap()
+      .contains(&json!(".claude/skills/hivex/SKILL.md"))
   );
 }
 

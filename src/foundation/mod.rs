@@ -614,11 +614,16 @@ fn dated_template(bytes: &[u8], created_at: &str) -> Vec<u8> {
 }
 
 /// The managed rules appended to `.gitignore`, starting a missing file from an extension's
-/// template when it has one, and the former link rules removed.
-fn ignore_operation(root: &Path, bundle: &Bundle) -> Result<FileOperation> {
+/// template when it has one. `update` also removes the former link rules; `init` keeps them,
+/// because it also keeps the former links, which Windows could not check out if committed.
+fn ignore_operation(root: &Path, bundle: &Bundle, refresh: bool) -> Result<FileOperation> {
   let relative_path = IGNORE_FILE;
   let rules = bundle.ignore_rules();
-  let retired = bundle.former_link_rules();
+  let retired = if refresh {
+    bundle.former_link_rules()
+  } else {
+    Vec::new()
+  };
   let target = destination(root, relative_path, DestinationKind::File)?;
   let existing = if target.exists {
     Some(read_existing(&target, relative_path)?)
@@ -843,12 +848,15 @@ fn skill_directory_operations(
       .map(|file| file_operation(root, &format!("{base}/{}", file.path), file, refresh))
       .collect();
   }
+  // The copy may be missing, or itself a link the same update replaces, so the link's own
+  // target also identifies it.
+  let copy = root.join(SKILL_DIRECTORIES[0]).join(name);
   let former = base == SKILL_DIRECTORIES[0]
+    || fs::read_link(&target.absolute_path).is_ok_and(|link| {
+      normalize_path(&root.join(base).join(without_verbatim_prefix(link))) == copy
+    })
     || matches!(
-      (
-        fs::canonicalize(&target.absolute_path),
-        fs::canonicalize(root.join(SKILL_DIRECTORIES[0]).join(name)),
-      ),
+      (fs::canonicalize(&target.absolute_path), fs::canonicalize(&copy)),
       (Ok(link), Ok(copy)) if link == copy
     );
   let unlink = FileOperation {
@@ -1228,7 +1236,7 @@ fn managed_operations(root: &Path, bundle: &Bundle, refresh: bool) -> Result<Vec
     installed.iter().cloned().chain(still_present).collect()
   };
   operations.push(inventory_operation(root, &recorded)?);
-  operations.push(ignore_operation(root, bundle)?);
+  operations.push(ignore_operation(root, bundle, refresh)?);
   Ok(operations)
 }
 
@@ -1278,7 +1286,8 @@ fn previous_inventory(root: &Path) -> Result<Vec<String>> {
 }
 
 /// Remove the managed files and Claude's former links that the installed release no longer
-/// provides; a path the release still plans, or a former link now holding its copies, stays.
+/// provides. A path the release still plans stays, as do a former link now holding its copies and
+/// the files below a link the project put in place of a copy, which are no longer HiveX's.
 fn retired_operations(
   root: &Path,
   previous: &[String],
@@ -1287,10 +1296,9 @@ fn retired_operations(
   let mut operations = Vec::new();
   for path in previous {
     let directory = format!("{path}/");
-    if planned
-      .iter()
-      .any(|kept| kept == path || kept.starts_with(&directory))
-    {
+    if planned.iter().any(|kept| {
+      kept == path || kept.starts_with(&directory) || path.starts_with(&format!("{kept}/"))
+    }) {
       continue;
     }
     let link = path.starts_with(".claude/") && path.matches('/').count() == 2;
