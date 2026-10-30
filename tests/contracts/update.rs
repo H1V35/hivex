@@ -205,8 +205,8 @@ fn update_replaces_claude_s_former_links_and_ignore_rules_with_copies() {
       .unwrap()
       .contains("/.claude/skills/hivex*\n")
   );
-  // A former link whose copy is gone, as after npm's `node_modules` went, is still HiveX's.
-  fs::remove_dir_all(p.path(".agents/skills/hivex-git")).unwrap();
+  // Former links whose copies are gone, as after npm's `node_modules` went, are still HiveX's.
+  fs::remove_dir_all(p.path(".agents/skills")).unwrap();
 
   let updated = p.ok(&["update"]);
   for path in [".claude/skills/hivex", ".gitignore"] {

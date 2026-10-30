@@ -848,26 +848,11 @@ fn skill_directory_operations(
       .map(|file| file_operation(root, &format!("{base}/{}", file.path), file, refresh))
       .collect();
   }
-  let same = |left: &Path, right: &Path| {
-    matches!(
-      (fs::canonicalize(left), fs::canonicalize(right)),
-      (Ok(left), Ok(right)) if left == right
-    )
-  };
-  // The copy may be missing, or itself a link the same update replaces, so the link's own target
-  // also identifies it, compared through its existing parent because Windows may spell the same
-  // directory with a short 8.3 name.
-  let copy = root.join(SKILL_DIRECTORIES[0]).join(name);
+  // The copy may be missing, or itself a link the same update replaces.
+  let copy = resolved(&root.join(SKILL_DIRECTORIES[0]).join(name));
   let former = base == SKILL_DIRECTORIES[0]
-    || same(&target.absolute_path, &copy)
-    || fs::read_link(&target.absolute_path).is_ok_and(|link| {
-      let link = normalize_path(&root.join(base).join(without_verbatim_prefix(link)));
-      link.file_name() == copy.file_name()
-        && link
-          .parent()
-          .zip(copy.parent())
-          .is_some_and(|(link, copy)| same(link, copy))
-    });
+    || fs::read_link(&target.absolute_path)
+      .is_ok_and(|link| resolved(&root.join(base).join(without_verbatim_prefix(link))) == copy);
   let unlink = FileOperation {
     absolute_path: target.absolute_path,
     content: Content::Unlink,
@@ -902,6 +887,16 @@ fn skill_directory_operations(
     });
   }
   Ok(operations)
+}
+
+/// `path` with its longest existing ancestor canonicalized, so two spellings of a partly missing
+/// path, such as a Windows short 8.3 name, compare equal.
+fn resolved(path: &Path) -> Option<PathBuf> {
+  let path = normalize_path(path);
+  path.ancestors().find_map(|ancestor| {
+    let canonical = fs::canonicalize(ancestor).ok()?;
+    Some(canonical.join(path.strip_prefix(ancestor).ok()?))
+  })
 }
 
 fn file_operation(
