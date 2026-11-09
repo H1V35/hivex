@@ -22,7 +22,7 @@ icu_locale_core = "2.3"
 granit-parser = "2.0"
 num-traits = "0.2"
 pulldown-cmark = "0.13"
-rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
+rusqlite = { version = "0.41", features = ["bundled", "fallible_uint"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 unicode-normalization = "0.1"
