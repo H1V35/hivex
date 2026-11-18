@@ -19,7 +19,9 @@ path = "tools/development.rs"
 globset = "0.4"
 icu_collator = "2.3"
 icu_locale_core = "2.3"
-granit-parser = "2.0"
+# 2.2 accepts under-indented and tab-indented quoted continuations unless in strict mode,
+# which is stricter than 2.1 elsewhere; keep 2.1 until metadata validation handles both.
+granit-parser = "~2.1"
 num-traits = "0.2"
 pulldown-cmark = "0.13"
 rusqlite = { version = "0.43", features = ["bundled", "fallible_uint"] }

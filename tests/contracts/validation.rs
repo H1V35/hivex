@@ -261,6 +261,16 @@ fn metadata_reports_schema_errors_without_disabling_legacy_reading() {
     p.write("docs/policy.md", format!("{header}# Policy\n"));
     assert_eq!(report(&p, &["check"]).1["status"], "failed");
   }
+  // Quoted continuations must be indented past the key, without tabs.
+  for (title, status) in [
+    ("\"Split\n  policy\"", "ready"),
+    ("\"Split\npolicy\"", "failed"),
+    ("\"Split\n\tpolicy\"", "failed"),
+  ] {
+    let header = valid.replace("Policy", title);
+    p.write("docs/policy.md", format!("---\n{header}---\n# Policy\n"));
+    assert_eq!(report(&p, &["check"]).1["status"], status, "{title}");
+  }
 }
 
 #[test]
