@@ -2,7 +2,7 @@
 title: Rust quality and readability
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-19
+updated_at: 2026-11-18
 tags: [rust, quality]
 ---
 
@@ -65,6 +65,6 @@ cargo test --locked --test quality --test architecture
 cargo test --locked
 ```
 
-The Quality workflow runs these gates on GitHub-hosted macOS, Linux and Windows runners, with the CLI contracts run against the release executable. Neither gate makes model calls. The analyzer, syntax libraries and development utility are not distributed. Release license notices follow only normal/build dependency edges, excluding development-only analyzers. `num-traits`, already present transitively, is an explicit runtime dependency for checked numeric conversions; compatible Markdown numeric metadata remains protected by source contracts.
+The Quality workflow runs these gates on GitHub-hosted macOS, Linux and Windows runners, with the CLI contracts run against the release executable. Neither gate makes model calls. The analyzer, syntax libraries and development utility are not distributed. Release license notices follow only normal/build dependency edges, excluding development-only analyzers. `num-traits`, already present transitively, is an explicit runtime dependency for checked numeric conversions; compatible Markdown numeric metadata remains protected by source contracts. `granit-parser` stays on `~2.1`: 2.2 accepts under-indented or tab-indented quoted continuations by default, and its `strict_indentation` is stricter than 2.1 elsewhere. The metadata contract in `tests/contracts/validation.rs` accepts an indented continuation and rejects the other two; raise the requirement only when that contract still passes.
 
 Changes to rules, parser versions or the dependency matrix require updating this authority and representative positive/negative cases.
