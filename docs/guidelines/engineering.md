@@ -2,7 +2,7 @@
 title: Engineering workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-19
+updated_at: 2026-11-18
 tags: [engineering, quality, workflow]
 ---
 
