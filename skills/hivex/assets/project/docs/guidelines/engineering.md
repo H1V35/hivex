@@ -2,7 +2,7 @@
 title: "Engineering"
 status: draft
 created_at: 2026-09-13
-updated_at: 2026-10-20
+updated_at: 2026-11-18
 tags: [engineering, quality, workflow]
 ---
 
@@ -44,7 +44,7 @@ Prefer a reviewer from a different model vendor than the implementing agent, so 
 
 | Implementing agent | Reviewer | Tool | Model | Effort |
 | --- | --- | --- | --- | --- |
-| Claude | Cross-vendor | Codex | `gpt-6.1-sol` | `xhigh` |
+| Claude | Cross-vendor | Codex | `gpt-6.2-sol` | `xhigh` |
 | Codex or another OpenAI model | Cross-vendor | Claude Code | `claude-opus-5-5` | `xhigh` |
 | Any, when no other vendor is available | Same vendor, isolated | The implementer's tool | Its strongest model | Highest available |
 
