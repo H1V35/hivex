@@ -2,7 +2,7 @@
 title: "HiveX guide"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-10-30
+updated_at: 2026-11-19
 tags: [cli, retrieval, adoption]
 ---
 
