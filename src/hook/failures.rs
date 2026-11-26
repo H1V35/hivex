@@ -44,7 +44,7 @@ fn append(entry: &Entry) -> io::Result<()> {
   create(&directory)?;
   // Checking the size, rotating and appending under one lock keeps two failures at the same time
   // from taking the file past its limit or replacing the full previous file with a new one.
-  let _lock = lock(&directory.join(LOCK))?;
+  let _lock = wait(open(&directory.join(LOCK))?, File::try_lock)?;
   let line = json!({
     "time": now(),
     "host": entry.host,
@@ -64,27 +64,44 @@ fn append(entry: &Entry) -> io::Result<()> {
     line
   };
   if length.saturating_add(u64::try_from(line.len()).unwrap_or(u64::MAX)) <= LIMIT {
+    file.seek(SeekFrom::End(0))?;
     return file.write_all(line.as_bytes());
   }
-  drop(file);
-  fs::rename(&path, directory.join(PREVIOUS))?;
-  open(&path)?.write_all(line.trim_start().as_bytes())
+  rotate(&mut file, &directory)?;
+  file.write_all(line.trim_start().as_bytes())
 }
 
-/// Opens a file of the record to read and append, creating it, and refuses one that is not a
+/// Copies the full `current` over the previous file and empties it, leaving it at its start. It
+/// works through handles each checked to be the record's once open, rather than renaming paths
+/// resolved again, so a directory replaced meanwhile never has a file of its own replaced.
+fn rotate(current: &mut File, directory: &Path) -> io::Result<()> {
+  let mut previous = open(&directory.join(PREVIOUS))?;
+  previous.set_len(0)?;
+  current.seek(SeekFrom::Start(0))?;
+  io::copy(current, &mut previous)?;
+  current.set_len(0)?;
+  current.seek(SeekFrom::Start(0)).map(drop)
+}
+
+/// Opens a file of the record to read and write, creating it, and refuses one that is not a
 /// regular file, such as a link.
 fn open(path: &Path) -> io::Result<File> {
   if fs::symlink_metadata(path).is_ok_and(|metadata| !metadata.is_file()) {
     return Err(io::Error::other("not a regular file"));
   }
   let mut options = options();
-  options.read(true).append(true);
+  options.read(true).write(true);
   // A missing file is created only where nothing is, not even a link.
   let file = match options.clone().create_new(true).open(path) {
     Err(error) if error.kind() == io::ErrorKind::AlreadyExists => options.open(path)?,
     created => created?,
   };
   verify(path, file)
+}
+
+/// An existing file of the record, opened to read.
+fn existing(path: &Path) -> io::Result<File> {
+  verify(path, options().read(true).open(path)?)
 }
 
 /// Options that refuse a link where the path ends, on Unix, or open the link itself, on Windows,
@@ -126,12 +143,11 @@ fn same(_: &fs::Metadata, _: &fs::Metadata) -> bool {
   true
 }
 
-/// The record's lock, held until the returned file closes, or an error when another process holds
-/// it for longer than a failure waits.
-fn lock(path: &Path) -> io::Result<File> {
-  let file = open(path)?;
+/// `file` once `take` locks it, held until the file closes, or an error when another process holds
+/// the lock for longer than a failure waits.
+fn wait(file: File, take: fn(&File) -> Result<(), TryLockError>) -> io::Result<File> {
   for _ in 0..ATTEMPTS {
-    match file.try_lock() {
+    match take(&file) {
       Ok(()) => return Ok(file),
       Err(TryLockError::WouldBlock) => thread::sleep(PAUSE),
       Err(TryLockError::Error(error)) => return Err(error),
@@ -163,6 +179,9 @@ pub fn report() -> Value {
   };
   let mut problems = Vec::new();
   let mut files = Vec::new();
+  // Shared with other readers, so no failure rotates the files while they are read.
+  let lock = directory.join(LOCK);
+  let _lock = existing(&lock).and_then(|file| wait(file, File::try_lock_shared));
   // A directory that is a link, or not a directory, is not read.
   if fs::symlink_metadata(&directory).is_ok_and(|metadata| !metadata.is_dir()) {
     problems.push(json!({"path": directory.to_string_lossy(), "problem": "not-a-directory"}));
@@ -212,10 +231,7 @@ fn read(path: &Path) -> Result<Option<String>, &'static str> {
     return Err("larger-than-64-kib");
   }
   let mut bytes = Vec::new();
-  options()
-    .read(true)
-    .open(path)
-    .and_then(|file| verify(path, file))
+  existing(path)
     .and_then(|file| file.take(LIMIT).read_to_end(&mut bytes))
     .map_err(|_| "unreadable")?;
   Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
@@ -308,7 +324,7 @@ fn create(directory: &Path) -> io::Result<()> {
 
 #[cfg(all(test, unix))]
 mod tests {
-  use super::{open, options, verify};
+  use super::{CURRENT, PREVIOUS, open, options, rotate, verify};
   use std::fs;
   use std::path::PathBuf;
   use std::process::Command;
@@ -337,6 +353,37 @@ mod tests {
     assert!(options().read(true).open(&path).is_err());
     assert!(open(&path).is_err());
     fs::remove_dir_all(&directory).unwrap();
+  }
+
+  /// A directory replaced by a link while a failure rotates the record keeps its own files.
+  #[test]
+  fn rotating_never_replaces_the_files_of_a_directory_put_in_its_place() {
+    let scratch = scratch();
+    let (record, other) = (scratch.join("hivex"), scratch.join("other"));
+    for directory in [&record, &other] {
+      fs::create_dir(directory).unwrap();
+      fs::write(directory.join(CURRENT), "current\n").unwrap();
+      fs::write(directory.join(PREVIOUS), "previous\n").unwrap();
+    }
+    let mut current = open(&record.join(CURRENT)).unwrap();
+    rotate(&mut current, &record).unwrap();
+    assert_eq!(
+      fs::read_to_string(record.join(PREVIOUS)).unwrap(),
+      "current\n"
+    );
+    assert_eq!(fs::read_to_string(record.join(CURRENT)).unwrap(), "");
+    fs::rename(&record, scratch.join("moved")).unwrap();
+    std::os::unix::fs::symlink(&other, &record).unwrap();
+    assert!(rotate(&mut current, &record).is_err());
+    assert_eq!(
+      fs::read_to_string(other.join(CURRENT)).unwrap(),
+      "current\n"
+    );
+    assert_eq!(
+      fs::read_to_string(other.join(PREVIOUS)).unwrap(),
+      "previous\n"
+    );
+    fs::remove_dir_all(&scratch).unwrap();
   }
 
   /// A named pipe where a file of the record was is refused at once, without waiting for a writer.
