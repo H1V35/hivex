@@ -122,7 +122,7 @@ For Codex ([hooks](https://learn.chatgpt.com/docs/hooks)), merge this into `.cod
 }
 ```
 
-The hook is a guardrail, not proof of a good recovery: any retrieval command satisfies it, and a host may run some tools outside its hooks. Reviews still check the rules a change states. Contract tests run the hook with inputs taken from both hosts' documentation.
+The hook is a guardrail, not proof of a good recovery: any retrieval command satisfies it, and a host may run some tools outside its hooks. Reviews still check the rules a change states. Contract tests run the hook with inputs taken from both hosts' documentation. The owner accepted three of the limits above as the kit's behavior on 2026-11-26 ([ADR 0012](adr/0012-project-foundation-and-workflow.md#amendment-owner-2026-11-26-recover-before-acting)): Codex's per-session gate, a retrieval that counts by its command line, and a record a compaction could not remove that counts again once its storage is writable.
 
 ## Extensions
 
