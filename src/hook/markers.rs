@@ -162,7 +162,7 @@ fn marker_name(name: &str) -> bool {
     && probe.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-fn digest(id: &str) -> String {
+pub fn digest(id: &str) -> String {
   Sha256::digest(id.as_bytes())[..16]
     .iter()
     .fold(String::new(), |mut hex, byte| {

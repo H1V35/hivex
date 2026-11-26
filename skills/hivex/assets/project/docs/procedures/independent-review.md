@@ -48,6 +48,8 @@ Read the intended outcome yourself from the unedited tracker captures $CAPTURES,
 diff and the repository's Markdown authorities.
 Recover with HiveX (search, relations, read) the decisions that govern the changed area yourself,
 check the diff against them and report any decision it ignores or contradicts as a finding.
+Check that the pull request's list of the decisions it applies covers every area the diff touches,
+and report an uncovered area as a finding.
 Record each HiveX command you ran in the verification, with the rule it established.
 Report every actionable finding with severity, location, affected scenario, evidence and a concrete
 fix. Record the verification you ran and any material limit of the review. Do not restate the diff
@@ -103,6 +105,7 @@ cp "$OUT/$PREV_SHA.session" "$OUT/$SHA.session"
 
 ## Verify and record
 
+- Check that the report's verification names the HiveX commands the reviewer ran in this session, with the rules they established, and that it checked the decision list's coverage. A report without them is incomplete: ask for that recovery in a delta. A delta in the same session may rely on what it read there while those sources are unchanged.
 - Apply substantive findings, or record a source-backed disposition for each false one. Add a regression check for a demonstrated defect when it protects meaningful behavior.
 - Record the review on the pull request: independence level, tool, model and effort; reviewed revisions; verdict; each finding with its disposition; and the reviewer's limits. Note checks it could not run, such as CI in a sandbox without network, and their actual results.
 - The pull request comment is the durable record; `.reviews/` is local evidence that may be deleted once the pull request is merged.
