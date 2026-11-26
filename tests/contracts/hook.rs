@@ -768,25 +768,49 @@ fn a_rotation_cut_short_loses_or_repeats_nothing() {
 }
 
 /// A current file larger than the record keeps, put there by something other than the hook, is
-/// moved aside whole rather than copied, so the answer stays fast and the record keeps working.
+/// left as it is with the previous one, without the hook reading it, and the report names it.
 #[test]
-fn an_oversized_current_file_is_moved_aside() {
+fn an_oversized_current_file_is_left_as_it_is() {
   let p = Project::new();
   let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
   let previous = log.with_file_name("hook-failures.1.jsonl");
   fs::create_dir_all(log.parent().unwrap()).unwrap();
+  let entry = "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n";
   let oversized = "x".repeat(8 * 1024 * 1024);
+  fs::write(&previous, entry).unwrap();
   fs::write(&log, &oversized).unwrap();
   let started = Instant::now();
   assert!(warned(&hook(&p, &json!("not an object"))));
   assert!(started.elapsed() < Duration::from_secs(5));
-  assert_eq!(fs::metadata(&previous).unwrap().len(), 8 * 1024 * 1024);
+  assert_eq!(fs::read_to_string(&previous).unwrap(), entry);
+  assert_eq!(fs::metadata(&log).unwrap().len(), 8 * 1024 * 1024);
   subset(
     &failures(&p),
     &json!({"total": 1, "problems": [
-      {"path": previous.to_string_lossy(), "problem": "larger-than-64-kib"}
+      {"path": log.to_string_lossy(), "problem": "larger-than-64-kib"}
     ]}),
   );
+}
+
+/// Every failure creates the lock before its files, so files without it are not read; a fresh
+/// record, with neither, is simply empty, and the report creates nothing.
+#[test]
+fn files_without_the_lock_are_not_read() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  let lock = log.with_file_name("hook-failures.lock");
+  fs::create_dir_all(log.parent().unwrap()).unwrap();
+  subset(&failures(&p), &json!({"total": 0, "problems": []}));
+  fs::write(
+    &log,
+    "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n",
+  )
+  .unwrap();
+  subset(
+    &failures(&p),
+    &json!({"total": 0, "problems": [{"path": lock.to_string_lossy(), "problem": "missing"}]}),
+  );
+  assert!(!lock.exists());
 }
 
 /// A line a write left unfinished, as when the disk fills, does not hide the next failure.
@@ -815,6 +839,7 @@ fn the_report_reads_only_what_the_hook_writes() {
   let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
   let previous = log.with_file_name("hook-failures.1.jsonl");
   fs::create_dir_all(log.parent().unwrap()).unwrap();
+  fs::write(log.with_file_name("hook-failures.lock"), "").unwrap();
   let entry = |event: &str, extra: &str| {
     format!(
       "{{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"claude\",\"event\":{event},\"reason\":\"unknown-tool\",\"session\":null{extra}}}\n"
@@ -864,12 +889,14 @@ fn the_report_follows_no_link() {
   )
   .unwrap();
   fs::create_dir_all(directory).unwrap();
+  fs::write(log.with_file_name("hook-failures.lock"), "").unwrap();
   std::os::unix::fs::symlink(elsewhere.join("hook-failures.jsonl"), &log).unwrap();
   subset(
     &failures(&p),
     &json!({"total": 0, "problems": [{"path": log.to_string_lossy(), "problem": "not-a-regular-file"}]}),
   );
   fs::remove_file(&log).unwrap();
+  fs::remove_file(log.with_file_name("hook-failures.lock")).unwrap();
   fs::remove_dir(directory).unwrap();
   std::os::unix::fs::symlink(&elsewhere, directory).unwrap();
   subset(

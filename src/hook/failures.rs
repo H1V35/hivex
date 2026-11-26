@@ -57,6 +57,13 @@ fn append(entry: &Entry) -> io::Result<()> {
   let path = directory.join(CURRENT);
   let mut file = open(&path)?;
   let length = file.metadata()?.len();
+  // A file larger than the record keeps was put there by something else; both files are left as
+  // they are, and the report names it.
+  if length > LIMIT {
+    return Err(io::Error::other(
+      "the current file is larger than the record keeps",
+    ));
+  }
   // A line an interrupted write left unfinished is ended first, so it does not swallow this one.
   let line = if unfinished(&mut file, length)? {
     format!("\n{line}")
@@ -73,7 +80,8 @@ fn append(entry: &Entry) -> io::Result<()> {
 
 /// Renames the full current file over the previous one, in one step that an interruption cannot
 /// leave halfway, and opens a new current file. The directory is checked again first, so one that
-/// was replaced since the hook opened its files is left as it is.
+/// was replaced since the hook opened its files is left as it is; the rename itself resolves the
+/// paths again, as the record trusts its user's own parent directory.
 fn rotate(directory: &Path, original: &fs::Metadata) -> io::Result<File> {
   let now = fs::symlink_metadata(directory)?;
   if !(now.is_dir() && same(&now, original)) {
@@ -212,16 +220,23 @@ pub fn report() -> Value {
 /// rotates them meanwhile, naming in `problems` each it could not read.
 fn snapshot(directory: &Path, problems: &mut Vec<Value>) -> Vec<String> {
   let lock = directory.join(LOCK);
-  let _lock = match shared(&lock) {
-    Ok(lock) => lock,
-    Err(problem) => {
-      problems.push(json!({"path": lock.to_string_lossy(), "problem": problem}));
-      return Vec::new();
-    }
+  let paths = [PREVIOUS, CURRENT].map(|name| directory.join(name));
+  let problem = match shared(&lock) {
+    Ok(Some(_lock)) => return read_all(&paths, problems),
+    // Every failure creates the lock before its files, so none there means a fresh record.
+    Ok(None) if !paths.iter().any(|path| fs::symlink_metadata(path).is_ok()) => return Vec::new(),
+    Ok(None) => "missing",
+    Err(problem) => problem,
   };
+  problems.push(json!({"path": lock.to_string_lossy(), "problem": problem}));
+  Vec::new()
+}
+
+/// The files at `paths` that can be read, naming in `problems` each that cannot.
+fn read_all(paths: &[PathBuf], problems: &mut Vec<Value>) -> Vec<String> {
   let mut files = Vec::new();
-  for path in [PREVIOUS, CURRENT].map(|name| directory.join(name)) {
-    match read(&path) {
+  for path in paths {
+    match read(path) {
       Ok(file) => files.extend(file),
       Err(problem) => problems.push(json!({"path": path.to_string_lossy(), "problem": problem})),
     }
