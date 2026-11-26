@@ -1,4 +1,4 @@
-use crate::compatibility::{normalize_path, project_directory};
+use crate::compatibility::{civil_date, normalize_path, project_directory};
 use crate::error::{HiveXError, Result};
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag};
 use serde_json::{Value, json};
@@ -558,21 +558,6 @@ fn creation_date() -> Result<String> {
     .duration_since(UNIX_EPOCH)
     .map_err(|_| error("INIT_DATE_FAILED", "The system clock is before 1970"))?;
   Ok(civil_date(elapsed.as_secs() / 86_400))
-}
-
-/// Proleptic Gregorian date of a day count since 1970-01-01 (Hinnant's `civil_from_days`).
-fn civil_date(days: u64) -> String {
-  let shifted = days + 719_468;
-  let era = shifted / 146_097;
-  let day_of_era = shifted % 146_097;
-  let year_of_era =
-    (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-  let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-  let month_index = (5 * day_of_year + 2) / 153;
-  let day = day_of_year - (153 * month_index + 2) / 5 + 1;
-  let month = (month_index + 2) % 12 + 1;
-  let year = era * 400 + year_of_era + u64::from(month <= 2);
-  format!("{year:04}-{month:02}-{day:02}")
 }
 
 /// Extension files may lack frontmatter; they are installed unchanged. LF and CRLF
@@ -1376,22 +1361,4 @@ fn validate_destination_component(
     ));
   }
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::civil_date;
-
-  #[test]
-  fn civil_dates_follow_gregorian_leap_rules() {
-    for (days, date) in [
-      (0, "1970-01-01"),
-      (11_016, "2000-02-29"),
-      (19_782, "2024-02-29"),
-      (20_730, "2026-10-04"),
-      (47_541, "2100-03-01"),
-    ] {
-      assert_eq!(civil_date(days), date);
-    }
-  }
 }
