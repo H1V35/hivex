@@ -63,7 +63,7 @@ const HOSTS: &[Host] = &[
     shell: "Bash|PowerShell",
     // Without Git Bash, Claude Code otherwise blocks the call when this hook fails.
     on_failure: Some("continue"),
-    steps: "Install a HiveX release that has the hook command on PATH first, and use Claude Code 2.1.295 or later, which reads onFailure. Then merge configuration into .claude/settings.json, keeping its other settings and hooks. Claude Code runs project hooks once the workspace is trusted.",
+    steps: "Install a HiveX release that has the hook command on PATH first, and use Claude Code 2.1.295 or later, which reads onFailure. Then merge configuration into .claude/settings.json, keeping its other settings and hooks. The PreToolUse matcher gates Claude Code's own editing tools: add to it the tools of the project's MCP servers that write or change state, as mcp__<server>__<tool>, and leave read-only ones out. Claude Code runs project hooks once the workspace is trusted.",
     unverified_steps: "",
     documentation: "https://code.claude.com/docs/en/hooks",
     note: None,
@@ -91,7 +91,7 @@ const HOSTS: &[Host] = &[
     gated: "^(Bash|apply_patch|spawn_agent)$",
     shell: "^Bash$",
     on_failure: None,
-    steps: "Install a HiveX release that has the hook command on PATH first. Then merge configuration into .codex/hooks.json and review and trust the new hooks in /hooks; Codex skips hooks it has not trusted. HiveX does not parse config.toml.",
+    steps: "Install a HiveX release that has the hook command on PATH first. Then merge configuration into .codex/hooks.json and review and trust the new hooks in /hooks; Codex skips hooks it has not trusted. The PreToolUse matcher gates Codex's own editing tools: add to it the tools of the project's MCP servers that write or change state, as mcp__<server>__<tool>, and leave read-only ones out. HiveX does not parse config.toml.",
     unverified_steps: "HiveX does not parse config.toml, which names hivex hook. Check that its registration covers every event and matcher in configuration and complete it there, rather than adding a second registration to .codex/hooks.json that Codex would run as well.",
     documentation: "https://learn.chatgpt.com/docs/hooks",
     note: Some(

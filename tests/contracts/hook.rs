@@ -306,6 +306,34 @@ fn a_subagent_recovers_on_its_own() {
   assert!(denied(&hook(&p, &in_subagent(claude_write()))));
 }
 
+/// An MCP tool reaches the gate only when the project's matcher lists it, so one that does is
+/// gated like an edit.
+#[test]
+fn an_mcp_tool_the_matcher_sends_is_gated_until_recovery() {
+  let p = Project::new();
+  // Claude Code, "Match MCP tools" and "`PreToolUse` input": `mcp__<server>__<tool>` with the
+  // server's provenance.
+  let mut claude = claude_tool(
+    "mcp__memory__create_entities",
+    &json!({"entities": [{"name": "decision", "entityType": "note"}]}),
+  );
+  claude["mcp_server"] = json!({"name": "memory", "source": "project"});
+  // A plugin's server carries the plugin in its segment.
+  let plugin = claude_tool("mcp__plugin_my-plugin_db__query", &json!({"sql": "update"}));
+  // Codex, "PreToolUse": an MCP name like `mcp__server__tool` sends its arguments.
+  let mut codex = codex_tool("PreToolUse", "mcp__server__tool", "");
+  codex["tool_input"] = json!({"path": "notes.md"});
+  for event in [&claude, &plugin] {
+    assert!(denied(&hook(&p, event)), "{event}");
+  }
+  assert!(denied(&hook(&p, &codex)));
+  hook(&p, &claude_bash("PostToolUse", "hivex search topic"));
+  hook(&p, &codex_tool("PostToolUse", "Bash", "hivex search topic"));
+  for event in [&claude, &plugin, &codex] {
+    assert_eq!(hook(&p, event), Value::Null, "{event}");
+  }
+}
+
 #[test]
 fn markers_are_empty_and_named_only_by_hashes() {
   let p = Project::new();
@@ -361,6 +389,7 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
   let mut unknown_after = unknown_tool.clone();
   unknown_after["hook_event_name"] = json!("PostToolUse");
   let partial_write = claude_tool("Write", &json!({"file_path": "/path/to/file.txt"}));
+  let malformed_mcp = claude_tool("mcp__memory__create_entities", &json!("entities"));
   let mut oversize = claude_write();
   oversize["tool_input"]["content"] = json!("x".repeat(9 * 1024 * 1024));
   for event in [
@@ -373,6 +402,7 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
     unknown_tool,
     unknown_after,
     partial_write,
+    malformed_mcp,
     oversize,
   ] {
     assert!(warned(&hook(&p, &event)), "{event}");
@@ -651,6 +681,16 @@ fn only_a_registration_that_applies_the_rule_counts() {
       &json!({"status": "registered"}),
     );
   }
+  // A gate that also lists a project's MCP writing tools still registers.
+  let mut mcp = settings.clone();
+  mcp["hooks"]["PreToolUse"][0]["matcher"] = json!(
+    "Edit|Write|NotebookEdit|Agent|Workflow|Bash|PowerShell|mcp__files__write_file|mcp__plugin_my-plugin_db__query"
+  );
+  p.json(".claude/settings.json", &mcp);
+  subset(
+    &p.ok(&["update"])["hooks"][0],
+    &json!({"status": "registered"}),
+  );
   // A matcher that covers every value also registers, here in the local settings file.
   p.json(".claude/settings.json", &json!({}));
   let mut local = settings.clone();

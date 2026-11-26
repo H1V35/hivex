@@ -1,9 +1,9 @@
 //! The hook Claude Code or Codex runs on its lifecycle events when a project registers
 //! `hivex hook` (#258). It reminds each session of the recovery rule, records when the session runs
-//! HiveX's retrieval and denies edits, agent and workflow launches, `git commit` and `gh pr create` until it
-//! has. It reads only documented hook fields, never the transcript, and lets through with a
-//! warning any input it does not recognise, so a change in a host's format never locks a session
-//! out.
+//! HiveX's retrieval and denies edits, agent and workflow launches, the MCP tools the project's
+//! matcher sends it, `git commit` and `gh pr create` until it has. It reads only documented hook
+//! fields, never the transcript, and lets through with a warning any input it does not recognise,
+//! so a change in a host's format never locks a session out.
 
 mod markers;
 mod registration;
@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 
 /// Larger inputs are let through with a warning rather than parsed: an answer must stay fast.
 pub const MAX_INPUT: usize = 8 * 1024 * 1024;
-const REMINDER: &str = "This project uses HiveX. Before acting, whether coordinating, briefing, implementing, reviewing, researching or answering, recover what has been decided on the topic with `hivex search`, `hivex relations` and `hivex read`, and state the rules you apply with document, line and the owner's date. Remembered or summarised context is not verified: after a compaction, recover again. Until this session runs one of those commands, edits, agent launches, `git commit` and `gh pr create` are denied.";
+const REMINDER: &str = "This project uses HiveX. Before acting, whether coordinating, briefing, implementing, reviewing, researching or answering, recover what has been decided on the topic with `hivex search`, `hivex relations` and `hivex read`, and state the rules you apply with document, line and the owner's date. Remembered or summarised context is not verified: after a compaction, recover again. Until this session runs one of those commands, edits, agent launches, the MCP tools the project gates, `git commit` and `gh pr create` are denied.";
 const DENIAL: &str = "HiveX: this session has not recovered what has been decided on its topic since it started or was last compacted. Run `hivex search \"<the task's topic>\" --max-bytes 65536`, read the authorities it returns with `hivex read` and follow `hivex relations`, state the rules you apply with document, line and the owner's date, then retry.";
 /// Tools that only read, which the hook lets through without a word.
 const READING: &[&str] = &[
@@ -151,9 +151,12 @@ fn call(event: &Event) -> Result<Call<'_>, &'static str> {
     "Agent" => fields(&["prompt", "description"]),
     // Codex reports its edits as `apply_patch`.
     "apply_patch" => fields(&["command"]),
-    // Claude Code's workflows and Codex's `spawn_agent` launch agents; neither documents fields.
+    // Claude Code's workflows and Codex's `spawn_agent` launch agents, and both hosts name an MCP
+    // tool `mcp__<server>__<tool>`; none documents its fields. The project's matcher decides
+    // which MCP tools reach the gate, so one that does may write.
     "Workflow" | "spawn_agent" => input.is_object(),
-    _ if READING.contains(&tool) || tool.starts_with("mcp__") => return Ok(Call::Reading),
+    _ if tool.starts_with("mcp__") => input.is_object(),
+    _ if READING.contains(&tool) => return Ok(Call::Reading),
     _ => return Ok(Call::Unknown(tool.to_owned())),
   };
   if well_formed {
