@@ -36,7 +36,7 @@
     {
       "modelCalls": 0,
       "name": "hook",
-      "usage": "hook (run by Claude Code or Codex with a hook event on stdin; see docs/guide.md#enforce-recovery-with-host-hooks)"
+      "usage": "hook [--failures] (run by Claude Code or Codex with a hook event on stdin; --failures lists the recent times it let a call through because it could not apply the rule; see docs/guide.md#enforce-recovery-with-host-hooks)"
     },
     {
       "modelCalls": 0,

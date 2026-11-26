@@ -6,19 +6,50 @@ use crate::support::{Project, subset};
 use serde_json::{Value, json};
 use std::fs;
 use std::io::Write;
-use std::process::Stdio;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
 
-/// The hook's answer to `event`, `Null` when it prints nothing. Markers go to the project's own
-/// temporary directory, never the user's.
-fn hook(p: &Project, event: &Value) -> Value {
+/// `hivex hook` with `args`. Markers go to the project's own temporary directory and the failure
+/// record to its own per-user state directory, never the user's; the process runs as no host
+/// unless a test says which.
+fn command(p: &Project, args: &[&str]) -> Command {
   let temporary = p.path("tmp");
   fs::create_dir_all(&temporary).unwrap();
   let mut command = p.command(&[]);
-  command.arg("hook");
+  command
+    .arg("hook")
+    .args(args)
+    .env_remove("CLAUDE_PROJECT_DIR");
   for variable in ["TMPDIR", "TMP", "TEMP"] {
     command.env(variable, &temporary);
   }
+  for variable in ["HOME", "XDG_STATE_HOME", "LOCALAPPDATA"] {
+    command.env(variable, p.path("state"));
+  }
+  command
+}
+
+/// The hook's answer to `event`, `Null` when it prints nothing.
+fn hook(p: &Project, event: &Value) -> Value {
+  answer(command(p, &[]), event)
+}
+
+/// The answer when Claude Code runs the hook, which sets `CLAUDE_PROJECT_DIR`.
+fn claude_hook(p: &Project, event: &Value) -> Value {
+  let mut command = command(p, &[]);
+  command.env("CLAUDE_PROJECT_DIR", p.path(""));
+  answer(command, event)
+}
+
+/// `hivex hook --failures`.
+fn failures(p: &Project) -> Value {
+  let output = command(p, &["--failures"]).output().unwrap();
+  assert!(output.status.success(), "{output:?}");
+  serde_json::from_slice(&output.stdout).unwrap()
+}
+
+fn answer(mut command: Command, event: &Value) -> Value {
   let mut child = command
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
@@ -117,11 +148,21 @@ fn denied(answer: &Value) -> bool {
   answer["hookSpecificOutput"]["permissionDecision"] == "deny"
 }
 
+/// The hook let the call through and said why: to the person in `systemMessage` and, on the events
+/// both hosts give it for, to the agent in `additionalContext`.
 fn warned(answer: &Value) -> bool {
-  answer["systemMessage"]
+  let Some(message) = answer["systemMessage"]
     .as_str()
-    .is_some_and(|message| message.contains("the call goes ahead"))
-    && answer.get("hookSpecificOutput").is_none()
+    .filter(|message| message.contains("the call goes ahead"))
+  else {
+    return false;
+  };
+  answer.get("hookSpecificOutput").is_none_or(|output| {
+    output.get("permissionDecision").is_none()
+      && output["additionalContext"]
+        .as_str()
+        .is_some_and(|context| context.contains(message))
+  })
 }
 
 #[test]
@@ -410,14 +451,171 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
     assert!(warned(&hook(&p, &event)), "{event}");
   }
   // Text that is not JSON at all.
-  let mut command = p.command(&[]);
-  command.arg("hook").stdin(Stdio::null());
-  let output = command.output().unwrap();
+  let output = command(&p, &[]).stdin(Stdio::null()).output().unwrap();
   assert!(output.status.success());
   assert!(warned(&serde_json::from_slice(&output.stdout).unwrap()));
   // A marker directory the hook cannot use.
   p.write("tmp/hivex-hook", "not a directory");
   assert!(warned(&hook(&p, &claude_write())));
+}
+
+/// Claude Code, "`PreToolUse` decision control" and "`PostToolUse` decision control", and Codex,
+/// "`PreToolUse`" and "`PostToolUse`": `additionalContext` reaches the model without blocking the
+/// call.
+#[test]
+fn a_failure_on_a_tool_event_warns_the_agent_too() {
+  let p = Project::new();
+  let unknown_tool = claude_tool("TaskCreate", &json!({"subject": "x"}));
+  let mut unknown_after = unknown_tool.clone();
+  unknown_after["hook_event_name"] = json!("PostToolUse");
+  let codex_unknown = codex_tool("PreToolUse", "unknown_tool", "x");
+  for (event, name) in [
+    (unknown_tool, "PreToolUse"),
+    (unknown_after, "PostToolUse"),
+    (codex_unknown, "PreToolUse"),
+  ] {
+    let answer = hook(&p, &event);
+    assert!(warned(&answer), "{answer}");
+    assert_eq!(answer["hookSpecificOutput"]["hookEventName"], name);
+  }
+  // An input that names no event the hook answers tells only the person.
+  let mut unknown_event = claude_write();
+  unknown_event["hook_event_name"] = json!("PreToolCall");
+  for event in [json!("not an object"), unknown_event] {
+    let answer = hook(&p, &event);
+    assert!(
+      warned(&answer) && answer.get("hookSpecificOutput").is_none(),
+      "{answer}"
+    );
+  }
+}
+
+/// Claude Code and Codex, "SessionStart": the reminder still reaches a session whose compaction the
+/// hook could not record, followed by the warning.
+#[test]
+fn a_session_that_starts_with_a_failure_still_gets_the_rule() {
+  let p = Project::new();
+  p.write("tmp/hivex-hook", "not a directory");
+  let answer = hook(&p, &claude_start("compact"));
+  assert!(warned(&answer), "{answer}");
+  let context = answer["hookSpecificOutput"]["additionalContext"]
+    .as_str()
+    .unwrap();
+  assert!(context.starts_with("This project uses HiveX."), "{context}");
+}
+
+#[test]
+fn each_failure_is_recorded_without_the_inputs_content() {
+  let p = Project::new();
+  assert_eq!(failures(&p)["total"], 0);
+  let mut without_session = claude_bash("PreToolUse", "git commit -m 'Rotate the signing key'");
+  without_session
+    .as_object_mut()
+    .unwrap()
+    .remove("session_id");
+  claude_hook(
+    &p,
+    &claude_tool("Write", &json!({"file_path": "/private/notes/plan.md"})),
+  );
+  claude_hook(
+    &p,
+    &claude_tool("TaskCreate", &json!({"subject": "Rotate the signing key"})),
+  );
+  hook(&p, &without_session);
+  hook(
+    &p,
+    &codex_tool("PreToolUse", "unknown_tool", "cat notes.md"),
+  );
+  hook(&p, &json!("not an object"));
+  let report = failures(&p);
+  subset(
+    &report,
+    &json!({"command": "hook", "total": 5, "reasons": {
+      "missing-tool-fields": 1, "unknown-tool": 2, "no-session-id": 1, "not-a-hook-event": 1
+    }}),
+  );
+  // Newest first, each with the host its event shows.
+  let recent = report["recent"].as_array().unwrap();
+  for (entry, expected) in recent.iter().zip([
+    json!({"host": "unknown", "event": null, "reason": "not-a-hook-event", "session": null}),
+    json!({"host": "codex", "event": "PreToolUse", "reason": "unknown-tool"}),
+    json!({"host": "unknown", "event": "PreToolUse", "reason": "no-session-id", "session": null}),
+    json!({"host": "claude", "event": "PreToolUse", "reason": "unknown-tool"}),
+    json!({"host": "claude", "event": "PreToolUse", "reason": "missing-tool-fields"}),
+  ]) {
+    subset(entry, &expected);
+    let mut fields: Vec<&str> = entry
+      .as_object()
+      .unwrap()
+      .keys()
+      .map(String::as_str)
+      .collect();
+    fields.sort_unstable();
+    assert_eq!(fields, ["event", "host", "reason", "session", "time"]);
+    let time = entry["time"].as_str().unwrap();
+    assert!(
+      time.len() == 20 && time.ends_with('Z') && time.as_bytes()[10] == b'T',
+      "{time}"
+    );
+    assert!(
+      entry["session"]
+        .as_str()
+        .is_none_or(|hash| hash.len() == 32 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    );
+  }
+  let log = fs::read_to_string(report["log"].as_str().unwrap()).unwrap();
+  for content in [
+    "/private/notes/plan.md",
+    "Rotate the signing key",
+    "TaskCreate",
+    "unknown_tool",
+    "notes.md",
+    "\"abc123\"",
+    "thr_123",
+    "/workspace",
+  ] {
+    assert!(!log.contains(content), "{content}: {log}");
+  }
+}
+
+#[test]
+fn a_record_it_cannot_write_never_stops_the_hook() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  let directory = log.parent().unwrap();
+  fs::create_dir_all(directory.parent().unwrap()).unwrap();
+  fs::write(directory, "not a directory").unwrap();
+  // `hook` asserts that it exits with success and nothing on stderr.
+  assert!(warned(&hook(
+    &p,
+    &claude_tool("TaskCreate", &json!({"subject": "x"}))
+  )));
+  assert!(denied(&hook(&p, &claude_write())));
+  assert_eq!(failures(&p)["total"], 0);
+}
+
+#[test]
+fn the_record_keeps_at_most_two_files_of_64_kib() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  let previous = log.with_file_name("hook-failures.1.jsonl");
+  fs::create_dir_all(log.parent().unwrap()).unwrap();
+  let mut kept = 0;
+  for reason in ["unknown-tool", "unknown-event"] {
+    let entry = format!(
+      "{{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":\"PreToolUse\",\"reason\":\"{reason}\",\"session\":null}}\n"
+    );
+    let full = entry.repeat(64 * 1024 / entry.len());
+    kept = full.lines().count();
+    fs::write(&log, &full).unwrap();
+    hook(&p, &json!("not an object"));
+    assert_eq!(fs::read_to_string(&previous).unwrap(), full);
+    assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 1);
+  }
+  subset(
+    &failures(&p),
+    &json!({"total": kept + 1, "reasons": {"unknown-event": kept, "not-a-hook-event": 1}}),
+  );
 }
 
 /// A marker directory another user of a shared temporary directory could write to, or a link to
@@ -444,7 +642,14 @@ fn a_marker_directory_others_can_write_is_not_used() {
   let p = Project::new();
   hook(&p, &claude_bash("PostToolUse", "hivex search topic"));
   fs::set_permissions(p.path("tmp/hivex-hook"), fs::Permissions::from_mode(0o500)).unwrap();
-  assert!(warned(&hook(&p, &claude_post_compact())));
+  // Claude Code, "PostCompact": it discards `systemMessage` and has no context for the agent, so
+  // the record is where that failure shows.
+  let answer = hook(&p, &claude_post_compact());
+  assert!(warned(&answer) && answer.get("hookSpecificOutput").is_none());
+  subset(
+    &failures(&p)["recent"][0],
+    &json!({"event": "PostCompact", "reason": "compaction-record-kept"}),
+  );
   assert!(warned(&hook(&p, &claude_write())));
   fs::set_permissions(p.path("tmp/hivex-hook"), fs::Permissions::from_mode(0o700)).unwrap();
 }

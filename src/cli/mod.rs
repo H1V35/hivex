@@ -87,8 +87,14 @@ fn with_hooks(mut report: Value, root: &str) -> Value {
 /// Answer one Claude Code or Codex hook event read from stdin. The hook answers every input and
 /// lets through any it does not recognise, so it never returns an error.
 fn hook(args: &[String]) -> Result<Value> {
-  if args.len() != 1 {
-    return Err(invalid("Use hook, with the host's hook event on stdin"));
+  match args {
+    [_] => {}
+    [_, option] if option == "--failures" => return Ok(crate::hook::failures()),
+    _ => {
+      return Err(invalid(
+        "Use hook, with the host's hook event on stdin, or hook --failures",
+      ));
+    }
   }
   let mut input = Vec::new();
   // An unreadable stdin leaves the input empty, which the hook lets through with a warning. Input
