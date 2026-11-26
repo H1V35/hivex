@@ -10,10 +10,15 @@ const WRAPPERS: &[&str] = &["env", "command", "exec", "time", "nohup", "sudo", "
 /// The characters a backslash escapes between Bash's double quotes; before any other it is kept.
 const QUOTED_ESCAPES: [char; 5] = ['$', '`', '"', '\\', '\n'];
 
-/// Whether `line` is one command that runs `hivex hook`, as a host's hook handler does.
+/// Whether `line` is exactly a path to `hivex` and `hook`, read by Bash (`escapes`) or by
+/// PowerShell, whose call operator `&` may come first.
 pub fn runs_hook(line: &str, escapes: bool) -> bool {
-  let commands: Vec<_> = programs(line, escapes).collect();
-  matches!(commands.as_slice(), [(name, arguments)] if name == "hivex" && *arguments == ["hook"])
+  let line = line.trim();
+  let line = match line.strip_prefix('&') {
+    Some(called) if !escapes => called,
+    _ => line,
+  };
+  matches!(Words::split(line, escapes).as_slice(), [words] if words.len() == 2 && program(&words[0]) == "hivex" && words[1] == "hook")
 }
 
 /// Whether `line` runs `hivex search`, `hivex read` or `hivex relations`.
@@ -107,11 +112,11 @@ fn delimiter(rest: &mut Chars) -> String {
       (Some(open), c) if c == open => quote = None,
       (None, '\\') => {
         rest.next();
-        word.extend(rest.clone().next());
+        word.extend(rest.clone().next().filter(|c| *c != '\n'));
       }
       (Some('"'), '\\') if rest.as_str()[1..].starts_with(QUOTED_ESCAPES) => {
         rest.next();
-        word.extend(rest.clone().next());
+        word.extend(rest.clone().next().filter(|c| *c != '\n'));
       }
       _ => word.push(character),
     }
@@ -157,7 +162,7 @@ impl Words {
     match character {
       _ if character == quote => self.quote = None,
       '\\' if quote == '"' && self.escapes && rest.as_str().starts_with(QUOTED_ESCAPES) => {
-        self.push(rest.next());
+        self.push(rest.next().filter(|c| *c != '\n'));
       }
       _ => self.push(Some(character)),
     }
@@ -169,7 +174,8 @@ impl Words {
         self.quote = Some(character);
         self.word.get_or_insert_with(String::new);
       }
-      '\\' if self.escapes => self.push(rest.next()),
+      // A backslash before a line break continues the line.
+      '\\' if self.escapes => self.push(rest.next().filter(|c| *c != '\n')),
       '<' if rest.as_str().starts_with('<') => self.here_document(rest),
       '\n' => {
         self.separate();

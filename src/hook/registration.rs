@@ -230,14 +230,20 @@ fn covers(matcher: Option<&str>, value: &str) -> bool {
   }
 }
 
-/// A handler that runs `hivex hook`, also through a path to the executable, in shell form, read as
-/// Bash or PowerShell would, or in Claude Code's exec form (`command` with `args`).
+/// A handler that runs `hivex hook`, also through a path to the executable, in Claude Code's exec
+/// form (`command` with `args`) or in shell form, read by the handler's `shell`. Without one, Claude
+/// Code uses Bash, and on Windows PowerShell when Git Bash is missing.
 fn runs_hook(handler: &Value) -> bool {
   let command = handler["command"].as_str().unwrap_or_default();
-  match handler.get("args") {
-    Some(arguments) => *arguments == json!(["hook"]) && shell::program(command) == "hivex",
-    None => [true, false]
-      .into_iter()
-      .any(|escapes| shell::runs_hook(command, escapes)),
+  if let Some(arguments) = handler.get("args") {
+    return *arguments == json!(["hook"]) && shell::program(command) == "hivex";
+  }
+  let bash = shell::runs_hook(command, true);
+  let powershell = shell::runs_hook(command, false);
+  match handler.get("shell").map(Value::as_str) {
+    None => bash || (cfg!(windows) && powershell),
+    Some(Some("bash")) => bash,
+    Some(Some("powershell")) => powershell,
+    Some(_) => false,
   }
 }

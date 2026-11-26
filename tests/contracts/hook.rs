@@ -237,6 +237,7 @@ fn reads_searches_and_other_commands_are_never_denied() {
     "cat <<\\EOF > notes.md\ntext\nEOF\ngit commit -F notes.md",
     "cat <<'END OF NOTES' > notes.md\nEOF\nEND OF NOTES\ngit commit -F notes.md",
     "cat <<\"E\\$OF\" > notes.md\nEOF\nE$OF\ngit commit -F notes.md",
+    "cat <<\"E\\\nOF\" > notes.md\ntext\nEOF\ngit commit -F notes.md",
     "cargo test\ngit commit -m 'fix: tests'",
   ] {
     assert!(
@@ -602,7 +603,18 @@ fn only_a_registration_that_applies_the_rule_counts() {
   conditional["hooks"]["PostToolUse"][0]["hooks"][0]["if"] = json!("Bash(git *)");
   let mut background = settings.clone();
   background["hooks"]["PostToolUse"][0]["hooks"][0]["async"] = json!(true);
-  for broken in [without, narrow, other_type, conditional, background] {
+  // PowerShell's call operator is not Bash.
+  let mut wrong_shell = settings.clone();
+  wrong_shell["hooks"]["PostToolUse"][0]["hooks"][0] =
+    json!({"type": "command", "command": "& \"C:\\HiveX\\hivex.exe\" hook", "shell": "bash"});
+  for broken in [
+    without,
+    narrow,
+    other_type,
+    conditional,
+    background,
+    wrong_shell,
+  ] {
     p.json(".claude/settings.json", &broken);
     subset(
       &p.ok(&["update"])["hooks"][0],
@@ -624,6 +636,7 @@ fn only_a_registration_that_applies_the_rule_counts() {
     json!({"type": "command", "command": "hivex", "args": ["hook"], "timeout": 10}),
     json!({"type": "command", "command": "\"/opt/my tools/hivex\" hook", "timeout": 10}),
     json!({"type": "command", "command": "\"C:\\Program Files\\hivex\\hivex.exe\" hook"}),
+    json!({"type": "command", "command": "& \"C:\\HiveX\\hivex.exe\" hook", "shell": "powershell"}),
   ] {
     let mut exec = settings.clone();
     exec["hooks"]["PostToolUse"][0]["hooks"][0] = handler;

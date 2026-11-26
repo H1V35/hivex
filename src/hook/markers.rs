@@ -5,9 +5,9 @@
 
 use sha2::{Digest, Sha256};
 use std::fmt::Write;
-use std::fs::{self, DirBuilder, Metadata, OpenOptions};
+use std::fs::{self, Metadata, OpenOptions};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 /// Markers whose session never reported its end are removed after a week.
@@ -107,10 +107,7 @@ impl Markers {
 
   /// Creates the directory when missing and checks that it is a private directory, not a link.
   fn ready(&self) -> io::Result<()> {
-    let mut builder = DirBuilder::new();
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    match builder.create(&self.directory) {
+    match create(&self.directory) {
       Err(error) if error.kind() != io::ErrorKind::AlreadyExists => return Err(error),
       _ => {}
     }
@@ -122,6 +119,16 @@ impl Markers {
       "the marker directory is not a private directory",
     ))
   }
+}
+
+#[cfg(unix)]
+fn create(directory: &Path) -> io::Result<()> {
+  std::os::unix::fs::DirBuilderExt::mode(&mut fs::DirBuilder::new(), 0o700).create(directory)
+}
+
+#[cfg(not(unix))]
+fn create(directory: &Path) -> io::Result<()> {
+  fs::create_dir(directory)
 }
 
 #[cfg(unix)]
