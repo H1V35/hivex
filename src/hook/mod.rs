@@ -155,7 +155,7 @@ fn call(event: &Event) -> Result<Call<'_>, &'static str> {
     // tool `mcp__<server>__<tool>`; none documents its fields. The project's matcher decides
     // which MCP tools reach the gate, so one that does may write.
     "Workflow" | "spawn_agent" => input.is_object(),
-    _ if tool.starts_with("mcp__") => input.is_object(),
+    _ if mcp(tool) => input.is_object(),
     _ if READING.contains(&tool) => return Ok(Call::Reading),
     _ => return Ok(Call::Unknown(tool.to_owned())),
   };
@@ -163,6 +163,14 @@ fn call(event: &Event) -> Result<Call<'_>, &'static str> {
     return Ok(Call::Gated);
   }
   Err("its tool input lacks the fields it checks")
+}
+
+/// Whether `tool` has the documented shape of an MCP tool's name, `mcp__<server>__<tool>`.
+fn mcp(tool: &str) -> bool {
+  tool
+    .strip_prefix("mcp__")
+    .and_then(|rest| rest.split_once("__"))
+    .is_some_and(|(server, name)| !server.is_empty() && !name.is_empty())
 }
 
 fn context(event: &str) -> Value {

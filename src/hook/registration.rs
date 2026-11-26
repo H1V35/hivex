@@ -27,6 +27,11 @@ struct Host {
   steps: &'static str,
   /// What to do when an unparsed settings file names the hook.
   unverified_steps: &'static str,
+  /// How the project gates its MCP servers' writing tools, in every state of the report.
+  mcp: &'static str,
+  /// Whether a matcher of plain names is a list compared exactly, as Claude Code's is, rather than
+  /// a regular expression, as Codex's always is.
+  lists: bool,
   documentation: &'static str,
   note: Option<&'static str>,
 }
@@ -63,8 +68,10 @@ const HOSTS: &[Host] = &[
     shell: "Bash|PowerShell",
     // Without Git Bash, Claude Code otherwise blocks the call when this hook fails.
     on_failure: Some("continue"),
-    steps: "Install a HiveX release that has the hook command on PATH first, and use Claude Code 2.1.295 or later, which reads onFailure. Then merge configuration into .claude/settings.json, keeping its other settings and hooks. The PreToolUse matcher gates Claude Code's own editing tools: add to it the tools of the project's MCP servers that write or change state, as mcp__<server>__<tool>, and leave read-only ones out. Claude Code runs project hooks once the workspace is trusted.",
+    steps: "Install a HiveX release that has the hook command on PATH first, and use Claude Code 2.1.295 or later, which reads onFailure. Then merge configuration into .claude/settings.json, keeping its other settings and hooks. Claude Code runs project hooks once the workspace is trusted.",
     unverified_steps: "",
+    mcp: "The PreToolUse matcher gates Claude Code's own editing tools. Add to it the tools of the project's MCP servers that write or change state, by the names Claude Code reports: mcp__<server>__<tool>, or mcp__plugin_<plugin>_<server>__<tool> for a plugin's server. Leave read-only ones out.",
+    lists: true,
     documentation: "https://code.claude.com/docs/en/hooks",
     note: None,
   },
@@ -91,8 +98,10 @@ const HOSTS: &[Host] = &[
     gated: "^(Bash|apply_patch|spawn_agent)$",
     shell: "^Bash$",
     on_failure: None,
-    steps: "Install a HiveX release that has the hook command on PATH first. Then merge configuration into .codex/hooks.json and review and trust the new hooks in /hooks; Codex skips hooks it has not trusted. The PreToolUse matcher gates Codex's own editing tools: add to it the tools of the project's MCP servers that write or change state, as mcp__<server>__<tool>, and leave read-only ones out. HiveX does not parse config.toml.",
+    steps: "Install a HiveX release that has the hook command on PATH first. Then merge configuration into .codex/hooks.json and review and trust the new hooks in /hooks; Codex skips hooks it has not trusted. HiveX does not parse config.toml.",
     unverified_steps: "HiveX does not parse config.toml, which names hivex hook. Check that its registration covers every event and matcher in configuration and complete it there, rather than adding a second registration to .codex/hooks.json that Codex would run as well.",
+    mcp: "The PreToolUse matcher gates Codex's own editing tools. Add to it the tools of the project's MCP servers that write or change state, by the names Codex reports, mcp__<server>__<tool>. Leave read-only ones out.",
+    lists: false,
     documentation: "https://learn.chatgpt.com/docs/hooks",
     note: Some(
       "Verified against Codex's documentation only, not in a Codex session. Codex documents no agent id for tool events, so a subagent shares its parent session's recovery.",
@@ -118,13 +127,11 @@ pub fn registrations(root: &Path) -> Value {
       let missing: Vec<&str> = host
         .events
         .iter()
-        .filter(|(event, values)| {
-          let failure = host.on_failure.filter(|_| *event == "PreToolUse");
-          !registered(&settings, event, values, failure)
-        })
+        .filter(|(event, values)| !registered(&settings, event, values, host))
         .map(|(event, _)| *event)
         .collect();
-      let mut report = json!({"documentation": host.documentation, "host": host.name});
+      let mut report =
+        json!({"documentation": host.documentation, "host": host.name, "mcp": host.mcp});
       if let Some(note) = host.note {
         report["note"] = json!(note);
       }
@@ -182,8 +189,9 @@ fn configuration(host: &Host) -> Value {
 
 /// Whether the matcher groups of `event` that run the hook cover every value in `values`. A handler
 /// counts when it runs unconditionally and lets the call go ahead if it fails, with the host's
-/// `failure` setting when the kit needs one.
-fn registered(settings: &[Value], event: &str, values: &[&[&str]], failure: Option<&str>) -> bool {
+/// failure setting when the kit's gate needs one.
+fn registered(settings: &[Value], event: &str, values: &[&[&str]], host: &Host) -> bool {
+  let failure = host.on_failure.filter(|_| event == "PreToolUse");
   let groups: Vec<&Value> = settings
     .iter()
     .flat_map(|file| file["hooks"][event].as_array().into_iter().flatten())
@@ -209,22 +217,20 @@ fn registered(settings: &[Value], event: &str, values: &[&[&str]], failure: Opti
       groups.iter().any(|group| {
         aliases
           .iter()
-          .any(|value| covers(group["matcher"].as_str(), value))
+          .any(|value| covers(group["matcher"].as_str(), value, host.lists))
       })
     })
 }
 
-/// Both hosts match every value with an omitted, empty or `*` matcher, and test any other matcher
-/// as a regular expression; Claude Code compares a list of plain names exactly.
-fn covers(matcher: Option<&str>, value: &str) -> bool {
+/// Both hosts match every value with an omitted, empty or `*` matcher and test any other matcher
+/// as a regular expression, except that Claude Code (`lists`) compares a matcher of only letters,
+/// digits, `_`, `-`, spaces, `,` and `|` as a list of exact names separated by `|` or `,`.
+fn covers(matcher: Option<&str>, value: &str, lists: bool) -> bool {
+  let plain = |c: char| c.is_ascii_alphanumeric() || "_- ,|".contains(c);
   match matcher.unwrap_or_default() {
     "" | "*" => true,
-    names
-      if names
-        .chars()
-        .all(|c| c == '_' || c == '|' || c.is_ascii_alphanumeric()) =>
-    {
-      names.split('|').any(|name| name == value)
+    names if lists && names.chars().all(plain) => {
+      names.split(['|', ',']).any(|name| name.trim() == value)
     }
     pattern => Regex::new(pattern).is_ok_and(|pattern| pattern.is_match(value)),
   }

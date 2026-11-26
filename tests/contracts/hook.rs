@@ -390,6 +390,7 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
   unknown_after["hook_event_name"] = json!("PostToolUse");
   let partial_write = claude_tool("Write", &json!({"file_path": "/path/to/file.txt"}));
   let malformed_mcp = claude_tool("mcp__memory__create_entities", &json!("entities"));
+  let incomplete_mcp = claude_tool("mcp__files", &json!({"path": "notes.md"}));
   let mut oversize = claude_write();
   oversize["tool_input"]["content"] = json!("x".repeat(9 * 1024 * 1024));
   for event in [
@@ -403,6 +404,7 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
     unknown_after,
     partial_write,
     malformed_mcp,
+    incomplete_mcp,
     oversize,
   ] {
     assert!(warned(&hook(&p, &event)), "{event}");
@@ -611,6 +613,21 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
     ]}),
   );
   assert_eq!(registered["hooks"][1]["note"], codex["note"]);
+  // Every state says how to gate the project's MCP writing tools.
+  for report in [
+    &update["hooks"][0],
+    codex,
+    &registered["hooks"][0],
+    &registered["hooks"][1],
+  ] {
+    assert!(
+      report["mcp"]
+        .as_str()
+        .unwrap()
+        .contains("mcp__<server>__<tool>"),
+      "{report}"
+    );
+  }
 }
 
 #[test]
@@ -681,6 +698,24 @@ fn only_a_registration_that_applies_the_rule_counts() {
       &json!({"status": "registered"}),
     );
   }
+  // Claude Code reads a matcher of plain names, hyphens and commas as a list of exact names, so
+  // one that leaves out `NotebookEdit` does not cover it however its other names are written.
+  let mut omitted = settings.clone();
+  omitted["hooks"]["PreToolUse"][0]["matcher"] =
+    json!("Edit|Write|Agent|Workflow|Bash|PowerShell|mcp__plugin_my-plugin_db__query");
+  p.json(".claude/settings.json", &omitted);
+  subset(
+    &p.ok(&["update"])["hooks"][0],
+    &json!({"status": "recommended", "missing": ["PreToolUse"]}),
+  );
+  let mut commas = settings.clone();
+  commas["hooks"]["PreToolUse"][0]["matcher"] =
+    json!("Edit, Write, NotebookEdit, Agent, Workflow, Bash, PowerShell");
+  p.json(".claude/settings.json", &commas);
+  subset(
+    &p.ok(&["update"])["hooks"][0],
+    &json!({"status": "registered"}),
+  );
   // A gate that also lists a project's MCP writing tools still registers.
   let mut mcp = settings.clone();
   mcp["hooks"]["PreToolUse"][0]["matcher"] = json!(
