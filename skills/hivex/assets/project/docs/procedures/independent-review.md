@@ -21,7 +21,7 @@ Use the reviewer profile recorded in engineering (tool, model and effort). Never
 
 ## Prerequisites
 
-- The branch is pushed and its issue and pull request state the intended outcome. Dependency updates opened by a bot may have no issue: omit the issue capture and its check, and say in the prompt that the pull request has no issue.
+- The branch is pushed and its issue, and its pull request when one is open, state the intended outcome. Dependency updates opened by a bot may have no issue: omit the issue capture and its check, and say in the prompt that the pull request has no issue. A review that runs before the pull request is opened omits the pull request capture and its check the same way, and says so in the prompt.
 - The reviewer tool is installed and authenticated: `codex` or `claude`, plus `jq` and an authenticated `gh`.
 - `/.reviews/` stays ignored for local review traces.
 

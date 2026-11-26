@@ -5,7 +5,7 @@ description: Implement a defined change, diagnose a bug or refactor code with us
 
 # Implement the intended outcome
 
-Before changing anything, recover the request, owning issue and the project decisions on its topic with HiveX, and state the rules you apply, as the [`hivex` skill](../hivex/SKILL.md#recover-sources-before-deciding) requires. Apply settled scope, domain language and module boundaries. Ask only when evidence leaves a consequential decision open.
+Before changing anything, read the request and its owning issue from their sources, recover with HiveX the project decisions on its topic, and state the rules you apply, as the [`hivex` skill](../hivex/SKILL.md#recover-sources-before-deciding) requires. Apply settled scope, domain language and module boundaries. Ask only when evidence leaves a consequential decision open.
 
 Before implementing against a retrieved rule, recover its governing context and relevant qualifications under the [shared context-reading method](../hivex/references/markdown.md#recover-enough-context-to-apply-a-rule). Check how the proposed behavior respects its scope, conditions, exceptions and replacements; a search passage alone may omit them. Reuse already inspected current sources rather than repeating retrieval.
 

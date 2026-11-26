@@ -59,7 +59,66 @@ New installations ignore `.hivex/` as retained local state and `.reviews/` for l
 
 ## Update a project
 
-`update [--root <project>]` brings what HiveX manages to the installed release and never creates or changes project files other than the pin in `hivex.json` and the [skills section](#the-skills-section-of-agentsmd) of `AGENTS.md`. It makes the skill files in `.agents/skills/` and `.claude/skills/` identical to the installed release, reporting changed files in `updated` and missing ones in `created`, restores any missing managed ignore rule as `init` does, removes the former link rules, makes the skills section of an existing `AGENTS.md` current, reporting the file in `updated` when it changes, and [moves the pin forward](#pin-the-release). A former npm link at `.agents/skills/<name>`, pointing into `node_modules`, is replaced with a copy: the directory is reported in `updated` and its files in `created`. Claude's former link at `.claude/skills/<name>` to the copy in `.agents/skills/<name>`, a symlink or, on Windows, a directory junction, is replaced the same way; a link that points elsewhere is the project's and is reported in `preserved`. It then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. After installing a new release, run `hivex update` and commit the changed skill files in both directories, `.gitignore` and `hivex.json`.
+`update [--root <project>]` brings what HiveX manages to the installed release and never creates or changes project files other than the pin in `hivex.json` and the [skills section](#the-skills-section-of-agentsmd) of `AGENTS.md`. It makes the skill files in `.agents/skills/` and `.claude/skills/` identical to the installed release, reporting changed files in `updated` and missing ones in `created`, restores any missing managed ignore rule as `init` does, removes the former link rules, makes the skills section of an existing `AGENTS.md` current, reporting the file in `updated` when it changes, and [moves the pin forward](#pin-the-release). A former npm link at `.agents/skills/<name>`, pointing into `node_modules`, is replaced with a copy: the directory is reported in `updated` and its files in `created`. Claude's former link at `.claude/skills/<name>` to the copy in `.agents/skills/<name>`, a symlink or, on Windows, a directory junction, is replaced the same way; a link that points elsewhere is the project's and is reported in `preserved`. It then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. Both reports also list in `hooks` whether each host the project uses registers the [recovery hook](#enforce-recovery-with-host-hooks), recommending its configuration when it does not. After installing a new release, run `hivex update` and commit the changed skill files in both directories, `.gitignore` and `hivex.json`.
+
+## Enforce recovery with host hooks
+
+The skills state the [recovery rule](#recover-context): every agent recovers what has been decided on its topic before acting. `hivex hook` lets Claude Code or Codex enforce it. Registered on the host's lifecycle hooks, it reads the event on stdin and:
+
+- adds the rule to the context of each session (`SessionStart`) and subagent (`SubagentStart`);
+- records, after a shell call (`PostToolUse`) whose command runs `hivex search`, `hivex read` or `hivex relations`, also after `cd <dir> &&` or through a path to the executable, that the session or subagent has recovered;
+- denies (`PreToolUse`) edits, agent launches, `git commit` and `gh pr create` until it has, with a reason naming the command to run; reads, searches and every other command go ahead;
+- forgets that record after a compaction (`PostCompact`, or `SessionStart` with source `compact` or `clear`), and removes the session's records when it ends (`SessionEnd`).
+
+In Claude Code each subagent recovers on its own, because its events carry its `agent_id`. Codex gives subagent hooks the parent's session id and documents no agent id for tool events, so there a subagent shares its parent's record. The hook reads only documented input fields and never the transcript, whose format Codex documents as not a stable interface for hooks. A record is an empty file in `hivex-hook` under the user's temporary directory, named by hashes of the session and agent ids; it holds no command, path or content, and records older than a week are removed when a session starts or ends. An input the hook does not recognise, such as one without `session_id`, an unknown event or tool input shape, or a record directory it cannot use, lets the call through with a `systemMessage` warning, so a change in a host's format never locks a session out. An answer takes a few milliseconds, including starting the process, and uses no network.
+
+The kit is opt-in, and HiveX never writes a host's settings. `init` and `update` read the project settings of each host whose directory the project has beyond HiveX's skill copies, `.claude/` or `.codex/`. The report's `hooks` lists each such host as `registered` when its settings run `hivex hook` on every event below, or as `recommended` with the `missing` events, the `configuration` to merge, the `file` to merge it into, the `steps` and the host's `documentation`. A registration missing `PostToolUse` would deny every edit, so it stays `recommended`. Settings outside the project, such as a user's own, are not read. A Codex `config.toml` is not parsed: a `hivex hook` command anywhere in it counts as registered.
+
+Install a release that has `hook` on `PATH` before registering it. An older `hivex` answers `hook` with an error, which both hosts treat as a failed hook that does not block the call, so the rule goes unenforced until the binary is updated. A session that recovered before the kit was registered has no record and is denied once; running a retrieval command records it.
+
+For Claude Code ([hooks reference](https://code.claude.com/docs/en/hooks)), merge this into `.claude/settings.json`, keeping its other settings and hooks; Claude Code runs project hooks once the workspace is trusted. `onFailure` keeps a failed gate from blocking the call on Windows without Git Bash:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Agent|Bash|PowerShell",
+        "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10, "onFailure": "continue" }]
+      }
+    ],
+    "PostToolUse": [
+      { "matcher": "Bash|PowerShell", "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }
+    ],
+    "PostCompact": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "hivex hook" }] }]
+  }
+}
+```
+
+For Codex ([hooks](https://learn.chatgpt.com/docs/hooks)), merge this into `.codex/hooks.json`, then review and trust the hooks in `/hooks`; Codex skips hooks it has not trusted. Codex reports its edits as `apply_patch` and its agent launches as `spawn_agent`. This configuration is verified against Codex's documentation only, not in a Codex session:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|spawn_agent)$",
+        "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }]
+      }
+    ],
+    "PostToolUse": [{ "matcher": "^Bash$", "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "PostCompact": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "hivex hook" }] }]
+  }
+}
+```
+
+The hook is a guardrail, not proof of a good recovery: any retrieval command satisfies it, and a host may run some tools outside its hooks. Reviews still check the rules a change states. Contract tests run the hook with inputs taken from both hosts' documentation.
 
 ## Extensions
 
@@ -106,7 +165,7 @@ hivex relations docs/policy.md --direction both
 hivex read docs/policy.md --from 20 --to 45
 ```
 
-All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles. Every agent recovers this way before acting, as the [`hivex` skill](../skills/hivex/SKILL.md#recover-sources-before-deciding) states; a known authority is read directly with `read` rather than through every command by ceremony. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
+All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles. Every agent recovers this way before acting, as the [`hivex` skill](../skills/hivex/SKILL.md#recover-sources-before-deciding) states: each task starts with focused `search`, `relations` and `read` on its topic. A known path goes straight to `read` only to open that source; it does not replace searching for the decisions on the topic or following that source's relations. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
 
 ### Search source passages
 

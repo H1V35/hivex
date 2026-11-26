@@ -2,7 +2,7 @@
 title: Rust quality and readability
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-11-18
+updated_at: 2026-11-26
 tags: [rust, quality]
 ---
 
@@ -48,10 +48,10 @@ The following direct dependencies are allowed in addition to a domain's own modu
 
 | Consumer | Permitted domains |
 | --- | --- |
-| documents, foundation | none |
-| CLI and binary entry point | documents, foundation |
+| documents, foundation, hook | none |
+| CLI and binary entry point | documents, foundation, hook |
 
-Documents own ephemeral SQLite retrieval alongside parsing and authored navigation. Foundation owns safe initialization and updates, including ponytail plugin installation. Neither imports CLI or the other domain. Retired graph, execution, provider and work domains have no active dependency entries.
+Documents own ephemeral SQLite retrieval alongside parsing and authored navigation. Foundation owns safe initialization and updates, including ponytail plugin installation. Hook owns the `hivex hook` answers and reads whether host settings register it. None imports CLI or another domain. Retired graph, execution, provider and work domains have no active dependency entries.
 
 `cargo test --locked --test architecture` follows production module declarations from `src/main.rs`, checks imports and qualified paths (including relative paths and written macro tokens), and requires private submodules. Root aliases/glob imports and custom production `#[path]` redirection are rejected because they would obscure the dependency boundary. Normal local aliases remain usable: their imports establish the dependency and Rust privacy protects the exposed interface. Explicit test-only modules/functions are excluded from dependency checks; their behavior and source quality are still verified. The gate is a source policy check, not a compiler name-resolution engine or a security sandbox for arbitrary macro expansion.
 

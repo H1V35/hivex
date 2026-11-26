@@ -9,6 +9,7 @@ use crate::documents::Project;
 use crate::error::{HiveXError, Result};
 use arguments::{Arguments, invalid};
 use serde_json::Value;
+use std::path::Path;
 
 const ORIGIN: &str = "current-worktree";
 
@@ -38,7 +39,8 @@ fn command(args: &[String]) -> Result<Value> {
     "relations" => relations::command(args),
     "check" => check::command(args),
     "init" => initialize(args),
-    "update" => project(args, "update", crate::foundation::update),
+    "update" => update(args),
+    "hook" => hook(args),
     "ask" | "neighbors" | "review" | "warnings" | "snapshot" | "recover" | "prune" | "status" => {
       Err(HiveXError::new(
         "COMMAND_RETIRED",
@@ -46,7 +48,7 @@ fn command(args: &[String]) -> Result<Value> {
       ))
     }
     _ => Err(invalid(
-      "Use sources, read, search, relations, check, init or update; see --help",
+      "Use sources, read, search, relations, check, init, update or hook; see --help",
     )),
   }
 }
@@ -58,15 +60,39 @@ fn initialize(args: &[String]) -> Result<Value> {
       "Use init [--extension <repository>] [--root <project>]",
     ));
   }
-  crate::foundation::initialize(arguments.root(), arguments.value("extension"))
+  let report = crate::foundation::initialize(arguments.root(), arguments.value("extension"))?;
+  Ok(with_hooks(report, arguments.root()))
 }
 
-fn project(args: &[String], command: &str, run: fn(&str) -> Result<Value>) -> Result<Value> {
+fn update(args: &[String]) -> Result<Value> {
   let arguments = Arguments::parse(args, &["root"], &[])?;
   if arguments.positionals().len() != 1 {
-    return Err(invalid(format!("Use {command} [--root <project>]")));
+    return Err(invalid("Use update [--root <project>]"));
   }
-  run(arguments.root())
+  let report = crate::foundation::update(arguments.root())?;
+  Ok(with_hooks(report, arguments.root()))
+}
+
+/// Adds to an `init` or `update` report whether each host the project uses registers
+/// `hivex hook`, recommending the configuration when it does not.
+fn with_hooks(mut report: Value, root: &str) -> Value {
+  if let Some(object) = report.as_object_mut() {
+    object.insert("hooks".into(), crate::hook::registrations(Path::new(root)));
+    object.sort_keys();
+  }
+  report
+}
+
+/// Answer one Claude Code or Codex hook event read from stdin. The hook answers every input and
+/// lets through any it does not recognise, so it never returns an error.
+fn hook(args: &[String]) -> Result<Value> {
+  if args.len() != 1 {
+    return Err(invalid("Use hook, with the host's hook event on stdin"));
+  }
+  let mut input = Vec::new();
+  // An unreadable stdin leaves the input empty, which the hook lets through with a warning.
+  let _ = std::io::Read::read_to_end(&mut std::io::stdin().lock(), &mut input);
+  Ok(crate::hook::handle(&input))
 }
 
 fn status(project: &Project) -> &'static str {
