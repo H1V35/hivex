@@ -29,15 +29,21 @@ impl Markers {
     }
   }
 
+  /// Writes this agent's marker, or restarts its age, by staging a new empty file and renaming it
+  /// over the old one, so a check running meanwhile never finds it missing and a failed write
+  /// keeps the old one.
   pub fn record(&self) -> io::Result<()> {
     self.ready()?;
-    // A new recovery restarts the marker's age; a new file is never opened through a link.
-    self.forget()?;
+    let staged = self
+      .directory
+      .join(format!("{}.{}", self.own, std::process::id()));
     OpenOptions::new()
       .write(true)
       .create_new(true)
-      .open(self.directory.join(&self.own))
-      .map(drop)
+      .open(&staged)?;
+    fs::rename(&staged, self.directory.join(&self.own)).inspect_err(|_| {
+      let _ = fs::remove_file(&staged);
+    })
   }
 
   /// Whether this agent's marker exists. Storage where no marker could be written or removed must

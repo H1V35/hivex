@@ -24,6 +24,8 @@ struct Host {
   /// must go ahead.
   on_failure: Option<&'static str>,
   steps: &'static str,
+  /// What to do when an unparsed settings file names the hook.
+  unverified_steps: &'static str,
   documentation: &'static str,
   note: Option<&'static str>,
 }
@@ -61,6 +63,7 @@ const HOSTS: &[Host] = &[
     // Without Git Bash, Claude Code otherwise blocks the call when this hook fails.
     on_failure: Some("continue"),
     steps: "Install a HiveX release that has the hook command on PATH first, and use Claude Code 2.1.295 or later, which reads onFailure. Then merge configuration into .claude/settings.json, keeping its other settings and hooks. Claude Code runs project hooks once the workspace is trusted.",
+    unverified_steps: "",
     documentation: "https://code.claude.com/docs/en/hooks",
     note: None,
   },
@@ -87,7 +90,8 @@ const HOSTS: &[Host] = &[
     gated: "^(Bash|apply_patch|spawn_agent)$",
     shell: "^Bash$",
     on_failure: None,
-    steps: "Install a HiveX release that has the hook command on PATH first. Then merge configuration into .codex/hooks.json and review and trust the new hooks in /hooks; Codex skips hooks it has not trusted. HiveX does not parse config.toml: a kit registered there is reported as unverified, so check that it covers every event and matcher in configuration.",
+    steps: "Install a HiveX release that has the hook command on PATH first. Then merge configuration into .codex/hooks.json and review and trust the new hooks in /hooks; Codex skips hooks it has not trusted. HiveX does not parse config.toml.",
+    unverified_steps: "HiveX does not parse config.toml, which names hivex hook. Check that its registration covers every event and matcher in configuration and complete it there, rather than adding a second registration to .codex/hooks.json that Codex would run as well.",
     documentation: "https://learn.chatgpt.com/docs/hooks",
     note: Some(
       "Verified against Codex's documentation only, not in a Codex session. Codex documents no agent id for tool events, so a subagent shares its parent session's recovery.",
@@ -143,10 +147,11 @@ pub fn registrations(root: &Path) -> Value {
       } else {
         "unverified"
       });
+      report["steps"] = json!(host.steps);
       if !unread.is_empty() {
+        report["steps"] = json!(host.unverified_steps);
         report["unread"] = json!(unread);
       }
-      report["steps"] = json!(host.steps);
       report
     })
     .map(|mut report| {
@@ -187,8 +192,11 @@ fn registered(settings: &[Value], event: &str, values: &[&[&str]], failure: Opti
         .into_iter()
         .flatten()
         .any(|handler| {
+          // A background hook cannot deny the call, and an `if` condition narrows it.
           handler["type"] == "command"
-            && handler["command"].as_str().is_some_and(runs_hook)
+            && runs_hook(handler)
+            && handler["async"] != true
+            && handler["asyncRewake"] != true
             && handler.get("if").is_none()
             && handler["onFailure"] != "block"
             && failure.is_none_or(|failure| handler["onFailure"] == failure)
@@ -221,10 +229,13 @@ fn covers(matcher: Option<&str>, value: &str) -> bool {
   }
 }
 
-/// `hivex hook`, also through a path to the executable.
-fn runs_hook(command: &str) -> bool {
-  command
-    .trim()
-    .strip_suffix(" hook")
-    .is_some_and(|program| program.ends_with("hivex") || program.ends_with("hivex.exe"))
+/// A handler that runs `hivex hook`, also through a path to the executable, in shell form or in
+/// Claude Code's exec form (`command` with `args`).
+fn runs_hook(handler: &Value) -> bool {
+  let hivex = |program: &str| program.ends_with("hivex") || program.ends_with("hivex.exe");
+  let command = handler["command"].as_str().unwrap_or_default().trim();
+  match handler.get("args") {
+    Some(arguments) => *arguments == json!(["hook"]) && hivex(command),
+    None => command.strip_suffix(" hook").is_some_and(hivex),
+  }
 }

@@ -234,6 +234,8 @@ fn reads_searches_and_other_commands_are_never_denied() {
     "rtk git commit -m 'docs: guide'",
     "rtk proxy gh pr create --draft",
     "cat <<EOF > notes.md\ntext\nEOF\ngit commit -F notes.md",
+    "cat <<\\EOF > notes.md\ntext\nEOF\ngit commit -F notes.md",
+    "cat <<'END OF NOTES' > notes.md\nEOF\nEND OF NOTES\ngit commit -F notes.md",
     "cargo test\ngit commit -m 'fix: tests'",
   ] {
     assert!(
@@ -546,6 +548,13 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
       .unwrap()
       .contains("Verified against Codex's documentation only")
   );
+  // It is completed in `config.toml`, not registered a second time.
+  assert!(
+    codex["steps"]
+      .as_str()
+      .unwrap()
+      .contains("rather than adding a second registration")
+  );
   assert!(
     update["hooks"][0]["steps"]
       .as_str()
@@ -570,8 +579,15 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
     ]}),
   );
   assert_eq!(registered["hooks"][1]["note"], codex["note"]);
-  // A registration that cannot record recovery would deny every edit: without `PostToolUse`, or
-  // with a matcher that leaves out Bash.
+}
+
+#[test]
+fn only_a_registration_that_applies_the_rule_counts() {
+  let p = Project::new();
+  p.ok(&["init"]);
+  let settings = p.ok(&["update"])["hooks"][0]["configuration"].clone();
+  // A registration that cannot record recovery would deny every edit: without `PostToolUse`, with
+  // a matcher that leaves out Bash, or with a handler that is not run on every call before it.
   let mut without = settings.clone();
   without["hooks"]
     .as_object_mut()
@@ -583,7 +599,9 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
   other_type["hooks"]["PostToolUse"][0]["hooks"][0]["type"] = json!("http");
   let mut conditional = settings.clone();
   conditional["hooks"]["PostToolUse"][0]["hooks"][0]["if"] = json!("Bash(git *)");
-  for broken in [without, narrow, other_type, conditional] {
+  let mut background = settings.clone();
+  background["hooks"]["PostToolUse"][0]["hooks"][0]["async"] = json!(true);
+  for broken in [without, narrow, other_type, conditional, background] {
     p.json(".claude/settings.json", &broken);
     subset(
       &p.ok(&["update"])["hooks"][0],
@@ -600,6 +618,15 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
       &json!({"status": "recommended", "missing": ["PreToolUse"]}),
     );
   }
+  // Claude Code's exec form registers too.
+  let mut exec = settings.clone();
+  exec["hooks"]["PostToolUse"][0]["hooks"][0] =
+    json!({"type": "command", "command": "hivex", "args": ["hook"], "timeout": 10});
+  p.json(".claude/settings.json", &exec);
+  subset(
+    &p.ok(&["update"])["hooks"][0],
+    &json!({"status": "registered"}),
+  );
   // A matcher that covers every value also registers, here in the local settings file.
   p.json(".claude/settings.json", &json!({}));
   let mut local = settings.clone();

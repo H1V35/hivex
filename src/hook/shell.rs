@@ -80,6 +80,27 @@ fn next_line(rest: &mut Chars) -> Option<String> {
   Some(line.to_owned())
 }
 
+/// A here-document's delimiter word after quote removal: quoted parts are taken literally and a
+/// backslash keeps the next character.
+fn delimiter(rest: &mut Chars) -> String {
+  let mut word = String::new();
+  let mut quote = None;
+  while let Some(character) = rest.clone().next() {
+    match (quote, character) {
+      (None, c) if c.is_whitespace() || ";&|()<>".contains(c) => break,
+      (None, '\'' | '"') => quote = Some(character),
+      (Some(open), c) if c == open => quote = None,
+      (None, '\\') => {
+        rest.next();
+        word.extend(rest.clone().next());
+      }
+      _ => word.push(character),
+    }
+    rest.next();
+  }
+  word
+}
+
 /// The words of each simple command in a line, split at `;`, `&`, `|`, parentheses and line breaks
 /// outside quotes, leaving out here-document bodies. Backslash escapes the next character in Bash;
 /// PowerShell paths keep theirs.
@@ -148,12 +169,10 @@ impl Words {
       return;
     }
     let tabs = rest.as_str().starts_with('-');
-    let text = rest.as_str()[usize::from(tabs)..].trim_start_matches([' ', '\t']);
-    let end = text
-      .find(|c: char| c.is_whitespace() || ";&|()<>".contains(c))
-      .unwrap_or(text.len());
-    let delimiter = text[..end].replace(['\'', '"'], "");
-    *rest = text[end..].chars();
+    *rest = rest.as_str()[usize::from(tabs)..]
+      .trim_start_matches([' ', '\t'])
+      .chars();
+    let delimiter = delimiter(rest);
     self.documents.push((delimiter, tabs));
   }
 
