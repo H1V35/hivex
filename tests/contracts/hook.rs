@@ -125,6 +125,18 @@ fn claude_start(source: &str) -> Value {
   })
 }
 
+/// Claude Code, "`UserPromptSubmit` input", built from the common input fields and `prompt`.
+fn claude_prompt(prompt: &str) -> Value {
+  json!({
+    "session_id": "abc123",
+    "transcript_path": "/Users/.../.claude/projects/.../00893aaf-19fa-41d2-8238-13269b9b3ca0.jsonl",
+    "cwd": "/Users/...",
+    "permission_mode": "default",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": prompt
+  })
+}
+
 /// Claude Code, "`PostCompact` input".
 fn claude_post_compact() -> Value {
   json!({
@@ -459,20 +471,28 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
   assert!(warned(&hook(&p, &claude_write())));
 }
 
-/// Claude Code, "`PreToolUse` decision control" and "`PostToolUse` decision control", and Codex,
-/// "`PreToolUse`" and "`PostToolUse`": `additionalContext` reaches the model without blocking the
-/// call.
+/// Claude Code, "`PreToolUse` decision control", "`PostToolUse` decision control" and "Add context
+/// for Claude", and Codex, "`PreToolUse`", "`PostToolUse`" and "`UserPromptSubmit`":
+/// `additionalContext` reaches the model without blocking the call. The event is read on its own,
+/// so a malformed field or an input past the limit still names it.
 #[test]
-fn a_failure_on_a_tool_event_warns_the_agent_too() {
+fn a_failure_on_an_event_with_a_channel_warns_the_agent_too() {
   let p = Project::new();
   let unknown_tool = claude_tool("TaskCreate", &json!({"subject": "x"}));
   let mut unknown_after = unknown_tool.clone();
   unknown_after["hook_event_name"] = json!("PostToolUse");
   let codex_unknown = codex_tool("PreToolUse", "unknown_tool", "x");
+  let mut numbered_session = claude_write();
+  numbered_session["session_id"] = json!(42);
+  let mut oversize_after = claude_bash("PostToolUse", "hivex read docs/guide.md");
+  oversize_after["tool_response"] = json!({"stdout": "x".repeat(9 * 1024 * 1024)});
   for (event, name) in [
     (unknown_tool, "PreToolUse"),
     (unknown_after, "PostToolUse"),
     (codex_unknown, "PreToolUse"),
+    (numbered_session, "PreToolUse"),
+    (oversize_after, "PostToolUse"),
+    (claude_prompt("Fix the build"), "UserPromptSubmit"),
   ] {
     let answer = hook(&p, &event);
     assert!(warned(&answer), "{answer}");
@@ -527,16 +547,27 @@ fn each_failure_is_recorded_without_the_inputs_content() {
     &codex_tool("PreToolUse", "unknown_tool", "cat notes.md"),
   );
   hook(&p, &json!("not an object"));
+  let mut renamed = claude_write();
+  renamed["hook_event_name"] = json!("RotateTheSigningKey");
+  hook(&p, &renamed);
+  hook(
+    &p,
+    &claude_prompt("Rotate the signing key in /private/notes"),
+  );
   let report = failures(&p);
   subset(
     &report,
-    &json!({"command": "hook", "total": 5, "reasons": {
-      "missing-tool-fields": 1, "unknown-tool": 2, "no-session-id": 1, "not-a-hook-event": 1
+    &json!({"command": "hook", "total": 7, "skipped": 0, "problems": [], "reasons": {
+      "missing-tool-fields": 1, "unknown-tool": 2, "no-session-id": 1, "not-a-hook-event": 1,
+      "unknown-event": 2
     }}),
   );
-  // Newest first, each with the host its event shows.
+  // Newest first, each with the host its event shows and only an event the hook knows.
   let recent = report["recent"].as_array().unwrap();
+  assert_eq!(recent.len(), 7);
   for (entry, expected) in recent.iter().zip([
+    json!({"host": "unknown", "event": "UserPromptSubmit", "reason": "unknown-event"}),
+    json!({"host": "unknown", "event": null, "reason": "unknown-event"}),
     json!({"host": "unknown", "event": null, "reason": "not-a-hook-event", "session": null}),
     json!({"host": "codex", "event": "PreToolUse", "reason": "unknown-tool"}),
     json!({"host": "unknown", "event": "PreToolUse", "reason": "no-session-id", "session": null}),
@@ -567,6 +598,8 @@ fn each_failure_is_recorded_without_the_inputs_content() {
   for content in [
     "/private/notes/plan.md",
     "Rotate the signing key",
+    "RotateTheSigningKey",
+    "/private/notes",
     "TaskCreate",
     "unknown_tool",
     "notes.md",
@@ -591,7 +624,10 @@ fn a_record_it_cannot_write_never_stops_the_hook() {
     &claude_tool("TaskCreate", &json!({"subject": "x"}))
   )));
   assert!(denied(&hook(&p, &claude_write())));
-  assert_eq!(failures(&p)["total"], 0);
+  subset(
+    &failures(&p),
+    &json!({"total": 0, "problems": [{"path": directory.to_string_lossy(), "problem": "not-a-directory"}]}),
+  );
 }
 
 #[test]
@@ -615,6 +651,146 @@ fn the_record_keeps_at_most_two_files_of_64_kib() {
   subset(
     &failures(&p),
     &json!({"total": kept + 1, "reasons": {"unknown-event": kept, "not-a-hook-event": 1}}),
+  );
+}
+
+/// Failures at the same time take turns writing the record, so it stays within its limit and a
+/// rotation never replaces the full file it keeps with a newer one.
+#[test]
+fn failures_at_the_same_time_keep_the_record_whole() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  let previous = log.with_file_name("hook-failures.1.jsonl");
+  fs::create_dir_all(log.parent().unwrap()).unwrap();
+  let entry = "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":\"PreToolUse\",\"reason\":\"unknown-tool\",\"session\":null}\n";
+  let full = entry.repeat(64 * 1024 / entry.len());
+  fs::write(&log, &full).unwrap();
+  let mut children: Vec<_> = (0..8)
+    .map(|_| {
+      command(&p, &[])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap()
+    })
+    .collect();
+  for child in &mut children {
+    child.stdin.take().unwrap().write_all(b"[]").unwrap();
+  }
+  for child in children {
+    let output = child.wait_with_output().unwrap();
+    assert!(
+      output.status.success() && output.stderr.is_empty(),
+      "{output:?}"
+    );
+    assert!(warned(&serde_json::from_slice(&output.stdout).unwrap()));
+  }
+  assert_eq!(fs::read_to_string(&previous).unwrap(), full);
+  assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 8);
+  subset(
+    &failures(&p),
+    &json!({"total": full.lines().count() + 8, "skipped": 0, "problems": []}),
+  );
+}
+
+/// A failure that does not get its turn at the record within about a second skips its line and
+/// still lets the call through with its warning.
+#[test]
+fn a_record_another_process_holds_is_skipped() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  fs::create_dir_all(log.parent().unwrap()).unwrap();
+  let lock = fs::File::create(log.with_file_name("hook-failures.lock")).unwrap();
+  lock.lock().unwrap();
+  let started = Instant::now();
+  assert!(warned(&hook(&p, &json!("not an object"))));
+  assert!(started.elapsed() < Duration::from_secs(5));
+  drop(lock);
+  assert_eq!(failures(&p)["total"], 0);
+}
+
+/// A line a write left unfinished, as when the disk fills, does not hide the next failure.
+#[test]
+fn a_line_left_unfinished_does_not_hide_the_next_failure() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  fs::create_dir_all(log.parent().unwrap()).unwrap();
+  fs::write(
+    &log,
+    "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n{\"time\":\"2026-11-",
+  )
+  .unwrap();
+  hook(&p, &json!("not an object"));
+  subset(
+    &failures(&p),
+    &json!({"total": 2, "skipped": 1, "reasons": {"unknown-tool": 1, "not-a-hook-event": 1}}),
+  );
+}
+
+/// `hook --failures` reads only files no larger than the record keeps, and from each line only the
+/// fields the hook writes, in the form it writes them; it names each file it did not read.
+#[test]
+fn the_report_reads_only_what_the_hook_writes() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  let previous = log.with_file_name("hook-failures.1.jsonl");
+  fs::create_dir_all(log.parent().unwrap()).unwrap();
+  let entry = |event: &str, extra: &str| {
+    format!(
+      "{{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"claude\",\"event\":{event},\"reason\":\"unknown-tool\",\"session\":null{extra}}}\n"
+    )
+  };
+  let lines = [
+    entry(
+      "\"PreToolUse\"",
+      ",\"command\":\"git commit -m 'Rotate the signing key'\"",
+    ),
+    entry("\"RotateTheSigningKey\"", ""),
+    "{\"reason\":\"unknown-tool\"}\n".to_owned(),
+  ];
+  fs::write(&log, lines.concat()).unwrap();
+  fs::write(&previous, entry("null", "").repeat(1000)).unwrap();
+  let report = failures(&p);
+  subset(
+    &report,
+    &json!({"total": 1, "skipped": 2, "problems": [
+      {"path": previous.to_string_lossy(), "problem": "larger-than-64-kib"}
+    ]}),
+  );
+  assert!(!report.to_string().contains("git commit"), "{report}");
+  assert_eq!(
+    report["recent"][0],
+    json!({"time": "2026-11-26T00:00:00Z", "host": "claude", "event": "PreToolUse", "reason": "unknown-tool", "session": null})
+  );
+}
+
+/// `hook --failures` follows no link to the record's directory or files.
+#[cfg(unix)]
+#[test]
+fn the_report_follows_no_link() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  let directory = log.parent().unwrap();
+  let elsewhere = p.path("elsewhere");
+  fs::create_dir_all(&elsewhere).unwrap();
+  fs::write(
+    elsewhere.join("hook-failures.jsonl"),
+    "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"claude\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n",
+  )
+  .unwrap();
+  fs::create_dir_all(directory).unwrap();
+  std::os::unix::fs::symlink(elsewhere.join("hook-failures.jsonl"), &log).unwrap();
+  subset(
+    &failures(&p),
+    &json!({"total": 0, "problems": [{"path": log.to_string_lossy(), "problem": "not-a-regular-file"}]}),
+  );
+  fs::remove_file(&log).unwrap();
+  fs::remove_dir(directory).unwrap();
+  std::os::unix::fs::symlink(&elsewhere, directory).unwrap();
+  subset(
+    &failures(&p),
+    &json!({"total": 0, "problems": [{"path": directory.to_string_lossy(), "problem": "not-a-directory"}]}),
   );
 }
 

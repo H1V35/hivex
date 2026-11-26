@@ -17,8 +17,9 @@ pub use registration::registrations;
 use failures::Entry;
 use markers::Markers;
 use serde::Deserialize;
-use serde::de::IgnoredAny;
+use serde::de::{IgnoredAny, MapAccess, Visitor};
 use serde_json::{Value, json};
+use std::fmt;
 
 /// Larger inputs are let through with a warning rather than parsed: an answer must stay fast.
 pub const MAX_INPUT: usize = 8 * 1024 * 1024;
@@ -36,8 +37,20 @@ const READING: &[&str] = &[
   "update_plan",
 ];
 
-/// The documented fields the hook reads; the rest of the input is skipped unread. `turn_id` and
-/// `model` only tell Codex's events apart.
+/// The events the failure record names: those the kit registers, and `UserPromptSubmit`, which
+/// both hosts also give a channel to the agent. Any other name is recorded as none, so no text from
+/// an input reaches the record.
+const EVENTS: &[&str] = &[
+  "SessionStart",
+  "SubagentStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostCompact",
+  "SessionEnd",
+];
+
+/// The documented fields the hook reads; the rest of the input is skipped unread.
 #[derive(Deserialize)]
 struct Event {
   session_id: Option<String>,
@@ -46,8 +59,73 @@ struct Event {
   source: Option<String>,
   tool_name: Option<String>,
   tool_input: Option<Value>,
-  turn_id: Option<IgnoredAny>,
-  model: Option<IgnoredAny>,
+}
+
+/// What a failing input says about where it came from: its event, its session and whether it
+/// carries Codex's `turn_id` or `model`. Each field is read on its own, from as much of the input as
+/// the hook keeps, so an input with a malformed field or past the size limit still routes its
+/// warning to the agent.
+#[derive(Default)]
+struct Envelope {
+  event: Option<String>,
+  session: Option<String>,
+  turn: bool,
+  model: bool,
+}
+
+impl Envelope {
+  fn read(input: &[u8]) -> Self {
+    let mut envelope = Self::default();
+    // Reading stops where the input stops being JSON, keeping the fields read before.
+    let _ = serde::Deserializer::deserialize_map(
+      &mut serde_json::Deserializer::from_slice(input),
+      &mut envelope,
+    );
+    envelope
+  }
+
+  /// The host, as the input shows it: Codex's events carry `turn_id`, or `model` outside
+  /// `SessionStart`, where Claude Code sends it too, and Claude Code sets `CLAUDE_PROJECT_DIR` for
+  /// the hooks it runs.
+  fn host(&self) -> &'static str {
+    let codex = self.turn || (self.model && self.event.as_deref() != Some("SessionStart"));
+    match (codex, std::env::var_os("CLAUDE_PROJECT_DIR").is_some()) {
+      (true, _) => "codex",
+      (false, true) => "claude",
+      (false, false) => "unknown",
+    }
+  }
+}
+
+impl<'de> Visitor<'de> for &mut Envelope {
+  type Value = ();
+
+  fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+    formatter.write_str("a hook event")
+  }
+
+  fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+    while let Some(key) = map.next_key::<String>()? {
+      match key.as_str() {
+        "hook_event_name" => self.event = text(map.next_value()?),
+        "session_id" => self.session = text(map.next_value()?),
+        other => {
+          self.turn |= other == "turn_id";
+          self.model |= other == "model";
+          map.next_value::<IgnoredAny>()?;
+        }
+      }
+    }
+    Ok(())
+  }
+}
+
+/// A string value, and none for a value of another type.
+fn text(value: Value) -> Option<String> {
+  match value {
+    Value::String(text) => Some(text),
+    _ => None,
+  }
 }
 
 /// What a `PreToolUse` or `PostToolUse` call is, from its tool and input.
@@ -80,7 +158,8 @@ pub fn handle(input: &[u8]) -> Value {
   let event = (input.len() <= MAX_INPUT)
     .then(|| serde_json::from_slice::<Event>(input).ok())
     .flatten();
-  answer(input.len(), event.as_ref()).unwrap_or_else(|failure| fail_open(event.as_ref(), &failure))
+  answer(input.len(), event.as_ref())
+    .unwrap_or_else(|failure| fail_open(&Envelope::read(input), &failure))
 }
 
 fn answer(size: usize, event: Option<&Event>) -> Result<Value, Failure> {
@@ -228,13 +307,20 @@ fn context(event: &str) -> Value {
 /// `systemMessage`; the agent reads it in `additionalContext` on the events both hosts document it
 /// for, after the reminder at the start of a session or subagent. The failure is recorded without
 /// the input's content.
-fn fail_open(event: Option<&Event>, failure: &Failure) -> Value {
-  let name = event.and_then(|event| event.hook_event_name.as_deref());
+fn fail_open(envelope: &Envelope, failure: &Failure) -> Value {
+  let name = envelope
+    .event
+    .as_deref()
+    .filter(|name| EVENTS.contains(name));
   failures::record(&Entry {
-    host: host(event),
-    event: name.filter(|name| plain(name)),
+    host: envelope.host(),
+    event: name,
     reason: failure.code,
-    session: event.and_then(session).map(markers::digest),
+    session: envelope
+      .session
+      .as_deref()
+      .filter(|id| !id.is_empty())
+      .map(markers::digest),
   });
   let message = format!(
     "HiveX hook: {}, so the call goes ahead. Recover with `hivex search`, `hivex relations` and `hivex read` before acting anyway.",
@@ -242,30 +328,11 @@ fn fail_open(event: Option<&Event>, failure: &Failure) -> Value {
   );
   let context = match name {
     Some("SessionStart" | "SubagentStart") => format!("{REMINDER}\n\n{message}"),
-    Some("PreToolUse" | "PostToolUse") => message.clone(),
+    Some("UserPromptSubmit" | "PreToolUse" | "PostToolUse") => message.clone(),
     _ => return json!({"systemMessage": message}),
   };
   json!({
     "systemMessage": message,
     "hookSpecificOutput": {"hookEventName": name, "additionalContext": context},
   })
-}
-
-/// The host, as its event shows it: Codex's events carry `turn_id`, or `model` outside
-/// `SessionStart`, and Claude Code sets `CLAUDE_PROJECT_DIR` for the hooks it runs.
-fn host(event: Option<&Event>) -> &'static str {
-  let codex = event.is_some_and(|event| {
-    event.turn_id.is_some()
-      || (event.model.is_some() && event.hook_event_name.as_deref() != Some("SessionStart"))
-  });
-  match (codex, std::env::var_os("CLAUDE_PROJECT_DIR").is_some()) {
-    (true, _) => "codex",
-    (false, true) => "claude",
-    (false, false) => "unknown",
-  }
-}
-
-/// An event name the record keeps: letters only, as both hosts name their events.
-fn plain(name: &str) -> bool {
-  (1..=64).contains(&name.len()) && name.bytes().all(|byte| byte.is_ascii_alphabetic())
 }
