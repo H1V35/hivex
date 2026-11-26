@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use std::fs;
 use std::io::Write;
 use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 /// The hook's answer to `event`, `Null` when it prints nothing. Markers go to the project's own
 /// temporary directory, never the user's.
@@ -157,6 +157,21 @@ fn a_session_is_denied_edits_until_it_recovers_with_hivex() {
     assert_eq!(hook(&p, &claude_bash("PostToolUse", recovery)), Value::Null);
     assert_eq!(hook(&p, &claude_write()), Value::Null, "{recovery}");
   }
+  // Claude Code, "PowerShell": the same fields as Bash, on Windows with a quoted executable path.
+  let p = Project::new();
+  let mut powershell = claude_bash(
+    "PostToolUse",
+    r#"& "C:\Program Files\HiveX\hivex.exe" search topic"#,
+  );
+  powershell["tool_name"] = json!("PowerShell");
+  hook(&p, &powershell);
+  assert_eq!(hook(&p, &claude_write()), Value::Null);
+  // Only a command in command position recovers, not the same words in an argument.
+  let p = Project::new();
+  for text in ["echo hivex search topic", "rg -n 'hivex search' docs"] {
+    hook(&p, &claude_bash("PostToolUse", text));
+    assert!(denied(&hook(&p, &claude_write())), "{text}");
+  }
 }
 
 #[test]
@@ -198,6 +213,9 @@ fn reads_searches_and_other_commands_are_never_denied() {
     "git log --grep commit",
     "gh pr view 12",
     "hivex search topic",
+    "rg -n 'before git commit' docs",
+    "grep -rn \"gh pr create\" docs",
+    "echo git commit",
   ] {
     assert_eq!(
       hook(&p, &claude_bash("PreToolUse", command)),
@@ -209,6 +227,8 @@ fn reads_searches_and_other_commands_are_never_denied() {
     "git commit -m 'docs: guide'",
     "git -C ../repo -c core.hooksPath=.githooks commit -F message.txt",
     "cd repo && gh pr create --draft --body-file body.md",
+    "GIT_EDITOR=true git --no-pager commit",
+    "cargo test\ngit commit -m 'fix: tests'",
   ] {
     assert!(
       denied(&hook(&p, &claude_bash("PreToolUse", command))),
@@ -294,6 +314,20 @@ fn markers_are_empty_and_named_only_by_hashes() {
     assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()), "{name}");
   }
   assert_eq!(fs::read(markers[0].path()).unwrap().len(), 0);
+  // Expiry removes old markers only, never another file in the directory.
+  let month = SystemTime::now() - Duration::from_secs(30 * 24 * 60 * 60);
+  p.write("tmp/hivex-hook/notes.txt", "kept");
+  for path in [markers[0].path(), p.path("tmp/hivex-hook/notes.txt")] {
+    fs::File::options()
+      .append(true)
+      .open(path)
+      .unwrap()
+      .set_modified(month)
+      .unwrap();
+  }
+  hook(&p, &claude_start("startup"));
+  assert!(!markers[0].path().exists());
+  assert!(p.path("tmp/hivex-hook/notes.txt").exists());
 }
 
 #[test]
@@ -310,12 +344,20 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
   without_command["tool_input"] = json!({"script": "git commit"});
   let mut unknown_event = claude_write();
   unknown_event["hook_event_name"] = json!("PreToolCall");
+  let mut without_input = claude_write();
+  without_input.as_object_mut().unwrap().remove("tool_input");
+  let unknown_tool = claude_tool("TaskCreate", &json!({"subject": "x"}));
+  let mut oversize = claude_write();
+  oversize["tool_input"]["content"] = json!("x".repeat(9 * 1024 * 1024));
   for event in [
     json!("not an object"),
     without_session,
     without_tool,
     without_command,
     unknown_event,
+    without_input,
+    unknown_tool,
+    oversize,
   ] {
     assert!(warned(&hook(&p, &event)), "{event}");
   }
@@ -328,6 +370,28 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
   // A marker directory the hook cannot use.
   p.write("tmp/hivex-hook", "not a directory");
   assert!(warned(&hook(&p, &claude_write())));
+}
+
+/// A marker directory another user of a shared temporary directory could write to, or a link to
+/// someone else's directory, is never used.
+#[cfg(unix)]
+#[test]
+fn a_marker_directory_others_can_write_is_not_used() {
+  use std::os::unix::fs::PermissionsExt;
+  let p = Project::new();
+  fs::create_dir_all(p.path("tmp/hivex-hook")).unwrap();
+  fs::set_permissions(p.path("tmp/hivex-hook"), fs::Permissions::from_mode(0o777)).unwrap();
+  assert!(warned(&hook(&p, &claude_write())));
+  let p = Project::new();
+  fs::create_dir_all(p.path("tmp")).unwrap();
+  p.write("elsewhere/notes.txt", "kept");
+  std::os::unix::fs::symlink(p.path("elsewhere"), p.path("tmp/hivex-hook")).unwrap();
+  assert!(warned(&hook(&p, &claude_write())));
+  assert!(warned(&hook(
+    &p,
+    &claude_bash("PostToolUse", "hivex search topic")
+  )));
+  assert_eq!(fs::read_dir(p.path("elsewhere")).unwrap().count(), 1);
 }
 
 /// Codex, "Common input fields" and "`PreToolUse`": `apply_patch` and Bash carry `command`.
@@ -409,6 +473,14 @@ fn each_answer_takes_well_under_100_ms() {
       started.elapsed()
     })
     .collect();
+  // A shell call whose output the host sends along with the command.
+  let mut completion = claude_bash("PostToolUse", "cargo test");
+  completion["tool_response"] = json!({"stdout": "ok\n".repeat(128 * 1024), "stderr": ""});
+  times.extend((0..15).map(|_| {
+    let started = Instant::now();
+    hook(&p, &completion);
+    started.elapsed()
+  }));
   times.sort();
   // The median includes starting the process, as the host does on every call.
   assert!(
@@ -420,34 +492,45 @@ fn each_answer_takes_well_under_100_ms() {
 #[test]
 fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
   let p = Project::new();
-  // A fresh project has only HiveX's skill copies under `.claude`, so no host is recommended.
-  assert_eq!(p.ok(&["init"])["hooks"], json!([]));
-  p.write(".claude/settings.json", "{\"outputStyle\": \"Concise\"}\n");
-  p.write(".codex/config.toml", "model = \"gpt-5\"\n");
-  let update = p.ok(&["update"]);
+  // `init` writes HiveX's skills into `.claude`, so Claude Code is a host from the start.
   subset(
-    &update,
-    &json!({"hooks": [
-      {
-        "host": "claude",
-        "status": "recommended",
-        "file": ".claude/settings.json",
-        "documentation": "https://code.claude.com/docs/en/hooks",
-        "missing": ["SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "PostCompact", "SessionEnd"]
-      },
-      {
-        "host": "codex",
-        "status": "recommended",
-        "file": ".codex/hooks.json",
-        "documentation": "https://learn.chatgpt.com/docs/hooks"
-      }
-    ]}),
+    &p.ok(&["init"]),
+    &json!({"hooks": [{
+      "host": "claude",
+      "status": "recommended",
+      "file": ".claude/settings.json",
+      "documentation": "https://code.claude.com/docs/en/hooks",
+      "missing": ["SessionStart", "SubagentStart", "PreToolUse", "PostToolUse", "PostCompact", "SessionEnd"]
+    }]}),
+  );
+  p.write(".claude/settings.json", "{\"outputStyle\": \"Concise\"}\n");
+  // Codex settings in `config.toml` are not read, so they register nothing.
+  p.write(
+    ".codex/config.toml",
+    "[[hooks.PreToolUse.hooks]]\ncommand = \"hivex hook\"\n",
+  );
+  let update = p.ok(&["update"]);
+  let codex = &update["hooks"][1];
+  subset(
+    codex,
+    &json!({
+      "host": "codex",
+      "status": "recommended",
+      "file": ".codex/hooks.json",
+      "documentation": "https://learn.chatgpt.com/docs/hooks"
+    }),
   );
   assert!(
-    update["hooks"][1]["steps"]
+    codex["note"]
       .as_str()
       .unwrap()
-      .contains("verified against Codex's documentation only")
+      .contains("Verified against Codex's documentation only")
+  );
+  assert!(
+    update["hooks"][0]["steps"]
+      .as_str()
+      .unwrap()
+      .contains("Claude Code 2.1.295")
   );
   assert_eq!(
     fs::read_to_string(p.path(".claude/settings.json")).unwrap(),
@@ -457,22 +540,41 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
   let mut settings = json!({"outputStyle": "Concise"});
   settings["hooks"] = update["hooks"][0]["configuration"]["hooks"].clone();
   p.json(".claude/settings.json", &settings);
-  p.json(".codex/hooks.json", &update["hooks"][1]["configuration"]);
+  p.json(".codex/hooks.json", &codex["configuration"]);
+  let registered = p.ok(&["update"]);
   subset(
-    &p.ok(&["update"]),
+    &registered,
     &json!({"hooks": [
       {"host": "claude", "status": "registered"},
-      {"host": "codex", "status": "registered"}
+      {"host": "codex", "status": "registered", "documentation": "https://learn.chatgpt.com/docs/hooks"}
     ]}),
   );
-  // A registration without the event that records recovery would deny every edit.
-  settings["hooks"]
+  assert_eq!(registered["hooks"][1]["note"], codex["note"]);
+  // A registration that cannot record recovery would deny every edit: without `PostToolUse`, or
+  // with a matcher that leaves out Bash.
+  let mut without = settings.clone();
+  without["hooks"]
     .as_object_mut()
     .unwrap()
     .remove("PostToolUse");
-  p.json(".claude/settings.json", &settings);
+  let mut narrow = settings.clone();
+  narrow["hooks"]["PostToolUse"][0]["matcher"] = json!("PowerShell");
+  let mut other_type = settings.clone();
+  other_type["hooks"]["PostToolUse"][0]["hooks"][0]["type"] = json!("http");
+  for broken in [without, narrow, other_type] {
+    p.json(".claude/settings.json", &broken);
+    subset(
+      &p.ok(&["update"])["hooks"][0],
+      &json!({"status": "recommended", "missing": ["PostToolUse"]}),
+    );
+  }
+  // A matcher that covers every value also registers, here in the local settings file.
+  p.json(".claude/settings.json", &json!({}));
+  let mut local = settings.clone();
+  local["hooks"]["PreToolUse"][0]["matcher"] = json!("*");
+  p.json(".claude/settings.local.json", &local);
   subset(
     &p.ok(&["update"])["hooks"][0],
-    &json!({"status": "recommended", "missing": ["PostToolUse"]}),
+    &json!({"status": "registered"}),
   );
 }

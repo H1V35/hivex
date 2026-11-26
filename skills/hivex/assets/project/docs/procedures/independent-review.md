@@ -21,27 +21,31 @@ Use the reviewer profile recorded in engineering (tool, model and effort). Never
 
 ## Prerequisites
 
-- The branch is pushed and its issue, and its pull request when one is open, state the intended outcome. Dependency updates opened by a bot may have no issue: omit the issue capture and its check, and say in the prompt that the pull request has no issue. A review that runs before the pull request is opened omits the pull request capture and its check the same way, and says so in the prompt.
+- The branch is pushed and its issue, and its pull request when one is open, state the intended outcome. Dependency updates opened by a bot may have no issue: omit the issue capture and its check, and say in the prompt that the pull request has no issue. A review that runs before the pull request is opened captures only the issue, as the recipe below does.
 - The reviewer tool is installed and authenticated: `codex` or `claude`, plus `jq` and an authenticated `gh`.
 - `/.reviews/` stays ignored for local review traces.
 
 ## Run the review
 
-Capture the tracker first; the read-only sandbox may have no network access. An empty capture stops the run.
+Capture the tracker first; the read-only sandbox may have no network access. An empty capture stops the run. Leave `PR` empty for a review that runs before the pull request is opened: the run then captures only the issue and keeps its evidence under the issue.
 
 ```bash
-ISSUE=<issue> PR=<pr> BASE=origin/main SHA=$(git rev-parse HEAD)
-OUT=.reviews/$PR && mkdir -p "$OUT"
+ISSUE=<issue> PR=<pr, or empty before the pull request> BASE=origin/main SHA=$(git rev-parse HEAD)
+OUT=.reviews/${PR:-issue-$ISSUE} && mkdir -p "$OUT"
 gh issue view "$ISSUE" --json title,body,comments > "$OUT/issue.json"
-gh pr view "$PR" --json title,body,comments,reviews > "$OUT/pr.json"
-test -s "$OUT/issue.json" && test -s "$OUT/pr.json" ||
+CAPTURES="$OUT/issue.json"
+if [ -n "$PR" ]; then
+  gh pr view "$PR" --json title,body,comments,reviews > "$OUT/pr.json"
+  CAPTURES="$CAPTURES and $OUT/pr.json"
+fi
+test -s "$OUT/issue.json" && { [ -z "$PR" ] || test -s "$OUT/pr.json"; } ||
   { echo "A tracker capture is empty; the review cannot start." >&2; exit 1; }
-PROMPT="You are the independent reviewer for issue #$ISSUE (pull request #$PR) in this repository.
+PROMPT="You are the independent reviewer for issue #$ISSUE${PR:+ (pull request #$PR)} in this repository.
 Follow .agents/skills/hivex-review/SKILL.md. Read-only: do not edit files, commit, push or comment
 on GitHub.
 Reviewed revision: $SHA, compared with its merge base: git diff $BASE...$SHA.
-Read the intended outcome yourself from the unedited tracker captures $OUT/issue.json and
-$OUT/pr.json, together with the diff and the repository's Markdown authorities.
+Read the intended outcome yourself from the unedited tracker captures $CAPTURES, together with the
+diff and the repository's Markdown authorities.
 Recover with HiveX (search, relations, read) the decisions that govern the changed area yourself,
 check the diff against them and report any decision it ignores or contradicts as a finding.
 Record each HiveX command you ran in the verification, with the rule it established.

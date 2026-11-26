@@ -9,6 +9,7 @@ use crate::documents::Project;
 use crate::error::{HiveXError, Result};
 use arguments::{Arguments, invalid};
 use serde_json::Value;
+use std::io::Read;
 use std::path::Path;
 
 const ORIGIN: &str = "current-worktree";
@@ -90,8 +91,12 @@ fn hook(args: &[String]) -> Result<Value> {
     return Err(invalid("Use hook, with the host's hook event on stdin"));
   }
   let mut input = Vec::new();
-  // An unreadable stdin leaves the input empty, which the hook lets through with a warning.
-  let _ = std::io::Read::read_to_end(&mut std::io::stdin().lock(), &mut input);
+  // An unreadable stdin leaves the input empty, which the hook lets through with a warning. Input
+  // beyond the limit is read and dropped, so the host can finish writing it.
+  let mut stdin = std::io::stdin().lock();
+  let limit = u64::try_from(crate::hook::MAX_INPUT + 1).unwrap_or(u64::MAX);
+  let _ = Read::read_to_end(&mut Read::take(&mut stdin, limit), &mut input);
+  let _ = std::io::copy(&mut stdin, &mut std::io::sink());
   Ok(crate::hook::handle(&input))
 }
 

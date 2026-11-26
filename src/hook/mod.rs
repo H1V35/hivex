@@ -5,63 +5,71 @@
 //! warning any input it does not recognise, so a change in a host's format never locks a session
 //! out.
 
+mod markers;
 mod registration;
+mod shell;
 
 pub use registration::registrations;
 
-use regex::Regex;
+use markers::Markers;
+use serde::Deserialize;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
-use std::fmt::Write;
-use std::fs;
-use std::path::PathBuf;
-use std::sync::LazyLock;
-use std::time::{Duration, SystemTime};
 
+/// Larger inputs are let through with a warning rather than parsed: an answer must stay fast.
+pub const MAX_INPUT: usize = 8 * 1024 * 1024;
 const REMINDER: &str = "This project uses HiveX. Before acting, whether coordinating, briefing, implementing, reviewing, researching or answering, recover what has been decided on the topic with `hivex search`, `hivex relations` and `hivex read`, and state the rules you apply with document, line and the owner's date. Remembered or summarised context is not verified: after a compaction, recover again. Until this session runs one of those commands, edits, agent launches, `git commit` and `gh pr create` are denied.";
 const DENIAL: &str = "HiveX: this session has not recovered what has been decided on its topic since it started or was last compacted. Run `hivex search \"<the task's topic>\" --max-bytes 65536`, read the authorities it returns with `hivex read` and follow `hivex relations`, state the rules you apply with document, line and the owner's date, then retry.";
-/// Calls that change the project or brief another agent. Codex reports its edits as
-/// `apply_patch` and its agent launches as `spawn_agent`.
-const GATED: &[&str] = &[
-  "Edit",
-  "Write",
-  "NotebookEdit",
-  "Agent",
-  "apply_patch",
-  "spawn_agent",
+/// Tools that only read, which the hook lets through without a word.
+const READING: &[&str] = &[
+  "Read",
+  "Glob",
+  "Grep",
+  "WebFetch",
+  "WebSearch",
+  "AskUserQuestion",
+  "ExitPlanMode",
+  "update_plan",
 ];
-/// Claude Code runs shell commands through `PowerShell` on Windows without Git Bash.
-const SHELLS: &[&str] = &["Bash", "PowerShell"];
-/// Markers whose session never reported its end are removed after a week.
-const EXPIRY: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
-static RETRIEVAL: LazyLock<Regex> = LazyLock::new(|| {
-  Regex::new(r"(?:^|[\s;&|(/\\])hivex(?:\.exe)?\s+(?:search|read|relations)\b").expect("valid")
-});
-static PUBLISHING: LazyLock<Regex> = LazyLock::new(|| {
-  Regex::new(r"(?:^|[\s;&|(])(?:git(?:\s+-[cC]\s+\S+)*\s+commit|gh\s+pr\s+create)\b")
-    .expect("valid")
-});
+/// The documented fields the hook reads; the rest of the input is skipped unread.
+#[derive(Deserialize)]
+struct Event {
+  session_id: Option<String>,
+  agent_id: Option<String>,
+  hook_event_name: Option<String>,
+  source: Option<String>,
+  tool_name: Option<String>,
+  tool_input: Option<Value>,
+}
+
+/// What a `PreToolUse` or `PostToolUse` call is, from its tool and input.
+enum Call<'a> {
+  /// A shell command, and whether a backslash escapes the next character in it.
+  Shell(&'a str, bool),
+  Gated,
+  Reading,
+  Unknown(String),
+}
 
 /// The JSON the host reads from the hook's stdout for the event in `input`, or `Null` when the
 /// hook has nothing to say and prints nothing.
 pub fn handle(input: &[u8]) -> Value {
-  let Ok(event) = serde_json::from_slice::<Value>(input) else {
-    return warning("its input is not JSON");
+  if input.len() > MAX_INPUT {
+    return warning("its input is larger than it reads");
+  }
+  let Ok(event) = serde_json::from_slice::<Event>(input) else {
+    return warning("its input is not a hook event it knows");
   };
-  let Some(session) = event["session_id"].as_str().filter(|id| !id.is_empty()) else {
+  let Some(session) = event.session_id.as_deref().filter(|id| !id.is_empty()) else {
     return warning("its input has no session_id");
   };
-  let markers = Markers::new(session, event["agent_id"].as_str().unwrap_or_default());
-  match event["hook_event_name"].as_str().unwrap_or_default() {
+  let markers = Markers::new(session, event.agent_id.as_deref().unwrap_or_default());
+  match event.hook_event_name.as_deref().unwrap_or_default() {
     "SessionStart" => start(&event, &markers),
     "SubagentStart" => context("SubagentStart"),
     "PreToolUse" => before_tool(&event, &markers),
     "PostToolUse" => after_tool(&event, &markers),
-    "PostCompact" => {
-      markers.forget();
-      Value::Null
-    }
+    "PostCompact" => reset(&markers),
     "SessionEnd" => {
       markers.end_session();
       Value::Null
@@ -70,23 +78,29 @@ pub fn handle(input: &[u8]) -> Value {
   }
 }
 
-fn start(event: &Value, markers: &Markers) -> Value {
-  // A cleared or compacted conversation no longer holds what the session recovered.
-  if matches!(event["source"].as_str(), Some("clear" | "compact")) {
-    markers.forget();
-  }
+fn start(event: &Event, markers: &Markers) -> Value {
   markers.expire();
+  // A cleared or compacted conversation no longer holds what the session recovered.
+  if matches!(event.source.as_deref(), Some("clear" | "compact")) && markers.forget().is_err() {
+    return warning("it cannot remove the recovery recorded before the compaction");
+  }
   context("SessionStart")
 }
 
-fn before_tool(event: &Value, markers: &Markers) -> Value {
-  let Some(tool) = event["tool_name"].as_str() else {
-    return warning("its PreToolUse input has no tool_name");
-  };
-  let gated = match command(event, tool) {
-    Some(Ok(command)) => PUBLISHING.is_match(command),
-    Some(Err(())) => return warning("its shell input has no command"),
-    None => GATED.contains(&tool),
+fn reset(markers: &Markers) -> Value {
+  match markers.forget() {
+    Ok(()) => Value::Null,
+    Err(_) => warning("it cannot remove the recovery recorded before the compaction"),
+  }
+}
+
+fn before_tool(event: &Event, markers: &Markers) -> Value {
+  let gated = match call(event) {
+    Ok(Call::Shell(command, escapes)) => shell::publishes(command, escapes),
+    Ok(Call::Gated) => true,
+    Ok(Call::Reading) => false,
+    Ok(Call::Unknown(tool)) => return warning(&format!("it does not know the tool {tool:?}")),
+    Err(reason) => return warning(reason),
   };
   if !gated {
     return Value::Null;
@@ -98,29 +112,51 @@ fn before_tool(event: &Value, markers: &Markers) -> Value {
       "permissionDecision": "deny",
       "permissionDecisionReason": DENIAL,
     }}),
+    Err(_) => warning("it cannot use its marker directory"),
+  }
+}
+
+fn after_tool(event: &Event, markers: &Markers) -> Value {
+  match call(event) {
+    Ok(Call::Shell(command, escapes)) if shell::recovers(command, escapes) => {
+      match markers.record() {
+        Ok(()) => Value::Null,
+        Err(_) => warning("it cannot use its marker directory"),
+      }
+    }
     Err(reason) => warning(reason),
+    Ok(_) => Value::Null,
   }
 }
 
-fn after_tool(event: &Value, markers: &Markers) -> Value {
-  let Some(tool) = event["tool_name"].as_str() else {
-    return warning("its PostToolUse input has no tool_name");
+/// Classifies the call by its tool and checks the documented input fields a decision needs.
+fn call(event: &Event) -> Result<Call<'_>, &'static str> {
+  let Some(tool) = event.tool_name.as_deref() else {
+    return Err("its input has no tool_name");
   };
-  match command(event, tool) {
-    Some(Ok(command)) if RETRIEVAL.is_match(command) => match markers.record() {
-      Ok(()) => Value::Null,
-      Err(_) => warning("it cannot write its marker directory"),
-    },
-    Some(Err(())) => warning("its shell input has no command"),
-    _ => Value::Null,
+  let input = event.tool_input.as_ref().unwrap_or(&Value::Null);
+  let field = |name: &str| input[name].is_string();
+  let well_formed = match tool {
+    // Claude Code runs shell commands through `PowerShell` on Windows without Git Bash.
+    "Bash" | "PowerShell" => {
+      let command = input["command"]
+        .as_str()
+        .ok_or("its shell input has no command")?;
+      return Ok(Call::Shell(command, tool == "Bash"));
+    }
+    "Write" | "Edit" => field("file_path"),
+    "NotebookEdit" => field("notebook_path"),
+    "Agent" => field("prompt"),
+    // Codex reports its edits as `apply_patch` and its agent launches as `spawn_agent`.
+    "apply_patch" => field("command"),
+    "spawn_agent" => input.is_object(),
+    _ if READING.contains(&tool) || tool.starts_with("mcp__") => return Ok(Call::Reading),
+    _ => return Ok(Call::Unknown(tool.to_owned())),
+  };
+  if well_formed {
+    return Ok(Call::Gated);
   }
-}
-
-/// The shell command of a shell tool's call; `None` for other tools.
-fn command<'a>(event: &'a Value, tool: &str) -> Option<Result<&'a str, ()>> {
-  SHELLS
-    .contains(&tool)
-    .then(|| event["tool_input"]["command"].as_str().ok_or(()))
+  Err("its tool input lacks the fields it checks")
 }
 
 fn context(event: &str) -> Value {
@@ -132,84 +168,4 @@ fn warning(reason: &str) -> Value {
   json!({"systemMessage": format!(
     "HiveX hook: {reason}, so the call goes ahead. Recover with `hivex search`, `hivex relations` and `hivex read` before acting anyway."
   )})
-}
-
-/// Empty files in the user's temporary directory, one per session and agent, named by hashes of
-/// their ids, recording that the agent ran HiveX's retrieval since it started or was compacted.
-struct Markers {
-  directory: PathBuf,
-  session: String,
-  own: String,
-}
-
-impl Markers {
-  fn new(session: &str, agent: &str) -> Self {
-    let session = digest(session);
-    Self {
-      // shortcut: one directory per temporary directory; a second user of a shared /tmp fails
-      // open with a warning, so name it per user if that case appears.
-      directory: std::env::temp_dir().join("hivex-hook"),
-      own: format!("{session}-{}", digest(agent)),
-      session,
-    }
-  }
-
-  fn record(&self) -> std::io::Result<()> {
-    fs::create_dir_all(&self.directory)?;
-    fs::write(self.directory.join(&self.own), b"")
-  }
-
-  /// Whether this agent's marker exists. A directory where no marker could be written must not
-  /// deny every call, so a missing marker is checked against a probe write.
-  fn recovered(&self) -> Result<bool, &'static str> {
-    if self.directory.join(&self.own).is_file() {
-      return Ok(true);
-    }
-    let probe = self.directory.join(format!("{}.probe", self.own));
-    fs::create_dir_all(&self.directory)
-      .and_then(|()| fs::write(&probe, b""))
-      .and_then(|()| fs::remove_file(&probe))
-      .map(|()| false)
-      .map_err(|_| "it cannot write its marker directory")
-  }
-
-  fn forget(&self) {
-    let _ = fs::remove_file(self.directory.join(&self.own));
-  }
-
-  fn end_session(&self) {
-    let prefix = format!("{}-", self.session);
-    self.remove(|name, _| name.starts_with(&prefix));
-    self.expire();
-  }
-
-  fn expire(&self) {
-    self.remove(|_, age| age > EXPIRY);
-  }
-
-  fn remove(&self, condition: impl Fn(&str, Duration) -> bool) {
-    let Ok(entries) = fs::read_dir(&self.directory) else {
-      return;
-    };
-    for entry in entries.flatten() {
-      let age = entry
-        .metadata()
-        .and_then(|metadata| metadata.modified())
-        .ok()
-        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-        .unwrap_or_default();
-      if condition(&entry.file_name().to_string_lossy(), age) {
-        let _ = fs::remove_file(entry.path());
-      }
-    }
-  }
-}
-
-fn digest(id: &str) -> String {
-  Sha256::digest(id.as_bytes())[..16]
-    .iter()
-    .fold(String::new(), |mut hex, byte| {
-      let _ = write!(hex, "{byte:02x}");
-      hex
-    })
 }
