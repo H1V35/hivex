@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "hivex"
-version = "0.16.1"
+version = "0.16.2"
 dependencies = [
  "globset",
  "granit-parser",

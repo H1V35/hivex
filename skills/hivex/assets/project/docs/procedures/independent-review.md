@@ -2,7 +2,7 @@
 title: "Independent review"
 status: draft
 created_at: 2026-10-03
-updated_at: 2026-11-26
+updated_at: 2026-11-27
 tags: [workflow, review, agents]
 ---
 
@@ -32,6 +32,8 @@ Capture the tracker first; the read-only sandbox may have no network access. An 
 ```bash
 ISSUE=<issue> PR=<pr, or empty before the pull request> BASE=origin/main SHA=$(git rev-parse HEAD)
 OUT=.reviews/${PR:-issue-$ISSUE} && mkdir -p "$OUT"
+REVIEW_BASE=$(git merge-base "$BASE" "$SHA") && echo "$REVIEW_BASE" > "$OUT/$SHA.base" ||
+  { echo "The merge base cannot be resolved; the review cannot start." >&2; exit 1; }
 gh issue view "$ISSUE" --json title,body,comments > "$OUT/issue.json"
 CAPTURES="$OUT/issue.json"
 if [ -n "$PR" ]; then
@@ -43,7 +45,7 @@ test -s "$OUT/issue.json" && { [ -z "$PR" ] || test -s "$OUT/pr.json"; } ||
 PROMPT="You are the independent reviewer for issue #$ISSUE${PR:+ (pull request #$PR)} in this repository.
 Follow .agents/skills/hivex-review/SKILL.md. Read-only: do not edit files, commit, push or comment
 on GitHub.
-Reviewed revision: $SHA, compared with its merge base: git diff $BASE...$SHA.
+Reviewed revision: $SHA, compared with its merge base: git diff $REVIEW_BASE..$SHA.
 Read the intended outcome yourself from the unedited tracker captures $CAPTURES, together with the
 diff and the repository's Markdown authorities.
 Recover with HiveX (search, relations, read) the decisions that govern the changed area yourself,
@@ -84,18 +86,30 @@ Check the effective profile before trusting the report:
 
 ## Review later changes as a delta
 
-Resume the same session so the reviewer keeps its own context; refresh the tracker captures first if they changed. Do not restate its findings.
+Resume the same session so the reviewer keeps its own context; refresh the tracker captures first if they changed. Do not restate its findings. The new revision's merge base is recorded as the first review's was; when it differs from the previous revision's, the delta covers the full diff from the new base, so nothing the base brings in goes unreviewed.
 
 ```bash
 PREV_SHA=$SHA SHA=$(git rev-parse HEAD)
-DELTA="The branch now points at $SHA. Review git diff $PREV_SHA..$SHA as a delta under the same
+REVIEW_BASE=$(git merge-base "$BASE" "$SHA") && echo "$REVIEW_BASE" > "$OUT/$SHA.base" ||
+  { echo "The merge base cannot be resolved; the delta cannot start." >&2; exit 1; }
+RANGE=$PREV_SHA..$SHA
+[ "$REVIEW_BASE" = "$(cat "$OUT/$PREV_SHA.base")" ] || RANGE=$REVIEW_BASE..$SHA
+DELTA="The branch now points at $SHA. Review git diff $RANGE as a delta under the same
 instructions and state whether each earlier finding is resolved."
-# Codex
+```
+
+With Codex:
+
+```bash
 codex exec resume "$THREAD" -m <model> -c model_reasoning_effort=<effort> \
   -c 'sandbox_mode="read-only"' --json \
   --output-schema docs/procedures/independent-review.schema.json \
   -o "$OUT/$SHA.json" - > "$OUT/$SHA.jsonl" <<< "$DELTA"
-# Claude Code
+```
+
+With Claude Code:
+
+```bash
 claude -p --resume "$(cat "$OUT/$PREV_SHA.session")" --permission-mode plan \
   --json-schema "$(cat docs/procedures/independent-review.schema.json)" \
   --output-format json "$DELTA" > "$OUT/$SHA.claude.json"
@@ -105,21 +119,31 @@ cp "$OUT/$PREV_SHA.session" "$OUT/$SHA.session"
 
 ## Check a list the review did not see
 
-A review that ran before its pull request was opened could not check the pull request's list of the decisions it applies, and a review no longer covers that list once it changes without a new commit. In both cases, capture the pull request and resume the same session, asking it to check the current list against the full diff it reviewed. Each check keeps its capture and report under its own name, so the earlier ones stay, and the latest one covers the list being merged when its capture holds that list.
+A review that ran before its pull request was opened could not check the pull request's list of the decisions it applies, and a review no longer covers that list once it changes without a new commit. In both cases, capture the pull request and resume the same session, asking it to check the current list against the full diff it reviewed, from the merge base recorded with that revision's review. Each check keeps its capture and report under its own name, so the earlier ones stay, and the latest one covers the list being merged when its capture holds that list.
 
 ```bash
 STAMP=$(date -u +%Y%m%dT%H%M%SZ) PR=<pr>
 CAPTURE="$OUT/$SHA.coverage-$STAMP.pr.json"
-gh pr view "$PR" --json title,body,comments,reviews > "$CAPTURE" && test -s "$CAPTURE" ||
-  { echo "The pull request capture is empty; the check cannot start." >&2; exit 1; }
+test -s "$OUT/$SHA.base" && gh pr view "$PR" --json title,body,comments,reviews > "$CAPTURE" &&
+  test -s "$CAPTURE" ||
+  { echo "The reviewed base or the pull request capture is missing; the check cannot start." >&2; exit 1; }
 CHECK="Pull request #$PR is captured in $CAPTURE. Under the same instructions, check that its list
-of the decisions it applies covers every area of git diff $BASE...$SHA, which you reviewed."
-# Codex
+of the decisions it applies covers every area of git diff $(cat "$OUT/$SHA.base")..$SHA, which you
+reviewed."
+```
+
+With Codex:
+
+```bash
 codex exec resume "$THREAD" -m <model> -c model_reasoning_effort=<effort> \
   -c 'sandbox_mode="read-only"' --json \
   --output-schema docs/procedures/independent-review.schema.json \
   -o "$OUT/$SHA.coverage-$STAMP.json" - > "$OUT/$SHA.coverage-$STAMP.jsonl" <<< "$CHECK"
-# Claude Code
+```
+
+With Claude Code:
+
+```bash
 claude -p --resume "$(cat "$OUT/$SHA.session")" --permission-mode plan \
   --json-schema "$(cat docs/procedures/independent-review.schema.json)" \
   --output-format json "$CHECK" > "$OUT/$SHA.coverage-$STAMP.claude.json"
