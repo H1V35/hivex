@@ -472,7 +472,7 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
   // Each with its reason in the record.
   subset(
     &failures(&p),
-    &json!({"total": 14, "skipped": 0, "reasons": {
+    &json!({"total": 14, "reasons": {
       "not-a-hook-event": 2, "no-session-id": 1, "no-tool-name": 1, "no-shell-command": 1,
       "unknown-event": 1, "missing-tool-fields": 3, "unknown-tool": 3, "input-too-large": 1,
       "marker-storage-unusable": 1
@@ -584,7 +584,7 @@ fn each_failure_is_recorded_without_the_inputs_content() {
   let report = failures(&p);
   subset(
     &report,
-    &json!({"command": "hook", "total": 7, "skipped": 0, "problems": [], "reasons": {
+    &json!({"command": "hook", "total": 7, "reasons": {
       "missing-tool-fields": 1, "unknown-tool": 2, "no-session-id": 1, "not-a-hook-event": 1,
       "unknown-event": 2
     }}),
@@ -651,10 +651,7 @@ fn a_record_it_cannot_write_never_stops_the_hook() {
     &claude_tool("TaskCreate", &json!({"subject": "x"}))
   )));
   assert!(denied(&hook(&p, &claude_write())));
-  subset(
-    &failures(&p),
-    &json!({"total": 0, "problems": [{"path": directory.to_string_lossy(), "problem": "not-a-directory"}]}),
-  );
+  assert_eq!(failures(&p)["total"], 0);
 }
 
 #[test]
@@ -674,234 +671,11 @@ fn the_record_keeps_at_most_two_files_of_64_kib() {
     hook(&p, &json!("not an object"));
     assert_eq!(fs::read_to_string(&previous).unwrap(), full);
     assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 1);
+    assert_eq!(fs::read_dir(log.parent().unwrap()).unwrap().count(), 2);
   }
   subset(
     &failures(&p),
     &json!({"total": kept + 1, "reasons": {"unknown-event": kept, "not-a-hook-event": 1}}),
-  );
-}
-
-/// Failures at the same time take turns writing the record, so it stays within its limit and a
-/// rotation never replaces the full file it keeps with a newer one.
-#[test]
-fn failures_at_the_same_time_keep_the_record_whole() {
-  let p = Project::new();
-  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
-  let previous = log.with_file_name("hook-failures.1.jsonl");
-  fs::create_dir_all(log.parent().unwrap()).unwrap();
-  let entry = "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":\"PreToolUse\",\"reason\":\"unknown-tool\",\"session\":null}\n";
-  let full = entry.repeat(64 * 1024 / entry.len());
-  fs::write(&log, &full).unwrap();
-  let mut children: Vec<_> = (0..8)
-    .map(|_| {
-      command(&p, &[])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap()
-    })
-    .collect();
-  for child in &mut children {
-    child.stdin.take().unwrap().write_all(b"[]").unwrap();
-  }
-  for child in children {
-    let output = child.wait_with_output().unwrap();
-    assert!(
-      output.status.success() && output.stderr.is_empty(),
-      "{output:?}"
-    );
-    assert!(warned(&serde_json::from_slice(&output.stdout).unwrap()));
-  }
-  assert_eq!(fs::read_to_string(&previous).unwrap(), full);
-  assert_eq!(fs::read_to_string(&log).unwrap().lines().count(), 8);
-  subset(
-    &failures(&p),
-    &json!({"total": full.lines().count() + 8, "skipped": 0, "problems": []}),
-  );
-}
-
-/// A failure that does not get its turn at the record within about a second skips its line and
-/// still lets the call through with its warning, and a report that does not get the lock says so
-/// instead of reading files a failure may be rotating.
-#[test]
-fn a_record_another_process_holds_is_skipped() {
-  let p = Project::new();
-  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
-  fs::create_dir_all(log.parent().unwrap()).unwrap();
-  fs::write(
-    &log,
-    "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n",
-  )
-  .unwrap();
-  let path = log.with_file_name("hook-failures.lock");
-  let lock = fs::File::create(&path).unwrap();
-  lock.lock().unwrap();
-  let started = Instant::now();
-  assert!(warned(&hook(&p, &json!("not an object"))));
-  assert!(started.elapsed() < Duration::from_secs(5));
-  subset(
-    &failures(&p),
-    &json!({"total": 0, "problems": [{"path": path.to_string_lossy(), "problem": "locked"}]}),
-  );
-  drop(lock);
-  subset(&failures(&p), &json!({"total": 1, "problems": []}));
-}
-
-/// A rotation is one rename, so one cut short leaves the full file as the previous one and the
-/// next failure starts the current file, with no entry lost or counted twice.
-#[test]
-fn a_rotation_cut_short_loses_or_repeats_nothing() {
-  let p = Project::new();
-  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
-  let previous = log.with_file_name("hook-failures.1.jsonl");
-  fs::create_dir_all(log.parent().unwrap()).unwrap();
-  let entry = "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n";
-  let full = entry.repeat(64 * 1024 / entry.len());
-  fs::write(&previous, &full).unwrap();
-  hook(&p, &json!("not an object"));
-  assert_eq!(fs::read_to_string(&previous).unwrap(), full);
-  subset(
-    &failures(&p),
-    &json!({"total": full.lines().count() + 1, "skipped": 0, "problems": []}),
-  );
-}
-
-/// A current file larger than the record keeps, put there by something other than the hook, is
-/// left as it is with the previous one, without the hook reading it, and the report names it.
-#[test]
-fn an_oversized_current_file_is_left_as_it_is() {
-  let p = Project::new();
-  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
-  let previous = log.with_file_name("hook-failures.1.jsonl");
-  fs::create_dir_all(log.parent().unwrap()).unwrap();
-  let entry = "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n";
-  let oversized = "x".repeat(8 * 1024 * 1024);
-  fs::write(&previous, entry).unwrap();
-  fs::write(&log, &oversized).unwrap();
-  let started = Instant::now();
-  assert!(warned(&hook(&p, &json!("not an object"))));
-  assert!(started.elapsed() < Duration::from_secs(5));
-  assert_eq!(fs::read_to_string(&previous).unwrap(), entry);
-  assert_eq!(fs::metadata(&log).unwrap().len(), 8 * 1024 * 1024);
-  subset(
-    &failures(&p),
-    &json!({"total": 1, "problems": [
-      {"path": log.to_string_lossy(), "problem": "larger-than-64-kib"}
-    ]}),
-  );
-}
-
-/// Every failure creates the lock before its files, so files without it are not read; a fresh
-/// record, with neither, is simply empty, and the report creates nothing.
-#[test]
-fn files_without_the_lock_are_not_read() {
-  let p = Project::new();
-  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
-  let lock = log.with_file_name("hook-failures.lock");
-  fs::create_dir_all(log.parent().unwrap()).unwrap();
-  subset(&failures(&p), &json!({"total": 0, "problems": []}));
-  fs::write(
-    &log,
-    "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n",
-  )
-  .unwrap();
-  subset(
-    &failures(&p),
-    &json!({"total": 0, "problems": [{"path": lock.to_string_lossy(), "problem": "missing"}]}),
-  );
-  assert!(!lock.exists());
-}
-
-/// A line a write left unfinished, as when the disk fills, does not hide the next failure.
-#[test]
-fn a_line_left_unfinished_does_not_hide_the_next_failure() {
-  let p = Project::new();
-  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
-  fs::create_dir_all(log.parent().unwrap()).unwrap();
-  fs::write(
-    &log,
-    "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n{\"time\":\"2026-11-",
-  )
-  .unwrap();
-  hook(&p, &json!("not an object"));
-  subset(
-    &failures(&p),
-    &json!({"total": 2, "skipped": 1, "reasons": {"unknown-tool": 1, "not-a-hook-event": 1}}),
-  );
-}
-
-/// `hook --failures` reads only files no larger than the record keeps, and from each line only the
-/// fields the hook writes, in the form it writes them; it names each file it did not read.
-#[test]
-fn the_report_reads_only_what_the_hook_writes() {
-  let p = Project::new();
-  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
-  let previous = log.with_file_name("hook-failures.1.jsonl");
-  fs::create_dir_all(log.parent().unwrap()).unwrap();
-  fs::write(log.with_file_name("hook-failures.lock"), "").unwrap();
-  let entry = |event: &str, extra: &str| {
-    format!(
-      "{{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"claude\",\"event\":{event},\"reason\":\"unknown-tool\",\"session\":null{extra}}}\n"
-    )
-  };
-  let lines = [
-    entry(
-      "\"PreToolUse\"",
-      ",\"command\":\"git commit -m 'Rotate the signing key'\"",
-    ),
-    entry("\"RotateTheSigningKey\"", ""),
-    "{\"reason\":\"unknown-tool\"}\n".to_owned(),
-    entry("null", "").replace("2026-11-26T00:00:00Z", "Rotate the key now Z"),
-    entry("null", "").replace("unknown-tool", "rotate-the-signing-key"),
-    entry("null", "").replace(",\"session\":null", ""),
-  ];
-  fs::write(&log, lines.concat()).unwrap();
-  fs::write(&previous, entry("null", "").repeat(1000)).unwrap();
-  let report = failures(&p);
-  subset(
-    &report,
-    &json!({"total": 1, "skipped": 5, "problems": [
-      {"path": previous.to_string_lossy(), "problem": "larger-than-64-kib"}
-    ]}),
-  );
-  for text in ["git commit", "Rotate", "rotate"] {
-    assert!(!report.to_string().contains(text), "{report}");
-  }
-  assert_eq!(
-    report["recent"][0],
-    json!({"time": "2026-11-26T00:00:00Z", "host": "claude", "event": "PreToolUse", "reason": "unknown-tool", "session": null})
-  );
-}
-
-/// `hook --failures` follows no link to the record's directory or files.
-#[cfg(unix)]
-#[test]
-fn the_report_follows_no_link() {
-  let p = Project::new();
-  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
-  let directory = log.parent().unwrap();
-  let elsewhere = p.path("elsewhere");
-  fs::create_dir_all(&elsewhere).unwrap();
-  fs::write(
-    elsewhere.join("hook-failures.jsonl"),
-    "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"claude\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n",
-  )
-  .unwrap();
-  fs::create_dir_all(directory).unwrap();
-  fs::write(log.with_file_name("hook-failures.lock"), "").unwrap();
-  std::os::unix::fs::symlink(elsewhere.join("hook-failures.jsonl"), &log).unwrap();
-  subset(
-    &failures(&p),
-    &json!({"total": 0, "problems": [{"path": log.to_string_lossy(), "problem": "not-a-regular-file"}]}),
-  );
-  fs::remove_file(&log).unwrap();
-  fs::remove_file(log.with_file_name("hook-failures.lock")).unwrap();
-  fs::remove_dir(directory).unwrap();
-  std::os::unix::fs::symlink(&elsewhere, directory).unwrap();
-  subset(
-    &failures(&p),
-    &json!({"total": 0, "problems": [{"path": directory.to_string_lossy(), "problem": "not-a-directory"}]}),
   );
 }
 

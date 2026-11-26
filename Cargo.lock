@@ -334,13 +334,12 @@ dependencies = [
 
 [[package]]
 name = "hivex"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "globset",
  "granit-parser",
  "icu_collator",
  "icu_locale_core",
- "libc",
  "num-traits",
  "proc-macro2",
  "pulldown-cmark",
