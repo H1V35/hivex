@@ -13,6 +13,8 @@ struct Host {
   directory: &'static str,
   /// JSON settings files that can register the hook; the first is the one to edit.
   files: &'static [&'static str],
+  /// Other settings files the host reads, which HiveX does not parse.
+  unread: &'static [&'static str],
   /// For each event, the matcher values its hook must cover, each as its aliases.
   events: &'static [(&'static str, &'static [&'static [&'static str]])],
   /// The tools `PreToolUse` must see: edits, agent launches and shell commands.
@@ -34,6 +36,7 @@ const HOSTS: &[Host] = &[
     name: "claude",
     directory: ".claude",
     files: &[".claude/settings.json", ".claude/settings.local.json"],
+    unread: &[],
     events: &[
       ("SessionStart", STARTS),
       ("SubagentStart", &[]),
@@ -44,6 +47,7 @@ const HOSTS: &[Host] = &[
           &["Write"],
           &["NotebookEdit"],
           &["Agent"],
+          &["Workflow"],
           &["Bash"],
           &["PowerShell"],
         ],
@@ -52,7 +56,7 @@ const HOSTS: &[Host] = &[
       ("PostCompact", COMPACTIONS),
       ("SessionEnd", &[]),
     ],
-    gated: "Edit|Write|NotebookEdit|Agent|Bash|PowerShell",
+    gated: "Edit|Write|NotebookEdit|Agent|Workflow|Bash|PowerShell",
     shell: "Bash|PowerShell",
     // Without Git Bash, Claude Code otherwise blocks the call when this hook fails.
     on_failure: Some("continue"),
@@ -64,6 +68,7 @@ const HOSTS: &[Host] = &[
     name: "codex",
     directory: ".codex",
     files: &[".codex/hooks.json"],
+    unread: &[".codex/config.toml"],
     events: &[
       ("SessionStart", STARTS),
       ("SubagentStart", &[]),
@@ -82,7 +87,7 @@ const HOSTS: &[Host] = &[
     gated: "^(Bash|apply_patch|spawn_agent)$",
     shell: "^Bash$",
     on_failure: None,
-    steps: "Install a HiveX release that has the hook command on PATH first. Then merge configuration into .codex/hooks.json and review and trust the new hooks in /hooks; Codex skips hooks it has not trusted. Registrations in config.toml are not read.",
+    steps: "Install a HiveX release that has the hook command on PATH first. Then merge configuration into .codex/hooks.json and review and trust the new hooks in /hooks; Codex skips hooks it has not trusted. HiveX does not parse config.toml: a kit registered there is reported as unverified, so check that it covers every event and matcher in configuration.",
     documentation: "https://learn.chatgpt.com/docs/hooks",
     note: Some(
       "Verified against Codex's documentation only, not in a Codex session. Codex documents no agent id for tool events, so a subagent shares its parent session's recovery.",
@@ -92,7 +97,8 @@ const HOSTS: &[Host] = &[
 
 /// For each host whose directory the project at `root` has, `registered` when its settings run
 /// `hivex hook` on every event and matcher value of the kit, or `recommended` with the missing
-/// events, the configuration to merge and the steps.
+/// events, the configuration to merge and the steps; `unverified` instead when a settings file
+/// HiveX does not parse names the hook.
 pub fn registrations(root: &Path) -> Value {
   HOSTS
     .iter()
@@ -107,7 +113,10 @@ pub fn registrations(root: &Path) -> Value {
       let missing: Vec<&str> = host
         .events
         .iter()
-        .filter(|(event, values)| !registered(&settings, event, values))
+        .filter(|(event, values)| {
+          let failure = host.on_failure.filter(|_| *event == "PreToolUse");
+          !registered(&settings, event, values, failure)
+        })
         .map(|(event, _)| *event)
         .collect();
       let mut report = json!({"documentation": host.documentation, "host": host.name});
@@ -118,10 +127,25 @@ pub fn registrations(root: &Path) -> Value {
         report["status"] = json!("registered");
         return report;
       }
+      let unread: Vec<&str> = host
+        .unread
+        .iter()
+        .copied()
+        .filter(|file| {
+          fs::read_to_string(root.join(file)).is_ok_and(|text| text.contains("hivex hook"))
+        })
+        .collect();
       report["configuration"] = configuration(host);
       report["file"] = json!(host.files[0]);
       report["missing"] = json!(missing);
-      report["status"] = json!("recommended");
+      report["status"] = json!(if unread.is_empty() {
+        "recommended"
+      } else {
+        "unverified"
+      });
+      if !unread.is_empty() {
+        report["unread"] = json!(unread);
+      }
       report["steps"] = json!(host.steps);
       report
     })
@@ -150,8 +174,10 @@ fn configuration(host: &Host) -> Value {
   }})
 }
 
-/// Whether the matcher groups of `event` that run the hook cover every value in `values`.
-fn registered(settings: &[Value], event: &str, values: &[&[&str]]) -> bool {
+/// Whether the matcher groups of `event` that run the hook cover every value in `values`. A handler
+/// counts when it runs unconditionally and lets the call go ahead if it fails, with the host's
+/// `failure` setting when the kit needs one.
+fn registered(settings: &[Value], event: &str, values: &[&[&str]], failure: Option<&str>) -> bool {
   let groups: Vec<&Value> = settings
     .iter()
     .flat_map(|file| file["hooks"][event].as_array().into_iter().flatten())
@@ -161,7 +187,11 @@ fn registered(settings: &[Value], event: &str, values: &[&[&str]]) -> bool {
         .into_iter()
         .flatten()
         .any(|handler| {
-          handler["type"] == "command" && handler["command"].as_str().is_some_and(runs_hook)
+          handler["type"] == "command"
+            && handler["command"].as_str().is_some_and(runs_hook)
+            && handler.get("if").is_none()
+            && handler["onFailure"] != "block"
+            && failure.is_none_or(|failure| handler["onFailure"] == failure)
         })
     })
     .collect();

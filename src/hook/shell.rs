@@ -1,10 +1,11 @@
 //! What a shell command line runs, read from the words in command position of each of its simple
-//! commands, so text in arguments, such as a search for `git commit`, is never taken for a call.
+//! commands, so text in arguments or in a here-document, such as a search for `git commit`, is
+//! never taken for a call.
 
 use std::str::Chars;
 
-/// Words that run the command after them.
-const WRAPPERS: &[&str] = &["env", "command", "exec", "time", "nohup"];
+/// Words that run the command after them, such as a command proxy (`rtk`, also `rtk proxy`).
+const WRAPPERS: &[&str] = &["env", "command", "exec", "time", "nohup", "sudo", "rtk"];
 
 /// Whether `line` runs `hivex search`, `hivex read` or `hivex relations`.
 pub fn recovers(line: &str, escapes: bool) -> bool {
@@ -47,9 +48,11 @@ fn git_subcommand(arguments: &[String]) -> Option<&str> {
 /// Each simple command's program, without its directory or `.exe`, and its arguments.
 fn programs(line: &str, escapes: bool) -> impl Iterator<Item = (String, Vec<String>)> {
   Words::split(line, escapes).into_iter().filter_map(|words| {
-    let start = words
-      .iter()
-      .position(|word| !assignment(word) && !WRAPPERS.contains(&word.as_str()))?;
+    let start = (0..words.len()).find(|&index| {
+      let word = &words[index];
+      let proxied = word == "proxy" && index > 0 && words[index - 1] == "rtk";
+      !assignment(word) && !WRAPPERS.contains(&word.as_str()) && !proxied
+    })?;
     let path = &words[start];
     let file = path.rsplit(['/', '\\']).next().unwrap_or(path);
     let name = file
@@ -66,13 +69,28 @@ fn assignment(word: &str) -> bool {
   })
 }
 
+/// The rest of the current line, without its line break; `None` at the end of the text.
+fn next_line(rest: &mut Chars) -> Option<String> {
+  let text = rest.as_str();
+  if text.is_empty() {
+    return None;
+  }
+  let (line, remaining) = text.split_once('\n').unwrap_or((text, ""));
+  *rest = remaining.chars();
+  Some(line.to_owned())
+}
+
 /// The words of each simple command in a line, split at `;`, `&`, `|`, parentheses and line breaks
-/// outside quotes. Backslash escapes the next character in Bash; PowerShell paths keep theirs.
+/// outside quotes, leaving out here-document bodies. Backslash escapes the next character in Bash;
+/// PowerShell paths keep theirs.
 struct Words {
   commands: Vec<Vec<String>>,
   word: Option<String>,
   quote: Option<char>,
   escapes: bool,
+  /// Delimiters of the here-documents whose bodies start on the next line, and whether `<<-` lets
+  /// their lines start with tabs.
+  documents: Vec<(String, bool)>,
 }
 
 impl Words {
@@ -82,6 +100,7 @@ impl Words {
       word: None,
       quote: None,
       escapes,
+      documents: Vec::new(),
     };
     let mut characters = line.chars();
     while let Some(character) = characters.next() {
@@ -109,13 +128,54 @@ impl Words {
         self.word.get_or_insert_with(String::new);
       }
       '\\' if self.escapes => self.push(rest.next()),
-      ';' | '&' | '|' | '(' | ')' | '\n' | '\r' => {
-        self.end_word();
-        self.commands.push(Vec::new());
+      '<' if rest.as_str().starts_with('<') => self.here_document(rest),
+      '\n' => {
+        self.separate();
+        self.skip_documents(rest);
       }
+      ';' | '&' | '|' | '(' | ')' | '\r' => self.separate(),
       _ if character.is_whitespace() => self.end_word(),
       _ => self.push(Some(character)),
     }
+  }
+
+  /// Reads `<<` or `<<-` and its delimiter; `<<<` is a here-string, whose word stays an argument.
+  fn here_document(&mut self, rest: &mut Chars) {
+    self.end_word();
+    rest.next();
+    if rest.as_str().starts_with('<') {
+      rest.next();
+      return;
+    }
+    let tabs = rest.as_str().starts_with('-');
+    let text = rest.as_str()[usize::from(tabs)..].trim_start_matches([' ', '\t']);
+    let end = text
+      .find(|c: char| c.is_whitespace() || ";&|()<>".contains(c))
+      .unwrap_or(text.len());
+    let delimiter = text[..end].replace(['\'', '"'], "");
+    *rest = text[end..].chars();
+    self.documents.push((delimiter, tabs));
+  }
+
+  /// Skips the bodies of the here-documents opened on the line just ended.
+  fn skip_documents(&mut self, rest: &mut Chars) {
+    for (delimiter, tabs) in std::mem::take(&mut self.documents) {
+      while let Some(line) = next_line(rest) {
+        let line = if tabs {
+          line.trim_start_matches('\t')
+        } else {
+          &line
+        };
+        if line.trim_end_matches('\r') == delimiter {
+          break;
+        }
+      }
+    }
+  }
+
+  fn separate(&mut self) {
+    self.end_word();
+    self.commands.push(Vec::new());
   }
 
   fn push(&mut self, character: Option<char>) {

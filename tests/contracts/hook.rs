@@ -131,6 +131,7 @@ fn a_session_is_denied_edits_until_it_recovers_with_hivex() {
     "hivex read docs/guide.md --from 1 --to 40",
     "hivex relations docs/adr/0012-project-foundation-and-workflow.md --direction both",
     "cd ../other && hivex search \"recover before acting\"",
+    "rtk hivex read AGENTS.md",
     "~/.cargo/bin/hivex search topic",
   ] {
     let p = Project::new();
@@ -216,6 +217,8 @@ fn reads_searches_and_other_commands_are_never_denied() {
     "rg -n 'before git commit' docs",
     "grep -rn \"gh pr create\" docs",
     "echo git commit",
+    "cat <<'EOF' > notes.md\ngit commit -m 'not run'\nEOF\nwc -l notes.md",
+    "cat <<-END\n\tgh pr create\n\tEND",
   ] {
     assert_eq!(
       hook(&p, &claude_bash("PreToolUse", command)),
@@ -228,6 +231,9 @@ fn reads_searches_and_other_commands_are_never_denied() {
     "git -C ../repo -c core.hooksPath=.githooks commit -F message.txt",
     "cd repo && gh pr create --draft --body-file body.md",
     "GIT_EDITOR=true git --no-pager commit",
+    "rtk git commit -m 'docs: guide'",
+    "rtk proxy gh pr create --draft",
+    "cat <<EOF > notes.md\ntext\nEOF\ngit commit -F notes.md",
     "cargo test\ngit commit -m 'fix: tests'",
   ] {
     assert!(
@@ -248,6 +254,7 @@ fn reads_searches_and_other_commands_are_never_denied() {
       "Agent",
       json!({"prompt": "Find all API endpoints", "description": "Find API endpoints", "subagent_type": "Explore"}),
     ),
+    ("Workflow", json!({})),
   ] {
     assert!(denied(&hook(&p, &claude_tool(tool, &input))), "{tool}");
   }
@@ -347,6 +354,9 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
   let mut without_input = claude_write();
   without_input.as_object_mut().unwrap().remove("tool_input");
   let unknown_tool = claude_tool("TaskCreate", &json!({"subject": "x"}));
+  let mut unknown_after = unknown_tool.clone();
+  unknown_after["hook_event_name"] = json!("PostToolUse");
+  let partial_write = claude_tool("Write", &json!({"file_path": "/path/to/file.txt"}));
   let mut oversize = claude_write();
   oversize["tool_input"]["content"] = json!("x".repeat(9 * 1024 * 1024));
   for event in [
@@ -357,6 +367,8 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
     unknown_event,
     without_input,
     unknown_tool,
+    unknown_after,
+    partial_write,
     oversize,
   ] {
     assert!(warned(&hook(&p, &event)), "{event}");
@@ -392,6 +404,13 @@ fn a_marker_directory_others_can_write_is_not_used() {
     &claude_bash("PostToolUse", "hivex search topic")
   )));
   assert_eq!(fs::read_dir(p.path("elsewhere")).unwrap().count(), 1);
+  // A compaction that cannot remove the recovery leaves no silent authorization behind.
+  let p = Project::new();
+  hook(&p, &claude_bash("PostToolUse", "hivex search topic"));
+  fs::set_permissions(p.path("tmp/hivex-hook"), fs::Permissions::from_mode(0o500)).unwrap();
+  assert!(warned(&hook(&p, &claude_post_compact())));
+  assert!(warned(&hook(&p, &claude_write())));
+  fs::set_permissions(p.path("tmp/hivex-hook"), fs::Permissions::from_mode(0o700)).unwrap();
 }
 
 /// Codex, "Common input fields" and "`PreToolUse`": `apply_patch` and Bash carry `command`.
@@ -504,7 +523,7 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
     }]}),
   );
   p.write(".claude/settings.json", "{\"outputStyle\": \"Concise\"}\n");
-  // Codex settings in `config.toml` are not read, so they register nothing.
+  // Codex settings in `config.toml` are not parsed, so a kit there is unverified.
   p.write(
     ".codex/config.toml",
     "[[hooks.PreToolUse.hooks]]\ncommand = \"hivex hook\"\n",
@@ -515,7 +534,8 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
     codex,
     &json!({
       "host": "codex",
-      "status": "recommended",
+      "status": "unverified",
+      "unread": [".codex/config.toml"],
       "file": ".codex/hooks.json",
       "documentation": "https://learn.chatgpt.com/docs/hooks"
     }),
@@ -561,11 +581,23 @@ fn init_and_update_recommend_registering_the_hook_without_changing_settings() {
   narrow["hooks"]["PostToolUse"][0]["matcher"] = json!("PowerShell");
   let mut other_type = settings.clone();
   other_type["hooks"]["PostToolUse"][0]["hooks"][0]["type"] = json!("http");
-  for broken in [without, narrow, other_type] {
+  let mut conditional = settings.clone();
+  conditional["hooks"]["PostToolUse"][0]["hooks"][0]["if"] = json!("Bash(git *)");
+  for broken in [without, narrow, other_type, conditional] {
     p.json(".claude/settings.json", &broken);
     subset(
       &p.ok(&["update"])["hooks"][0],
       &json!({"status": "recommended", "missing": ["PostToolUse"]}),
+    );
+  }
+  // A gate that may block the call when it fails is not the kit's.
+  for failure in [json!("block"), Value::Null] {
+    let mut closed = settings.clone();
+    closed["hooks"]["PreToolUse"][0]["hooks"][0]["onFailure"] = failure;
+    p.json(".claude/settings.json", &closed);
+    subset(
+      &p.ok(&["update"])["hooks"][0],
+      &json!({"status": "recommended", "missing": ["PreToolUse"]}),
     );
   }
   // A matcher that covers every value also registers, here in the local settings file.

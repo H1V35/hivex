@@ -1,6 +1,6 @@
 //! The hook Claude Code or Codex runs on its lifecycle events when a project registers
 //! `hivex hook` (#258). It reminds each session of the recovery rule, records when the session runs
-//! HiveX's retrieval and denies edits, agent launches, `git commit` and `gh pr create` until it
+//! HiveX's retrieval and denies edits, agent and workflow launches, `git commit` and `gh pr create` until it
 //! has. It reads only documented hook fields, never the transcript, and lets through with a
 //! warning any input it does not recognise, so a change in a host's format never locks a session
 //! out.
@@ -124,6 +124,7 @@ fn after_tool(event: &Event, markers: &Markers) -> Value {
         Err(_) => warning("it cannot use its marker directory"),
       }
     }
+    Ok(Call::Unknown(tool)) => warning(&format!("it does not know the tool {tool:?}")),
     Err(reason) => warning(reason),
     Ok(_) => Value::Null,
   }
@@ -135,7 +136,7 @@ fn call(event: &Event) -> Result<Call<'_>, &'static str> {
     return Err("its input has no tool_name");
   };
   let input = event.tool_input.as_ref().unwrap_or(&Value::Null);
-  let field = |name: &str| input[name].is_string();
+  let fields = |names: &[&str]| names.iter().all(|name| input[name].is_string());
   let well_formed = match tool {
     // Claude Code runs shell commands through `PowerShell` on Windows without Git Bash.
     "Bash" | "PowerShell" => {
@@ -144,12 +145,14 @@ fn call(event: &Event) -> Result<Call<'_>, &'static str> {
         .ok_or("its shell input has no command")?;
       return Ok(Call::Shell(command, tool == "Bash"));
     }
-    "Write" | "Edit" => field("file_path"),
-    "NotebookEdit" => field("notebook_path"),
-    "Agent" => field("prompt"),
-    // Codex reports its edits as `apply_patch` and its agent launches as `spawn_agent`.
-    "apply_patch" => field("command"),
-    "spawn_agent" => input.is_object(),
+    "Write" => fields(&["file_path", "content"]),
+    "Edit" => fields(&["file_path", "old_string", "new_string"]),
+    "NotebookEdit" => fields(&["notebook_path"]),
+    "Agent" => fields(&["prompt", "description"]),
+    // Codex reports its edits as `apply_patch`.
+    "apply_patch" => fields(&["command"]),
+    // Claude Code's workflows and Codex's `spawn_agent` launch agents; neither documents fields.
+    "Workflow" | "spawn_agent" => input.is_object(),
     _ if READING.contains(&tool) || tool.starts_with("mcp__") => return Ok(Call::Reading),
     _ => return Ok(Call::Unknown(tool.to_owned())),
   };

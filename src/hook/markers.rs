@@ -31,35 +31,31 @@ impl Markers {
 
   pub fn record(&self) -> io::Result<()> {
     self.ready()?;
-    let path = self.directory.join(&self.own);
-    match OpenOptions::new().write(true).create_new(true).open(&path) {
-      Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-        // A new recovery restarts the marker's age.
-        OpenOptions::new()
-          .append(true)
-          .open(&path)?
-          .set_modified(SystemTime::now())
-      }
-      result => result.map(drop),
-    }
+    // A new recovery restarts the marker's age; a new file is never opened through a link.
+    self.forget()?;
+    OpenOptions::new()
+      .write(true)
+      .create_new(true)
+      .open(self.directory.join(&self.own))
+      .map(drop)
   }
 
-  /// Whether this agent's marker exists. A directory where no marker could be written must not deny
-  /// every call, so a missing marker is checked against a probe unique to this process.
+  /// Whether this agent's marker exists. Storage where no marker could be written or removed must
+  /// neither deny every call nor keep an old recovery in effect, so every check first writes and
+  /// removes a probe unique to this process.
   pub fn recovered(&self) -> io::Result<bool> {
     self.ready()?;
+    let probe = self
+      .directory
+      .join(format!("{}.{}", self.own, std::process::id()));
+    OpenOptions::new()
+      .write(true)
+      .create_new(true)
+      .open(&probe)?;
+    fs::remove_file(&probe)?;
     match fs::symlink_metadata(self.directory.join(&self.own)) {
       Ok(metadata) => Ok(metadata.is_file()),
-      Err(error) if error.kind() == io::ErrorKind::NotFound => {
-        let probe = self
-          .directory
-          .join(format!("{}.{}", self.own, std::process::id()));
-        OpenOptions::new()
-          .write(true)
-          .create_new(true)
-          .open(&probe)?;
-        fs::remove_file(&probe).map(|()| false)
-      }
+      Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
       Err(error) => Err(error),
     }
   }
@@ -67,6 +63,7 @@ impl Markers {
   /// Removes this agent's marker; a marker that cannot be removed is an error, since it would keep
   /// the recovery in effect after a compaction.
   pub fn forget(&self) -> io::Result<()> {
+    self.ready()?;
     match fs::remove_file(self.directory.join(&self.own)) {
       Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
       result => result,
