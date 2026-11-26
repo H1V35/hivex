@@ -77,11 +77,53 @@ fn open(path: &Path) -> io::Result<File> {
   if fs::symlink_metadata(path).is_ok_and(|metadata| !metadata.is_file()) {
     return Err(io::Error::other("not a regular file"));
   }
+  let mut options = options();
+  options.read(true).append(true);
+  // A missing file is created only where nothing is, not even a link.
+  let file = match options.clone().create_new(true).open(path) {
+    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => options.open(path)?,
+    created => created?,
+  };
+  verify(path, file)
+}
+
+/// Options that open a link itself rather than what it points to, on Windows; elsewhere `verify`
+/// tells them apart.
+#[cfg(windows)]
+fn options() -> OpenOptions {
+  let mut options = OpenOptions::new();
+  // FILE_FLAG_OPEN_REPARSE_POINT
+  std::os::windows::fs::OpenOptionsExt::custom_flags(&mut options, 0x0020_0000);
+  options
+}
+
+#[cfg(not(windows))]
+fn options() -> OpenOptions {
   OpenOptions::new()
-    .create(true)
-    .read(true)
-    .append(true)
-    .open(path)
+}
+
+/// `file`, opened from `path`, when it is still the regular file the path names, in a directory
+/// that is not a link, so a link put in either place while it opened is refused.
+fn verify(path: &Path, file: File) -> io::Result<File> {
+  let opened = file.metadata()?;
+  let named = fs::symlink_metadata(path)?;
+  let directory = fs::symlink_metadata(path.parent().unwrap_or(path))?;
+  if opened.is_file() && named.is_file() && same(&opened, &named) && directory.is_dir() {
+    return Ok(file);
+  }
+  Err(io::Error::other("not a regular file of the record"))
+}
+
+#[cfg(unix)]
+fn same(opened: &fs::Metadata, named: &fs::Metadata) -> bool {
+  use std::os::unix::fs::MetadataExt;
+  (opened.dev(), opened.ino()) == (named.dev(), named.ino())
+}
+
+/// Windows opened a link itself, which is not a regular file, so the types already tell.
+#[cfg(not(unix))]
+fn same(_: &fs::Metadata, _: &fs::Metadata) -> bool {
+  true
 }
 
 /// The record's lock, held until the returned file closes, or an error when another process holds
@@ -170,7 +212,10 @@ fn read(path: &Path) -> Result<Option<String>, &'static str> {
     return Err("larger-than-64-kib");
   }
   let mut bytes = Vec::new();
-  File::open(path)
+  options()
+    .read(true)
+    .open(path)
+    .and_then(|file| verify(path, file))
     .and_then(|file| file.take(LIMIT).read_to_end(&mut bytes))
     .map_err(|_| "unreadable")?;
   Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
@@ -181,21 +226,32 @@ fn read(path: &Path) -> Result<Option<String>, &'static str> {
 fn entry(line: &str) -> Option<Value> {
   let value: Value = serde_json::from_str(line).ok()?;
   let field = |name: &str, valid: fn(&str) -> bool| value[name].as_str().filter(|text| valid(text));
-  let optional = |name: &str, valid: fn(&str) -> bool| match &value[name] {
+  // `event` and `session` are always written, as `null` when there is none.
+  let optional = |name: &str, valid: fn(&str) -> bool| match value.get(name)? {
     Value::Null => Some(None),
     _ => field(name, valid).map(Some),
   };
   Some(json!({
-    "time": field("time", |time| time.len() == 20 && time.ends_with('Z'))?,
+    "time": field("time", utc)?,
     "host": field("host", |host| ["claude", "codex", "unknown"].contains(&host))?,
     "event": optional("event", |event| super::EVENTS.contains(&event))?,
-    "reason": field("reason", |reason| {
-      (1..=64).contains(&reason.len()) && reason.bytes().all(|byte| byte.is_ascii_lowercase() || byte == b'-')
-    })?,
+    "reason": field("reason", |reason| super::REASONS.contains(&reason))?,
     "session": optional("session", |session| {
       session.len() == 32 && session.bytes().all(|byte| byte.is_ascii_hexdigit())
     })?,
   }))
+}
+
+/// Whether `time` has the form `now` writes, `YYYY-MM-DDTHH:MM:SSZ`.
+fn utc(time: &str) -> bool {
+  time.len() == 20
+    && time.bytes().enumerate().all(|(index, byte)| match index {
+      4 | 7 => byte == b'-',
+      10 => byte == b'T',
+      13 | 16 => byte == b':',
+      19 => byte == b'Z',
+      _ => byte.is_ascii_digit(),
+    })
 }
 
 /// The current UTC time as `YYYY-MM-DDTHH:MM:SSZ`.
@@ -248,4 +304,27 @@ fn create(directory: &Path) -> io::Result<()> {
     return Ok(());
   }
   Err(io::Error::other("the record's directory is a link"))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+  use super::{open, verify};
+  use std::fs;
+
+  /// A link put where the record's file was, after it was checked and before it was opened, is
+  /// refused once the file is open.
+  #[test]
+  fn a_file_replaced_by_a_link_while_it_opens_is_refused() {
+    let directory = std::env::temp_dir().join(format!("hivex-verify-{}", uuid::Uuid::new_v4()));
+    fs::create_dir(&directory).unwrap();
+    let (path, elsewhere) = (directory.join("record"), directory.join("elsewhere"));
+    fs::write(&elsewhere, "").unwrap();
+    assert!(open(&path).is_ok());
+    let opened = fs::File::open(&elsewhere).unwrap();
+    fs::remove_file(&path).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, &path).unwrap();
+    assert!(verify(&path, opened).is_err());
+    assert!(open(&path).is_err());
+    fs::remove_dir_all(&directory).unwrap();
+  }
 }

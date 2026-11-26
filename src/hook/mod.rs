@@ -37,17 +37,51 @@ const READING: &[&str] = &[
   "update_plan",
 ];
 
-/// The events the failure record names: those the kit registers, and `UserPromptSubmit`, which
-/// both hosts also give a channel to the agent. Any other name is recorded as none, so no text from
-/// an input reaches the record.
+/// The events both hosts document `additionalContext` for, the channel to the agent.
+const SHARED: &[&str] = &[
+  "SessionStart",
+  "SubagentStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+];
+/// The events only Claude Code documents it for. Its `Stop` and `SubagentStop` are left out: there
+/// the context continues the turn, so a warning on each would keep the turn from ending.
+const CLAUDE: &[&str] = &[
+  "UserPromptExpansion",
+  "PostToolUseFailure",
+  "PostToolBatch",
+  "PostModelSwitch",
+];
+/// The events the failure record names: those above, the rest of the kit's and the end of a turn.
+/// Any other name is recorded as none, so no text from an input reaches the record.
 const EVENTS: &[&str] = &[
   "SessionStart",
   "SubagentStart",
   "UserPromptSubmit",
   "PreToolUse",
   "PostToolUse",
+  "UserPromptExpansion",
+  "PostToolUseFailure",
+  "PostToolBatch",
+  "PostModelSwitch",
   "PostCompact",
   "SessionEnd",
+  "Stop",
+  "SubagentStop",
+];
+/// The stable codes the record gives for why the hook could not apply the rule.
+const REASONS: &[&str] = &[
+  "input-too-large",
+  "not-a-hook-event",
+  "no-session-id",
+  "unknown-event",
+  "no-tool-name",
+  "no-shell-command",
+  "unknown-tool",
+  "missing-tool-fields",
+  "marker-storage-unusable",
+  "compaction-record-kept",
 ];
 
 /// The documented fields the hook reads; the rest of the input is skipped unread.
@@ -145,6 +179,7 @@ struct Failure {
 
 impl Failure {
   fn new(code: &'static str, reason: impl Into<String>) -> Self {
+    debug_assert!(REASONS.contains(&code), "{code} is not in REASONS");
     Self {
       code,
       reason: reason.into(),
@@ -312,8 +347,9 @@ fn fail_open(envelope: &Envelope, failure: &Failure) -> Value {
     .event
     .as_deref()
     .filter(|name| EVENTS.contains(name));
+  let host = envelope.host();
   failures::record(&Entry {
-    host: envelope.host(),
+    host,
     event: name,
     reason: failure.code,
     session: envelope
@@ -326,13 +362,15 @@ fn fail_open(envelope: &Envelope, failure: &Failure) -> Value {
     "HiveX hook: {}, so the call goes ahead. Recover with `hivex search`, `hivex relations` and `hivex read` before acting anyway.",
     failure.reason
   );
-  let context = match name {
+  let channel =
+    name.filter(|name| SHARED.contains(name) || (host == "claude" && CLAUDE.contains(name)));
+  let context = match channel {
     Some("SessionStart" | "SubagentStart") => format!("{REMINDER}\n\n{message}"),
-    Some("UserPromptSubmit" | "PreToolUse" | "PostToolUse") => message.clone(),
-    _ => return json!({"systemMessage": message}),
+    Some(_) => message.clone(),
+    None => return json!({"systemMessage": message}),
   };
   json!({
     "systemMessage": message,
-    "hookSpecificOutput": {"hookEventName": name, "additionalContext": context},
+    "hookSpecificOutput": {"hookEventName": channel, "additionalContext": context},
   })
 }

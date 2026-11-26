@@ -469,6 +469,15 @@ fn an_input_it_does_not_recognise_lets_the_call_through_with_a_warning() {
   // A marker directory the hook cannot use.
   p.write("tmp/hivex-hook", "not a directory");
   assert!(warned(&hook(&p, &claude_write())));
+  // Each with its reason in the record.
+  subset(
+    &failures(&p),
+    &json!({"total": 14, "skipped": 0, "reasons": {
+      "not-a-hook-event": 2, "no-session-id": 1, "no-tool-name": 1, "no-shell-command": 1,
+      "unknown-event": 1, "missing-tool-fields": 3, "unknown-tool": 3, "input-too-large": 1,
+      "marker-storage-unusable": 1
+    }}),
+  );
 }
 
 /// Claude Code, "`PreToolUse` decision control", "`PostToolUse` decision control" and "Add context
@@ -498,11 +507,29 @@ fn a_failure_on_an_event_with_a_channel_warns_the_agent_too() {
     assert!(warned(&answer), "{answer}");
     assert_eq!(answer["hookSpecificOutput"]["hookEventName"], name);
   }
-  // An input that names no event the hook answers tells only the person.
+  // Claude Code alone documents the channel for `PostToolUseFailure`, so it gets the warning only
+  // when Claude Code runs the hook.
+  let mut failed = claude_bash("PostToolUseFailure", "npm test");
+  failed["error"] = json!("Command exited with non-zero status code 1");
+  let answer = claude_hook(&p, &failed);
+  assert!(warned(&answer), "{answer}");
+  assert_eq!(
+    answer["hookSpecificOutput"]["hookEventName"],
+    "PostToolUseFailure"
+  );
+  // An input that names no event the hook answers tells only the person, as do `Stop`, where
+  // Claude Code's context would continue the turn, and an event only another host gives a channel.
   let mut unknown_event = claude_write();
   unknown_event["hook_event_name"] = json!("PreToolCall");
-  for event in [json!("not an object"), unknown_event] {
-    let answer = hook(&p, &event);
+  let mut stop = claude_prompt("x");
+  stop["hook_event_name"] = json!("Stop");
+  stop["stop_hook_active"] = json!(false);
+  for answer in [
+    hook(&p, &json!("not an object")),
+    hook(&p, &unknown_event),
+    claude_hook(&p, &stop),
+    hook(&p, &failed),
+  ] {
     assert!(
       warned(&answer) && answer.get("hookSpecificOutput").is_none(),
       "{answer}"
@@ -748,17 +775,22 @@ fn the_report_reads_only_what_the_hook_writes() {
     ),
     entry("\"RotateTheSigningKey\"", ""),
     "{\"reason\":\"unknown-tool\"}\n".to_owned(),
+    entry("null", "").replace("2026-11-26T00:00:00Z", "Rotate the key now Z"),
+    entry("null", "").replace("unknown-tool", "rotate-the-signing-key"),
+    entry("null", "").replace(",\"session\":null", ""),
   ];
   fs::write(&log, lines.concat()).unwrap();
   fs::write(&previous, entry("null", "").repeat(1000)).unwrap();
   let report = failures(&p);
   subset(
     &report,
-    &json!({"total": 1, "skipped": 2, "problems": [
+    &json!({"total": 1, "skipped": 5, "problems": [
       {"path": previous.to_string_lossy(), "problem": "larger-than-64-kib"}
     ]}),
   );
-  assert!(!report.to_string().contains("git commit"), "{report}");
+  for text in ["git commit", "Rotate", "rotate"] {
+    assert!(!report.to_string().contains(text), "{report}");
+  }
   assert_eq!(
     report["recent"][0],
     json!({"time": "2026-11-26T00:00:00Z", "host": "claude", "event": "PreToolUse", "reason": "unknown-tool", "session": null})
