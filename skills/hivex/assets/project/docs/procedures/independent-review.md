@@ -32,7 +32,8 @@ Capture the tracker first; the read-only sandbox may have no network access. An 
 ```bash
 ISSUE=<issue> PR=<pr, or empty before the pull request> BASE=origin/main SHA=$(git rev-parse HEAD)
 OUT=.reviews/${PR:-issue-$ISSUE} && mkdir -p "$OUT"
-git merge-base "$BASE" "$SHA" > "$OUT/$SHA.base"
+REVIEW_BASE=$(git merge-base "$BASE" "$SHA") && echo "$REVIEW_BASE" > "$OUT/$SHA.base" ||
+  { echo "The merge base cannot be resolved; the review cannot start." >&2; exit 1; }
 gh issue view "$ISSUE" --json title,body,comments > "$OUT/issue.json"
 CAPTURES="$OUT/issue.json"
 if [ -n "$PR" ]; then
@@ -44,7 +45,7 @@ test -s "$OUT/issue.json" && { [ -z "$PR" ] || test -s "$OUT/pr.json"; } ||
 PROMPT="You are the independent reviewer for issue #$ISSUE${PR:+ (pull request #$PR)} in this repository.
 Follow .agents/skills/hivex-review/SKILL.md. Read-only: do not edit files, commit, push or comment
 on GitHub.
-Reviewed revision: $SHA, compared with its merge base: git diff $BASE...$SHA.
+Reviewed revision: $SHA, compared with its merge base: git diff $REVIEW_BASE..$SHA.
 Read the intended outcome yourself from the unedited tracker captures $CAPTURES, together with the
 diff and the repository's Markdown authorities.
 Recover with HiveX (search, relations, read) the decisions that govern the changed area yourself,
@@ -85,12 +86,15 @@ Check the effective profile before trusting the report:
 
 ## Review later changes as a delta
 
-Resume the same session so the reviewer keeps its own context; refresh the tracker captures first if they changed. Do not restate its findings. The new revision's merge base is recorded as the first review's was.
+Resume the same session so the reviewer keeps its own context; refresh the tracker captures first if they changed. Do not restate its findings. The new revision's merge base is recorded as the first review's was; when it differs from the previous revision's, the delta covers the full diff from the new base, so nothing the base brings in goes unreviewed.
 
 ```bash
 PREV_SHA=$SHA SHA=$(git rev-parse HEAD)
-git merge-base "$BASE" "$SHA" > "$OUT/$SHA.base"
-DELTA="The branch now points at $SHA. Review git diff $PREV_SHA..$SHA as a delta under the same
+REVIEW_BASE=$(git merge-base "$BASE" "$SHA") && echo "$REVIEW_BASE" > "$OUT/$SHA.base" ||
+  { echo "The merge base cannot be resolved; the delta cannot start." >&2; exit 1; }
+RANGE=$PREV_SHA..$SHA
+[ "$REVIEW_BASE" = "$(cat "$OUT/$PREV_SHA.base")" ] || RANGE=$REVIEW_BASE..$SHA
+DELTA="The branch now points at $SHA. Review git diff $RANGE as a delta under the same
 instructions and state whether each earlier finding is resolved."
 ```
 
