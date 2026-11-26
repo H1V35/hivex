@@ -607,6 +607,9 @@ fn only_a_registration_that_applies_the_rule_counts() {
   let mut wrong_shell = settings.clone();
   wrong_shell["hooks"]["PostToolUse"][0]["hooks"][0] =
     json!({"type": "command", "command": "& \"C:\\HiveX\\hivex.exe\" hook", "shell": "bash"});
+  // PowerShell runs a quoted path only after `&`.
+  let mut uncalled = settings.clone();
+  uncalled["hooks"]["PostToolUse"][0]["hooks"][0] = json!({"type": "command", "command": "\"C:\\Program Files\\HiveX\\hivex.exe\" hook", "shell": "powershell"});
   for broken in [
     without,
     narrow,
@@ -614,6 +617,7 @@ fn only_a_registration_that_applies_the_rule_counts() {
     conditional,
     background,
     wrong_shell,
+    uncalled,
   ] {
     p.json(".claude/settings.json", &broken);
     subset(
@@ -634,8 +638,9 @@ fn only_a_registration_that_applies_the_rule_counts() {
   // Claude Code's exec form registers too, and so does a quoted path to the executable.
   for handler in [
     json!({"type": "command", "command": "hivex", "args": ["hook"], "timeout": 10}),
-    json!({"type": "command", "command": "\"/opt/my tools/hivex\" hook", "timeout": 10}),
-    json!({"type": "command", "command": "\"C:\\Program Files\\hivex\\hivex.exe\" hook"}),
+    // Without `shell`, Windows may read a handler with PowerShell, which needs `&` here.
+    json!({"type": "command", "command": "\"/opt/my tools/hivex\" hook", "shell": "bash"}),
+    json!({"type": "command", "command": "\"C:\\Program Files\\hivex\\hivex.exe\" hook", "shell": "bash"}),
     json!({"type": "command", "command": "& \"C:\\HiveX\\hivex.exe\" hook", "shell": "powershell"}),
   ] {
     let mut exec = settings.clone();

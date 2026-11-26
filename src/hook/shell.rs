@@ -11,11 +11,12 @@ const WRAPPERS: &[&str] = &["env", "command", "exec", "time", "nohup", "sudo", "
 const QUOTED_ESCAPES: [char; 5] = ['$', '`', '"', '\\', '\n'];
 
 /// Whether `line` is exactly a path to `hivex` and `hook`, read by Bash (`escapes`) or by
-/// PowerShell, whose call operator `&` may come first.
+/// PowerShell, which runs a quoted path only after its call operator `&`.
 pub fn runs_hook(line: &str, escapes: bool) -> bool {
   let line = line.trim();
   let line = match line.strip_prefix('&') {
     Some(called) if !escapes => called,
+    None if !escapes && line.starts_with(['"', '\'']) => return false,
     _ => line,
   };
   matches!(Words::split(line, escapes).as_slice(), [words] if words.len() == 2 && program(&words[0]) == "hivex" && words[1] == "hook")
