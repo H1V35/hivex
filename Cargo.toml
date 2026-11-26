@@ -32,10 +32,6 @@ serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.11"
 url = "2.5"
 
-[target.'cfg(unix)'.dependencies]
-# Constants only: the hook's record opens without following a link or waiting on a pipe.
-libc = "0.2"
-
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

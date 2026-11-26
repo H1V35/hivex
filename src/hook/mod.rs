@@ -70,19 +70,6 @@ const EVENTS: &[&str] = &[
   "Stop",
   "SubagentStop",
 ];
-/// The stable codes the record gives for why the hook could not apply the rule.
-const REASONS: &[&str] = &[
-  "input-too-large",
-  "not-a-hook-event",
-  "no-session-id",
-  "unknown-event",
-  "no-tool-name",
-  "no-shell-command",
-  "unknown-tool",
-  "missing-tool-fields",
-  "marker-storage-unusable",
-  "compaction-record-kept",
-];
 
 /// The documented fields the hook reads; the rest of the input is skipped unread.
 #[derive(Deserialize)]
@@ -179,7 +166,6 @@ struct Failure {
 
 impl Failure {
   fn new(code: &'static str, reason: impl Into<String>) -> Self {
-    debug_assert!(REASONS.contains(&code), "{code} is not in REASONS");
     Self {
       code,
       reason: reason.into(),
