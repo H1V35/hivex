@@ -103,9 +103,30 @@ jq '.structured_output' "$OUT/$SHA.claude.json" > "$OUT/$SHA.json"
 cp "$OUT/$PREV_SHA.session" "$OUT/$SHA.session"
 ```
 
+## Check a list the review did not see
+
+A review that ran before its pull request was opened could not check the pull request's list of the decisions it applies, and a review no longer covers that list once it changes without a new commit. In both cases, capture the pull request and resume the same session, asking it to check the current list against the full diff it reviewed. Each check writes under its own name, so the earlier reports stay, and the latest one covers the list being merged.
+
+```bash
+STAMP=$(date -u +%Y%m%dT%H%M%SZ) PR=<pr>
+gh pr view "$PR" --json title,body,comments,reviews > "$OUT/pr.json" && test -s "$OUT/pr.json"
+CHECK="Pull request #$PR is captured in $OUT/pr.json. Under the same instructions, check that its
+list of the decisions it applies covers every area of git diff $BASE...$SHA, which you reviewed."
+# Codex
+codex exec resume "$THREAD" -m <model> -c model_reasoning_effort=<effort> \
+  -c 'sandbox_mode="read-only"' --json \
+  --output-schema docs/procedures/independent-review.schema.json \
+  -o "$OUT/$SHA.coverage-$STAMP.json" - > "$OUT/$SHA.coverage-$STAMP.jsonl" <<< "$CHECK"
+# Claude Code
+claude -p --resume "$(cat "$OUT/$SHA.session")" --permission-mode plan \
+  --json-schema "$(cat docs/procedures/independent-review.schema.json)" \
+  --output-format json "$CHECK" > "$OUT/$SHA.coverage-$STAMP.claude.json"
+jq '.structured_output' "$OUT/$SHA.coverage-$STAMP.claude.json" > "$OUT/$SHA.coverage-$STAMP.json"
+```
+
 ## Verify and record
 
-- Check that the report's verification names the HiveX commands the reviewer ran in this session, with the rules they established, and that it checked the decision list's coverage. A report without them is incomplete: ask for that recovery in a delta. A delta in the same session may rely on what it read there while those sources are unchanged.
+- Check that the report's verification names the HiveX commands the reviewer ran in this session, with the rules they established, and that it checked the decision list's coverage, or that a later [check](#check-a-list-the-review-did-not-see) did for the list being merged. A report without them is incomplete: ask for that recovery in a delta. A delta in the same session may rely on what it read there while those sources are unchanged.
 - Apply substantive findings, or record a source-backed disposition for each false one. Add a regression check for a demonstrated defect when it protects meaningful behavior.
 - Record the review on the pull request: independence level, tool, model and effort; reviewed revisions; verdict; each finding with its disposition; and the reviewer's limits. Note checks it could not run, such as CI in a sandbox without network, and their actual results.
 - The pull request comment is the durable record; `.reviews/` is local evidence that may be deleted once the pull request is merged.
