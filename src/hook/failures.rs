@@ -12,7 +12,7 @@ use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The size past which the record starts a new file and keeps the previous one.
 const LIMIT: u64 = 64 * 1024;
@@ -20,9 +20,10 @@ const CURRENT: &str = "hook-failures.jsonl";
 const PREVIOUS: &str = "hook-failures.1.jsonl";
 /// An empty file whose lock lets one process at a time write the record.
 const LOCK: &str = "hook-failures.lock";
-/// A failure waits at most `ATTEMPTS` pauses, about a second, for another one writing the record,
-/// and then skips its entry.
-const ATTEMPTS: u32 = 200;
+/// How long a failure waits for another one writing the record before it skips its entry, and how
+/// long a report waits for it, measured by the clock rather than by attempts, since a pause can
+/// last longer than asked on a busy machine.
+const WAIT: Duration = Duration::from_secs(1);
 const PAUSE: Duration = Duration::from_millis(5);
 /// How many of the newest entries `hivex hook --failures` lists.
 const RECENT: usize = 20;
@@ -154,14 +155,17 @@ fn same(_: &fs::Metadata, _: &fs::Metadata) -> bool {
 /// `file` once `take` locks it, held until the file closes, or an error when another process holds
 /// the lock for longer than a failure waits.
 fn wait(file: File, take: fn(&File) -> Result<(), TryLockError>) -> io::Result<File> {
-  for _ in 0..ATTEMPTS {
+  let deadline = Instant::now() + WAIT;
+  loop {
     match take(&file) {
       Ok(()) => return Ok(file),
-      Err(TryLockError::WouldBlock) => thread::sleep(PAUSE),
+      Err(TryLockError::WouldBlock) if Instant::now() < deadline => thread::sleep(PAUSE),
+      Err(TryLockError::WouldBlock) => {
+        return Err(io::Error::other("another process is writing the record"));
+      }
       Err(TryLockError::Error(error)) => return Err(error),
     }
   }
-  Err(io::Error::other("another process is writing the record"))
 }
 
 /// Whether the file of `length` bytes ends inside a line.
