@@ -7,6 +7,15 @@ use std::str::Chars;
 /// Words that run the command after them, such as a command proxy (`rtk`, also `rtk proxy`).
 const WRAPPERS: &[&str] = &["env", "command", "exec", "time", "nohup", "sudo", "rtk"];
 
+/// The characters a backslash escapes between Bash's double quotes; before any other it is kept.
+const QUOTED_ESCAPES: [char; 5] = ['$', '`', '"', '\\', '\n'];
+
+/// Whether `line` is one command that runs `hivex hook`, as a host's hook handler does.
+pub fn runs_hook(line: &str, escapes: bool) -> bool {
+  let commands: Vec<_> = programs(line, escapes).collect();
+  matches!(commands.as_slice(), [(name, arguments)] if name == "hivex" && *arguments == ["hook"])
+}
+
 /// Whether `line` runs `hivex search`, `hivex read` or `hivex relations`.
 pub fn recovers(line: &str, escapes: bool) -> bool {
   programs(line, escapes).any(|(name, arguments)| {
@@ -53,14 +62,20 @@ fn programs(line: &str, escapes: bool) -> impl Iterator<Item = (String, Vec<Stri
       let proxied = word == "proxy" && index > 0 && words[index - 1] == "rtk";
       !assignment(word) && !WRAPPERS.contains(&word.as_str()) && !proxied
     })?;
-    let path = &words[start];
-    let file = path.rsplit(['/', '\\']).next().unwrap_or(path);
-    let name = file
-      .strip_suffix(".exe")
-      .or_else(|| file.strip_suffix(".EXE"))
-      .unwrap_or(file);
-    Some((name.to_owned(), words[start + 1..].to_vec()))
+    Some((
+      program(&words[start]).to_owned(),
+      words[start + 1..].to_vec(),
+    ))
   })
+}
+
+/// The program a path to an executable names, without its directory or `.exe`.
+pub fn program(path: &str) -> &str {
+  let file = path.rsplit(['/', '\\']).next().unwrap_or(path);
+  file
+    .strip_suffix(".exe")
+    .or_else(|| file.strip_suffix(".EXE"))
+    .unwrap_or(file)
 }
 
 fn assignment(word: &str) -> bool {
@@ -94,6 +109,10 @@ fn delimiter(rest: &mut Chars) -> String {
         rest.next();
         word.extend(rest.clone().next());
       }
+      (Some('"'), '\\') if rest.as_str()[1..].starts_with(QUOTED_ESCAPES) => {
+        rest.next();
+        word.extend(rest.clone().next());
+      }
       _ => word.push(character),
     }
     rest.next();
@@ -102,8 +121,8 @@ fn delimiter(rest: &mut Chars) -> String {
 }
 
 /// The words of each simple command in a line, split at `;`, `&`, `|`, parentheses and line breaks
-/// outside quotes, leaving out here-document bodies. Backslash escapes the next character in Bash;
-/// PowerShell paths keep theirs.
+/// outside quotes, leaving out here-document bodies. In Bash a backslash escapes the next character,
+/// between double quotes only the characters Bash lets it escape; PowerShell paths keep theirs.
 struct Words {
   commands: Vec<Vec<String>>,
   word: Option<String>,
@@ -137,7 +156,9 @@ impl Words {
   fn quoted(&mut self, quote: char, character: char, rest: &mut Chars) {
     match character {
       _ if character == quote => self.quote = None,
-      '\\' if quote == '"' && self.escapes => self.push(rest.next()),
+      '\\' if quote == '"' && self.escapes && rest.as_str().starts_with(QUOTED_ESCAPES) => {
+        self.push(rest.next());
+      }
       _ => self.push(Some(character)),
     }
   }

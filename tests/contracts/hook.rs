@@ -236,6 +236,7 @@ fn reads_searches_and_other_commands_are_never_denied() {
     "cat <<EOF > notes.md\ntext\nEOF\ngit commit -F notes.md",
     "cat <<\\EOF > notes.md\ntext\nEOF\ngit commit -F notes.md",
     "cat <<'END OF NOTES' > notes.md\nEOF\nEND OF NOTES\ngit commit -F notes.md",
+    "cat <<\"E\\$OF\" > notes.md\nEOF\nE$OF\ngit commit -F notes.md",
     "cargo test\ngit commit -m 'fix: tests'",
   ] {
     assert!(
@@ -618,15 +619,20 @@ fn only_a_registration_that_applies_the_rule_counts() {
       &json!({"status": "recommended", "missing": ["PreToolUse"]}),
     );
   }
-  // Claude Code's exec form registers too.
-  let mut exec = settings.clone();
-  exec["hooks"]["PostToolUse"][0]["hooks"][0] =
-    json!({"type": "command", "command": "hivex", "args": ["hook"], "timeout": 10});
-  p.json(".claude/settings.json", &exec);
-  subset(
-    &p.ok(&["update"])["hooks"][0],
-    &json!({"status": "registered"}),
-  );
+  // Claude Code's exec form registers too, and so does a quoted path to the executable.
+  for handler in [
+    json!({"type": "command", "command": "hivex", "args": ["hook"], "timeout": 10}),
+    json!({"type": "command", "command": "\"/opt/my tools/hivex\" hook", "timeout": 10}),
+    json!({"type": "command", "command": "\"C:\\Program Files\\hivex\\hivex.exe\" hook"}),
+  ] {
+    let mut exec = settings.clone();
+    exec["hooks"]["PostToolUse"][0]["hooks"][0] = handler;
+    p.json(".claude/settings.json", &exec);
+    subset(
+      &p.ok(&["update"])["hooks"][0],
+      &json!({"status": "registered"}),
+    );
+  }
   // A matcher that covers every value also registers, here in the local settings file.
   p.json(".claude/settings.json", &json!({}));
   let mut local = settings.clone();

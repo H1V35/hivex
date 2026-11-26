@@ -2,6 +2,7 @@
 //! that registers it when it does not. It only reads the host's project settings: HiveX never
 //! writes them.
 
+use super::shell;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::fs;
@@ -229,13 +230,14 @@ fn covers(matcher: Option<&str>, value: &str) -> bool {
   }
 }
 
-/// A handler that runs `hivex hook`, also through a path to the executable, in shell form or in
-/// Claude Code's exec form (`command` with `args`).
+/// A handler that runs `hivex hook`, also through a path to the executable, in shell form, read as
+/// Bash or PowerShell would, or in Claude Code's exec form (`command` with `args`).
 fn runs_hook(handler: &Value) -> bool {
-  let hivex = |program: &str| program.ends_with("hivex") || program.ends_with("hivex.exe");
-  let command = handler["command"].as_str().unwrap_or_default().trim();
+  let command = handler["command"].as_str().unwrap_or_default();
   match handler.get("args") {
-    Some(arguments) => *arguments == json!(["hook"]) && hivex(command),
-    None => command.strip_suffix(" hook").is_some_and(hivex),
+    Some(arguments) => *arguments == json!(["hook"]) && shell::program(command) == "hivex",
+    None => [true, false]
+      .into_iter()
+      .any(|escapes| shell::runs_hook(command, escapes)),
   }
 }
