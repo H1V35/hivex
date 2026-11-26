@@ -92,7 +92,7 @@ Resume the same session so the reviewer keeps its own context; refresh the track
 PREV_SHA=$SHA SHA=$(git rev-parse HEAD)
 REVIEW_BASE=$(git merge-base "$BASE" "$SHA") && echo "$REVIEW_BASE" > "$OUT/$SHA.base" ||
   { echo "The merge base cannot be resolved; the delta cannot start." >&2; exit 1; }
-PREV_BASE=$(cat "$OUT/$PREV_SHA.base" 2>/dev/null)
+PREV_BASE=$(cat "$OUT/$PREV_SHA.base" 2>/dev/null || true)
 SCOPE="Review git diff $PREV_SHA..$SHA as a delta"
 [ "$REVIEW_BASE" = "$PREV_BASE" ] || SCOPE="The merge base moved from ${PREV_BASE:-a base not recorded} to
 $REVIEW_BASE. Review git diff $PREV_SHA..$SHA and the full diff git diff $REVIEW_BASE..$SHA as a
