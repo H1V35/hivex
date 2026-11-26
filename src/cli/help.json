@@ -35,6 +35,11 @@
     },
     {
       "modelCalls": 0,
+      "name": "hook",
+      "usage": "hook (run by Claude Code or Codex with a hook event on stdin; see docs/guide.md#enforce-recovery-with-host-hooks)"
+    },
+    {
+      "modelCalls": 0,
       "name": "check",
       "usage": "check [--source <document>] [--historical] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
       "maxLocalReferences": 32768

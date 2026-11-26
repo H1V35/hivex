@@ -2,7 +2,7 @@
 title: Engineering workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-11-18
+updated_at: 2026-11-26
 tags: [engineering, quality, workflow]
 ---
 
@@ -10,7 +10,7 @@ tags: [engineering, quality, workflow]
 
 HiveX is a Rust CLI, migrated under [#80](https://github.com/H1V35/hivex/issues/80) and [ADR 0010](../archive/adr/0010-practical-knowledge-assistance.md#rust-migration-80). Public CLI tests protect the current source contract; fixed legacy fixtures verify that retained state remains unchanged without executing the retired runtime. Modules group behavior by domain responsibility and hide internal details behind small interfaces. Do not add a second development-session orchestrator or require an adopting project's layout, tracker or product packages. Codex, Git/GitHub and CI coordinate work.
 
-Skills provide task knowledge and judgment. The host harness handles agent coordination, effective model/effort configuration, execution permissions and process/session lifecycle. Project Markdown owns workflow policy; HiveX's CLI owns deterministic source retrieval and explicit coverage. Keep these responsibilities distinct rather than duplicating harness mechanics in each skill, as recorded in [ADR 0012](../adr/0012-project-foundation-and-workflow.md#keep-capabilities-focused).
+Skills provide task knowledge and judgment. The host harness handles agent coordination, effective model/effort configuration, execution permissions and process/session lifecycle. Project Markdown owns workflow policy; HiveX's CLI owns deterministic source retrieval and explicit coverage. Keep these responsibilities distinct rather than duplicating harness mechanics in each skill, as recorded in [ADR 0012](../adr/0012-project-foundation-and-workflow.md#keep-capabilities-focused). The optional `hivex hook` gives the harness a hook that enforces the recovery rule; the project registers it in the host's settings, which HiveX only reads ([ADR 0012](../adr/0012-project-foundation-and-workflow.md#amendment-owner-2026-11-26-recover-before-acting)).
 
 ## Development and verification
 
@@ -63,7 +63,7 @@ Use repository decisions, explicit relationships and review evidence for durable
 
 The current knowledge workflow follows [ADR 0014](../adr/0014-reliable-markdown-and-explicit-relationships.md). Start with the authority map and current Markdown, then follow explicit dependencies, exceptions and replacements. The inferred graph runtime is retired; its historical behavior remains in the [archived CLI reference](../archive/runtime/graph-cli-0.7.8.md). Preserve work accounting and historical evidence rather than repeating graph checks for a green label.
 
-Start with the authority map, deterministic search and exact reading, reusing current context. Follow authored relationships as the task requires. HiveX supplies source evidence; the responsible agent verifies applicability against conditions, exceptions and implementation. Missing coverage or uncertainty limits the affected conclusion, and any finding refers to actual source/code versions.
+Before acting, start with the authority map, deterministic search and exact reading, as the [`hivex` skill](../../skills/hivex/SKILL.md#recover-sources-before-deciding) requires; reuse only context read in the present context, never remembered or summarised context ([ADR 0012](../adr/0012-project-foundation-and-workflow.md#amendment-owner-2026-11-26-recover-before-acting)). Follow authored relationships as the task requires. HiveX supplies source evidence; the responsible agent verifies applicability against conditions, exceptions and implementation. Missing coverage or uncertainty limits the affected conclusion, and any finding refers to actual source/code versions.
 
 ## Retire mechanisms without losing knowledge
 

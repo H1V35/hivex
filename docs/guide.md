@@ -2,7 +2,7 @@
 title: "HiveX guide"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-11-19
+updated_at: 2026-11-26
 tags: [cli, retrieval, adoption]
 ---
 
@@ -15,15 +15,15 @@ HiveX is an AI-first CLI for agents and people. The principal agent reasons and 
 HiveX is one executable with the six skills, the project foundation and the language templates built in; it needs no Node.js, Bun, npm, model credentials or Codex process. Each release `vX.Y.Z` on [GitHub Releases](https://github.com/H1V35/hivex/releases) provides prebuilt archives for macOS, Linux and Windows: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`. Each archive, `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` on Windows), contains the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, and has a `.sha256` checksum file beside it. Download yours from the Releases page or with the GitHub CLI, check it and put `hivex` (`hivex.exe` on Windows) on your `PATH`:
 
 ```sh
-gh release download v0.14.5 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
-shasum -a 256 -c hivex-v0.14.5-aarch64-apple-darwin.tar.gz.sha256
-tar -xzf hivex-v0.14.5-aarch64-apple-darwin.tar.gz
+gh release download v0.15.0 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
+shasum -a 256 -c hivex-v0.15.0-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf hivex-v0.15.0-aarch64-apple-darwin.tar.gz
 ```
 
 The macOS executables are not notarized, and a browser download is quarantined; remove that attribute with `xattr -d com.apple.quarantine hivex` after checking the archive, or download with `gh` or Cargo instead. Alternatively, build and install a release with stable Rust; `--force` replaces an installed version:
 
 ```sh
-cargo install --git https://github.com/H1V35/hivex --tag v0.14.5 --locked hivex --bin hivex --force
+cargo install --git https://github.com/H1V35/hivex --tag v0.15.0 --locked hivex --bin hivex --force
 ```
 
 Then run `hivex init` in the project root. Versions up to 0.11.1 were installed from the npm package `@h1v35/hivex`, now deprecated; existing projects [migrate from npm](#migrate-from-npm).
@@ -34,12 +34,12 @@ Then run `hivex init` in the project root. Versions up to 0.11.1 were installed 
 
 ```json
 {
-  "version": "0.14.5",
+  "version": "0.15.0",
   "include": ["docs/**/*.md"]
 }
 ```
 
-`init` writes the installed version when it creates `hivex.json`, and fails with `VERSION_MISMATCH` (details `installed` and `pinned`) before writing anything when the project pins another release. `update` adds the pin to an existing `hivex.json` or moves it forward to the installed release, reported as `hivex.json` in `updated`; it fails with `VERSION_MISMATCH` rather than move the pin back. All other commands keep working and add `"versionWarning":{"installed":…,"pinned":…,"install":…}` to their result, where `install` is the command that installs the pinned release, `cargo install --git https://github.com/H1V35/hivex --tag vX.Y.Z --locked hivex --bin hivex --force`. A missing pin imposes nothing; an invalid one fails with `INVALID_CONFIG`.
+`init` writes the installed version when it creates `hivex.json`, and fails with `VERSION_MISMATCH` (details `installed` and `pinned`) before writing anything when the project pins another release. `update` adds the pin to an existing `hivex.json` or moves it forward to the installed release, reported as `hivex.json` in `updated`; it fails with `VERSION_MISMATCH` rather than move the pin back. All other commands except [`hook`](#enforce-recovery-with-host-hooks), which reads no pin, keep working and add `"versionWarning":{"installed":…,"pinned":…,"install":…}` to their result, where `install` is the command that installs the pinned release, `cargo install --git https://github.com/H1V35/hivex --tag vX.Y.Z --locked hivex --bin hivex --force`. A missing pin imposes nothing; an invalid one fails with `INVALID_CONFIG`.
 
 Commit `hivex.json` so collaborators and agents use the same release. The guide for a pinned release is `https://github.com/H1V35/hivex/blob/vX.Y.Z/docs/guide.md`; `hivex --help` lists the installed command contract.
 
@@ -53,13 +53,78 @@ New installations ignore `.hivex/` as retained local state and `.reviews/` for l
 
 ### The skills section of `AGENTS.md`
 
-`AGENTS.md` carries a section, between `<!-- hivex:skills -->` and `<!-- /hivex:skills -->`, stating which HiveX skill each kind of work loads: `hivex-design` with the project's design guide and the platform's interface guidelines for anything people see, `hivex-implement`, `hivex-document`, `hivex-review` and `hivex-git` for their work, `hivex` for every task's sources, and delegated work following the section. `init` writes it into a new entrypoint, including an extension's, and adds it to an existing one that lacks it, in the file's line endings: before a final `## Relationships` section, which stays last, or else at the end. `update` replaces what lies between the markers with the installed release's section. The rest of the file stays the project's. A lone or misordered marker fails with `INVALID_AGENTS` before any write; a file that is not UTF-8 text is left unchanged. Version 0.14.0 adds the section ([#230](https://github.com/H1V35/hivex/issues/230)).
+`AGENTS.md` carries a section, between `<!-- hivex:skills -->` and `<!-- /hivex:skills -->`, stating which HiveX skill each kind of work loads: `hivex-design` with the project's design guide and the platform's interface guidelines for anything people see, `hivex-implement`, `hivex-document`, `hivex-review` and `hivex-git` for their work, `hivex` for every task's sources, every agent recovering what has been decided on the topic before acting and listing the rules it applies, with briefs and pull requests carrying that list, and delegated work following the section. `init` writes it into a new entrypoint, including an extension's, and adds it to an existing one that lacks it, in the file's line endings: before a final `## Relationships` section, which stays last, or else at the end. `update` replaces what lies between the markers with the installed release's section. The rest of the file stays the project's. A lone or misordered marker fails with `INVALID_AGENTS` before any write; a file that is not UTF-8 text is left unchanged. Version 0.14.0 adds the section ([#230](https://github.com/H1V35/hivex/issues/230)); version 0.15.0 adds the recovery before acting ([#258](https://github.com/H1V35/hivex/issues/258)).
 
 `init` also installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin (MIT) in each host whose CLI is on `PATH`. It first runs `<host> plugin list --json`; when `ponytail@ponytail` is listed it changes nothing, because installing again would replace Codex's copy and re-enable a plugin the owner disabled. Otherwise it runs `claude plugin marketplace add DietrichGebert/ponytail` and `claude plugin install ponytail@ponytail`, or `codex plugin marketplace add DietrichGebert/ponytail` and `codex plugin add ponytail@ponytail`. Each host stops at its first failing step. The report's `plugins` entries are `current` when ponytail is installed (already or now), `missing` when the CLI is not installed and `failed` when a step fails; file results are unaffected and the exit code stays 0. The plugin hooks need Node.js; Codex asks to trust them in `/hooks`, and running apps load updates after a restart. Contract tests replace both CLIs with recording stand-ins and otherwise run with an empty `PATH`, so they never touch real installations.
 
 ## Update a project
 
-`update [--root <project>]` brings what HiveX manages to the installed release and never creates or changes project files other than the pin in `hivex.json` and the [skills section](#the-skills-section-of-agentsmd) of `AGENTS.md`. It makes the skill files in `.agents/skills/` and `.claude/skills/` identical to the installed release, reporting changed files in `updated` and missing ones in `created`, restores any missing managed ignore rule as `init` does, removes the former link rules, makes the skills section of an existing `AGENTS.md` current, reporting the file in `updated` when it changes, and [moves the pin forward](#pin-the-release). A former npm link at `.agents/skills/<name>`, pointing into `node_modules`, is replaced with a copy: the directory is reported in `updated` and its files in `created`. Claude's former link at `.claude/skills/<name>` to the copy in `.agents/skills/<name>`, a symlink or, on Windows, a directory junction, is replaced the same way; a link that points elsewhere is the project's and is reported in `preserved`. It then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. After installing a new release, run `hivex update` and commit the changed skill files in both directories, `.gitignore` and `hivex.json`.
+`update [--root <project>]` brings what HiveX manages to the installed release and never creates or changes project files other than the pin in `hivex.json` and the [skills section](#the-skills-section-of-agentsmd) of `AGENTS.md`. It makes the skill files in `.agents/skills/` and `.claude/skills/` identical to the installed release, reporting changed files in `updated` and missing ones in `created`, restores any missing managed ignore rule as `init` does, removes the former link rules, makes the skills section of an existing `AGENTS.md` current, reporting the file in `updated` when it changes, and [moves the pin forward](#pin-the-release). A former npm link at `.agents/skills/<name>`, pointing into `node_modules`, is replaced with a copy: the directory is reported in `updated` and its files in `created`. Claude's former link at `.claude/skills/<name>` to the copy in `.agents/skills/<name>`, a symlink or, on Windows, a directory junction, is replaced the same way; a link that points elsewhere is the project's and is reported in `preserved`. It then brings the ponytail plugin to its latest release with idempotent steps: `claude plugin marketplace add DietrichGebert/ponytail`, `claude plugin marketplace update ponytail`, `claude plugin install ponytail@ponytail` and `claude plugin update ponytail@ponytail`; `codex plugin marketplace add DietrichGebert/ponytail`, `codex plugin marketplace upgrade ponytail` and `codex plugin add ponytail@ponytail`. Its report has the same shape as `init`, with `"command":"update"` and `current` for each host whose steps all succeeded. Both reports also list in `hooks` whether each host the project uses registers the [recovery hook](#enforce-recovery-with-host-hooks), recommending its configuration when it does not. After installing a new release, run `hivex update` and commit the changed skill files in both directories, `.gitignore` and `hivex.json`.
+
+## Enforce recovery with host hooks
+
+The skills state the [recovery rule](#recover-context): every agent recovers what has been decided on its topic before acting. `hivex hook` lets Claude Code or Codex enforce it. Registered on the host's lifecycle hooks, it reads the event on stdin and:
+
+- adds the rule to the context of each session (`SessionStart`) and subagent (`SubagentStart`);
+- records, after a shell call (`PostToolUse`) that runs `hivex search`, `hivex read` or `hivex relations`, that the session or subagent has recovered;
+- denies (`PreToolUse`) edits, agent and workflow launches, the MCP tools the project's matcher sends it, `git commit` and `gh pr create` until it has, with a reason naming the command to run; reads, searches and every other command go ahead;
+- forgets that record after a compaction (`PostCompact`, or `SessionStart` with source `compact` or `clear`), and removes the session's records when it ends (`SessionEnd`).
+
+A shell command counts by the program each of its simple commands runs, split at `;`, `&&`, `||`, `|`, `&`, parentheses and line breaks outside quotes and leaving out here-document bodies, after any variable assignments and `env`, `command`, `exec`, `time`, `nohup`, `sudo` or a command proxy such as `rtk` or `rtk proxy`. `cd <dir> && hivex search …`, a path to the executable and a quoted Windows path count; the same words in an argument or a here-document, such as `rg 'git commit' docs` or `echo hivex search`, do not. A script passed to another shell, as in `bash -c '…'`, is not inspected. The hook sees the command line, not which of its parts ran, so a retrieval command in a branch the shell skipped, such as after a `cd` that failed, still counts.
+
+In Claude Code each subagent recovers on its own, because its events carry its `agent_id`. Codex gives subagent hooks the parent's session id and documents no agent id for tool events, so there the gate is per session: a subagent shares its parent's record, and the hook uses an agent id if Codex sends one. The hook reads only documented input fields and never the transcript, whose format Codex documents as not a stable interface for hooks. A record is an empty file in `hivex-hook` under the user's temporary directory, named by hashes of the session and agent ids; it holds no command, path or content. On Unix the hook creates that directory with mode 0700 and uses it, to check, write or remove a record, only while it is a directory no one else can write, never a link. A new recovery replaces the record by renaming a fresh file over it, so a check running at the same time never finds it missing. Every check first writes and removes a probe, so storage where a record could not be written or removed lets the call through with a warning instead of denying it or trusting a record a compaction failed to remove. If a compaction cannot remove the record, the hook warns; the record then counts again once the storage is writable, until the session recovers or ends. Records older than a week are removed when a session starts or ends, and nothing else in the directory is touched.
+
+An input the hook does not recognise lets the call through with a `systemMessage` warning, so a change in a host's format never locks a session out: one that is not a hook event or is larger than 8 MiB, one without `session_id`, an unknown event or tool, a gated tool without its documented input fields (`file_path` and `content` for `Write`; `file_path`, `old_string` and `new_string` for `Edit`; `notebook_path` for `NotebookEdit`; `prompt` and `description` for `Agent`; `command` for a shell or `apply_patch`; an object for `Workflow`, `spawn_agent` or an MCP tool, whose fields are not documented), or a record directory it cannot use. An input over 8 MiB is read to its end and dropped, so the host can finish writing it, and that answer takes longer with its size: about 0.2 s for 64 MiB. The hook denies only a recognised, well-formed call without a record. It prints nothing when it has nothing to say, and otherwise the host's hook JSON; it does not read the project's pin. An answer takes a few milliseconds, including starting the process, and uses no network.
+
+The kit is opt-in, and HiveX never writes a host's settings. `init` and `update` read the project settings of each host whose directory the project has, `.claude/` or `.codex/`; `init` writes HiveX's skills into `.claude/skills/`, so Claude Code is always listed. The report's `hooks` lists each host as `registered` when its settings run `hivex hook` on every event below as a synchronous `command` handler, either exactly `hivex hook`, with any path to the executable, read by the handler's `shell` (Bash by default, and on Windows, where Claude Code uses PowerShell without Git Bash, by both; PowerShell runs a quoted path only after `&`), or Claude Code's exec form (`"command": "hivex", "args": ["hook"]`), without an `if` condition and letting the call go ahead if it fails, with matchers covering the values the kit needs and, for Claude Code's gate, `onFailure: "continue"`. Matchers are read as the host reads them: Claude Code compares one of only letters, digits, `_`, `-`, spaces, `,` and `|` as a list of exact names separated by `|` or `,`, and tests any other as a regular expression, as Codex tests every matcher. Otherwise it is `recommended` with the `missing` events, the `configuration` to merge, the `file` to merge it into and the `steps`, or `unverified` when a settings file HiveX does not parse, listed in `unread`, names the hook; its `steps` then say to check and complete that registration rather than add a second one the host would also run. Every state gives the host's `documentation` and, in `mcp`, how to gate the project's MCP servers, and Codex's a `note` on how far it is verified. A registration whose `PostToolUse` cannot see the shell would deny every edit, so it stays `recommended`. Claude Code's `.claude/settings.json` and `.claude/settings.local.json` and Codex's `.codex/hooks.json` are read; a Codex `.codex/config.toml` is only searched for the hook, and settings outside the project, such as a user's own, are not read.
+
+Install a release that has `hook` on `PATH` before registering it. An older `hivex` answers `hook` with an error, which both hosts treat as a failed hook that does not block the call, so the rule goes unenforced until the binary is updated. A session that recovered before the kit was registered has no record and is denied once; running a retrieval command records it.
+
+For Claude Code ([hooks reference](https://code.claude.com/docs/en/hooks)), merge this into `.claude/settings.json`, keeping its other settings and hooks; Claude Code runs project hooks once the workspace is trusted. `onFailure`, read by Claude Code 2.1.295 and later, keeps a failed gate from blocking the call on Windows without Git Bash:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit|Agent|Workflow|Bash|PowerShell",
+        "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10, "onFailure": "continue" }]
+      }
+    ],
+    "PostToolUse": [
+      { "matcher": "Bash|PowerShell", "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }
+    ],
+    "PostCompact": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "hivex hook" }] }]
+  }
+}
+```
+
+For Codex ([hooks](https://learn.chatgpt.com/docs/hooks)), merge this into `.codex/hooks.json`, then review and trust the hooks in `/hooks`; Codex skips hooks it has not trusted. Codex reports its edits as `apply_patch` and its agent launches as `spawn_agent`. This configuration is verified against Codex's documentation only, not in a Codex session, and its gate is per session as described above:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|spawn_agent)$",
+        "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }]
+      }
+    ],
+    "PostToolUse": [{ "matcher": "^Bash$", "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "PostCompact": [{ "hooks": [{ "type": "command", "command": "hivex hook", "timeout": 10 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "hivex hook" }] }]
+  }
+}
+```
+
+Both `PreToolUse` matchers gate the host's own editing tools. MCP servers can write files or change a project too, and both hosts name their tools `mcp__<server>__<tool>`; Claude Code names a plugin's server's tools `mcp__plugin_<plugin>_<server>__<tool>`. A project therefore adds the tools of its MCP servers that write or change state to the gate's matcher, by the names its host reports: `Edit|Write|NotebookEdit|Agent|Workflow|Bash|PowerShell|mcp__<server>__<tool>` in Claude Code, or `^(Bash|apply_patch|spawn_agent|mcp__<server>__<tool>)$` in Codex. The hook denies any MCP tool that reaches the gate, with a name of that shape and an object input, until the session has recovered, so read-only MCP tools stay out of the matcher; a `*` matcher gates every MCP tool. A matcher that lists MCP tools as well still counts as registered.
+
+The hook is a guardrail, not proof of a good recovery: any retrieval command satisfies it, and a host may run some tools outside its hooks. Reviews still check the rules a change states. Contract tests run the hook with inputs taken from both hosts' documentation. The owner accepted three of the limits above as the kit's behavior on 2026-11-26 ([ADR 0012](adr/0012-project-foundation-and-workflow.md#amendment-owner-2026-11-26-recover-before-acting)): Codex's per-session gate, a retrieval that counts by its command line, and a record a compaction could not remove that counts again once its storage is writable.
 
 ## Extensions
 
@@ -72,7 +137,7 @@ An extension adds skills and project files to the bundled foundation for a parti
 Install an extension in a new project with `hivex init --extension <repository>`, where `<repository>` is `OWNER/REPO` on GitHub, a Git URL (including `user@host:path`), an absolute path or a path starting with `./` or `../`, resolved from the project root. HiveX needs `git`; private repositories need Git credentials, for example `gh auth setup-git`. `init` pins the newest release in `hivex.json`:
 
 ```json
-{"version": "0.14.5", "extensions": [{"repository": "OWNER/REPO", "version": "1.2.0"}]}
+{"version": "0.15.0", "extensions": [{"repository": "OWNER/REPO", "version": "1.2.0"}]}
 ```
 
 A project that already has `hivex.json` lists extensions there instead; `init --extension` refuses to change an existing configuration. `init` installs each pinned release, so every machine gets the same files, and `update` moves each extension to its newest release, rewrites its skills and records the new versions. Project files keep the rule of every project file: created when missing, never changed afterwards; an extension's `.gitignore` only starts a missing one, to which the managed rules are appended. HiveX fetches exactly the `refs/tags/vX.Y.Z` tag, without line-ending conversion, validates it before caching it in the ignored `.hivex/extensions/` (a real directory, never a link) under a name derived from the repository, and keeps only the pinned release of each repository there. Extension files keep their Unix execute permission; symbolic links inside an extension are skipped, and linked source directories or names that could leave the tree make it invalid.
@@ -106,7 +171,7 @@ hivex relations docs/policy.md --direction both
 hivex read docs/policy.md --from 20 --to 45
 ```
 
-All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles; read a known authority directly instead of invoking every command by ceremony. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
+All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. The exception is [`hook`](#enforce-recovery-with-host-hooks), which answers its host and prints nothing when it has nothing to say. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles. Every agent recovers this way before acting, as the [`hivex` skill](../skills/hivex/SKILL.md#recover-sources-before-deciding) states: each task starts with focused `search`, `relations` and `read` on its topic. A known path goes straight to `read` only to open that source; it does not replace searching for the decisions on the topic or following that source's relations. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
 
 ### Search source passages
 

@@ -3,13 +3,14 @@ mod compatibility;
 mod documents;
 mod error;
 mod foundation;
+mod hook;
 
 use error::HiveXError;
 use std::ffi::OsString;
 use std::io::{self, Write};
 
-/// Print the command's JSON to stdout, or its error to stderr. The exit code
-/// is 1 for an error or a `failed` result.
+/// Print the command's JSON to stdout, or its error to stderr; a `null` result, a hook with
+/// nothing to say, prints nothing. The exit code is 1 for an error or a `failed` result.
 fn main() {
   let result = std::env::args_os()
     .skip(1)
@@ -19,7 +20,7 @@ fn main() {
     .and_then(|args| cli::run(&args));
   let code = match result {
     Ok(output) => {
-      let printed = writeln!(io::stdout().lock(), "{output}").is_ok();
+      let printed = output.is_null() || writeln!(io::stdout().lock(), "{output}").is_ok();
       i32::from(!printed || output["status"] == "failed")
     }
     Err(error) => {

@@ -17,7 +17,7 @@ Your Markdown remains the authority. HiveX helps the responsible agent interpret
 Download the archive for your platform from [GitHub Releases](https://github.com/H1V35/hivex/releases) and put `hivex` (`hivex.exe` on Windows) on your `PATH`. Prebuilt binaries cover macOS (Apple silicon and Intel), Linux x86_64 and Windows x86_64. Alternatively, build a release with Cargo:
 
 ```sh
-cargo install --git https://github.com/H1V35/hivex --tag v0.14.5 --locked hivex --bin hivex --force
+cargo install --git https://github.com/H1V35/hivex --tag v0.15.0 --locked hivex --bin hivex --force
 ```
 
 Then initialize your project from its root:
@@ -26,7 +26,7 @@ Then initialize your project from its root:
 hivex init
 ```
 
-`init` prepares project documents, agent instructions and the six bundled skills, and installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin in Claude Code and Codex when they are installed. It preserves existing files and makes no model calls. The skills are copied into `.agents/skills/` and `.claude/skills/`, where Claude Code reads them, for the project to commit, and `hivex.json` pins the installed release so collaborators use the same version. Extensions add skills and project files for a particular kind of project: `hivex init --extension OWNER/REPO` ([guide](docs/guide.md#extensions)). After installing a newer release, `hivex update` refreshes the skill copies, moves the pin forward and brings ponytail to its latest release; it changes no other project file.
+`init` prepares project documents, agent instructions and the six bundled skills, and installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin in Claude Code and Codex when they are installed. It preserves existing files and makes no model calls. The skills are copied into `.agents/skills/` and `.claude/skills/`, where Claude Code reads them, for the project to commit, and `hivex.json` pins the installed release so collaborators use the same version. Extensions add skills and project files for a particular kind of project: `hivex init --extension OWNER/REPO` ([guide](docs/guide.md#extensions)). When the project has Claude Code or Codex settings, `init` and `update` also recommend registering `hivex hook`, which denies edits until a session has recovered the project's decisions, and never change those settings ([guide](docs/guide.md#enforce-recovery-with-host-hooks)). After installing a newer release, `hivex update` refreshes the skill copies, moves the pin forward and brings ponytail to its latest release; it changes no other project file.
 
 ```sh
 hivex search "cache policy"
