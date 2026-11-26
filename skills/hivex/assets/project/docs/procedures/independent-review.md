@@ -105,13 +105,15 @@ cp "$OUT/$PREV_SHA.session" "$OUT/$SHA.session"
 
 ## Check a list the review did not see
 
-A review that ran before its pull request was opened could not check the pull request's list of the decisions it applies, and a review no longer covers that list once it changes without a new commit. In both cases, capture the pull request and resume the same session, asking it to check the current list against the full diff it reviewed. Each check writes under its own name, so the earlier reports stay, and the latest one covers the list being merged.
+A review that ran before its pull request was opened could not check the pull request's list of the decisions it applies, and a review no longer covers that list once it changes without a new commit. In both cases, capture the pull request and resume the same session, asking it to check the current list against the full diff it reviewed. Each check keeps its capture and report under its own name, so the earlier ones stay, and the latest one covers the list being merged when its capture holds that list.
 
 ```bash
 STAMP=$(date -u +%Y%m%dT%H%M%SZ) PR=<pr>
-gh pr view "$PR" --json title,body,comments,reviews > "$OUT/pr.json" && test -s "$OUT/pr.json"
-CHECK="Pull request #$PR is captured in $OUT/pr.json. Under the same instructions, check that its
-list of the decisions it applies covers every area of git diff $BASE...$SHA, which you reviewed."
+CAPTURE="$OUT/$SHA.coverage-$STAMP.pr.json"
+gh pr view "$PR" --json title,body,comments,reviews > "$CAPTURE" && test -s "$CAPTURE" ||
+  { echo "The pull request capture is empty; the check cannot start." >&2; exit 1; }
+CHECK="Pull request #$PR is captured in $CAPTURE. Under the same instructions, check that its list
+of the decisions it applies covers every area of git diff $BASE...$SHA, which you reviewed."
 # Codex
 codex exec resume "$THREAD" -m <model> -c model_reasoning_effort=<effort> \
   -c 'sandbox_mode="read-only"' --json \
