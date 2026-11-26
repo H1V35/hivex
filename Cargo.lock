@@ -340,6 +340,7 @@ dependencies = [
  "granit-parser",
  "icu_collator",
  "icu_locale_core",
+ "libc",
  "num-traits",
  "proc-macro2",
  "pulldown-cmark",

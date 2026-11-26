@@ -87,19 +87,19 @@ fn open(path: &Path) -> io::Result<File> {
   verify(path, file)
 }
 
-/// Options that open a link itself rather than what it points to, on Windows; elsewhere `verify`
-/// tells them apart.
-#[cfg(windows)]
+/// Options that refuse a link where the path ends, on Unix, or open the link itself, on Windows,
+/// and, on Unix, do not wait on a named pipe; `verify` then checks what was opened.
 fn options() -> OpenOptions {
   let mut options = OpenOptions::new();
+  #[cfg(unix)]
+  std::os::unix::fs::OpenOptionsExt::custom_flags(
+    &mut options,
+    libc::O_NOFOLLOW | libc::O_NONBLOCK,
+  );
   // FILE_FLAG_OPEN_REPARSE_POINT
+  #[cfg(windows)]
   std::os::windows::fs::OpenOptionsExt::custom_flags(&mut options, 0x0020_0000);
   options
-}
-
-#[cfg(not(windows))]
-fn options() -> OpenOptions {
-  OpenOptions::new()
 }
 
 /// `file`, opened from `path`, when it is still the regular file the path names, in a directory
@@ -308,15 +308,25 @@ fn create(directory: &Path) -> io::Result<()> {
 
 #[cfg(all(test, unix))]
 mod tests {
-  use super::{open, verify};
+  use super::{open, options, verify};
   use std::fs;
+  use std::path::PathBuf;
+  use std::process::Command;
+  use std::sync::mpsc;
+  use std::thread;
+  use std::time::Duration;
 
-  /// A link put where the record's file was, after it was checked and before it was opened, is
-  /// refused once the file is open.
-  #[test]
-  fn a_file_replaced_by_a_link_while_it_opens_is_refused() {
+  fn scratch() -> PathBuf {
     let directory = std::env::temp_dir().join(format!("hivex-verify-{}", uuid::Uuid::new_v4()));
     fs::create_dir(&directory).unwrap();
+    directory
+  }
+
+  /// A link where a file of the record was is not followed when opened, and one put there after it
+  /// was opened is refused.
+  #[test]
+  fn a_file_replaced_by_a_link_is_refused() {
+    let directory = scratch();
     let (path, elsewhere) = (directory.join("record"), directory.join("elsewhere"));
     fs::write(&elsewhere, "").unwrap();
     assert!(open(&path).is_ok());
@@ -324,7 +334,30 @@ mod tests {
     fs::remove_file(&path).unwrap();
     std::os::unix::fs::symlink(&elsewhere, &path).unwrap();
     assert!(verify(&path, opened).is_err());
+    assert!(options().read(true).open(&path).is_err());
     assert!(open(&path).is_err());
+    fs::remove_dir_all(&directory).unwrap();
+  }
+
+  /// A named pipe where a file of the record was is refused at once, without waiting for a writer.
+  #[test]
+  fn a_pipe_in_place_of_a_file_is_refused_at_once() {
+    let directory = scratch();
+    let path = directory.join("record");
+    assert!(
+      Command::new("mkfifo")
+        .arg(&path)
+        .status()
+        .unwrap()
+        .success()
+    );
+    let (sender, receiver) = mpsc::channel();
+    let pipe = path.clone();
+    thread::spawn(move || {
+      let opened = options().read(true).open(&pipe);
+      sender.send(opened.and_then(|file| verify(&pipe, file)).is_err())
+    });
+    assert_eq!(receiver.recv_timeout(Duration::from_secs(5)), Ok(true));
     fs::remove_dir_all(&directory).unwrap();
   }
 }
