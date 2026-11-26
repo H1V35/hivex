@@ -722,19 +722,71 @@ fn failures_at_the_same_time_keep_the_record_whole() {
 }
 
 /// A failure that does not get its turn at the record within about a second skips its line and
-/// still lets the call through with its warning.
+/// still lets the call through with its warning, and a report that does not get the lock says so
+/// instead of reading files a failure may be rotating.
 #[test]
 fn a_record_another_process_holds_is_skipped() {
   let p = Project::new();
   let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
   fs::create_dir_all(log.parent().unwrap()).unwrap();
-  let lock = fs::File::create(log.with_file_name("hook-failures.lock")).unwrap();
+  fs::write(
+    &log,
+    "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n",
+  )
+  .unwrap();
+  let path = log.with_file_name("hook-failures.lock");
+  let lock = fs::File::create(&path).unwrap();
   lock.lock().unwrap();
   let started = Instant::now();
   assert!(warned(&hook(&p, &json!("not an object"))));
   assert!(started.elapsed() < Duration::from_secs(5));
+  subset(
+    &failures(&p),
+    &json!({"total": 0, "problems": [{"path": path.to_string_lossy(), "problem": "locked"}]}),
+  );
   drop(lock);
-  assert_eq!(failures(&p)["total"], 0);
+  subset(&failures(&p), &json!({"total": 1, "problems": []}));
+}
+
+/// A rotation is one rename, so one cut short leaves the full file as the previous one and the
+/// next failure starts the current file, with no entry lost or counted twice.
+#[test]
+fn a_rotation_cut_short_loses_or_repeats_nothing() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  let previous = log.with_file_name("hook-failures.1.jsonl");
+  fs::create_dir_all(log.parent().unwrap()).unwrap();
+  let entry = "{\"time\":\"2026-11-26T00:00:00Z\",\"host\":\"unknown\",\"event\":null,\"reason\":\"unknown-tool\",\"session\":null}\n";
+  let full = entry.repeat(64 * 1024 / entry.len());
+  fs::write(&previous, &full).unwrap();
+  hook(&p, &json!("not an object"));
+  assert_eq!(fs::read_to_string(&previous).unwrap(), full);
+  subset(
+    &failures(&p),
+    &json!({"total": full.lines().count() + 1, "skipped": 0, "problems": []}),
+  );
+}
+
+/// A current file larger than the record keeps, put there by something other than the hook, is
+/// moved aside whole rather than copied, so the answer stays fast and the record keeps working.
+#[test]
+fn an_oversized_current_file_is_moved_aside() {
+  let p = Project::new();
+  let log = PathBuf::from(failures(&p)["log"].as_str().unwrap());
+  let previous = log.with_file_name("hook-failures.1.jsonl");
+  fs::create_dir_all(log.parent().unwrap()).unwrap();
+  let oversized = "x".repeat(8 * 1024 * 1024);
+  fs::write(&log, &oversized).unwrap();
+  let started = Instant::now();
+  assert!(warned(&hook(&p, &json!("not an object"))));
+  assert!(started.elapsed() < Duration::from_secs(5));
+  assert_eq!(fs::metadata(&previous).unwrap().len(), 8 * 1024 * 1024);
+  subset(
+    &failures(&p),
+    &json!({"total": 1, "problems": [
+      {"path": previous.to_string_lossy(), "problem": "larger-than-64-kib"}
+    ]}),
+  );
 }
 
 /// A line a write left unfinished, as when the disk fills, does not hide the next failure.

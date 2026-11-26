@@ -41,7 +41,7 @@ pub fn record(entry: &Entry) {
 
 fn append(entry: &Entry) -> io::Result<()> {
   let directory = directory().ok_or_else(|| io::Error::other("no per-user state directory"))?;
-  create(&directory)?;
+  let original = create(&directory)?;
   // Checking the size, rotating and appending under one lock keeps two failures at the same time
   // from taking the file past its limit or replacing the full previous file with a new one.
   let _lock = wait(open(&directory.join(LOCK))?, File::try_lock)?;
@@ -67,20 +67,20 @@ fn append(entry: &Entry) -> io::Result<()> {
     file.seek(SeekFrom::End(0))?;
     return file.write_all(line.as_bytes());
   }
-  rotate(&mut file, &directory)?;
-  file.write_all(line.trim_start().as_bytes())
+  drop(file);
+  rotate(&directory, &original)?.write_all(line.trim_start().as_bytes())
 }
 
-/// Copies the full `current` over the previous file and empties it, leaving it at its start. It
-/// works through handles each checked to be the record's once open, rather than renaming paths
-/// resolved again, so a directory replaced meanwhile never has a file of its own replaced.
-fn rotate(current: &mut File, directory: &Path) -> io::Result<()> {
-  let mut previous = open(&directory.join(PREVIOUS))?;
-  previous.set_len(0)?;
-  current.seek(SeekFrom::Start(0))?;
-  io::copy(current, &mut previous)?;
-  current.set_len(0)?;
-  current.seek(SeekFrom::Start(0)).map(drop)
+/// Renames the full current file over the previous one, in one step that an interruption cannot
+/// leave halfway, and opens a new current file. The directory is checked again first, so one that
+/// was replaced since the hook opened its files is left as it is.
+fn rotate(directory: &Path, original: &fs::Metadata) -> io::Result<File> {
+  let now = fs::symlink_metadata(directory)?;
+  if !(now.is_dir() && same(&now, original)) {
+    return Err(io::Error::other("the record's directory changed"));
+  }
+  fs::rename(directory.join(CURRENT), directory.join(PREVIOUS))?;
+  open(&directory.join(CURRENT))
 }
 
 /// Opens a file of the record to read and write, creating it, and refuses one that is not a
@@ -178,21 +178,13 @@ pub fn report() -> Value {
     });
   };
   let mut problems = Vec::new();
-  let mut files = Vec::new();
-  // Shared with other readers, so no failure rotates the files while they are read.
-  let lock = directory.join(LOCK);
-  let _lock = existing(&lock).and_then(|file| wait(file, File::try_lock_shared));
   // A directory that is a link, or not a directory, is not read.
-  if fs::symlink_metadata(&directory).is_ok_and(|metadata| !metadata.is_dir()) {
+  let files = if fs::symlink_metadata(&directory).is_ok_and(|metadata| !metadata.is_dir()) {
     problems.push(json!({"path": directory.to_string_lossy(), "problem": "not-a-directory"}));
+    Vec::new()
   } else {
-    for path in [PREVIOUS, CURRENT].map(|name| directory.join(name)) {
-      match read(&path) {
-        Ok(file) => files.extend(file),
-        Err(problem) => problems.push(json!({"path": path.to_string_lossy(), "problem": problem})),
-      }
-    }
-  }
+    snapshot(&directory, &mut problems)
+  };
   // Each file's lines on their own, so one a write left unfinished never joins the next file's.
   let lines: Vec<&str> = files
     .iter()
@@ -214,6 +206,39 @@ pub fn report() -> Value {
     "skipped": lines.len() - entries.len(),
     "problems": problems,
   })
+}
+
+/// The two files as a reader sees them under the lock, shared with other readers so no failure
+/// rotates them meanwhile, naming in `problems` each it could not read.
+fn snapshot(directory: &Path, problems: &mut Vec<Value>) -> Vec<String> {
+  let lock = directory.join(LOCK);
+  let _lock = match shared(&lock) {
+    Ok(lock) => lock,
+    Err(problem) => {
+      problems.push(json!({"path": lock.to_string_lossy(), "problem": problem}));
+      return Vec::new();
+    }
+  };
+  let mut files = Vec::new();
+  for path in [PREVIOUS, CURRENT].map(|name| directory.join(name)) {
+    match read(&path) {
+      Ok(file) => files.extend(file),
+      Err(problem) => problems.push(json!({"path": path.to_string_lossy(), "problem": problem})),
+    }
+  }
+  files
+}
+
+/// The lock shared with other readers, none when no failure has created it yet, which reading
+/// leaves so, or the problem that kept it.
+fn shared(path: &Path) -> Result<Option<File>, &'static str> {
+  match existing(path) {
+    Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+    Err(_) => Err("unreadable"),
+    Ok(file) => wait(file, File::try_lock_shared)
+      .map(Some)
+      .map_err(|_| "locked"),
+  }
 }
 
 /// A file of the record, none when it does not exist. Only a regular file no larger than the record
@@ -309,22 +334,24 @@ fn absolute(value: Option<OsString>) -> Option<PathBuf> {
   value.map(PathBuf::from).filter(|path| path.is_absolute())
 }
 
-/// Creates the directory, the user's own on Unix, and refuses one that is a link.
-fn create(directory: &Path) -> io::Result<()> {
+/// Creates the directory, the user's own on Unix, and refuses one that is a link; what it is, so a
+/// later step can tell whether it was replaced.
+fn create(directory: &Path) -> io::Result<fs::Metadata> {
   let mut builder = fs::DirBuilder::new();
   builder.recursive(true);
   #[cfg(unix)]
   std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
   builder.create(directory)?;
-  if fs::symlink_metadata(directory)?.is_dir() {
-    return Ok(());
+  let metadata = fs::symlink_metadata(directory)?;
+  if metadata.is_dir() {
+    return Ok(metadata);
   }
   Err(io::Error::other("the record's directory is a link"))
 }
 
 #[cfg(all(test, unix))]
 mod tests {
-  use super::{CURRENT, PREVIOUS, open, options, rotate, verify};
+  use super::{CURRENT, PREVIOUS, create, open, options, rotate, verify};
   use std::fs;
   use std::path::PathBuf;
   use std::process::Command;
@@ -355,9 +382,10 @@ mod tests {
     fs::remove_dir_all(&directory).unwrap();
   }
 
-  /// A directory replaced by a link while a failure rotates the record keeps its own files.
+  /// A directory replaced by a link before a failure rotates the record keeps the files of the
+  /// directory the link points to.
   #[test]
-  fn rotating_never_replaces_the_files_of_a_directory_put_in_its_place() {
+  fn rotating_never_touches_a_directory_put_in_its_place() {
     let scratch = scratch();
     let (record, other) = (scratch.join("hivex"), scratch.join("other"));
     for directory in [&record, &other] {
@@ -365,8 +393,8 @@ mod tests {
       fs::write(directory.join(CURRENT), "current\n").unwrap();
       fs::write(directory.join(PREVIOUS), "previous\n").unwrap();
     }
-    let mut current = open(&record.join(CURRENT)).unwrap();
-    rotate(&mut current, &record).unwrap();
+    let original = create(&record).unwrap();
+    assert!(rotate(&record, &original).is_ok());
     assert_eq!(
       fs::read_to_string(record.join(PREVIOUS)).unwrap(),
       "current\n"
@@ -374,7 +402,7 @@ mod tests {
     assert_eq!(fs::read_to_string(record.join(CURRENT)).unwrap(), "");
     fs::rename(&record, scratch.join("moved")).unwrap();
     std::os::unix::fs::symlink(&other, &record).unwrap();
-    assert!(rotate(&mut current, &record).is_err());
+    assert!(rotate(&record, &original).is_err());
     assert_eq!(
       fs::read_to_string(other.join(CURRENT)).unwrap(),
       "current\n"
