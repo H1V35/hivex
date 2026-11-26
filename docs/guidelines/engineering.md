@@ -2,7 +2,7 @@
 title: Engineering workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-11-18
+updated_at: 2026-11-26
 tags: [engineering, quality, workflow]
 ---
 
@@ -63,7 +63,7 @@ Use repository decisions, explicit relationships and review evidence for durable
 
 The current knowledge workflow follows [ADR 0014](../adr/0014-reliable-markdown-and-explicit-relationships.md). Start with the authority map and current Markdown, then follow explicit dependencies, exceptions and replacements. The inferred graph runtime is retired; its historical behavior remains in the [archived CLI reference](../archive/runtime/graph-cli-0.7.8.md). Preserve work accounting and historical evidence rather than repeating graph checks for a green label.
 
-Start with the authority map, deterministic search and exact reading, reusing current context. Follow authored relationships as the task requires. HiveX supplies source evidence; the responsible agent verifies applicability against conditions, exceptions and implementation. Missing coverage or uncertainty limits the affected conclusion, and any finding refers to actual source/code versions.
+Before acting, start with the authority map, deterministic search and exact reading, as the [`hivex` skill](../../skills/hivex/SKILL.md#recover-sources-before-deciding) requires; reuse only context read in the present context, never remembered or summarised context ([ADR 0012](../adr/0012-project-foundation-and-workflow.md#amendment-owner-2026-11-26-recover-before-acting)). Follow authored relationships as the task requires. HiveX supplies source evidence; the responsible agent verifies applicability against conditions, exceptions and implementation. Missing coverage or uncertainty limits the affected conclusion, and any finding refers to actual source/code versions.
 
 ## Retire mechanisms without losing knowledge
 

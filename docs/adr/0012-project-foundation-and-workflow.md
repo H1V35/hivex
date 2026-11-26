@@ -2,7 +2,7 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-10-30
+updated_at: 2026-11-26
 tags: [adr, workflow, adoption]
 ---
 
@@ -67,6 +67,12 @@ Agents skipped the HiveX skill a task needed, such as visual work done without `
 The ignored links of the amendment of 2026-10-19 existed only in the checkout that ran `init` or `update`. Claude Code loads project skills only from `.claude/skills`, and in a linked worktree it falls back to the main checkout's skills only when the worktree has no `.claude/skills` of its own, so every new clone and every worktree of a project that commits another Claude skill went without HiveX's skills (Compi, 2026-10-30). Committed links are no remedy: Git for Windows checks a symbolic link out as a text file unless the machine allows symlinks, and Claude Code offers no setting to read `.agents/skills`.
 
 `init` and `update` therefore write the same managed copy of each skill into `.claude/skills/<name>/` as into `.agents/skills/<name>/`, and the project commits both. The release bundle stays the single source: `update` makes both copies identical to it and the inventory records both. `update` replaces Claude's former link to the copy in `.agents/skills` and removes the rules that ignored those links, so the copies reach Git; a link elsewhere stays project-owned. `init` keeps both, so it never exposes a link to Git. The [guide](../guide.md#initialize-a-project) describes the behavior ([#244](https://github.com/H1V35/hivex/issues/244)).
+
+## Amendment (owner, 2026-11-26): recover before acting
+
+In an adopting project, agents loaded the skills as the skills section requires but rarely ran `search`, `relations` or `read`. They briefed other agents from memory or from a context summary and took that context as verified, and reviews checked the diff without asking whether it ignored a documented decision, so the owner had to restate decisions already written. The skills allowed it: the `hivex` skill ran its commands «when they recover missing evidence» and reused «already verified current context» without defining it, and the context-reading method held that «another command is unnecessary if the needed context is already present». The owner decided: «Sí, hay que añadir lo que sea necesario para que se use HiveX en todo momento por cualquier agente antes de hacer nada, ya sea coordinar, implementar, revisar, hacer research, etc.», and authorized a release that closes the gap wherever HiveX is installed ([#258](https://github.com/H1V35/hivex/issues/258)).
+
+Every agent, before any action on the project (coordinating, briefing another agent, implementing, reviewing, researching, documenting or answering a question about it), recovers with HiveX what has been decided on that topic and states the rules it applies with document, line and the owner's date. Verified context is only what the agent read from the current source version in its present context; remembered context, another agent's paraphrase and a context summary are not, so it recovers again after a compaction or summary. Every brief to another agent asks for that recovery and its list, every pull request lists the decisions it applies, and the independent reviewer recovers the decisions governing the changed area itself and reports any the change ignores or contradicts. The `hivex` skill states the rule; the workflow skills, the context-reading method and the review procedure template apply it; the skills section of `AGENTS.md` carries it into each project on `update`. That replaces the quoted wording. The rule asks for the decisions on the task's topic, not every source, so the conciseness rule above still holds. Enforcing it stays with the host harness, as [Keep capabilities focused](#keep-capabilities-focused) says: HiveX installs no hooks, and `init` and `update` change no project settings.
 
 ## Relationships
 

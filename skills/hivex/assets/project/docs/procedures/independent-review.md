@@ -2,7 +2,7 @@
 title: "Independent review"
 status: draft
 created_at: 2026-10-03
-updated_at: 2026-10-19
+updated_at: 2026-11-26
 tags: [workflow, review, agents]
 ---
 
@@ -42,6 +42,9 @@ on GitHub.
 Reviewed revision: $SHA, compared with its merge base: git diff $BASE...$SHA.
 Read the intended outcome yourself from the unedited tracker captures $OUT/issue.json and
 $OUT/pr.json, together with the diff and the repository's Markdown authorities.
+Recover with HiveX (search, relations, read) the decisions that govern the changed area yourself,
+check the diff against them and report any decision it ignores or contradicts as a finding.
+Record each HiveX command you ran in the verification, with the rule it established.
 Report every actionable finding with severity, location, affected scenario, evidence and a concrete
 fix. Record the verification you ran and any material limit of the review. Do not restate the diff
 or add praise."

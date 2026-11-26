@@ -17,7 +17,7 @@ Use native blocking/sub-issue relationships when helpful. A label alone does not
 
 ## Publish and integrate
 
-Start a coherent branch from the current integration branch. Follow the project's commit format and language, with Conventional Commits as a useful default. Check the diff and applicable verification; link the PR to its issue and explain the resulting behavior, validation and material limits. Use structured arguments or a body file for multiline text and follow the project's draft convention.
+Start a coherent branch from the current integration branch. Follow the project's commit format and language, with Conventional Commits as a useful default. Check the diff and applicable verification; link the PR to its issue and explain the resulting behavior, validation and material limits. The PR lists the decisions it applies, each with its document, line and the owner's date, under a heading in the tracker's language. Use structured arguments or a body file for multiline text and follow the project's draft convention.
 
 Follow CI to an actual result and confirm the independent review covers the revision being integrated under the project's engineering policy. Reuse valid verification. Resolve conflicts from both changes' intent and check affected behavior. Preserve shared history; avoid direct integration-branch pushes and force pushes.
 

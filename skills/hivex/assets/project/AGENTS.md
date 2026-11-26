@@ -18,6 +18,7 @@ Every task loads the HiveX skill that matches its work before starting, with no 
 
 - Any change to what people see, a correction included, starts with `hivex-design`, its visual review criteria, the project's design guide and the platform's official interface guidelines for the parts involved; its evidence notes the guidance followed and any deliberate departure.
 - Code uses `hivex-implement`; documentation `hivex-document`; reviews `hivex-review`; tracker, Git, pull requests, CI and merges `hivex-git`; and every task `hivex` to recover its sources.
+- Before acting, whether coordinating, briefing, implementing, reviewing, researching or answering, every agent recovers with `hivex` what has been decided on the topic and states the rules it applies with document, line and the owner's date. Remembered or summarised context is not verified, so it recovers again after a context summary. Every brief asks for that recovery and its list, and every pull request lists the decisions it applies.
 - Instructions for a particular task may add skills, never remove one. Delegated work follows this section, and its instructions refer to it instead of restating the skills.
 
 HiveX maintains this section: `hivex update` replaces it with the installed release's.
