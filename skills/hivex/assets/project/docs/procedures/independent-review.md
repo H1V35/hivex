@@ -86,16 +86,20 @@ Check the effective profile before trusting the report:
 
 ## Review later changes as a delta
 
-Resume the same session so the reviewer keeps its own context; refresh the tracker captures first if they changed. Do not restate its findings. The new revision's merge base is recorded as the first review's was; when it differs from the previous revision's, the delta covers the full diff from the new base, so nothing the base brings in goes unreviewed.
+Resume the same session so the reviewer keeps its own context; refresh the tracker captures first if they changed. Do not restate its findings. The new revision's merge base is recorded as the first review's was. When it differs from the previous revision's, the delta also covers the full diff from the new base, which can show changes the diff between heads misses, and checks what that base brought in, the diff between the two bases, against the pull request's changes where both touch the same behaviour. When the previous revision has no recorded base, the delta says so.
 
 ```bash
 PREV_SHA=$SHA SHA=$(git rev-parse HEAD)
 REVIEW_BASE=$(git merge-base "$BASE" "$SHA") && echo "$REVIEW_BASE" > "$OUT/$SHA.base" ||
   { echo "The merge base cannot be resolved; the delta cannot start." >&2; exit 1; }
-RANGE=$PREV_SHA..$SHA
-[ "$REVIEW_BASE" = "$(cat "$OUT/$PREV_SHA.base")" ] || RANGE=$REVIEW_BASE..$SHA
-DELTA="The branch now points at $SHA. Review git diff $RANGE as a delta under the same
-instructions and state whether each earlier finding is resolved."
+PREV_BASE=$(cat "$OUT/$PREV_SHA.base" 2>/dev/null || true)
+SCOPE="Review git diff $PREV_SHA..$SHA as a delta"
+[ "$REVIEW_BASE" = "$PREV_BASE" ] || SCOPE="The merge base moved from ${PREV_BASE:-a base not recorded} to
+$REVIEW_BASE. Review git diff $PREV_SHA..$SHA and the full diff git diff $REVIEW_BASE..$SHA as a
+delta, checking what the new base brought in${PREV_BASE:+ (git diff $PREV_BASE..$REVIEW_BASE)} against
+the pull request's changes where both touch the same behaviour,"
+DELTA="The branch now points at $SHA. $SCOPE under the same instructions and state whether each
+earlier finding is resolved."
 ```
 
 With Codex:
