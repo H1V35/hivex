@@ -50,6 +50,8 @@ Read the intended outcome yourself from the unedited tracker captures $CAPTURES,
 diff and the repository's Markdown authorities.
 Recover with HiveX (search, relations, read) the decisions that govern the changed area yourself,
 check the diff against them and report any decision it ignores or contradicts as a finding.
+Read-only helpers may search for you where your harness allows; read each rule you check the diff
+against yourself, with read on the exact range.
 Check that the pull request's list of the decisions it applies covers every area the diff touches,
 and report an uncovered area as a finding.
 Record each HiveX command you ran in the verification, with the rule it established.

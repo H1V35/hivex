@@ -15,15 +15,15 @@ HiveX is an AI-first CLI for agents and people. The principal agent reasons and 
 HiveX is one executable with the six skills, the project foundation and the language templates built in; it needs no Node.js, Bun, npm, model credentials or Codex process. Each release `vX.Y.Z` on [GitHub Releases](https://github.com/H1V35/hivex/releases) provides prebuilt archives for macOS, Linux and Windows: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`. Each archive, `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` on Windows), contains the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, and has a `.sha256` checksum file beside it. Download yours from the Releases page or with the GitHub CLI, check it and put `hivex` (`hivex.exe` on Windows) on your `PATH`:
 
 ```sh
-gh release download v0.16.3 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
-shasum -a 256 -c hivex-v0.16.3-aarch64-apple-darwin.tar.gz.sha256
-tar -xzf hivex-v0.16.3-aarch64-apple-darwin.tar.gz
+gh release download v0.16.4 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
+shasum -a 256 -c hivex-v0.16.4-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf hivex-v0.16.4-aarch64-apple-darwin.tar.gz
 ```
 
 The macOS executables are not notarized, and a browser download is quarantined; remove that attribute with `xattr -d com.apple.quarantine hivex` after checking the archive, or download with `gh` or Cargo instead. Alternatively, build and install a release with stable Rust; `--force` replaces an installed version:
 
 ```sh
-cargo install --git https://github.com/H1V35/hivex --tag v0.16.3 --locked hivex --bin hivex --force
+cargo install --git https://github.com/H1V35/hivex --tag v0.16.4 --locked hivex --bin hivex --force
 ```
 
 Then run `hivex init` in the project root. Versions up to 0.11.1 were installed from the npm package `@h1v35/hivex`, now deprecated; existing projects [migrate from npm](#migrate-from-npm).
@@ -34,7 +34,7 @@ Then run `hivex init` in the project root. Versions up to 0.11.1 were installed 
 
 ```json
 {
-  "version": "0.16.3",
+  "version": "0.16.4",
   "include": ["docs/**/*.md"]
 }
 ```
@@ -53,7 +53,7 @@ New installations ignore `.hivex/` as retained local state and `.reviews/` for l
 
 ### The skills section of `AGENTS.md`
 
-`AGENTS.md` carries a section, between `<!-- hivex:skills -->` and `<!-- /hivex:skills -->`, stating which HiveX skill each kind of work loads: `hivex-design` with the project's design guide and the platform's interface guidelines for anything people see, `hivex-implement`, `hivex-document`, `hivex-review` and `hivex-git` for their work, `hivex` for every task's sources, every agent recovering what has been decided on the topic before acting and listing the rules it applies, with briefs and pull requests carrying that list, and delegated work following the section. `init` writes it into a new entrypoint, including an extension's, and adds it to an existing one that lacks it, in the file's line endings: before a final `## Relationships` section, which stays last, or else at the end. `update` replaces what lies between the markers with the installed release's section. The rest of the file stays the project's. A lone or misordered marker fails with `INVALID_AGENTS` before any write; a file that is not UTF-8 text is left unchanged. Version 0.14.0 adds the section ([#230](https://github.com/H1V35/hivex/issues/230)); version 0.15.0 adds the recovery before acting ([#258](https://github.com/H1V35/hivex/issues/258)).
+`AGENTS.md` carries a section, between `<!-- hivex:skills -->` and `<!-- /hivex:skills -->`, stating which HiveX skill each kind of work loads: `hivex-design` with the project's design guide and the platform's interface guidelines for anything people see, `hivex-implement`, `hivex-document`, `hivex-review` and `hivex-git` for their work, `hivex` for every task's sources, every agent recovering what has been decided on the topic before acting and listing the rules it applies, with briefs and pull requests carrying that list, read-only helpers that may search and quote verbatim while the agent rereads the rules it applies, and delegated work following the section. `init` writes it into a new entrypoint, including an extension's, and adds it to an existing one that lacks it, in the file's line endings: before a final `## Relationships` section, which stays last, or else at the end. `update` replaces what lies between the markers with the installed release's section. The rest of the file stays the project's. A lone or misordered marker fails with `INVALID_AGENTS` before any write; a file that is not UTF-8 text is left unchanged. Version 0.14.0 adds the section ([#230](https://github.com/H1V35/hivex/issues/230)); version 0.15.0 adds the recovery before acting ([#258](https://github.com/H1V35/hivex/issues/258)); version 0.16.4 adds the read-only helpers ([#269](https://github.com/H1V35/hivex/issues/269)).
 
 `init` also installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin (MIT) in each host whose CLI is on `PATH`. It first runs `<host> plugin list --json`; when `ponytail@ponytail` is listed it changes nothing, because installing again would replace Codex's copy and re-enable a plugin the owner disabled. Otherwise it runs `claude plugin marketplace add DietrichGebert/ponytail` and `claude plugin install ponytail@ponytail`, or `codex plugin marketplace add DietrichGebert/ponytail` and `codex plugin add ponytail@ponytail`. Each host stops at its first failing step. The report's `plugins` entries are `current` when ponytail is installed (already or now), `missing` when the CLI is not installed and `failed` when a step fails; file results are unaffected and the exit code stays 0. The plugin hooks need Node.js; Codex asks to trust them in `/hooks`, and running apps load updates after a restart. Contract tests replace both CLIs with recording stand-ins and otherwise run with an empty `PATH`, so they never touch real installations.
 
@@ -145,7 +145,7 @@ An extension adds skills and project files to the bundled foundation for a parti
 Install an extension in a new project with `hivex init --extension <repository>`, where `<repository>` is `OWNER/REPO` on GitHub, a Git URL (including `user@host:path`), an absolute path or a path starting with `./` or `../`, resolved from the project root. HiveX needs `git`; private repositories need Git credentials, for example `gh auth setup-git`. `init` pins the newest release in `hivex.json`:
 
 ```json
-{"version": "0.16.3", "extensions": [{"repository": "OWNER/REPO", "version": "1.2.0"}]}
+{"version": "0.16.4", "extensions": [{"repository": "OWNER/REPO", "version": "1.2.0"}]}
 ```
 
 A project that already has `hivex.json` lists extensions there instead; `init --extension` refuses to change an existing configuration. `init` installs each pinned release, so every machine gets the same files, and `update` moves each extension to its newest release, rewrites its skills and records the new versions. Project files keep the rule of every project file: created when missing, never changed afterwards; an extension's `.gitignore` only starts a missing one, to which the managed rules are appended. HiveX fetches exactly the `refs/tags/vX.Y.Z` tag, without line-ending conversion, validates it before caching it in the ignored `.hivex/extensions/` (a real directory, never a link) under a name derived from the repository, and keeps only the pinned release of each repository there. Extension files keep their Unix execute permission; symbolic links inside an extension are skipped, and linked source directories or names that could leave the tree make it invalid.
@@ -179,7 +179,7 @@ hivex relations docs/policy.md --direction both
 hivex read docs/policy.md --from 20 --to 45
 ```
 
-All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. The exception is [`hook`](#enforce-recovery-with-host-hooks), which answers its host and prints nothing when it has nothing to say. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles. Every agent recovers this way before acting, as the [`hivex` skill](../skills/hivex/SKILL.md#recover-sources-before-deciding) states: each task starts with focused `search`, `relations` and `read` on its topic. A known path goes straight to `read` only to open that source; it does not replace searching for the decisions on the topic or following that source's relations. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
+All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. The exception is [`hook`](#enforce-recovery-with-host-hooks), which answers its host and prints nothing when it has nothing to say. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles. Every agent recovers this way before acting, as the [`hivex` skill](../skills/hivex/SKILL.md#recover-sources-before-deciding) states: each task starts with focused `search`, `relations` and `read` on its topic. A known path goes straight to `read` only to open that source; it does not replace searching for the decisions on the topic or following that source's relations. A read-only helper can do the searching and following for an agent and return the passages verbatim with document, lines and version, never a summary; that quote orients the agent, which reads with `read`, on the exact range, each rule it applies, cites or shows the owner. Where the [recovery hook](#enforce-recovery-with-host-hooks) is registered, it denies the helper's launch until the agent has run a retrieval itself, so the agent starts with a focused `search`. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
 
 ### Search source passages
 

@@ -2,7 +2,7 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-11-26
+updated_at: 2026-11-27
 tags: [adr, workflow, adoption]
 ---
 
@@ -91,6 +91,12 @@ The hook cannot tell whether a recovery covered the change's topic, so review ch
 The record 0.16.0 shipped took turns through a lock, refused links and named pipes, ended lines an interrupted write had left unfinished and left alone a current file past its limit, with the `libc` dependency and a test for each. The owner judged it out of proportion: «Sobre HiveX 0.16.0: funciona, pero el registro de fallos no es proporcionado a lo pedido. Abre una issue en HiveX para simplificarlo: que solo añada la línea y empiece un archivo nuevo al llegar al límite, sin bloqueos ni defensas contra carreras o enlaces y sin la dependencia libc. Quita también las pruebas que solo protegen esa maquinaria y reduce la sección de la guía a lo que necesita quien lo usa. Mantén lo que pedí: el aviso al agente, el registro sin contenido con tamaño máximo, --failures y la comprobación de cobertura en las revisiones.» ([#263](https://github.com/H1V35/hivex/issues/263)).
 
 A failure therefore only appends its line; when the line would take the current file past 64 KiB, that file replaces the previous one and a new one starts. `hivex hook --failures` reads both files and counts the lines it understands. The warning to the agent, the content-free record capped at two files of about 64 KiB, `--failures` and review's coverage check stand as the amendment above decided; with no lock, failures at the same moment can pass that size by a line or rotate twice, as the owner's request accepts. The removed machinery remains only in the `v0.16.0` release. The independent review procedure template also covers the two cases a review's coverage check missed: a review that ran before its pull request was opened, and a list of decisions that changed without a new commit. The reviewer's session is resumed with the current list and checks it against the full diff it reviewed, and the earlier reports are kept.
+
+## Amendment (owner, 2026-11-27): read-only helpers recover, the deciding agent rereads
+
+An agent that recovers a lot fills its context with passages, and each summary then makes it recover again. The [recover-before-acting amendment](#amendment-owner-2026-11-26-recover-before-acting) holds that another agent's paraphrase is not verified and gives no place to helpers that only search. In an adopting project the owner approved having read-only subagents do that recovery, for every agent and, if possible, for Codex reviews, and approved updating HiveX for it, as the project's record of the decision ([H1V35/compi#2384](https://github.com/H1V35/compi/issues/2384#issuecomment-7228727193)) and the summary in [#269](https://github.com/H1V35/hivex/issues/269) report.
+
+An agent may therefore leave the searching to read-only helpers, which change nothing. A helper searches and follows relations with HiveX and returns the passages verbatim with their document, lines and version, including the exceptions and replacements beside them, never a summary. That quote is enough to orient the agent and for what it does not apply as a rule. Each rule the agent applies, cites in a brief or in a pull request's list of decisions, or shows the owner in a conflict, it reads itself with `read` on the exact range, so verification stays with the agent that decides and the definition of verified context above stands. This holds for every agent and, where its harness allows helpers, for the independent reviewer, whose verification still names the HiveX commands it ran. The recovery hook does not change: it still denies agent launches until the session has run a retrieval, so an agent it gates starts with a focused search of its own before launching a helper. A helper's brief asks for those passages instead of a list of applied rules. The `hivex` skill states this; `hivex-review`, the context-reading method and the review procedure template apply it; the skills section of `AGENTS.md` carries it on `update`. Launching and bounding helpers stays with the harness, as [Keep capabilities focused](#keep-capabilities-focused) says.
 
 ## Relationships
 
