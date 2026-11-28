@@ -2,7 +2,7 @@
 title: "HiveX guide"
 status: accepted
 created_at: 2026-09-17
-updated_at: 2026-11-27
+updated_at: 2026-11-28
 tags: [cli, retrieval, adoption]
 ---
 
@@ -15,15 +15,15 @@ HiveX is an AI-first CLI for agents and people. The principal agent reasons and 
 HiveX is one executable with the six skills, the project foundation and the language templates built in; it needs no Node.js, Bun, npm, model credentials or Codex process. Each release `vX.Y.Z` on [GitHub Releases](https://github.com/H1V35/hivex/releases) provides prebuilt archives for macOS, Linux and Windows: `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-msvc`. Each archive, `hivex-vX.Y.Z-<target>.tar.gz` (`.zip` on Windows), contains the executable, `LICENSE` and `THIRD-PARTY-NOTICES.txt`, and has a `.sha256` checksum file beside it. Download yours from the Releases page or with the GitHub CLI, check it and put `hivex` (`hivex.exe` on Windows) on your `PATH`:
 
 ```sh
-gh release download v0.16.4 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
-shasum -a 256 -c hivex-v0.16.4-aarch64-apple-darwin.tar.gz.sha256
-tar -xzf hivex-v0.16.4-aarch64-apple-darwin.tar.gz
+gh release download v0.17.0 --repo H1V35/hivex --pattern "*aarch64-apple-darwin.tar.gz*"
+shasum -a 256 -c hivex-v0.17.0-aarch64-apple-darwin.tar.gz.sha256
+tar -xzf hivex-v0.17.0-aarch64-apple-darwin.tar.gz
 ```
 
 The macOS executables are not notarized, and a browser download is quarantined; remove that attribute with `xattr -d com.apple.quarantine hivex` after checking the archive, or download with `gh` or Cargo instead. Alternatively, build and install a release with stable Rust; `--force` replaces an installed version:
 
 ```sh
-cargo install --git https://github.com/H1V35/hivex --tag v0.16.4 --locked hivex --bin hivex --force
+cargo install --git https://github.com/H1V35/hivex --tag v0.17.0 --locked hivex --bin hivex --force
 ```
 
 Then run `hivex init` in the project root. Versions up to 0.11.1 were installed from the npm package `@h1v35/hivex`, now deprecated; existing projects [migrate from npm](#migrate-from-npm).
@@ -34,7 +34,7 @@ Then run `hivex init` in the project root. Versions up to 0.11.1 were installed 
 
 ```json
 {
-  "version": "0.16.4",
+  "version": "0.17.0",
   "include": ["docs/**/*.md"]
 }
 ```
@@ -53,7 +53,7 @@ New installations ignore `.hivex/` as retained local state and `.reviews/` for l
 
 ### The skills section of `AGENTS.md`
 
-`AGENTS.md` carries a section, between `<!-- hivex:skills -->` and `<!-- /hivex:skills -->`, stating which HiveX skill each kind of work loads: `hivex-design` with the project's design guide and the platform's interface guidelines for anything people see, `hivex-implement`, `hivex-document`, `hivex-review` and `hivex-git` for their work, `hivex` for every task's sources, every agent recovering what has been decided on the topic before acting and listing the rules it applies, with briefs and pull requests carrying that list, read-only helpers that may search and quote verbatim while the agent rereads the rules it applies, and delegated work following the section. `init` writes it into a new entrypoint, including an extension's, and adds it to an existing one that lacks it, in the file's line endings: before a final `## Relationships` section, which stays last, or else at the end. `update` replaces what lies between the markers with the installed release's section. The rest of the file stays the project's. A lone or misordered marker fails with `INVALID_AGENTS` before any write; a file that is not UTF-8 text is left unchanged. Version 0.14.0 adds the section ([#230](https://github.com/H1V35/hivex/issues/230)); version 0.15.0 adds the recovery before acting ([#258](https://github.com/H1V35/hivex/issues/258)); version 0.16.4 adds the read-only helpers ([#269](https://github.com/H1V35/hivex/issues/269)).
+`AGENTS.md` carries a section, between `<!-- hivex:skills -->` and `<!-- /hivex:skills -->`, stating which HiveX skill each kind of work loads: `hivex-design` with the project's design guide and the platform's interface guidelines for anything people see, `hivex-implement`, `hivex-document`, `hivex-review` and `hivex-git` for their work, `hivex` for every task's sources, every agent recovering what has been decided on the topic before acting and listing the rules it applies, with briefs and pull requests carrying that list, read-only helpers that may search and quote verbatim while the agent rereads the rules it applies, and delegated work following the section. `init` writes it into a new entrypoint, including an extension's, and adds it to an existing one that lacks it, in the file's line endings: before a final `## Relationships` section, which stays last, or else at the end. `update` replaces what lies between the markers with the installed release's section. The rest of the file stays the project's. A lone or misordered marker fails with `INVALID_AGENTS` before any write; a file that is not UTF-8 text is left unchanged. Version 0.14.0 adds the section ([#230](https://github.com/H1V35/hivex/issues/230)); version 0.15.0 adds the recovery before acting ([#258](https://github.com/H1V35/hivex/issues/258)); version 0.17.0 adds the read-only helpers ([#269](https://github.com/H1V35/hivex/issues/269)).
 
 `init` also installs the [ponytail](https://github.com/DietrichGebert/ponytail) plugin (MIT) in each host whose CLI is on `PATH`. It first runs `<host> plugin list --json`; when `ponytail@ponytail` is listed it changes nothing, because installing again would replace Codex's copy and re-enable a plugin the owner disabled. Otherwise it runs `claude plugin marketplace add DietrichGebert/ponytail` and `claude plugin install ponytail@ponytail`, or `codex plugin marketplace add DietrichGebert/ponytail` and `codex plugin add ponytail@ponytail`. Each host stops at its first failing step. The report's `plugins` entries are `current` when ponytail is installed (already or now), `missing` when the CLI is not installed and `failed` when a step fails; file results are unaffected and the exit code stays 0. The plugin hooks need Node.js; Codex asks to trust them in `/hooks`, and running apps load updates after a restart. Contract tests replace both CLIs with recording stand-ins and otherwise run with an empty `PATH`, so they never touch real installations.
 
@@ -145,7 +145,7 @@ An extension adds skills and project files to the bundled foundation for a parti
 Install an extension in a new project with `hivex init --extension <repository>`, where `<repository>` is `OWNER/REPO` on GitHub, a Git URL (including `user@host:path`), an absolute path or a path starting with `./` or `../`, resolved from the project root. HiveX needs `git`; private repositories need Git credentials, for example `gh auth setup-git`. `init` pins the newest release in `hivex.json`:
 
 ```json
-{"version": "0.16.4", "extensions": [{"repository": "OWNER/REPO", "version": "1.2.0"}]}
+{"version": "0.17.0", "extensions": [{"repository": "OWNER/REPO", "version": "1.2.0"}]}
 ```
 
 A project that already has `hivex.json` lists extensions there instead; `init --extension` refuses to change an existing configuration. `init` installs each pinned release, so every machine gets the same files, and `update` moves each extension to its newest release, rewrites its skills and records the new versions. Project files keep the rule of every project file: created when missing, never changed afterwards; an extension's `.gitignore` only starts a missing one, to which the managed rules are appended. HiveX fetches exactly the `refs/tags/vX.Y.Z` tag, without line-ending conversion, validates it before caching it in the ignored `.hivex/extensions/` (a real directory, never a link) under a name derived from the repository, and keeps only the pinned release of each repository there. Extension files keep their Unix execute permission; symbolic links inside an extension are skipped, and linked source directories or names that could leave the tree make it invalid.
@@ -174,12 +174,12 @@ Start from the documentation map and the authority for the task:
 
 ```sh
 hivex sources --limit 20
-hivex search "cache access revocation"
+hivex search "cache access revocation" --locate
 hivex relations docs/policy.md --direction both
 hivex read docs/policy.md --from 20 --to 45
 ```
 
-All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. The exception is [`hook`](#enforce-recovery-with-host-hooks), which answers its host and prints nothing when it has nothing to say. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles. Every agent recovers this way before acting, as the [`hivex` skill](../skills/hivex/SKILL.md#recover-sources-before-deciding) states: each task starts with focused `search`, `relations` and `read` on its topic. A known path goes straight to `read` only to open that source; it does not replace searching for the decisions on the topic or following that source's relations. A read-only helper can do the searching and following for an agent and return the passages verbatim with document, lines and version, never a summary; that quote orients the agent, which reads with `read`, on the exact range, each rule it applies, cites or shows the owner. Where the [recovery hook](#enforce-recovery-with-host-hooks) is registered, it denies the helper's launch until the agent has run a retrieval itself, so the agent starts with a focused `search`. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
+All operations use current working-copy sources without model calls or graph/SQLite-state access. Every command prints one JSON value: its result on stdout, or `{"error": {...}}` on stderr with exit code 1. The exception is [`hook`](#enforce-recovery-with-host-hooks), which answers its host and prints nothing when it has nothing to say. Invalid arguments, including unknown options, missing option values and non-UTF-8 arguments, return `INVALID_ARGUMENT`. Version 0.11.0 unifies that code; earlier versions returned `READ_FAILED` for some unknown options and aborted on non-UTF-8 arguments. Read scope, conditions, exceptions and replacements. A preview, search match, empty navigation result or accepted label does not establish applicability. Follow relevant indirect relationships by querying and reading the next document. Reuse visited versions/ranges to avoid reading cycles. Every agent recovers this way before acting, as the [`hivex` skill](../skills/hivex/SKILL.md#recover-sources-before-deciding) states: each task starts with focused `search`, `relations` and `read` on its topic. A known path goes straight to `read` only to open that source; it does not replace searching for the decisions on the topic or following that source's relations. A read-only helper can do the searching and following for an agent and return the passages verbatim with document, lines and version, never a summary; that quote orients the agent, which reads with `read`, on the exact range, each rule it applies, cites or shows the owner. A [locating search](#locate-without-copying) orients in the same way. Where the [recovery hook](#enforce-recovery-with-host-hooks) is registered, it denies the helper's launch until the agent has run a retrieval itself, so the agent starts with a focused `search`. Apply settled decisions autonomously; expand with available documentation and tools, then ask the owner only if they cannot resolve a consequential question.
 
 ### Search source passages
 
@@ -189,9 +189,19 @@ For each match, the shared Markdown parser identifies the sections touched by it
 
 Before applying a match, read its complete relevant section and governing document context, or the whole authority when their boundaries are unclear. Follow relevant dependencies, incoming exceptions and replacements, and compare the proposed behavior with those rules under the [shared context-reading method](../skills/hivex/references/markdown.md#recover-enough-context-to-apply-a-rule). Reuse already inspected current passages; context expansion does not recover every document-wide condition or certify comprehension.
 
-Each `matches` entry retains `document`, `version`, `historical`, `lineStart`, `lineEnd` and exact `text`, reproducible with `read`. Its `context` adds `lineStart`, `lineEnd` and `complete` for the structural range. False means read that range when needed; true confirms only that its source text is present, not that all applicable rules are known. No unbounded heading label is copied into each match. Ordinary searches exclude archives. Use `--historical` to include selected history or repeated `--source <document>` to restrict the search to specified selected documents, including archives. Invalid or excluded explicit sources are errors.
+Each `matches` entry retains `document`, `version`, `historical`, `lineStart`, `lineEnd` and exact `text`, reproducible with `read`. Its `context` adds `lineStart`, `lineEnd` and `complete` for the structural range. False means read that range when needed; true confirms only that its source text is present, not that all applicable rules are known. A passage copies no heading label. Ordinary searches exclude archives. Use `--historical` to include selected history or repeated `--source <document>` to restrict the search to specified selected documents, including archives. Invalid or excluded explicit sources are errors.
 
 `--limit` defaults to 6, maximum 64. `--max-bytes` defaults to 16384, maximum 65536, and bounds the complete serialized UTF-8 JSON. Passages are never cut to fit. Follow `continuation` with `--cursor` and identical sources/options; changed versions or options return `INVALID_CURSOR`. Cursors from the prior unexpanded search contract are also invalid. If the next complete passage cannot fit, `OUTPUT_LIMIT` cites its document/range for focused `read`. Indexing more than 32768 nonblank passages returns `SEARCH_LIMIT`; narrow source selection instead of accepting silent omissions. Source-discovery warnings mark `status` and `coverage` as `partial`. The shared parser also bounds each document to 32768 heading/explicit-anchor records; excess returns `ANCHOR_LIMIT` for narrower source selection. A complete empty lexical result proves only absence of matching terms within the declared scope.
+
+#### Locate without copying
+
+`--locate` returns where each match is instead of its text, so an agent can choose what to read. It is an option: it saves context when only some matches will be applied, while the plain search already carries the text of the ones that are. Ranking, deduplication, coordinates, `--limit`, `--max-bytes`, `OUTPUT_LIMIT` and continuation are those of passages, and the option is part of the cursor: a continuation from one mode is `INVALID_CURSOR` in the other. Each location keeps `document`, `version`, `historical`, `lineStart`, `lineEnd` and `context`, without `text`:
+
+- `headings` lists the texts of the headings enclosing the excerpt's first line, outermost first. `section` gives the `lineStart` and `lineEnd` of the innermost one's section through its subsections, or of the preamble before the first heading.
+- `excerpt` gives `lineStart`, `lineEnd` and exact `text`, as `read` returns them, of up to three whole lines of the match. It starts at the match's first nonblank line with the most distinct query terms; later lines are added while the excerpt stays within 512 bytes, and trailing blank lines are left out.
+- `relations` lists, in literal order, the `outgoing` kinds the matched document declares and the `incoming` kinds that ordinary sources, or the document itself, declare towards the whole document or a range overlapping `section`. They are resolved as [`relations`](#navigate-authored-relationships) resolves them, with its limits, so a malformed or duplicate declaration returns its `INVALID_RELATION`.
+
+A location only orients. Empty `relations` do not make a section unqualified: an exception in prose or an undeclared dependency is only in the text. Before applying, citing or showing the owner a rule, read its whole `section` with `read`, and its `context` or the governing document when the section's boundaries leave the rule unclear; follow its `relations` and check its exceptions and replacements.
 
 The shared metadata convention requires topic `tags` in documentation under `docs/`. Their frontmatter text is already searchable, so `search "data-retention"` can find that keyword even when it occurs only in tags. Tags neither select authority nor imply a relationship; this is ordinary lexical search, without a tag-only filter or a separate index.
 
@@ -208,6 +218,8 @@ The [authored relationship contract v1](../skills/hivex/references/markdown.md#m
 ### Read exact sources
 
 `sources` lists source metadata with `--limit`, `--max-bytes` and snapshot-bound `--cursor`. `read <document> --from <line> --to <line>` returns exact source text and version. Read's `--max-bytes` bounds the text payload on complete line boundaries; metadata remains additional. Inspect `truncated` and `continuation`, and continue when needed. Reading an archived document explicitly preserves its historical flag.
+
+`--if-changed <version>` passes the version the caller already holds, such as one received in a handoff or read before a review delta. When the source still has that version, `read` validates the range and returns `unchanged: true` with the source's `id` and `hash`, the requested `lineStart` and `lineEnd`, and no `text`; otherwise it reads as usual, with `unchanged: false`. HiveX keeps no record of what was read: the caller holds the version. A value that is not a 64-character lowercase hexadecimal version is `INVALID_ARGUMENT`.
 
 ## Validate structure
 
