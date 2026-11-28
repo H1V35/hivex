@@ -22,6 +22,14 @@ pub enum RelationKind {
 }
 
 impl RelationKind {
+  pub const ALL: [Self; 5] = [
+    Self::DependsOn,
+    Self::ExceptionTo,
+    Self::Supersedes,
+    Self::Implements,
+    Self::Extends,
+  ];
+
   pub const fn literal(self) -> &'static str {
     match self {
       Self::DependsOn => "Depends on",
@@ -329,6 +337,42 @@ pub(super) fn sections(text: &str) -> Result<Vec<Section>> {
   Ok(sections)
 }
 
+/// The texts of the headings whose sections enclose one-based `line`, outermost first, and the
+/// lines of the innermost one through its subsections, or of the preamble before any heading.
+pub(super) fn enclosing(text: &str, line: usize) -> Result<(Vec<String>, (usize, usize))> {
+  let scan = scan_markdown(text)?;
+  let (positions, line_count) = line_positions(text, &scan);
+  let mut path: Vec<usize> = Vec::new();
+  for (index, heading) in scan.headings.iter().enumerate() {
+    if positions[&heading.start] > line {
+      break;
+    }
+    path.retain(|outer| scan.headings[*outer].level < heading.level);
+    path.push(index);
+  }
+  let lines = path.last().map_or_else(
+    || {
+      let first = scan.headings.first();
+      (
+        1,
+        first.map_or(line_count, |heading| positions[&heading.start] - 1),
+      )
+    },
+    |&index| {
+      let start = positions[&scan.headings[index].start];
+      (
+        start,
+        section_end(&scan.headings, index, &positions, line_count),
+      )
+    },
+  );
+  let headings = path
+    .into_iter()
+    .map(|index| scan.headings[index].text.trim().to_owned())
+    .collect();
+  Ok((headings, lines))
+}
+
 /// Byte ranges, with line endings, of the requested one-based lines.
 fn line_bounds(text: &str, lines: &HashSet<usize>) -> HashMap<usize, Range<usize>> {
   raw_line_ranges(text)
@@ -369,15 +413,7 @@ fn relation_error(line: usize, cause: &'static str) -> HiveXError {
 }
 
 fn kind_prefix(value: &str) -> Option<(RelationKind, &str)> {
-  [
-    RelationKind::DependsOn,
-    RelationKind::ExceptionTo,
-    RelationKind::Supersedes,
-    RelationKind::Implements,
-    RelationKind::Extends,
-  ]
-  .into_iter()
-  .find_map(|kind| {
+  RelationKind::ALL.into_iter().find_map(|kind| {
     value
       .strip_prefix(kind.literal())
       .and_then(|rest| rest.strip_prefix(' '))

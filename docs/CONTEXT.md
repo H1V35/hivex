@@ -2,7 +2,7 @@
 title: "HiveX domain language"
 status: accepted
 created_at: 2026-09-05
-updated_at: 2026-10-30
+updated_at: 2026-11-28
 tags: [domain, project-knowledge]
 ---
 
@@ -35,6 +35,8 @@ HiveX gives agents and people a reusable project foundation and focused access t
 **Snapshot**: The selected document versions and source-selection configuration for a query. It is an identity, not a persistent knowledge database.
 
 **Passage**: A bounded range of original source lines returned by search. A passage can omit surrounding context; read relevant conditions and relationships before acting.
+
+**Location**: Where a search match is, returned instead of its passage: coordinates, headings, a short excerpt and the kinds of authored relationship around it. A location orients; read the section before applying it.
 
 **Decision**: A project choice or constraint with its scope, conditions, exceptions and reasons. Acceptance, implementation, verification and permission are separate claims.
 

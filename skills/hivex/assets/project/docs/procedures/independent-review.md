@@ -2,7 +2,7 @@
 title: "Independent review"
 status: draft
 created_at: 2026-10-03
-updated_at: 2026-11-27
+updated_at: 2026-11-28
 tags: [workflow, review, agents]
 ---
 
@@ -51,7 +51,8 @@ diff and the repository's Markdown authorities.
 Recover with HiveX (search, relations, read) the decisions that govern the changed area yourself,
 check the diff against them and report any decision it ignores or contradicts as a finding.
 Read-only helpers may search for you where your harness allows; read each rule you check the diff
-against yourself, with read on the exact range.
+against yourself, with read on the exact range. A locating search only orients: read the whole
+section of each rule you check, with its exceptions and replacements.
 Check that the pull request's list of the decisions it applies covers every area the diff touches,
 and report an uncovered area as a finding.
 Record each HiveX command you ran in the verification, with the rule it established.

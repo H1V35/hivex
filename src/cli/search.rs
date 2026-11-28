@@ -1,7 +1,7 @@
 use super::arguments::{Arguments, invalid};
 use super::page::{self, Cursor};
 use super::{ORIGIN, coverage, status};
-use crate::documents::{Match, Query, hash, load_project, search_sources};
+use crate::documents::{Query, hash, load_project, locate, search_sources};
 use crate::error::{HiveXError, Result};
 use serde_json::{Value, json};
 
@@ -12,7 +12,7 @@ pub fn command(args: &[String]) -> Result<Value> {
   let arguments = Arguments::parse(
     args,
     &["cursor", "limit", "max-bytes", "root", "source"],
-    &["historical"],
+    &["historical", "locate"],
   )?;
   let [_, query] = arguments.positionals() else {
     return Err(usage());
@@ -24,19 +24,25 @@ pub fn command(args: &[String]) -> Result<Value> {
   let max_bytes = page::max_bytes(&arguments)?;
   let sources = arguments.sources();
   let historical = arguments.flag("historical");
+  let locating = arguments.flag("locate");
   let project = load_project(arguments.root())?;
-  let key = hash(
-    &json!([
-      "context-v1",
-      project.snapshot,
-      query,
-      sources,
-      historical,
-      limit,
-      max_bytes
-    ])
-    .to_string(),
-  );
+  let mut options = json!([
+    "context-v1",
+    project.snapshot,
+    query,
+    sources,
+    historical,
+    limit,
+    max_bytes
+  ]);
+  // Only locating cursors carry the option, so ordinary cursors keep their earlier key.
+  if locating {
+    options
+      .as_array_mut()
+      .expect("an array")
+      .push(json!("locate"));
+  }
+  let key = hash(&options.to_string());
   let cursor = Cursor {
     version: "q2",
     key: &key,
@@ -49,8 +55,19 @@ pub fn command(args: &[String]) -> Result<Value> {
   };
   let result = search_sources(&project, &scope, start, limit)?;
   page::check_offset(start, result.total)?;
+  let records: Vec<Value> = if locating {
+    let locations = locate(&project, query, result.matches)?;
+    locations.iter().map(|location| json!(location)).collect()
+  } else {
+    result.matches.iter().map(|found| json!(found)).collect()
+  };
+  let scope = if locating {
+    "lexical source locations without their text; a location orients, so read its section before applying it"
+  } else {
+    "lexical source passages; a match does not establish semantic applicability or exhaust relevant context"
+  };
   page::fill(
-    result.matches,
+    records,
     max_bytes,
     |matches| {
       json!({
@@ -61,9 +78,10 @@ pub fn command(args: &[String]) -> Result<Value> {
         "query": query,
         "sources": sources,
         "historical": historical,
+        "locate": locating,
         "status": status(&project),
         "coverage": coverage(&project),
-        "scope": "lexical source passages; a match does not establish semantic applicability or exhaust relevant context",
+        "scope": scope,
         "matches": matches,
         "totalMatches": result.total,
         "warnings": project.warnings,
@@ -76,19 +94,19 @@ pub fn command(args: &[String]) -> Result<Value> {
 
 fn usage() -> HiveXError {
   invalid(
-    "Use search <query up to 4096 bytes> [--source <document>] [--historical] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
+    "Use search <query up to 4096 bytes> [--source <document>] [--historical] [--locate] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
   )
 }
 
-fn oversized(found: &Match) -> HiveXError {
+fn oversized(found: &Value) -> HiveXError {
   HiveXError::new(
     "OUTPUT_LIMIT",
     "The next complete passage exceeds --max-bytes; read its cited range or increase the limit",
   )
   .with_details(json!({
-    "document": found.document,
-    "from": found.line_start,
-    "to": found.line_end,
-    "context": {"from": found.context.line_start, "to": found.context.line_end},
+    "document": found["document"],
+    "from": found["lineStart"],
+    "to": found["lineEnd"],
+    "context": {"from": found["context"]["lineStart"], "to": found["context"]["lineEnd"]},
   }))
 }

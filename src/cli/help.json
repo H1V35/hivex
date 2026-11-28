@@ -9,7 +9,7 @@
     {
       "modelCalls": 0,
       "name": "read",
-      "usage": "read <document> [--root <project>] [--from <line>] [--to <line>] [--max-bytes <bytes>]"
+      "usage": "read <document> [--root <project>] [--from <line>] [--to <line>] [--max-bytes <bytes>] [--if-changed <version>]"
     },
     {
       "modelCalls": 0,
@@ -20,7 +20,7 @@
     {
       "modelCalls": 0,
       "name": "search",
-      "usage": "search <query> [--source <document>] [--historical] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
+      "usage": "search <query> [--source <document>] [--historical] [--locate] [--limit <count>] [--max-bytes <bytes>] [--cursor <continuation>] [--root <project>]",
       "maxIndexedPassages": 32768
     },
     {

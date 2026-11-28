@@ -249,6 +249,19 @@ impl<'a> Resolver<'a> {
       .documents
       .iter()
       .filter(|source| source.id == id || (direction != Direction::Outgoing && !source.historical));
+    let mut result = self.declarations(sources)?;
+    result.retain(|relation| {
+      direction.includes(relation.from.document == id, relation.to.document == id)
+    });
+    result.sort_by(|left, right| order(left).cmp(&order(right)));
+    Ok(result)
+  }
+
+  /// Every declaration of `sources`, resolved; a duplicate is an error.
+  fn declarations<'d>(
+    &mut self,
+    sources: impl Iterator<Item = &'d Document>,
+  ) -> Result<Vec<AuthoredRelation>> {
     let mut result = Vec::new();
     let mut seen = HashSet::new();
     let mut count = 0;
@@ -282,12 +295,9 @@ impl<'a> Resolver<'a> {
             "Duplicate authored relationship declaration",
           ));
         }
-        if direction.includes(resolved.from.document == id, resolved.to.document == id) {
-          result.push(resolved);
-        }
+        result.push(resolved);
       }
     }
-    result.sort_by(|left, right| order(left).cmp(&order(right)));
     Ok(result)
   }
 }
@@ -315,4 +325,14 @@ pub fn relations(
   direction: Direction,
 ) -> Result<Vec<AuthoredRelation>> {
   Resolver::new(project).relations(id, direction)
+}
+
+/// The declarations of ordinary sources and of `documents`, resolved in one scan, so each
+/// document's outgoing and incoming relationships come from the same coverage `relations` uses.
+pub(super) fn declarations(project: &Project, documents: &[&str]) -> Result<Vec<AuthoredRelation>> {
+  let sources = project
+    .documents
+    .iter()
+    .filter(|source| !source.historical || documents.contains(&source.id.as_str()));
+  Resolver::new(project).declarations(sources)
 }

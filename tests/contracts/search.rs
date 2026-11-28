@@ -250,3 +250,124 @@ fn a_parent_rule_includes_child_qualifications_absent_from_the_lexical_match() {
       .contains("when access is lost")
   );
 }
+
+#[test]
+fn a_locating_search_points_at_the_section_and_its_qualifications_without_copying_it() {
+  let p = Project::new();
+  p.write(
+    "policy.md",
+    format!(
+      "## Retention\nKeep records seven days.\nArchive the rest.\nAsk the owner.\n\n## Other\n{}Quasar rule.\n## Relationships\n- Depends on [Base](base.md): retention follows the base rule.\n",
+      "Unrelated prose.\n".repeat(39)
+    ),
+  );
+  p.write("base.md", "# Base\nBase rule.\n");
+  p.write(
+    "drafts.md",
+    "# Drafts\nDrafts keep fewer days.\n\n## Relationships\n- Exception to [Retention](policy.md#retention): drafts keep fewer days.\n",
+  );
+  let plain = p.ok(&["search", "seven quasar", "--source", "policy.md"]);
+  let located = p.ok(&[
+    "search",
+    "seven quasar",
+    "--source",
+    "policy.md",
+    "--locate",
+  ]);
+  assert_eq!(located["locate"], true);
+  assert_eq!(located["totalMatches"], plain["totalMatches"]);
+  let matches = located["matches"].as_array().unwrap();
+  assert_eq!(matches.len(), 2);
+  for (location, passage) in matches.iter().zip(plain["matches"].as_array().unwrap()) {
+    assert!(location.get("text").is_none());
+    for field in ["document", "version", "lineStart", "lineEnd"] {
+      assert_eq!(location[field], passage[field]);
+    }
+    let context = &passage["context"];
+    assert_eq!(
+      location["context"],
+      json!({"lineStart": context["lineStart"], "lineEnd": context["lineEnd"]})
+    );
+  }
+  let seven = matches.iter().find(|m| m["lineStart"] == 1).unwrap();
+  assert_eq!(seven["headings"], json!(["Retention"]));
+  assert_eq!(seven["section"], json!({"lineStart": 1, "lineEnd": 5}));
+  assert_eq!(
+    seven["excerpt"],
+    json!({"lineStart": 2, "lineEnd": 4, "text": "Keep records seven days.\nArchive the rest.\nAsk the owner."})
+  );
+  let read = p.ok(&["read", "policy.md", "--from", "2", "--to", "4"]);
+  assert_eq!(read["text"], seven["excerpt"]["text"]);
+  assert_eq!(
+    seven["relations"],
+    json!({"outgoing": ["depends-on"], "incoming": ["exception-to"]})
+  );
+  // The exception names the Retention section, not the Other section of the second match.
+  let quasar = matches.iter().find(|m| m["lineStart"] != 1).unwrap();
+  assert_eq!(quasar["headings"], json!(["Other"]));
+  assert_eq!(quasar["section"], json!({"lineStart": 6, "lineEnd": 46}));
+  assert_eq!(
+    quasar["excerpt"]["text"],
+    "Quasar rule.\n## Relationships\n- Depends on [Base](base.md): retention follows the base rule.\n"
+  );
+  assert_eq!(
+    quasar["relations"],
+    json!({"outgoing": ["depends-on"], "incoming": []})
+  );
+  let first = p.ok(&[
+    "search",
+    "seven quasar",
+    "--source",
+    "policy.md",
+    "--locate",
+    "--limit",
+    "1",
+  ]);
+  let cursor = first["continuation"].as_str().unwrap();
+  assert_eq!(
+    p.error(&[
+      "search",
+      "seven quasar",
+      "--source",
+      "policy.md",
+      "--limit",
+      "1",
+      "--cursor",
+      cursor
+    ])["error"]["code"],
+    "INVALID_CURSOR"
+  );
+  p.write(
+    "broken.md",
+    "# Broken\n\n## Relationships\nNot a declaration.\n",
+  );
+  assert_eq!(
+    p.error(&["search", "seven", "--source", "policy.md", "--locate"])["error"]["code"],
+    "INVALID_RELATION"
+  );
+}
+
+#[test]
+fn a_location_names_its_nested_headings_or_the_preamble() {
+  let p = Project::new();
+  p.write(
+    "nested.md",
+    "# Policy\n## Retention\n### Drafts\nNeedle here.\n## Other\nDifferent.\n",
+  );
+  p.write("preamble.md", "Intro needle.\n# Title\nBody.\n");
+  let nested = p.ok(&["search", "needle", "--source", "nested.md", "--locate"]);
+  assert_eq!(
+    nested["matches"][0]["headings"],
+    json!(["Policy", "Retention", "Drafts"])
+  );
+  assert_eq!(
+    nested["matches"][0]["section"],
+    json!({"lineStart": 3, "lineEnd": 4})
+  );
+  let preamble = p.ok(&["search", "needle", "--source", "preamble.md", "--locate"]);
+  assert_eq!(preamble["matches"][0]["headings"], json!([]));
+  assert_eq!(
+    preamble["matches"][0]["section"],
+    json!({"lineStart": 1, "lineEnd": 1})
+  );
+}

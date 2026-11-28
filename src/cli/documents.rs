@@ -70,14 +70,30 @@ pub fn sources(args: &[String]) -> Result<Value> {
   )
 }
 
-/// `read`: exact source text for a line range, cut on line boundaries to `--max-bytes`.
+/// `read`: exact source text for a line range, cut on line boundaries to `--max-bytes`, or no
+/// text when the source still has the version `--if-changed` names.
 pub fn read(args: &[String]) -> Result<Value> {
-  let arguments = Arguments::parse(args, &["from", "max-bytes", "root", "to"], &[])?;
+  let arguments = Arguments::parse(
+    args,
+    &["from", "if-changed", "max-bytes", "root", "to"],
+    &[],
+  )?;
   let [_, id] = arguments.positionals() else {
     return Err(invalid("read requires one source id"));
   };
   let from = arguments.optional_count("from", MAX_SAFE_INTEGER)?;
   let to = arguments.optional_count("to", MAX_SAFE_INTEGER)?;
+  let held = arguments.value("if-changed");
+  if held.is_some_and(|version| {
+    version.len() != 64
+      || !version
+        .bytes()
+        .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+  }) {
+    return Err(invalid(
+      "--if-changed requires a 64-character lowercase hexadecimal version",
+    ));
+  }
   let max_bytes = page::text_bytes(&arguments)?;
   let project = load_project(arguments.root())?;
   let source = project.document(id).ok_or_else(|| {
@@ -99,6 +115,18 @@ pub fn read(args: &[String]) -> Result<Value> {
       .with_details(json!({"id": id, "lineCount": line_count})),
     );
   }
+  if held == Some(source.hash.as_str()) {
+    return Ok(json!({
+      "command": "read",
+      "lineEnd": end,
+      "lineStart": start,
+      "origin": ORIGIN,
+      "snapshot": project.snapshot,
+      "source": {"hash": source.hash, "historical": source.historical, "id": source.id},
+      "unchanged": true,
+      "warnings": warnings(&project),
+    }));
+  }
   let (line_end, text) = excerpt(&source.text, (start, end), line_count, max_bytes)?;
   let continuation = (line_end < line_count).then(|| {
     json!({
@@ -119,6 +147,7 @@ pub fn read(args: &[String]) -> Result<Value> {
     "source": metadata(source),
     "text": text,
     "truncated": truncated,
+    "unchanged": false,
     "warnings": warnings(&project),
   }))
 }
