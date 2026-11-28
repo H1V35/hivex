@@ -9,7 +9,7 @@ mod validation;
 
 pub(crate) use markdown::{hash, line_content, raw_line_ranges};
 pub(crate) use navigation::{AuthoredRelation, Direction, relations as authored_relations};
-pub(crate) use search::{Match, Query, search as search_sources};
+pub(crate) use search::{Query, locate, search as search_sources};
 pub(crate) use validation::validate_sources;
 
 use crate::compatibility::{normalize_path, project_directory};

@@ -1,4 +1,5 @@
-use super::relations::{Section, sections};
+use super::navigation::{AuthoredRelation, declarations};
+use super::relations::{RelationKind, Section, enclosing, sections};
 use super::{Document, Project, line_content, raw_line_ranges};
 use crate::error::{HiveXError, Result};
 use regex::Regex;
@@ -8,10 +9,13 @@ use std::collections::HashSet;
 use std::ops::Range;
 use std::sync::OnceLock;
 use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::char::is_combining_mark;
 
 const WINDOW_LINES: usize = 32;
 const MAX_CONTEXT_BYTES: usize = 8_192;
 const MAX_PASSAGES: usize = 32_768;
+const EXCERPT_LINES: usize = 3;
+const EXCERPT_BYTES: usize = 512;
 
 const SCHEMA: &str = "
   PRAGMA page_size=4096;
@@ -84,6 +88,48 @@ pub struct Match {
   pub line_end: usize,
   pub text: String,
   pub context: Context,
+}
+
+/// Where a match is, without its text: what a locating search returns.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Location {
+  pub document: String,
+  pub version: String,
+  pub historical: bool,
+  pub line_start: usize,
+  pub line_end: usize,
+  /// The headings enclosing the excerpt, outermost first.
+  pub headings: Vec<String>,
+  /// The lines of the innermost of those headings' sections, through its subsections.
+  pub section: Lines,
+  pub excerpt: Excerpt,
+  pub context: Context,
+  pub relations: Qualifiers,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Lines {
+  pub line_start: usize,
+  pub line_end: usize,
+}
+
+/// Up to three whole lines of a match, from its line with the most query terms.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Excerpt {
+  pub line_start: usize,
+  pub line_end: usize,
+  pub text: String,
+}
+
+/// The kinds of authored relationship the matched document declares, and those declared
+/// towards a range that overlaps the match's section.
+#[derive(Serialize)]
+pub struct Qualifiers {
+  pub outgoing: Vec<RelationKind>,
+  pub incoming: Vec<RelationKind>,
 }
 
 pub struct Query<'a> {
@@ -175,13 +221,7 @@ impl Hit {
 
   fn into_match(self, documents: &[&Document]) -> Match {
     let document = documents[self.document];
-    let text = &document.text[self.bytes.clone()];
-    // Only the source's final line keeps its line ending.
-    let text = if self.bytes.end == document.text.len() {
-      text
-    } else {
-      line_content(text)
-    };
+    let text = exact(document, self.bytes.clone());
     Match {
       document: document.id.clone(),
       version: document.hash.clone(),
@@ -195,6 +235,127 @@ impl Hit {
         complete: self.lines == self.context,
       },
     }
+  }
+}
+
+/// Source text of whole lines as `read` returns it: only the source's final line keeps its
+/// line ending.
+fn exact(document: &Document, bytes: Range<usize>) -> &str {
+  let text = &document.text[bytes.clone()];
+  if bytes.end == document.text.len() {
+    text
+  } else {
+    line_content(text)
+  }
+}
+
+/// Locate `matches` without copying their text: coordinates, headings, an excerpt and the
+/// kinds of authored relationship around each, resolved over the coverage `relations` uses.
+pub fn locate(project: &Project, query: &str, matches: Vec<Match>) -> Result<Vec<Location>> {
+  if matches.is_empty() {
+    return Ok(Vec::new());
+  }
+  let documents: Vec<&str> = matches
+    .iter()
+    .map(|found| found.document.as_str())
+    .collect();
+  let declarations = declarations(project, &documents)?;
+  let terms = folded_terms(query);
+  matches
+    .into_iter()
+    .map(|found| {
+      let document = project
+        .document(&found.document)
+        .expect("a match comes from a selected document");
+      let excerpt = excerpt(document, &found, &terms);
+      let (headings, (line_start, line_end)) = enclosing(&document.text, excerpt.line_start)?;
+      let section = Lines {
+        line_start,
+        line_end,
+      };
+      Ok(Location {
+        relations: qualifiers(&declarations, &found.document, &section),
+        headings,
+        section,
+        document: found.document,
+        version: found.version,
+        historical: found.historical,
+        line_start: found.line_start,
+        line_end: found.line_end,
+        excerpt,
+        context: found.context,
+      })
+    })
+    .collect()
+}
+
+/// Letter/number terms folded as the unicode61 tokenizer folds diacritics, near enough to find
+/// the line of a match that holds most of the query.
+fn folded_terms(text: &str) -> HashSet<String> {
+  let folded: String = text
+    .to_lowercase()
+    .nfkd()
+    .filter(|character| !is_combining_mark(*character))
+    .collect();
+  search_terms(&folded).into_iter().collect()
+}
+
+/// From the first nonblank line with the most distinct query terms, up to three whole lines of
+/// the match within 512 bytes; the first line is always whole, and trailing blank lines are left.
+fn excerpt(document: &Document, found: &Match, terms: &HashSet<String>) -> Excerpt {
+  let lines: Vec<_> = raw_line_ranges(&document.text)
+    .skip(found.line_start - 1)
+    .take(found.line_end + 1 - found.line_start)
+    .collect();
+  let line = |index: usize| &document.text[lines[index].clone()];
+  let scores: Vec<_> = (0..lines.len())
+    .map(|index| {
+      let found = folded_terms(line(index)).intersection(terms).count();
+      (found, !line(index).trim().is_empty())
+    })
+    .collect();
+  let best = scores.iter().max().map_or(0, |top| {
+    scores
+      .iter()
+      .position(|score| score == top)
+      .expect("the maximum is a score")
+  });
+  let limit = lines.len().min(best + EXCERPT_LINES);
+  let mut last = best;
+  while last + 1 < limit && lines[last + 1].end - lines[best].start <= EXCERPT_BYTES {
+    last += 1;
+  }
+  while last > best && line(last).trim().is_empty() {
+    last -= 1;
+  }
+  Excerpt {
+    line_start: found.line_start + best,
+    line_end: found.line_start + last,
+    text: exact(document, lines[best].start..lines[last].end).to_owned(),
+  }
+}
+
+/// The relationship kinds around a section: those its document declares, and those declared
+/// towards a range overlapping it by an ordinary source or by the document itself.
+fn qualifiers(declarations: &[AuthoredRelation], document: &str, section: &Lines) -> Qualifiers {
+  let kinds = |selected: &dyn Fn(&AuthoredRelation) -> bool| {
+    RelationKind::ALL
+      .into_iter()
+      .filter(|kind| {
+        declarations
+          .iter()
+          .any(|relation| relation.kind == *kind && selected(relation))
+      })
+      .collect()
+  };
+  Qualifiers {
+    outgoing: kinds(&|relation| relation.from.document == document),
+    incoming: kinds(&|relation| {
+      relation.to.document == document
+        && (!relation.from.historical || relation.from.document == document)
+        && relation.to.line_start <= section.line_end
+        && section.line_start <= relation.to.line_end
+    }),
   }
 }
 

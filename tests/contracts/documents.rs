@@ -321,6 +321,34 @@ fn source_range_boundaries_preserve_separators_and_unicode() {
 }
 
 #[test]
+fn a_conditional_read_omits_the_text_of_the_version_the_caller_holds() {
+  let p = Project::new();
+  p.write("a.md", "# A\nFirst rule.\n");
+  let full = p.ok(&["read", "a.md"]);
+  assert_eq!(full["unchanged"], false);
+  let version = full["source"]["hash"].as_str().unwrap().to_owned();
+  let same = p.ok(&["read", "a.md", "--from", "2", "--if-changed", &version]);
+  subset(
+    &same,
+    &json!({"unchanged": true, "lineStart": 2, "lineEnd": 2, "source": {"hash": version, "id": "a.md"}}),
+  );
+  assert!(same.get("text").is_none());
+  assert_eq!(
+    p.error(&["read", "a.md", "--from", "3", "--if-changed", &version])["error"]["code"],
+    "INVALID_RANGE"
+  );
+  assert_eq!(
+    p.error(&["read", "a.md", "--if-changed", &version.to_uppercase()])["error"]["code"],
+    "INVALID_ARGUMENT"
+  );
+  p.write("a.md", "# A\nChanged rule.\n");
+  let changed = p.ok(&["read", "a.md", "--if-changed", &version]);
+  assert_eq!(changed["unchanged"], false);
+  assert_eq!(changed["text"], "# A\nChanged rule.\n");
+  assert_ne!(changed["source"]["hash"], version.as_str());
+}
+
+#[test]
 fn bounded_read_does_not_materialize_millions_of_blank_lines() {
   let p = Project::new();
   p.write("blank.md", "\n".repeat(16 * 1024 * 1024));
