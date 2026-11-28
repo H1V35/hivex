@@ -193,6 +193,8 @@ Each `matches` entry retains `document`, `version`, `historical`, `lineStart`, `
 
 `--limit` defaults to 6, maximum 64. `--max-bytes` defaults to 16384, maximum 65536, and bounds the complete serialized UTF-8 JSON. Passages are never cut to fit. Follow `continuation` with `--cursor` and identical sources/options; changed versions or options return `INVALID_CURSOR`. Cursors from the prior unexpanded search contract are also invalid. If the next complete passage cannot fit, `OUTPUT_LIMIT` cites its document/range for focused `read`. Indexing more than 32768 nonblank passages returns `SEARCH_LIMIT`; narrow source selection instead of accepting silent omissions. Source-discovery warnings mark `status` and `coverage` as `partial`. The shared parser also bounds each document to 32768 heading/explicit-anchor records; excess returns `ANCHOR_LIMIT` for narrower source selection. A complete empty lexical result proves only absence of matching terms within the declared scope.
 
+The shared metadata convention requires topic `tags` in documentation under `docs/`. Their frontmatter text is already searchable, so `search "data-retention"` can find that keyword even when it occurs only in tags. Tags neither select authority nor imply a relationship; this is ordinary lexical search, without a tag-only filter or a separate index.
+
 #### Locate without copying
 
 `--locate` returns where each match is instead of its text, so an agent can choose what to read. It is an option: it saves context when only some matches will be applied, while the plain search already carries the text of the ones that are. Ranking, deduplication, coordinates, `--limit`, `--max-bytes`, `OUTPUT_LIMIT` and continuation are those of passages, and the option is part of the cursor: a continuation from one mode is `INVALID_CURSOR` in the other. Each location keeps `document`, `version`, `historical`, `lineStart`, `lineEnd` and `context`, without `text`:
@@ -202,8 +204,6 @@ Each `matches` entry retains `document`, `version`, `historical`, `lineStart`, `
 - `relations` lists, in literal order, the `outgoing` kinds the matched document declares and the `incoming` kinds that ordinary sources, or the document itself, declare towards the whole document or a range overlapping `section`. They are resolved as [`relations`](#navigate-authored-relationships) resolves them, with its limits, so a malformed or duplicate declaration returns its `INVALID_RELATION`.
 
 A location only orients. Empty `relations` do not make a section unqualified: an exception in prose or an undeclared dependency is only in the text. Before applying, citing or showing the owner a rule, read its whole `section` with `read`, and its `context` or the governing document when the section's boundaries leave the rule unclear; follow its `relations` and check its exceptions and replacements.
-
-The shared metadata convention requires topic `tags` in documentation under `docs/`. Their frontmatter text is already searchable, so `search "data-retention"` can find that keyword even when it occurs only in tags. Tags neither select authority nor imply a relationship; this is ordinary lexical search, without a tag-only filter or a separate index.
 
 ### Navigate authored relationships
 
