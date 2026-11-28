@@ -2,7 +2,7 @@
 title: Project foundation and adaptive workflow
 status: accepted
 created_at: 2026-09-13
-updated_at: 2026-11-27
+updated_at: 2026-11-28
 tags: [adr, workflow, adoption]
 ---
 
@@ -97,6 +97,12 @@ A failure therefore only appends its line; when the line would take the current 
 An agent that recovers a lot fills its context with passages, and each summary then makes it recover again. The [recover-before-acting amendment](#amendment-owner-2026-11-26-recover-before-acting) holds that another agent's paraphrase is not verified and gives no place to helpers that only search. In an adopting project the owner approved having read-only subagents do that recovery, for every agent and, if possible, for Codex reviews, and approved updating HiveX for it, as the project's record of the decision ([H1V35/compi#2384](https://github.com/H1V35/compi/issues/2384#issuecomment-7228727193)) and the summary in [#269](https://github.com/H1V35/hivex/issues/269) report.
 
 An agent may therefore leave the searching to read-only helpers, which change nothing. A helper searches and follows relations with HiveX and returns the passages verbatim with their document, lines and version, including the exceptions and replacements beside them, never a summary. That quote is enough to orient the agent and for what it does not apply as a rule. Each rule the agent applies, cites in a brief or in a pull request's list of decisions, or shows the owner in a conflict, it reads itself with `read` on the exact range, so verification stays with the agent that decides and the definition of verified context above stands. This holds for every agent and, where its harness allows helpers, for the independent reviewer, whose verification still names the HiveX commands it ran. The recovery hook does not change: it still denies agent launches until the session has run a retrieval, so an agent it gates starts with a focused search of its own before launching a helper. A helper's brief asks for those passages instead of a list of applied rules. The `hivex` skill states this; `hivex-review`, the context-reading method and the review procedure template apply it; the skills section of `AGENTS.md` carries it on `update`. Launching and bounding helpers stays with the harness, as [Keep capabilities focused](#keep-capabilities-focused) says.
+
+## Amendment (owner, 2026-11-28): a locating search orients, a conditional read repeats nothing
+
+Search results stay in an agent's context and are reread on every later turn, and most of a plain search is document text the agent may never apply. The owner approved a search that locates instead of copying and a conditional `read`, and rejected a record of what was already read inside HiveX, because HiveX keeps no state, as the summary in [#271](https://github.com/H1V35/hivex/issues/271) reports.
+
+A [locating search](../guide.md#locate-without-copying) therefore orients like a helper's quote above: its coordinates, headings, excerpt and relationship kinds choose what to read, and each rule the agent applies, cites or shows the owner it reads whole with `read`, with its section, exceptions and replacements. An empty relationship list does not make a section unqualified. A `read` that names the version the caller holds answers that it is unchanged without its text; the caller, not HiveX, holds that version.
 
 ## Relationships
 
