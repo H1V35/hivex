@@ -280,9 +280,14 @@ fn a_locating_search_points_at_the_section_and_its_qualifications_without_copyin
   assert_eq!(matches.len(), 2);
   for (location, passage) in matches.iter().zip(plain["matches"].as_array().unwrap()) {
     assert!(location.get("text").is_none());
-    for field in ["document", "version", "lineStart", "lineEnd", "context"] {
+    for field in ["document", "version", "lineStart", "lineEnd"] {
       assert_eq!(location[field], passage[field]);
     }
+    let context = &passage["context"];
+    assert_eq!(
+      location["context"],
+      json!({"lineStart": context["lineStart"], "lineEnd": context["lineEnd"]})
+    );
   }
   let seven = matches.iter().find(|m| m["lineStart"] == 1).unwrap();
   assert_eq!(seven["headings"], json!(["Retention"]));

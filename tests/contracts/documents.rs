@@ -341,6 +341,16 @@ fn a_conditional_read_omits_the_text_of_the_version_the_caller_holds() {
     p.error(&["read", "a.md", "--if-changed", &version.to_uppercase()])["error"]["code"],
     "INVALID_ARGUMENT"
   );
+  p.write("old.md", "# Old\nRetired rule.\n");
+  let old = p.ok(&["read", "old.md"])["source"]["hash"]
+    .as_str()
+    .unwrap()
+    .to_owned();
+  p.json("hivex.json", &json!({"archive": ["old.md"]}));
+  assert_eq!(
+    p.ok(&["read", "old.md", "--if-changed", &old])["source"]["historical"],
+    true
+  );
   p.write("a.md", "# A\nChanged rule.\n");
   let changed = p.ok(&["read", "a.md", "--if-changed", &version]);
   assert_eq!(changed["unchanged"], false);

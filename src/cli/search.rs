@@ -26,19 +26,23 @@ pub fn command(args: &[String]) -> Result<Value> {
   let historical = arguments.flag("historical");
   let locating = arguments.flag("locate");
   let project = load_project(arguments.root())?;
-  let key = hash(
-    &json!([
-      "context-v1",
-      project.snapshot,
-      query,
-      sources,
-      historical,
-      limit,
-      max_bytes,
-      locating
-    ])
-    .to_string(),
-  );
+  let mut options = json!([
+    "context-v1",
+    project.snapshot,
+    query,
+    sources,
+    historical,
+    limit,
+    max_bytes
+  ]);
+  // Only locating cursors carry the option, so ordinary cursors keep their earlier key.
+  if locating {
+    options
+      .as_array_mut()
+      .expect("an array")
+      .push(json!("locate"));
+  }
+  let key = hash(&options.to_string());
   let cursor = Cursor {
     version: "q2",
     key: &key,

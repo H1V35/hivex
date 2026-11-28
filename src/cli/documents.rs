@@ -122,7 +122,7 @@ pub fn read(args: &[String]) -> Result<Value> {
       "lineStart": start,
       "origin": ORIGIN,
       "snapshot": project.snapshot,
-      "source": {"hash": source.hash, "id": source.id},
+      "source": {"hash": source.hash, "historical": source.historical, "id": source.id},
       "unchanged": true,
       "warnings": warnings(&project),
     }));

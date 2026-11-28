@@ -104,7 +104,8 @@ pub struct Location {
   /// The lines of the innermost of those headings' sections, through its subsections.
   pub section: Lines,
   pub excerpt: Excerpt,
-  pub context: Context,
+  /// The match's structural range; without text, it never claims to be complete.
+  pub context: Lines,
   pub relations: Qualifiers,
 }
 
@@ -283,7 +284,10 @@ pub fn locate(project: &Project, query: &str, matches: Vec<Match>) -> Result<Vec
         line_start: found.line_start,
         line_end: found.line_end,
         excerpt,
-        context: found.context,
+        context: Lines {
+          line_start: found.context.line_start,
+          line_end: found.context.line_end,
+        },
       })
     })
     .collect()
